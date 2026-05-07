@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+    body {
+      font-family: Arial;
+      max-width: 600px;
+      margin: auto;
+      padding: 20px;
+    }
+
+    #chat {
+      border: 1px solid #ccc;
+      height: 400px;
+      overflow-y: auto;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+
+    input {
+      width: 80%;
+      padding: 10px;
+    }
+
+    button {
+      padding: 10px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+<h2>AI Chat Bot</h2>
+
+<div id="chat"></div>
+
+<input id="msg" placeholder="Напиши нещо...">
+<button onclick="send()">Send</button>
+
+<script>
+async function send() {
+  let msg = document.getElementById("msg").value;
+  let chat = document.getElementById("chat");
+
+  if (!msg) return;
+
+  chat.innerHTML += `<div><b>Ти:</b> ${msg}</div>`;
+
+  let res = await fetch("/chat", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ message: msg })
+  });
+
+  let data = await res.json();
+
+  chat.innerHTML += `<div><b>AI:</b> ${data.reply}</div>`;
+
+  document.getElementById("msg").value = "";
+  chat.scrollTop = chat.scrollHeight;
+}
+</script>
+
+</body>
+</html>
