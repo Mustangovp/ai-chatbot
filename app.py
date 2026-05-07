@@ -6,8 +6,9 @@ import os
 app = Flask(__name__)
 CORS(app)
 
-# Взима API ключа от Railway Variables
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = OpenAI(
+    api_key=os.environ.get("OPENAI_API_KEY")
+)
 
 @app.route("/")
 def home():
@@ -15,14 +16,16 @@ def home():
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    user_message = request.json.get("message")
+    data = request.get_json()
+
+    user_message = data.get("message", "")
 
     response = client.chat.completions.create(
         model="gpt-4.1-mini",
         messages=[
             {
                 "role": "system",
-                "content": "Ти си полезен AI асистент за бизнес. Отговаряй кратко и професионално на български."
+                "content": "Ти си полезен AI асистент за бизнес."
             },
             {
                 "role": "user",
@@ -31,10 +34,8 @@ def chat():
         ]
     )
 
-    reply = response.choices[0].message.content
-
     return jsonify({
-        "reply": reply
+        "reply": response.choices[0].message.content
     })
 
 if __name__ == "__main__":
