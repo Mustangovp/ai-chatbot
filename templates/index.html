@@ -8,46 +8,49 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700&family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
     
     <style>
-        /* Глобален фикс за височина на мобилни браузъри */
         :root { --app-height: 100%; }
-        
         html, body { 
             height: var(--app-height); 
             margin: 0; padding: 0; 
             overflow: hidden; 
             background: #000; 
-            position: fixed; /* Предотвратява "клатенето" на екрана */
             width: 100%;
+            position: fixed;
         }
 
         body { 
             font-family: 'Inter', sans-serif; 
             display: flex; 
             flex-direction: column;
+            /* ПРЕЛИВАЩ НЕОНОВ ФОН */
+            background: radial-gradient(circle at 50% -20%, #440000 0%, #000 60%);
         }
 
         .apex-card { 
             flex: 1; 
             display: flex; 
             flex-direction: column; 
-            background: #050505;
-            margin: 8px;
-            border: 1px solid #ff0000;
-            border-radius: 20px;
+            background: rgba(5, 5, 5, 0.9);
+            margin: 10px;
+            border: 2px solid #ff0000;
+            border-radius: 24px;
             overflow: hidden;
-            box-shadow: 0 0 30px rgba(255, 0, 0, 0.15);
+            /* НЕОНОВО СИЯНИЕ */
+            box-shadow: 0 0 40px rgba(255, 0, 0, 0.25), inset 0 0 20px rgba(255, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
         }
 
         .neon-red { 
             color: #ff0000; 
-            text-shadow: 0 0 10px #ff0000; 
+            text-shadow: 0 0 15px #ff0000, 0 0 30px rgba(255, 0, 0, 0.5); 
             font-family: 'Orbitron'; 
             text-transform: uppercase;
+            letter-spacing: 2px;
         }
 
-        /* Чат зона - заема всичкото място */
         #chat-box { 
             flex: 1; 
             overflow-y: auto; 
@@ -55,115 +58,112 @@
             display: flex; 
             flex-direction: column; 
             gap: 20px;
-            background: radial-gradient(circle at top, #0a0a0a 0%, #000 100%);
         }
 
-        /* Полето за писане - заковано на дъното */
         .input-area { 
-            padding: 16px; 
-            background: #000; 
-            border-top: 1px solid rgba(255, 0, 0, 0.2);
-            padding-bottom: max(16px, env(safe-area-inset-bottom)); /* Поддръжка за iPhone Notch */
+            padding: 20px; 
+            background: rgba(0,0,0,0.8); 
+            border-top: 1px solid rgba(255, 0, 0, 0.3);
+            padding-bottom: max(20px, env(safe-area-inset-bottom));
         }
 
-        /* Стил за съобщенията */
-        .msg-ai { background: #0f0f0f; border-left: 4px solid #ff0000; border-radius: 0 15px 15px 15px; color: #eee; }
-        .msg-user { background: linear-gradient(135deg, #ff0000 0%, #990000 100%); border-radius: 15px 15px 0 15px; font-weight: 700; color: #fff; align-self: flex-end; }
-        
-        /* Таблици и Markdown */
-        .msg-content table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 11px; }
-        .msg-content th { background: #ff0000; color: white; padding: 8px; text-transform: uppercase; border: 1px solid #444; }
-        .msg-content td { border: 1px solid #333; padding: 8px; text-align: center; }
-        .msg-content h3 { color: #ff0000; font-weight: bold; margin-bottom: 8px; font-size: 1.1rem; }
+        /* ЯКИЯ ВАЙБ НА СЪОБЩЕНИЯТА */
+        .msg-ai { 
+            background: rgba(15, 15, 15, 0.8); 
+            border-left: 4px solid #ff0000; 
+            border-radius: 0 20px 20px 20px; 
+            box-shadow: 5px 5px 15px rgba(0,0,0,0.5);
+        }
 
-        /* Paywall Модал */
+        .msg-user { 
+            background: linear-gradient(135deg, #ff0000 0%, #660000 100%); 
+            border-radius: 20px 20px 0 20px; 
+            font-weight: 700; 
+            box-shadow: 0 5px 15px rgba(255,0,0,0.3);
+            align-self: flex-end;
+        }
+        
+        .msg-content table { width: 100%; border-collapse: collapse; margin: 15px 0; border-radius: 8px; overflow: hidden; }
+        .msg-content th { background: #ff0000; color: white; padding: 10px; font-size: 11px; }
+        .msg-content td { background: rgba(255,255,255,0.05); border: 1px solid #222; padding: 10px; text-align: center; color: #ccc; }
+
+        /* ПРЕЛИВАЩИ БУТОНИ */
+        .glow-btn {
+            background: linear-gradient(90deg, #ff0000, #990000);
+            box-shadow: 0 0 15px rgba(255, 0, 0, 0.6);
+            transition: 0.3s;
+        }
+        .glow-btn:hover { transform: scale(1.05); box-shadow: 0 0 25px #ff0000; }
+
         #paywall {
-            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.98);
+            display: none; position: fixed; inset: 0; 
+            background: radial-gradient(circle, #220000 0%, #000 100%);
             z-index: 9999; flex-direction: column; align-items: center; justify-content: center; padding: 30px;
         }
-        .plan-box { background: #0a0a0a; border: 1px solid #333; width: 100%; padding: 20px; border-radius: 15px; margin-bottom: 10px; }
-        .plan-box.featured { border-color: #ff0000; box-shadow: 0 0 20px rgba(255,0,0,0.2); }
-
-        ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-thumb { background: #ff0000; }
     </style>
 </head>
 <body>
 
     <div id="paywall">
-        <h2 class="neon-red text-2xl mb-2">LIMIT REACHED</h2>
-        <p class="text-gray-500 text-sm mb-8 text-center">Ти използва твоите 3 безплатни сесии. Отключи елитното ниво сега.</p>
+        <h2 class="neon-red text-3xl mb-4 animate__animated animate__pulse animate__infinite">🔥 LIMIT REACHED 🔥</h2>
+        <p class="text-gray-300 text-center mb-8">Време е за следващото ниво. Отключи пълния потенциал.</p>
         
-        <div class="plan-box">
-            <h4 class="text-[10px] text-gray-500 uppercase tracking-widest">Single Protocol</h4>
-            <p class="text-2xl font-bold">29.90 лв.</p>
-            <p class="text-[10px] text-gray-400">Еднократен професионален план</p>
+        <div class="w-full space-y-4">
+            <div class="bg-black/50 border border-red-600 p-6 rounded-2xl text-center">
+                <p class="text-red-500 font-bold uppercase text-xs">Apex Monthly</p>
+                <h3 class="text-4xl font-black mt-2">19.90 лв.</h3>
+                <button class="glow-btn w-full py-4 rounded-xl mt-4 font-black uppercase">КУПИ АБОНАМЕНТ 🦾</button>
+            </div>
         </div>
-
-        <div class="plan-box featured">
-            <span class="text-[8px] bg-red-600 px-2 py-0.5 rounded-full uppercase">Most Popular</span>
-            <h4 class="text-[10px] text-gray-100 uppercase tracking-widest mt-1">Apex Monthly</h4>
-            <p class="text-3xl font-bold">19.90 лв. <span class="text-xs text-gray-500">/мес</span></p>
-            <p class="text-[10px] text-gray-400">Неограничени консултации 24/7</p>
-        </div>
-
-        <button onclick="window.location.href='ТВОЯТ_ЛИНК_ЗА_ПЛАЩАНЕ'" class="w-full bg-red-600 py-5 rounded-xl font-bold uppercase tracking-widest mt-4 shadow-[0_0_20px_#ff0000]">
-            ОТКЛЮЧИ ПРОТОКОЛА
-        </button>
-        <button onclick="location.reload()" class="mt-6 text-gray-600 text-xs underline uppercase">Рестартирай сесията</button>
+        <button onclick="location.reload()" class="mt-8 text-gray-500 underline uppercase text-[10px]">Върни се в началото</button>
     </div>
 
     <div class="apex-card">
-        <div class="p-4 border-b border-red-900/30 flex items-center justify-between bg-black">
-            <div class="flex items-center gap-3">
-                <img src="/static/logo.png" onerror="this.src='https://i.ibb.co/vzP6Kk6/APEX-MIND-LOGO.png'" class="w-10 h-10 object-contain">
+        <div class="p-5 border-b border-red-900/40 flex items-center justify-between bg-black/40">
+            <div class="flex items-center gap-4">
+                <img src="/static/logo.png" onerror="this.src='https://i.ibb.co/vzP6Kk6/APEX-MIND-LOGO.png'" class="w-12 h-12 drop-shadow-[0_0_8px_#f00]">
                 <div>
-                    <h1 class="neon-red text-lg tracking-tighter">APEX MIND</h1>
-                    <p id="counter" class="text-[8px] text-red-600 font-bold tracking-[2px]">3 FREE SESSIONS LEFT</p>
+                    <h1 class="neon-red text-xl">APEX MIND</h1>
+                    <p id="counter" class="text-[9px] text-red-500 font-bold tracking-[3px] animate-pulse">🔴 3 FREE SESSIONS LEFT</p>
                 </div>
             </div>
         </div>
 
         <div id="chat-box">
             <div class="flex justify-start">
-                <div class="msg-ai p-5 max-w-[90%] text-sm msg-content shadow-2xl">
-                    <h3 class="neon-red !text-sm mb-2">ДОБРЕ ДОШЪЛ В ЯДРОТО 🔱</h3>
-                    Ти си тук за елитни резултати. Използвай твоите безплатни сесии за:
-                    <br>• Тренировъчни схеми
-                    <br>• Хранителни протоколи
-                    <br>• Пълна стратегия
-                    <br><b>Напиши целта си.</b>
+                <div class="msg-ai p-6 max-w-[90%] text-sm msg-content animate__animated animate__fadeInLeft">
+                    <h3 class="neon-red !text-base mb-3">ДОБРЕ ДОШЪЛ В ЕЛИТА 🔱</h3>
+                    Аз съм твоят AI ментор. Тук сме за **резултати**, а не за извинения. 🔥
+                    <br><br>
+                    🦾 **Какво правим днес?**
+                    <br>• Професионален тренировъчен план
+                    <br>• Хранителен режим за маса/релеф
+                    <br>• Пълна трансформация
+                    <br><br>
+                    *Имаш 3 безплатни сесии. Дай газ!* 🚀
                 </div>
             </div>
         </div>
 
-        <div id="utility" class="px-4 py-2 flex gap-2 hidden">
-            <button onclick="copyIt()" class="flex-1 bg-white/5 border border-white/10 py-2 rounded-lg text-[10px] uppercase font-bold text-gray-400 hover:text-white">📋 Копирай</button>
+        <div id="utility" class="px-5 py-2 hidden">
+            <button onclick="copyIt()" class="w-full bg-white/5 border border-red-600/30 py-2 rounded-xl text-[10px] uppercase font-bold text-red-500">📋 КОПИРАЙ ПЛАНА</button>
         </div>
 
         <div class="input-area">
-            <div class="flex items-center gap-2 bg-[#0d0d0d] p-1.5 rounded-xl border border-white/10 focus-within:border-red-600 transition-all">
-                <input type="text" id="user-in" 
-                    class="flex-1 bg-transparent py-3 px-4 text-sm outline-none text-white placeholder:text-gray-700" 
-                    placeholder="Въведи команда..." autocomplete="off">
-                <button id="send-btn" class="bg-red-600 p-3.5 rounded-xl shadow-lg">
-                    <svg class="h-5 w-5 fill-white" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+            <div class="flex items-center gap-3 bg-[#0d0d0d] p-1.5 rounded-2xl border border-red-600/20 focus-within:border-red-600 transition-all shadow-[0_0_15px_rgba(255,0,0,0.1)]">
+                <input type="text" id="user-in" class="flex-1 bg-transparent py-4 px-4 text-sm outline-none text-white placeholder:text-gray-700" placeholder="Въведи цел (напр. План за сила)... ⚡">
+                <button id="send-btn" class="glow-btn p-4 rounded-xl">
+                    <svg class="h-6 w-6 fill-white" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
                 </button>
             </div>
         </div>
     </div>
 
     <script>
-        // ФИКС ЗА ВИСОЧИНАТА ПРИ МОБИЛНИ
-        const appHeight = () => {
-            const doc = document.documentElement;
-            doc.style.setProperty('--app-height', `${window.innerHeight}px`);
-        };
-        window.addEventListener('resize', appHeight);
-        appHeight();
+        const appHeight = () => document.documentElement.style.setProperty('--app-height', `${window.innerHeight}px`);
+        window.addEventListener('resize', appHeight); appHeight();
 
-        let count = 0;
-        let lastRes = "";
+        let count = 0; let lastRes = "";
         const chat = document.getElementById('chat-box');
         const input = document.getElementById('user-in');
         const btn = document.getElementById('send-btn');
@@ -171,18 +171,12 @@
         async function process() {
             const val = input.value.trim();
             if(!val) return;
+            if(count >= 3) { document.getElementById('paywall').style.display = 'flex'; return; }
             
-            if(count >= 3) {
-                document.getElementById('paywall').style.display = 'flex';
-                return;
-            }
-
-            input.value = '';
-            count++;
-            document.getElementById('counter').innerText = `${3 - count} FREE SESSIONS LEFT`;
+            input.value = ''; count++;
+            document.getElementById('counter').innerText = `🔴 ${3 - count} FREE SESSIONS LEFT`;
             
             add(val, 'user');
-            
             try {
                 const res = await fetch("/chat", {
                     method: "POST",
@@ -193,23 +187,20 @@
                 lastRes = data.reply;
                 add(data.reply, 'ai');
                 document.getElementById('utility').classList.remove('hidden');
-            } catch(e) {
-                add("Системна грешка. Опитай пак. 🔴", 'ai');
-            }
+            } catch(e) { add("System Offline. 🔴", 'ai'); }
         }
 
         function add(text, type) {
             const div = document.createElement('div');
-            div.className = `flex ${type === 'user' ? 'justify-end' : 'justify-start'} animate__animated fadeInUp`;
+            div.className = `flex ${type === 'user' ? 'justify-end' : 'justify-start'} animate__animated ${type === 'user' ? 'animate__fadeInRight' : 'animate__fadeInLeft'}`;
             const formatted = type === 'user' ? text : marked.parse(text);
-            div.innerHTML = `<div class="${type === 'user' ? 'msg-user' : 'msg-ai'} p-5 max-w-[92%] text-sm shadow-xl msg-content">${formatted}</div>`;
-            chat.appendChild(div);
-            chat.scrollTop = chat.scrollHeight;
+            div.innerHTML = `<div class="${type === 'user' ? 'msg-user' : 'msg-ai'} p-5 max-w-[92%] text-sm msg-content shadow-2xl">${formatted}</div>`;
+            chat.appendChild(div); chat.scrollTop = chat.scrollHeight;
         }
 
         btn.onclick = process;
         input.onkeypress = (e) => { if(e.key === 'Enter') process(); };
-        function copyIt() { navigator.clipboard.writeText(lastRes); alert("Копирано! ✅"); }
+        function copyIt() { navigator.clipboard.writeText(lastRes); alert("Планът е копиран! ✅"); }
     </script>
 </body>
 </html>
