@@ -1,111 +1,37 @@
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from openai import OpenAI
 import os
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder='.') # Слагаме това, ако index.html е в същата папка
 CORS(app)
 
-client = OpenAI(
-    api_key=os.environ.get("OPENAI_API_KEY")
-)
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 @app.route("/")
 def home():
-    return send_from_directory(".", "index.html")
+    return render_template("index.html")
 
-@app.route("/<path:path>")
-def static_files(path):
-    return send_from_directory(".", path)
 @app.route("/chat", methods=["POST"])
 def chat():
-
-    data = request.get_json()
-
-    user_message = data.get("message", "")
+    user_message = request.json.get("message")
 
     response = client.chat.completions.create(
-        model="gpt-4.1-mini",
+        model="gpt-4o-mini",
         messages=[
             {
                 "role": "system",
-                "content": """
-You are APEX MIND.
-
-Премиум AI система за фитнес, мускулно развитие и физическа трансформация.
-
-Отговаряш ИЗЦЯЛО на български език с:
-- правилен правопис
-- правилна граматика
-- ясен и професионален стил
-- модерно и подредено форматиране
-
-Никога не смесвай български и английски, освен ако потребителят не го поиска.
-
-Не звучиш като мотивационен TikTok инфлуенсър.
-Не използваш cringe изрази.
-Не използваш прекалено hype tone.
-Не използваш излишен CAPS LOCK.
-
-Твоят стил е:
-- интелигентен
-- стегнат
-- модерен
-- професионален
-- уверен
-- лесен за четене
-
-Когато създаваш тренировъчни програми:
-
-- разделяй упражненията ясно
-- използвай добра визуална структура
-- не използвай таблици
-- не претрупвай с текст
-- обяснявай кратко целта на упражнението
-- използвай spacing между секциите
-
-Форматирай така:
-
-# Ден 1 — Гърди и Трицепс
-
-## Лежанка с щанга
-5 серии × 6–8 повторения
-
-Основна цел:
-плътност и сила в гърдите.
-
-Акцент:
-контролирано спускане и експлозивно избутване.
-
-## Наклонена лежанка с дъмбели
-4 серии × 8–10 повторения
-
-Фокус:
-горна част на гърдите и по-добра визуална форма.
-
-Избягвай:
-- правописни грешки
-- прекалено дълги отговори
-- хаотично форматиране
-- сухи AI отговори
-- прекалено много емоджита
-
-Отговорите трябва да изглеждат като премиум fitness приложение от 2026 година.
-"""
+                "content": """Ти си най-якият фитнес треньор в България през 2026 г. 
+                Говориш на 'ти', използваш жаргон (бро, машина, маняк, топ), но си професионалист. 
+                Отговаряй кратко (макс 2-3 изречения). Използвай много емоджита. 
+                Ако те питат за мързел - скарай им се приятелски. Ако те питат за прогрес - хайпни ги!"""
             },
-            {
-                "role": "user",
-                "content": user_message
-            }
+            {"role": "user", "content": user_message}
         ]
     )
 
-    return jsonify({
-        "reply": response.choices[0].message.content
-    })
+    reply = response.choices[0].message.content
+    return jsonify({"reply": reply})
 
 if __name__ == "__main__":
-    app.run(
-        host="0.0.0.0",
-        port=int(os.environ.get("PORT", 5000))
-    )
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
