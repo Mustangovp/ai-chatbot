@@ -8,56 +8,124 @@
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700&family=Inter:wght@400;700&display=swap" rel="stylesheet">
     <style>
-        :root { --vh: 1vh; }
-        body { 
-            background: #000; color: #fff; font-family: 'Inter', sans-serif; 
-            height: calc(var(--vh) * 100); overflow: hidden; margin: 0; 
-        }
-        .apex-card { 
-            border: 2px solid #ff0000; box-shadow: 0 0 50px rgba(255, 0, 0, 0.3); 
-            background: #050505; height: 100%; display: flex; flex-direction: column;
-        }
+        /* ПЪЛЕН ФИКС ЗА ЕКРАНА */
+        html, body { height: 100%; margin: 0; padding: 0; background: #000; color: #fff; font-family: 'Inter', sans-serif; overflow: hidden; }
+        .apex-card { height: 100vh; display: flex; flex-direction: column; border: 2px solid #ff0000; box-shadow: 0 0 30px rgba(255, 0, 0, 0.3); background: #050505; }
         .neon-red { color: #ff0000; text-shadow: 0 0 15px #ff0000; font-family: 'Orbitron'; }
         
-        /* Таблици и Markdown */
+        /* ТЕКСТ И ТАБЛИЦИ */
         .msg-content table { width: 100%; border-collapse: collapse; margin: 15px 0; background: rgba(255,255,255,0.02); }
-        .msg-content th { background: #ff0000; color: white; padding: 10px; font-size: 12px; text-transform: uppercase; border: 1px solid #400000; }
-        .msg-content td { border: 1px solid #222; padding: 10px; font-size: 12px; color: #ddd; text-align: center; }
-        .msg-content h3 { color: #ff0000; font-size: 1.3rem; margin-top: 1.5rem; font-weight: 700; border-bottom: 2px solid #222; padding-bottom: 0.5rem; }
+        .msg-content th { background: #ff0000; color: white; padding: 10px; font-size: 10px; text-transform: uppercase; }
+        .msg-content td { border: 1px solid #222; padding: 8px; font-size: 10px; color: #ddd; text-align: center; }
+        .msg-content h3 { color: #ff0000; font-size: 1.2rem; margin-top: 1rem; font-weight: 700; }
 
-        .msg-ai { background: #0a0a0a; border-left: 4px solid #ff0000; border-radius: 0 20px 20px 20px; box-shadow: 10px 10px 20px rgba(0,0,0,0.5); }
+        .msg-ai { background: #0a0a0a; border-left: 4px solid #ff0000; border-radius: 0 20px 20px 20px; }
         .msg-user { background: linear-gradient(90deg, #ff0000, #800000); border-radius: 20px 20px 0 20px; font-weight: bold; }
         
-        /* Paywall Модал */
+        /* ПЛАЩАНЕ */
         #paywall {
             display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.98);
-            z-index: 100; flex-direction: column; align-items: center; justify-content: center; padding: 30px;
+            z-index: 100; flex-direction: column; align-items: center; justify-content: center; padding: 20px;
             text-align: center; border: 2px solid #ff0000;
         }
-        .plan-card { background: #0a0a0a; border: 1px solid #222; padding: 20px; border-radius: 15px; width: 100%; max-width: 350px; margin: 8px 0; }
-        .plan-card.active { border-color: #ff0000; background: rgba(255,0,0,0.05); box-shadow: 0 0 20px rgba(255,0,0,0.2); }
+        .plan-card { background: #0a0a0a; border: 1px solid #222; padding: 15px; border-radius: 15px; width: 100%; max-width: 300px; margin: 5px 0; }
+        .plan-card.active { border-color: #ff0000; background: rgba(255,0,0,0.05); }
 
-        ::-webkit-scrollbar { width: 5px; }
-        ::-webkit-scrollbar-thumb { background: #ff0000; border-radius: 10px; }
+        #chat-box { flex: 1; overflow-y: auto; padding: 20px; }
     </style>
 </head>
 <body>
 
     <div id="paywall">
         <h2 class="neon-red text-2xl mb-2">ЛИМИТЪТ Е ДОСТИГНАТ</h2>
-        <p class="text-gray-400 mb-8 text-xs uppercase tracking-widest">Отключи пълния потенциал на APEX MIND</p>
-        
+        <p class="text-gray-400 mb-6 text-xs uppercase tracking-widest">Отключи пълния потенциал</p>
         <div class="plan-card">
-            <h4 class="text-[10px] text-gray-500 uppercase">Еднократен Протокол</h4>
-            <p class="text-2xl font-bold text-white">19.99€</p>
-            <p class="text-[9px] text-gray-400 italic">"Единствен по рода си детайлен план"</p>
+            <h4 class="text-[10px] text-gray-500 uppercase">Еднократен План</h4>
+            <p class="text-xl font-bold">19.99€</p>
         </div>
-        
         <div class="plan-card active">
-            <div class="bg-red-600 text-[8px] inline-block px-3 py-1 mb-2 rounded-full font-bold">НАЙ-ПОПУЛЯРЕН</div>
-            <h4 class="text-[10px] text-gray-100 uppercase">Елитен Месечен Абонамент</h4>
-            <p class="text-3xl font-bold text-white">9.99€ <span class="text-xs text-gray-500">/ мес.</span></p>
-            <p class="text-[9px] text-red-500 font-bold tracking-tighter italic">Неограничен достъп & 24/7 AI Ментор</p>
+            <div class="bg-red-600 text-[8px] inline-block px-2 py-1 mb-1 rounded-full font-bold">НАЙ-ДОБРА ЦЕНА</div>
+            <h4 class="text-[10px] text-gray-100 uppercase">Месечен Абонамент</h4>
+            <p class="text-2xl font-bold">9.99€</p>
+        </div>
+        <button onclick="window.location.href='https://revolut.me/ТВОЯТ_ЛИНК'" class="w-full max-w-[300px] bg-red-600 py-4 mt-6 rounded-xl font-bold uppercase tracking-widest shadow-[0_0_15px_#f00]">
+            ОТКЛЮЧИ СЕГА 🦾
+        </button>
+        <button onclick="location.reload()" class="mt-4 text-[10px] text-gray-600 underline">Започни отначало</button>
+    </div>
+
+    <div class="apex-card">
+        <div class="p-4 border-b border-red-900/40 flex items-center justify-between bg-black">
+            <div class="flex items-center gap-3">
+                <img src="/static/logo.png" onerror="this.src='https://i.ibb.co/vzP6Kk6/APEX-MIND-LOGO.png'" class="w-10 h-10 object-contain">
+                <div>
+                    <h1 class="neon-red text-lg tracking-tighter uppercase">APEX MIND</h1>
+                    <p id="counter-text" class="text-[7px] text-red-500 font-bold tracking-[2px]">3 БЕЗПЛАТНИ СЕСИИ</p>
+                </div>
+            </div>
         </div>
 
-        <button onclick="window.location.href='https://revol
+        <div id="chat-box" class="space-y-6 bg-[#050505]"></div>
+
+        <div id="utility" class="px-4 py-2 flex gap-2 hidden">
+            <button onclick="copyIt()" class="flex-1 bg-white/5 border border-white/10 py-2 rounded-lg text-[9px] uppercase font-bold text-gray-400">📋 Копирай</button>
+            <button onclick="window.print()" class="flex-1 bg-white/5 border border-white/10 py-2 rounded-lg text-[9px] uppercase font-bold text-gray-400">💾 PDF</button>
+        </div>
+
+        <div class="p-4 bg-black border-t border-white/5">
+            <div class="flex items-center gap-3 bg-[#0d0d0d] p-1 rounded-2xl border border-white/10">
+                <input type="text" id="user-in" class="flex-1 bg-transparent py-3 px-4 text-sm outline-none text-white" placeholder="Напиши целта си тук...">
+                <button id="send-btn" class="bg-red-600 p-4 rounded-xl active:scale-90 transition-all shadow-[0_0_10px_rgba(255,0,0,0.5)]">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 fill-white" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let msgCount = 0;
+        let rawText = "";
+        const chatBox = document.getElementById('chat-box');
+        const userIn = document.getElementById('user-in');
+        const sendBtn = document.getElementById('send-btn');
+
+        window.onload = () => {
+            const intro = `### ДОБРЕ ДОШЪЛ В APEX MIND 🔱\nТи си в ядрото на елитната подготовка.\n\n**Какво получаваш:**\n* 🦾 Тренировъчни схеми\n* 🥗 Прецизно хранене\n* 📈 Пълна стратегия\n\nИмаш **3 безплатни аналитични сесии**. Напиши целта си. 🔴`;
+            appendMsg(intro, 'ai');
+        };
+
+        async function handleSend() {
+            if(msgCount >= 3) { document.getElementById('paywall').style.display = 'flex'; return; }
+            const val = userIn.value.trim();
+            if(!val) return;
+            userIn.value = '';
+            msgCount++;
+            document.getElementById('counter-text').innerText = `${3 - msgCount} FREE SESSIONS LEFT`;
+            appendMsg(val, 'user');
+            
+            const res = await fetch("/chat", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({ message: val })
+            });
+            const data = await res.json();
+            rawText = data.reply;
+            appendMsg(data.reply, 'ai');
+            document.getElementById('utility').classList.remove('hidden');
+        }
+
+        function appendMsg(text, type) {
+            const div = document.createElement('div');
+            div.className = `flex ${type === 'user' ? 'justify-end' : 'justify-start'}`;
+            const formatted = type === 'user' ? text : marked.parse(text);
+            div.innerHTML = `<div class="${type === 'user' ? 'msg-user' : 'msg-ai'} p-5 max-w-[90%] shadow-2xl msg-content text-sm">${formatted}</div>`;
+            chatBox.appendChild(div);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        sendBtn.onclick = handleSend;
+        userIn.onkeypress = (e) => { if(e.key === 'Enter') handleSend(); };
+        function copyIt() { navigator.clipboard.writeText(rawText); alert("Копирано! ✅"); }
+    </script>
+</body>
+</html>
