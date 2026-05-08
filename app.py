@@ -6,33 +6,38 @@ import os
 app = Flask(__name__)
 CORS(app)
 
+# Взима API ключа от Railway Variables
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 @app.route("/")
 def home():
+    # Променено от обикновен текст към зареждане на index.html
     return render_template("index.html")
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    user_message = request.json.get("message")
+    try:
+        user_message = request.json.get("message")
+        
+        # Поправен модел на "gpt-4o-mini"
+        response = client.chat.completions.create(
+            model="gpt-4o-mini", 
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Ти си APEX MIND - елитен фитнес ментор. Девиз: Train the body. Master the mind. Отговаряй кратко и мотивиращо на български."
+                },
+                {"role": "user", "content": user_message}
+            ]
+        )
 
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {
-                "role": "system",
-                "content": """Ти си APEX MIND - най-мощният AI за физическа и ментална трансформация. 
-                Твоят девиз е 'Train the body. Master the mind.' 
-                Говориш директно, мотивиращо и малко сурово, като елитен треньор. 
-                Използваш червени емоджита (💥, 🔴, 🔱, 🦾). 
-                Отговаряй на български, кратко и с фокус върху дисциплината и резултатите. 
-                Не си просто асистент, ти си лидерът на техния прогрес."""
-            },
-            {"role": "user", "content": user_message}
-        ]
-    )
+        reply = response.choices[0].message.content
+        return jsonify({"reply": reply})
 
-    return jsonify({"reply": response.choices[0].message.content})
+    except Exception as e:
+        # Това ще ти покаже точната грешка в конзолата на Railway
+        print(f"Грешка: {e}")
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
