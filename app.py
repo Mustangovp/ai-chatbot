@@ -10,10 +10,13 @@ client = OpenAI(
     api_key=os.environ.get("OPENAI_API_KEY")
 )
 
+@app.route("/")
+def home():
+    return send_from_directory(".", "index.html")
+
 @app.route("/<path:path>")
 def static_files(path):
     return send_from_directory(".", path)
-
 @app.route("/chat", methods=["POST"])
 def chat():
 
