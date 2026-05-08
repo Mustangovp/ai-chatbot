@@ -1,458 +1,136 @@
 <!DOCTYPE html>
 <html lang="bg">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<title>APEX MIND</title>
-
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-
-<style>
-
-*{
-margin:0;
-padding:0;
-box-sizing:border-box;
-}
-
-body{
-font-family:'Inter',sans-serif;
-background:
-radial-gradient(circle at top left, rgba(255,0,0,0.12), transparent 25%),
-radial-gradient(circle at bottom right, rgba(37,99,235,0.10), transparent 30%),
-#070707;
-color:white;
-height:100vh;
-display:flex;
-justify-content:center;
-align-items:center;
-overflow:hidden;
-}
-
-.container{
-width:95%;
-max-width:1000px;
-height:94vh;
-background:rgba(15,15,15,0.82);
-backdrop-filter:blur(18px);
-border:1px solid rgba(255,255,255,0.06);
-border-radius:28px;
-display:flex;
-flex-direction:column;
-overflow:hidden;
-box-shadow:
-0 0 40px rgba(255,0,0,0.08),
-0 0 100px rgba(0,0,0,0.5);
-}
-
-.header{
-padding:24px;
-border-bottom:1px solid rgba(255,255,255,0.06);
-display:flex;
-justify-content:space-between;
-align-items:center;
-}
-
-.logo{
-display:flex;
-align-items:center;
-gap:16px;
-}
-
-.logo-image{
-width:64px;
-height:64px;
-object-fit:contain;
-filter:
-drop-shadow(0 0 10px rgba(255,0,0,0.4))
-drop-shadow(0 0 20px rgba(255,0,0,0.25));
-animation:pulse 3s infinite ease-in-out;
-}
-
-.logo h1{
-font-size:28px;
-font-weight:800;
-letter-spacing:1px;
-}
-
-.logo p{
-color:#777;
-margin-top:4px;
-font-size:14px;
-}
-
-.status{
-color:#4ade80;
-font-size:14px;
-}
-
-.chat{
-flex:1;
-overflow-y:auto;
-padding:30px;
-display:flex;
-flex-direction:column;
-gap:20px;
-}
-
-.message{
-max-width:80%;
-padding:18px;
-border-radius:20px;
-line-height:1.8;
-white-space:pre-wrap;
-font-size:15px;
-animation:messageAppear 0.35s ease;
-}
-
-.bot{
-background:rgba(24,24,24,0.88);
-border:1px solid rgba(255,255,255,0.05);
-align-self:flex-start;
-backdrop-filter:blur(10px);
-box-shadow:0 0 20px rgba(255,255,255,0.02);
-}
-
-.user{
-background:linear-gradient(135deg,#2563eb,#1d4ed8);
-align-self:flex-end;
-box-shadow:0 0 20px rgba(37,99,235,0.25);
-}
-
-.input-area{
-padding:20px;
-border-top:1px solid rgba(255,255,255,0.06);
-display:flex;
-gap:12px;
-background:rgba(10,10,10,0.65);
-backdrop-filter:blur(12px);
-}
-
-input{
-flex:1;
-padding:18px;
-border:none;
-outline:none;
-border-radius:16px;
-background:#181818;
-color:white;
-font-size:15px;
-}
-
-button{
-padding:18px 28px;
-border:none;
-border-radius:16px;
-background:linear-gradient(135deg,#dc2626,#b91c1c);
-color:white;
-font-weight:600;
-cursor:pointer;
-transition:0.25s;
-}
-
-button:hover{
-opacity:0.92;
-transform:translateY(-1px);
-}
-
-.loading{
-opacity:0.7;
-font-style:italic;
-}
-
-.actions{
-margin-top:16px;
-display:flex;
-gap:10px;
-}
-
-.action-btn{
-padding:10px 16px;
-border:none;
-border-radius:12px;
-font-size:13px;
-font-weight:600;
-cursor:pointer;
-transition:0.2s;
-}
-
-.copy-btn{
-background:#2563eb;
-color:white;
-}
-
-.save-btn{
-background:#dc2626;
-color:white;
-}
-
-.action-btn:hover{
-opacity:0.9;
-transform:translateY(-1px);
-}
-
-@keyframes pulse{
-
-0%{
-transform:scale(1);
-}
-
-50%{
-transform:scale(1.05);
-}
-
-100%{
-transform:scale(1);
-}
-
-}
-
-@keyframes messageAppear{
-
-from{
-opacity:0;
-transform:translateY(12px);
-}
-
-to{
-opacity:1;
-transform:translateY(0);
-}
-
-}
-
-::-webkit-scrollbar{
-width:8px;
-}
-
-::-webkit-scrollbar-thumb{
-background:#222;
-border-radius:20px;
-}
-
-@media(max-width:700px){
-
-.message{
-max-width:100%;
-}
-
-.logo h1{
-font-size:22px;
-}
-
-.logo-image{
-width:52px;
-height:52px;
-}
-
-}
-
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pulse AI | 2026</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;600;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            background: #050505;
+            color: #fff;
+            font-family: 'Outfit', sans-serif;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .neon-border {
+            box-shadow: 0 0 15px rgba(34, 211, 238, 0.3);
+            border: 1px solid rgba(34, 211, 238, 0.5);
+        }
+        .glass {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px);
+        }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: #22d3ee; border-radius: 10px; }
+    </style>
 </head>
-
-<body>
-
-<div class="container">
-
-<div class="header">
-
-<div class="logo">
-
-<img src="logo.png" class="logo-image">
-
-<div>
-<h1>APEX MIND</h1>
-<p>Elite Physique Intelligence</p>
-</div>
-
-</div>
-
-<div class="status">
-● ONLINE
-</div>
-
-</div>
-
-<div class="chat" id="chat">
-
-<div class="message bot">
-Добре дошъл в APEX MIND.
-
-Премиум AI система за фитнес, мускулно развитие и физическа трансформация.
-
-Можеш да питаш за:
-- тренировъчни програми
-- хранителни режими
-- покачване на мускулна маса
-- изчистване
-- възстановяване
-- добавки
-- техника на упражнения
-</div>
-
-</div>
-
-<div class="input-area">
-
-<input id="msg" placeholder="Напиши въпроса си...">
-
-<button onclick="send()">
-Изпрати
-</button>
-
-</div>
-
-</div>
-
-<script>
-
-async function send(){
-
-let msg=document.getElementById("msg").value;
-let chat=document.getElementById("chat");
-
-if(!msg) return;
-
-chat.innerHTML += `
-<div class="message user">
-${msg}
-</div>
-`;
-
-document.getElementById("msg").value="";
-
-let loading=document.createElement("div");
-
-loading.className="message bot loading";
-
-loading.innerText="APEX MIND анализира заявката...";
-
-chat.appendChild(loading);
-
-chat.scrollTop=chat.scrollHeight;
-
-try{
-
-let res=await fetch("/chat",{
-method:"POST",
-headers:{
-"Content-Type":"application/json"
-},
-body:JSON.stringify({
-message:msg
-})
-});
-
-let data=await res.json();
-
-loading.remove();
-
-let lowerReply = data.reply.toLowerCase();
-
-let showButtons =
-lowerReply.includes("ден 1") ||
-lowerReply.includes("серии") ||
-lowerReply.includes("повторения") ||
-lowerReply.includes("хранителен режим") ||
-lowerReply.includes("закуска") ||
-lowerReply.includes("обяд") ||
-lowerReply.includes("вечеря");
-
-let buttonsHTML = "";
-
-if(showButtons){
-
-buttonsHTML = `
-<div class="actions">
-
-<button class="action-btn copy-btn" onclick="copyText(this)">
-Копирай
-</button>
-
-<button class="action-btn save-btn" onclick="saveText(this)">
-Запази
-</button>
-
-</div>
-`;
-
-}
-
-chat.innerHTML += `
-<div class="message bot">
-${data.reply}
-
-${buttonsHTML}
-
-</div>
-`;
-
-chat.scrollTop=chat.scrollHeight;
-
-}catch(error){
-
-loading.remove();
-
-chat.innerHTML += `
-<div class="message bot">
-Системна грешка. Опитай отново.
-</div>
-`;
-
-}
-
-}
-
-function copyText(button){
-
-let text = button.parentElement.parentElement.innerText
-.replace("Копирай","")
-.replace("Запази","");
-
-navigator.clipboard.writeText(text);
-
-button.innerText = "Копирано";
-
-setTimeout(()=>{
-button.innerText = "Копирай";
-},1500);
-
-}
-
-function saveText(button){
-
-let text = button.parentElement.parentElement.innerText
-.replace("Копирай","")
-.replace("Запази","");
-
-let blob = new Blob([text], { type: "text/plain" });
-
-let a = document.createElement("a");
-
-a.href = URL.createObjectURL(blob);
-
-a.download = "apex-mind-plan.txt";
-
-a.click();
-
-button.innerText = "Запазено";
-
-setTimeout(()=>{
-button.innerText = "Запази";
-},1500);
-
-}
-
-document.getElementById("msg").addEventListener("keypress",function(event){
-
-if(event.key==="Enter"){
-send();
-}
-
-});
-
-</script>
-
+<body class="p-4">
+
+    <div class="glass w-full max-w-md h-[90vh] rounded-[40px] flex flex-col overflow-hidden relative border border-white/10 shadow-2xl">
+        
+        <div class="p-6 pb-2">
+            <div class="flex justify-between items-center mb-4">
+                <span class="text-xs font-bold tracking-widest text-cyan-400 uppercase">Level 1 Rookie</span>
+                <span id="xp-display" class="text-xs bg-cyan-500/20 text-cyan-300 px-3 py-1 rounded-full border border-cyan-500/30">0 XP</span>
+            </div>
+            <div class="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
+                <div id="xp-bar" class="bg-cyan-500 h-full transition-all duration-500" style="width: 5%"></div>
+            </div>
+        </div>
+
+        <div id="chat-container" class="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+            <div class="animate__animated animate__fadeInUp bg-white/5 p-4 rounded-2xl rounded-bl-none border border-white/5 max-w-[85%]">
+                <p class="text-sm">Йо! Аз съм твоят AI треньор. Готов ли си да станеш машина днес? 🔥</p>
+            </div>
+        </div>
+
+        <div class="px-6 py-2 flex gap-2 overflow-x-auto no-scrollbar">
+            <button onclick="quickSend('Дай ми 5 мин тренировка')" class="whitespace-nowrap bg-white/5 border border-white/10 px-4 py-2 rounded-full text-xs hover:bg-cyan-500/20 transition-all">⚡ 5 мин енергия</button>
+            <button onclick="quickSend('Какво да ям за мускули?')" class="whitespace-nowrap bg-white/5 border border-white/10 px-4 py-2 rounded-full text-xs hover:bg-cyan-500/20 transition-all">🍎 Храна за маса</button>
+            <button onclick="quickSend('Мотивирай ме!')" class="whitespace-nowrap bg-white/5 border border-white/10 px-4 py-2 rounded-full text-xs hover:bg-cyan-500/20 transition-all">🚀 Мотивация</button>
+        </div>
+
+        <div class="p-6">
+            <div class="relative flex items-center gap-2">
+                <div class="flex-1 bg-white/5 neon-border rounded-2xl flex items-center px-4">
+                    <input type="text" id="user-input" 
+                        class="w-full bg-transparent py-4 text-sm focus:outline-none"
+                        placeholder="Питай ме нещо...">
+                </div>
+                <button onclick="sendMessage()" class="bg-cyan-500 p-4 rounded-2xl hover:scale-105 active:scale-90 transition-all shadow-lg shadow-cyan-500/20">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 fill-black" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let xp = 0;
+        const chatContainer = document.getElementById('chat-container');
+        const userInput = document.getElementById('user-input');
+        const xpDisplay = document.getElementById('xp-display');
+        const xpBar = document.getElementById('xp-bar');
+
+        function updateXP() {
+            xp += 20;
+            xpDisplay.innerText = `${xp} XP`;
+            let progress = (xp % 100);
+            xpBar.style.width = `${progress}%`;
+            if(progress === 0 && xp > 0) alert("LEVEL UP! Ти си звяр! 🏆");
+        }
+
+        async function quickSend(text) {
+            userInput.value = text;
+            sendMessage();
+        }
+
+        async function sendMessage() {
+            const message = userInput.value.trim();
+            if (!message) return;
+
+            userInput.value = '';
+            appendMessage(message, 'user');
+            
+            // "Typing" effect
+            const typingDiv = document.createElement('div');
+            typingDiv.className = "text-xs text-cyan-400 animate-pulse px-2";
+            typingDiv.innerText = "Треньорът мисли...";
+            typingDiv.id = "typing-status";
+            chatContainer.appendChild(typingDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: message })
+                });
+                const data = await response.json();
+                
+                document.getElementById('typing-status').remove();
+                appendMessage(data.reply, 'ai');
+                updateXP();
+            } catch (e) {
+                document.getElementById('typing-status').remove();
+                appendMessage("Нещо прекъсна връзката. Пробвай пак! ⚠️", 'ai');
+            }
+        }
+
+        function appendMessage(text, sender) {
+            const div = document.createElement('div');
+            const isAi = sender === 'ai';
+            div.className = `p-4 rounded-2xl max-w-[85%] text-sm animate__animated ${isAi ? 'bg-white/5 border border-white/10 rounded-bl-none animate__fadeInLeft' : 'bg-cyan-500 text-black font-bold ml-auto rounded-br-none animate__fadeInRight'}`;
+            div.innerHTML = text;
+            chatContainer.appendChild(div);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        userInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
+    </script>
 </body>
 </html>
