@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="bg">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -130,6 +130,37 @@ opacity:0.7;
 font-style:italic;
 }
 
+.actions{
+margin-top:16px;
+display:flex;
+gap:10px;
+}
+
+.action-btn{
+padding:10px 16px;
+border:none;
+border-radius:12px;
+font-size:13px;
+font-weight:600;
+cursor:pointer;
+transition:0.2s;
+}
+
+.copy-btn{
+background:#2563eb;
+color:white;
+}
+
+.save-btn{
+background:#dc2626;
+color:white;
+}
+
+.action-btn:hover{
+opacity:0.9;
+transform:translateY(-1px);
+}
+
 @media(max-width:700px){
 
 .message{
@@ -165,28 +196,28 @@ font-size:22px;
 <div class="chat" id="chat">
 
 <div class="message bot">
-Welcome to APEX MIND.
+Добре дошъл в APEX MIND.
 
-Elite bodybuilding intelligence for serious physique development.
+Премиум AI система за фитнес, мускулно развитие и физическа трансформация.
 
-Ask about:
-- hypertrophy
-- cutting
-- nutrition
-- supplements
-- recovery
-- contest prep
-- muscle growth
+Можеш да питаш за:
+- тренировъчни програми
+- хранителни режими
+- покачване на мускулна маса
+- изчистване
+- възстановяване
+- добавки
+- техника на упражнения
 </div>
 
 </div>
 
 <div class="input-area">
 
-<input id="msg" placeholder="Ask your bodybuilding question...">
+<input id="msg" placeholder="Напиши въпроса си...">
 
 <button onclick="send()">
-Send
+Изпрати
 </button>
 
 </div>
@@ -214,7 +245,7 @@ let loading=document.createElement("div");
 
 loading.className="message bot loading";
 
-loading.innerText="APEX MIND is analyzing...";
+loading.innerText="APEX MIND анализира заявката...";
 
 chat.appendChild(loading);
 
@@ -236,9 +267,43 @@ let data=await res.json();
 
 loading.remove();
 
+let lowerReply = data.reply.toLowerCase();
+
+let showButtons =
+lowerReply.includes("ден 1") ||
+lowerReply.includes("серии") ||
+lowerReply.includes("повторения") ||
+lowerReply.includes("хранителен режим") ||
+lowerReply.includes("закуска") ||
+lowerReply.includes("обяд") ||
+lowerReply.includes("вечеря");
+
+let buttonsHTML = "";
+
+if(showButtons){
+
+buttonsHTML = `
+<div class="actions">
+
+<button class="action-btn copy-btn" onclick="copyText(this)">
+Копирай
+</button>
+
+<button class="action-btn save-btn" onclick="saveText(this)">
+Запази
+</button>
+
+</div>
+`;
+
+}
+
 chat.innerHTML += `
 <div class="message bot">
 ${data.reply}
+
+${buttonsHTML}
+
 </div>
 `;
 
@@ -250,11 +315,51 @@ loading.remove();
 
 chat.innerHTML += `
 <div class="message bot">
-System error. Please try again.
+Системна грешка. Опитай отново.
 </div>
 `;
 
 }
+
+}
+
+function copyText(button){
+
+let text = button.parentElement.parentElement.innerText
+.replace("Копирай","")
+.replace("Запази","");
+
+navigator.clipboard.writeText(text);
+
+button.innerText = "Копирано";
+
+setTimeout(()=>{
+button.innerText = "Копирай";
+},1500);
+
+}
+
+function saveText(button){
+
+let text = button.parentElement.parentElement.innerText
+.replace("Копирай","")
+.replace("Запази","");
+
+let blob = new Blob([text], { type: "text/plain" });
+
+let a = document.createElement("a");
+
+a.href = URL.createObjectURL(blob);
+
+a.download = "apex-mind-plan.txt";
+
+a.click();
+
+button.innerText = "Запазено";
+
+setTimeout(()=>{
+button.innerText = "Запази";
+},1500);
 
 }
 
