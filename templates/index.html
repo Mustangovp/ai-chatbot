@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>APEX MIND | AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Inter:wght@300;600&display=swap" rel="stylesheet">
+    <style>
+        body { 
+            background: #050505; 
+            color: #fff; 
+            font-family: 'Inter', sans-serif; 
+            height: 100vh; 
+            margin: 0; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+        }
+        .apex-card { 
+            background: rgba(10, 10, 10, 0.9); 
+            border: 2px solid #ff0000; 
+            box-shadow: 0 0 30px rgba(255, 0, 0, 0.2); 
+            border-radius: 30px;
+        }
+        .header-font { font-family: 'Orbitron', sans-serif; }
+        .apex-gradient { background: linear-gradient(90deg, #ff0000 0%, #8b0000 100%); }
+        .xp-bar { height: 4px; background: rgba(255, 255, 255, 0.1); border-radius: 2px; overflow: hidden; }
+        .xp-fill { height: 100%; width: 5%; transition: width 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-thumb { background: #ff0000; border-radius: 10px; }
+    </style>
+</head>
+<body class="p-4">
+
+    <div class="apex-card w-full max-w-md h-[92vh] flex flex-col overflow-hidden relative">
+        
+        <div class="p-6 border-b border-white/5 bg-gradient-to-b from-red-950/20 to-transparent">
+            <div class="flex items-center gap-4">
+                <div class="relative group">
+                    <img src="https://i.ibb.co/vzP6Kk6/APEX-MIND-LOGO.png" alt="APEX MIND" 
+                         class="w-16 h-16 rounded-xl object-cover border-2 border-red-600 shadow-[0_0_15px_rgba(255,0,0,0.5)] transform group-hover:scale-110 transition-transform">
+                    <div class="absolute -top-1 -right-1 flex h-4 w-4">
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-4 w-4 bg-red-600"></span>
+                    </div>
+                </div>
+                <div>
+                    <h1 class="header-font text-2xl font-bold tracking-tighter text-white">APEX MIND</h1>
+                    <div class="flex items-center gap-2">
+                        <span id="rank-text" class="text-[10px] text-red-500 font-bold uppercase tracking-widest">Rookie Recruit</span>
+                        <span id="xp-val" class="text-[10px] text-gray-400">0 XP</span>
+                    </div>
+                </div>
+            </div>
+            <div class="xp-bar mt-4">
+                <div id="xp-fill" class="xp-fill apex-gradient"></div>
+            </div>
+        </div>
+
+        <div id="chat-box" class="flex-1 overflow-y-auto p-6 space-y-6">
+            <div class="animate__animated animate__fadeInUp">
+                <div class="bg-white/5 border-l-4 border-red-600 p-4 rounded-xl rounded-tl-none max-w-[90%]">
+                    <p class="text-sm font-light leading-relaxed italic">
+                        "Train the body. Master the mind." <br>
+                        <span class="text-red-500 font-bold not-italic">Добре дошъл в елита. Каква е целта ти днес?</span>
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="px-6 py-2 flex gap-2 overflow-x-auto no-scrollbar">
+            <button onclick="quick('Експлозивна тренировка')" class="whitespace-nowrap bg-red-600/10 hover:bg-red-600 border border-red-600/30 px-4 py-2 rounded-lg text-[10px] font-bold uppercase transition-all">💥 Експлозия</button>
+            <button onclick="quick('Желязна дисциплина')" class="whitespace-nowrap bg-red-600/10 hover:bg-red-600 border border-red-600/30 px-4 py-2 rounded-lg text-[10px] font-bold uppercase transition-all">🛡️ Дисциплина</button>
+            <button onclick="quick('Макс напомпване')" class="whitespace-nowrap bg-red-600/10 hover:bg-red-600 border border-red-600/30 px-4 py-2 rounded-lg text-[10px] font-bold uppercase transition-all">🔱 Напомпване</button>
+        </div>
+
+        <div class="p-6 bg-red-950/5">
+            <div class="flex items-center gap-3 bg-black border border-white/10 rounded-2xl p-2 shadow-inner">
+                <input type="text" id="user-input" 
+                    class="flex-1 bg-transparent py-3 px-4 text-sm focus:outline-none placeholder:text-gray-700"
+                    placeholder="Задай команда...">
+                <button onclick="sendMsg()" class="bg-red-600 hover:bg-red-700 p-4 rounded-xl shadow-[0_0_15px_rgba(255,0,0,0.3)] active:scale-95 transition-all">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 fill-white" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let xp = 0;
+        const ranks = ["Rookie", "Warrior", "Elite", "Apex Predator"];
+        
+        function updateXP() {
+            xp += 20;
+            document.getElementById('xp-val').innerText = `${xp} XP`;
+            document.getElementById('xp-fill').style.width = (xp % 100) + '%';
+            document.getElementById('rank-text').innerText = ranks[Math.min(Math.floor(xp/300), 3)];
+        }
+
+        async function quick(t) { document.getElementById('user-input').value = t; sendMsg(); }
+
+        async function sendMsg() {
+            const input = document.getElementById('user-input');
+            const msg = input.value.trim();
+            if(!msg) return;
+            input.value = '';
+
+            render(msg, 'user');
+            
+            try {
+                const res = await fetch("/chat", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({ message: msg })
+                });
+                const data = await res.json();
+                render(data.reply, 'ai');
+                updateXP();
+            } catch(e) {
+                render("Връзката прекъсна. Върни се в зоната! ⚠️", 'ai');
+            }
+        }
+
+        function render(txt, who) {
+            const box = document.getElementById('chat-box');
+            const div = document.createElement('div');
+            const isU = who === 'user';
+            div.className = `flex ${isU ? 'justify-end' : 'justify-start'} animate__animated ${isU ? 'animate__fadeInRight' : 'animate__fadeInLeft'}`;
+            div.innerHTML = `
+                <div class="${isU ? 'bg-red-600 font-bold' : 'bg-white/5 border border-white/10'} p-4 rounded-xl max-w-[85%] text-sm">
+                    ${txt}
+                </div>
+            `;
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        document.getElementById('user-input').addEventListener('keypress', (e) => { if(e.key === 'Enter') sendMsg(); });
+    </script>
+</body>
+</html>
