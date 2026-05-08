@@ -6,49 +6,53 @@
     <title>APEX MIND | ELITE</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
     <style>
         body { background: #000; color: #fff; font-family: 'Inter', sans-serif; height: 100vh; margin: 0; }
-        .apex-card { border: 1px solid #ff0000; box-shadow: 0 0 40px rgba(255, 0, 0, 0.2); background: #050505; }
-        .neon-red { color: #ff0000; text-shadow: 0 0 12px #ff0000; font-family: 'Orbitron'; }
+        .apex-card { border: 1px solid #ff0000; box-shadow: 0 0 30px rgba(255, 0, 0, 0.2); background: #050505; border-radius: 2rem; }
+        .neon-red { color: #ff0000; text-shadow: 0 0 10px #ff0000; font-family: 'Orbitron'; uppercase; }
         
-        /* Стил за изчистване на таблиците */
-        .msg-ai table { width: 100%; border-collapse: collapse; margin: 15px 0; border: 1px solid #333; }
-        .msg-ai th { background: #ff0000; color: white; padding: 10px; text-align: left; font-size: 12px; }
-        .msg-ai td { padding: 10px; border: 1px solid #222; font-size: 12px; color: #ccc; }
-        .msg-ai h3 { color: #ff0000; font-weight: bold; margin-top: 20px; font-size: 18px; border-bottom: 1px solid #222; padding-bottom: 5px; }
-        .msg-ai strong { color: #fff; }
+        /* СТИЛИЗИРАНЕ НА ТАБЛИЦИТЕ СЛЕД КАТО СЕ ИЗЧИСТЯТ СИМВОЛИТЕ */
+        .msg-content table { width: 100%; border-collapse: collapse; margin: 15px 0; background: rgba(255,255,255,0.02); }
+        .msg-content th { background: #ff0000; color: white; padding: 8px; font-size: 11px; text-transform: uppercase; }
+        .msg-content td { border: 1px solid #333; padding: 8px; font-size: 11px; text-align: center; color: #ccc; }
+        .msg-content h3 { color: #ff0000; font-size: 1.2rem; margin-top: 1.5rem; font-weight: 700; border-bottom: 1px solid #333; padding-bottom: 0.5rem; }
+        .msg-content p { margin-bottom: 0.8rem; line-height: 1.6; }
 
         .msg-ai { background: #0a0a0a; border-left: 4px solid #ff0000; border-radius: 0 20px 20px 20px; }
-        .msg-user { background: #ff0000; font-weight: bold; border-radius: 20px 20px 0 20px; }
-        .action-btn { background: #111; border: 1px solid #ff0000; color: #fff; font-weight: bold; transition: 0.3s; }
-        .action-btn:hover { background: #ff0000; box-shadow: 0 0 20px #ff0000; }
+        .msg-user { background: #ff0000; border-radius: 20px 20px 0 20px; font-weight: bold; }
+        .action-btn { background: #111; border: 1px solid #ff0000; color: #fff; transition: 0.3s; cursor: pointer; }
+        .action-btn:hover { background: #ff0000; box-shadow: 0 0 15px #ff0000; }
     </style>
 </head>
 <body class="flex items-center justify-center p-2">
 
-    <div class="apex-card w-full max-w-xl h-[96vh] rounded-[2rem] flex flex-col overflow-hidden">
+    <div class="apex-card w-full max-w-xl h-[94vh] flex flex-col overflow-hidden">
         
-        <div class="p-6 border-b border-red-900/20 flex items-center gap-4 bg-black">
-            <img src="/static/logo.png" onerror="this.src='https://i.ibb.co/vzP6Kk6/APEX-MIND-LOGO.png'" class="w-12 h-12 object-contain">
+        <div class="p-6 border-b border-red-900/30 flex items-center gap-4 bg-black">
+            <img src="/static/logo.png" onerror="this.src='https://i.ibb.co/vzP6Kk6/APEX-MIND-LOGO.png'" class="w-12 h-12 object-contain drop-shadow-[0_0_5px_#f00]">
             <div>
-                <h1 class="neon-red text-xl tracking-tighter uppercase">APEX MIND</h1>
-                <p class="text-[8px] text-gray-500 tracking-[3px]">OLYMPIA PROTOCOL</p>
+                <h1 class="neon-red text-xl tracking-tighter">APEX MIND</h1>
+                <p class="text-[8px] text-gray-500 tracking-[3px]">OLYMPIA PROTOCOL ACTIVE</p>
             </div>
         </div>
 
-        <div id="chat-container" class="flex-1 overflow-y-auto p-4 space-y-6"></div>
+        <div id="chat-box" class="flex-1 overflow-y-auto p-4 space-y-6">
+            <div class="msg-ai p-5 border border-white/5 animate__animated animate__fadeInLeft">
+                <p class="text-sm italic text-gray-400">"Train the body. Master the mind."</p>
+                <p class="mt-2 text-sm">Системата е онлайн. Очаквам Вашата команда. 🔱</p>
+            </div>
+        </div>
 
-        <div id="utility-bar" class="px-6 py-2 flex gap-2 hidden">
-            <button onclick="copyContent()" class="action-btn flex-1 py-3 rounded-xl text-[10px] uppercase">📋 Копирай плана</button>
-            <button onclick="window.print()" class="action-btn flex-1 py-3 rounded-xl text-[10px] uppercase">💾 PDF</button>
+        <div id="utility" class="px-6 py-2 flex gap-2 hidden">
+            <button onclick="copyIt()" class="action-btn flex-1 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest">📋 Копирай плана</button>
+            <button onclick="window.print()" class="action-btn flex-1 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest">💾 PDF</button>
         </div>
 
         <div class="p-6 bg-black">
-            <div class="flex items-center gap-3 bg-[#111] p-2 rounded-2xl border border-white/10">
-                <input type="text" id="user-input" class="flex-1 bg-transparent py-3 px-4 text-sm outline-none" placeholder="Въведи запитване...">
-                <button onclick="sendMessage()" class="bg-red-600 p-4 rounded-xl shadow-lg">
+            <div class="flex items-center gap-3 bg-[#111] p-1 rounded-2xl border border-white/10 focus-within:border-red-600 transition-all">
+                <input type="text" id="user-in" class="flex-1 bg-transparent py-3 px-4 text-sm outline-none" placeholder="Въведете команда...">
+                <button onclick="sendMsg()" class="bg-red-600 p-4 rounded-xl shadow-lg active:scale-95 transition-all">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 fill-white" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
                 </button>
             </div>
@@ -56,14 +60,15 @@
     </div>
 
     <script>
-        let lastResponse = "";
+        let rawText = "";
 
-        async function sendMessage() {
-            const input = document.getElementById('user-input');
+        async function sendMsg() {
+            const input = document.getElementById('user-in');
             const msg = input.value.trim();
             if(!msg) return;
             input.value = '';
-            render(msg, 'user');
+            
+            appendMsg(msg, 'user');
             
             const res = await fetch("/chat", {
                 method: "POST",
@@ -71,27 +76,27 @@
                 body: JSON.stringify({ message: msg })
             });
             const data = await res.json();
-            lastResponse = data.reply;
-            render(data.reply, 'ai');
-            document.getElementById('utility-bar').classList.remove('hidden');
+            rawText = data.reply;
+            appendMsg(data.reply, 'ai');
+            document.getElementById('utility').classList.remove('hidden');
         }
 
-        function render(text, type) {
-            const container = document.getElementById('chat-container');
+        function appendMsg(text, type) {
+            const box = document.getElementById('chat-box');
             const div = document.createElement('div');
-            div.className = `flex ${type === 'user' ? 'justify-end' : 'justify-start'} animate__animated fadeInUp`;
+            div.className = `flex ${type === 'user' ? 'justify-end' : 'justify-start'}`;
             
-            // ВАЖНО: Тук 'marked.parse' премахва чертите и ### и ги прави красиви
-            const content = type === 'user' ? text : marked.parse(text);
+            // ТУК Е МАГИЯТА: Превръщаме текста в чист HTML без символи
+            const formatted = type === 'user' ? text : marked.parse(text);
             
-            div.innerHTML = `<div class="${type === 'user' ? 'msg-user' : 'msg-ai'} p-5 max-w-[95%] shadow-2xl">${content}</div>`;
-            container.appendChild(div);
-            container.scrollTop = container.scrollHeight;
+            div.innerHTML = `<div class="${type === 'user' ? 'msg-user' : 'msg-ai'} p-5 max-w-[95%] shadow-xl msg-content">${formatted}</div>`;
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
         }
 
-        function copyContent() {
-            navigator.clipboard.writeText(lastResponse);
-            alert("Копирано! ✅");
+        function copyIt() {
+            navigator.clipboard.writeText(rawText);
+            alert("Планът е копиран чисто! ✅");
         }
     </script>
 </body>
