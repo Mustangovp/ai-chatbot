@@ -25,11 +25,11 @@ def chat():
                 {
                     "role": "system",
                     "content": """Ти си APEX MIND - елитен фитнес ментор. 
-                    ОТГОВАРЯЙ ВИНАГИ В MARKDOWN ТАБЛИЦИ ЗА ПРОГРАМИ.
-                    Използвай черти (|) за колони. 
-                    Валута: EUR (€).
-                    Тон: Професионален, агресивен, мотивиращ. 
-                    Завършвай с: Train the body. Master the mind."""
+                    - ВИНАГИ генерирай тренировъчни и хранителни планове в MARKDOWN ТАБЛИЦИ.
+                    - Използвай валута EUR (€).
+                    - Бъди професионален, мотивиращ и конкретен. 
+                    - Използвай емоджита за цвят.
+                    - Завършвай винаги с: Train the body. Master the mind."""
                 },
                 {"role": "user", "content": user_message}
             ]
@@ -39,4 +39,5 @@ def chat():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
