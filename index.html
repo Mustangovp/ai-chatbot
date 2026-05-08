@@ -3,67 +3,86 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pulse AI | 2026</title>
+    <title>APEX MIND | AI</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;600;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Inter:wght@300;600&display=swap" rel="stylesheet">
     <style>
-        body {
-            background: #050505;
-            color: #fff;
-            font-family: 'Outfit', sans-serif;
-            height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+        body { 
+            background: #050505; 
+            color: #fff; 
+            font-family: 'Inter', sans-serif; 
+            height: 100vh; 
+            margin: 0; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
         }
-        .neon-border {
-            box-shadow: 0 0 15px rgba(34, 211, 238, 0.3);
-            border: 1px solid rgba(34, 211, 238, 0.5);
+        .apex-card { 
+            background: rgba(10, 10, 10, 0.9); 
+            border: 2px solid #ff0000; 
+            box-shadow: 0 0 30px rgba(255, 0, 0, 0.2); 
+            border-radius: 30px;
         }
-        .glass {
-            background: rgba(255, 255, 255, 0.03);
-            backdrop-filter: blur(20px);
-        }
-        ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-thumb { background: #22d3ee; border-radius: 10px; }
+        .header-font { font-family: 'Orbitron', sans-serif; }
+        .apex-gradient { background: linear-gradient(90deg, #ff0000 0%, #8b0000 100%); }
+        .xp-bar { height: 4px; background: rgba(255, 255, 255, 0.1); border-radius: 2px; overflow: hidden; }
+        .xp-fill { height: 100%; width: 5%; transition: width 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-thumb { background: #ff0000; border-radius: 10px; }
     </style>
 </head>
 <body class="p-4">
 
-    <div class="glass w-full max-w-md h-[90vh] rounded-[40px] flex flex-col overflow-hidden relative border border-white/10 shadow-2xl">
+    <div class="apex-card w-full max-w-md h-[92vh] flex flex-col overflow-hidden relative">
         
-        <div class="p-6 pb-2">
-            <div class="flex justify-between items-center mb-4">
-                <span class="text-xs font-bold tracking-widest text-cyan-400 uppercase">Level 1 Rookie</span>
-                <span id="xp-display" class="text-xs bg-cyan-500/20 text-cyan-300 px-3 py-1 rounded-full border border-cyan-500/30">0 XP</span>
+        <div class="p-6 border-b border-white/5 bg-gradient-to-b from-red-950/20 to-transparent">
+            <div class="flex items-center gap-4">
+                <div class="relative group">
+                    <img src="https://i.ibb.co/vzP6Kk6/APEX-MIND-LOGO.png" alt="APEX MIND" 
+                         class="w-16 h-16 rounded-xl object-cover border-2 border-red-600 shadow-[0_0_15px_rgba(255,0,0,0.5)] transform group-hover:scale-110 transition-transform">
+                    <div class="absolute -top-1 -right-1 flex h-4 w-4">
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-4 w-4 bg-red-600"></span>
+                    </div>
+                </div>
+                <div>
+                    <h1 class="header-font text-2xl font-bold tracking-tighter text-white">APEX MIND</h1>
+                    <div class="flex items-center gap-2">
+                        <span id="rank-text" class="text-[10px] text-red-500 font-bold uppercase tracking-widest">Rookie Recruit</span>
+                        <span id="xp-val" class="text-[10px] text-gray-400">0 XP</span>
+                    </div>
+                </div>
             </div>
-            <div class="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
-                <div id="xp-bar" class="bg-cyan-500 h-full transition-all duration-500" style="width: 5%"></div>
+            <div class="xp-bar mt-4">
+                <div id="xp-fill" class="xp-fill apex-gradient"></div>
             </div>
         </div>
 
-        <div id="chat-container" class="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-            <div class="animate__animated animate__fadeInUp bg-white/5 p-4 rounded-2xl rounded-bl-none border border-white/5 max-w-[85%]">
-                <p class="text-sm">Йо! Аз съм твоят AI треньор. Готов ли си да станеш машина днес? 🔥</p>
+        <div id="chat-box" class="flex-1 overflow-y-auto p-6 space-y-6">
+            <div class="animate__animated animate__fadeInUp">
+                <div class="bg-white/5 border-l-4 border-red-600 p-4 rounded-xl rounded-tl-none max-w-[90%]">
+                    <p class="text-sm font-light leading-relaxed italic">
+                        "Train the body. Master the mind." <br>
+                        <span class="text-red-500 font-bold not-italic">Добре дошъл в елита. Каква е целта ти днес?</span>
+                    </p>
+                </div>
             </div>
         </div>
 
         <div class="px-6 py-2 flex gap-2 overflow-x-auto no-scrollbar">
-            <button onclick="quickSend('Дай ми 5 мин тренировка')" class="whitespace-nowrap bg-white/5 border border-white/10 px-4 py-2 rounded-full text-xs hover:bg-cyan-500/20 transition-all">⚡ 5 мин енергия</button>
-            <button onclick="quickSend('Какво да ям за мускули?')" class="whitespace-nowrap bg-white/5 border border-white/10 px-4 py-2 rounded-full text-xs hover:bg-cyan-500/20 transition-all">🍎 Храна за маса</button>
-            <button onclick="quickSend('Мотивирай ме!')" class="whitespace-nowrap bg-white/5 border border-white/10 px-4 py-2 rounded-full text-xs hover:bg-cyan-500/20 transition-all">🚀 Мотивация</button>
+            <button onclick="quick('Експлозивна тренировка')" class="whitespace-nowrap bg-red-600/10 hover:bg-red-600 border border-red-600/30 px-4 py-2 rounded-lg text-[10px] font-bold uppercase transition-all">💥 Експлозия</button>
+            <button onclick="quick('Желязна дисциплина')" class="whitespace-nowrap bg-red-600/10 hover:bg-red-600 border border-red-600/30 px-4 py-2 rounded-lg text-[10px] font-bold uppercase transition-all">🛡️ Дисциплина</button>
+            <button onclick="quick('Макс напомпване')" class="whitespace-nowrap bg-red-600/10 hover:bg-red-600 border border-red-600/30 px-4 py-2 rounded-lg text-[10px] font-bold uppercase transition-all">🔱 Напомпване</button>
         </div>
 
-        <div class="p-6">
-            <div class="relative flex items-center gap-2">
-                <div class="flex-1 bg-white/5 neon-border rounded-2xl flex items-center px-4">
-                    <input type="text" id="user-input" 
-                        class="w-full bg-transparent py-4 text-sm focus:outline-none"
-                        placeholder="Питай ме нещо...">
-                </div>
-                <button onclick="sendMessage()" class="bg-cyan-500 p-4 rounded-2xl hover:scale-105 active:scale-90 transition-all shadow-lg shadow-cyan-500/20">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 fill-black" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+        <div class="p-6 bg-red-950/5">
+            <div class="flex items-center gap-3 bg-black border border-white/10 rounded-2xl p-2 shadow-inner">
+                <input type="text" id="user-input" 
+                    class="flex-1 bg-transparent py-3 px-4 text-sm focus:outline-none placeholder:text-gray-700"
+                    placeholder="Задай команда...">
+                <button onclick="sendMsg()" class="bg-red-600 hover:bg-red-700 p-4 rounded-xl shadow-[0_0_15px_rgba(255,0,0,0.3)] active:scale-95 transition-all">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 fill-white" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
                 </button>
             </div>
         </div>
@@ -71,66 +90,54 @@
 
     <script>
         let xp = 0;
-        const chatContainer = document.getElementById('chat-container');
-        const userInput = document.getElementById('user-input');
-        const xpDisplay = document.getElementById('xp-display');
-        const xpBar = document.getElementById('xp-bar');
-
+        const ranks = ["Rookie", "Warrior", "Elite", "Apex Predator"];
+        
         function updateXP() {
             xp += 20;
-            xpDisplay.innerText = `${xp} XP`;
-            let progress = (xp % 100);
-            xpBar.style.width = `${progress}%`;
-            if(progress === 0 && xp > 0) alert("LEVEL UP! Ти си звяр! 🏆");
+            document.getElementById('xp-val').innerText = `${xp} XP`;
+            document.getElementById('xp-fill').style.width = (xp % 100) + '%';
+            document.getElementById('rank-text').innerText = ranks[Math.min(Math.floor(xp/300), 3)];
         }
 
-        async function quickSend(text) {
-            userInput.value = text;
-            sendMessage();
-        }
+        async function quick(t) { document.getElementById('user-input').value = t; sendMsg(); }
 
-        async function sendMessage() {
-            const message = userInput.value.trim();
-            if (!message) return;
+        async function sendMsg() {
+            const input = document.getElementById('user-input');
+            const msg = input.value.trim();
+            if(!msg) return;
+            input.value = '';
 
-            userInput.value = '';
-            appendMessage(message, 'user');
+            render(msg, 'user');
             
-            // "Typing" effect
-            const typingDiv = document.createElement('div');
-            typingDiv.className = "text-xs text-cyan-400 animate-pulse px-2";
-            typingDiv.innerText = "Треньорът мисли...";
-            typingDiv.id = "typing-status";
-            chatContainer.appendChild(typingDiv);
-            chatContainer.scrollTop = chatContainer.scrollHeight;
-
             try {
-                const response = await fetch('/chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: message })
+                const res = await fetch("/chat", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({ message: msg })
                 });
-                const data = await response.json();
-                
-                document.getElementById('typing-status').remove();
-                appendMessage(data.reply, 'ai');
+                const data = await res.json();
+                render(data.reply, 'ai');
                 updateXP();
-            } catch (e) {
-                document.getElementById('typing-status').remove();
-                appendMessage("Нещо прекъсна връзката. Пробвай пак! ⚠️", 'ai');
+            } catch(e) {
+                render("Връзката прекъсна. Върни се в зоната! ⚠️", 'ai');
             }
         }
 
-        function appendMessage(text, sender) {
+        function render(txt, who) {
+            const box = document.getElementById('chat-box');
             const div = document.createElement('div');
-            const isAi = sender === 'ai';
-            div.className = `p-4 rounded-2xl max-w-[85%] text-sm animate__animated ${isAi ? 'bg-white/5 border border-white/10 rounded-bl-none animate__fadeInLeft' : 'bg-cyan-500 text-black font-bold ml-auto rounded-br-none animate__fadeInRight'}`;
-            div.innerHTML = text;
-            chatContainer.appendChild(div);
-            chatContainer.scrollTop = chatContainer.scrollHeight;
+            const isU = who === 'user';
+            div.className = `flex ${isU ? 'justify-end' : 'justify-start'} animate__animated ${isU ? 'animate__fadeInRight' : 'animate__fadeInLeft'}`;
+            div.innerHTML = `
+                <div class="${isU ? 'bg-red-600 font-bold' : 'bg-white/5 border border-white/10'} p-4 rounded-xl max-w-[85%] text-sm">
+                    ${txt}
+                </div>
+            `;
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
         }
 
-        userInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
+        document.getElementById('user-input').addEventListener('keypress', (e) => { if(e.key === 'Enter') sendMsg(); });
     </script>
 </body>
 </html>
