@@ -3,60 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>APEX MIND | Evolution</title>
+    <title>APEX MIND | PRO</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700&family=Inter:wght@400;700&display=swap" rel="stylesheet">
     <style>
-        body { 
-            background: radial-gradient(circle at top, #1a0000 0%, #000 100%);
-            color: #fff; font-family: 'Inter', sans-serif; height: 100vh; overflow: hidden; margin: 0;
-        }
-        .apex-container {
-            background: rgba(5, 5, 5, 0.95);
-            border: 1px solid rgba(255, 0, 0, 0.3);
-            box-shadow: 0 0 40px rgba(255, 0, 0, 0.2);
-            border-radius: 24px;
-        }
-        .neon-text { font-family: 'Orbitron', sans-serif; text-shadow: 0 0 10px #ff0000; }
-        .xp-bar { height: 4px; background: rgba(255, 255, 255, 0.05); border-radius: 2px; }
-        .xp-progress { background: linear-gradient(90deg, #ff0000, #800000); transition: width 0.8s ease; }
-        .msg-ai { background: rgba(255, 255, 255, 0.03); border-left: 3px solid #ff0000; }
-        .msg-user { background: #ff0000; font-weight: 600; }
+        body { background: #000; color: #fff; font-family: 'Inter', sans-serif; height: 100vh; overflow: hidden; }
+        .apex-border { border: 1px solid rgba(255, 0, 0, 0.4); box-shadow: 0 0 30px rgba(255, 0, 0, 0.1); }
+        .neon-red { color: #ff0000; text-shadow: 0 0 10px #ff0000; font-family: 'Orbitron'; }
+        .msg-ai { background: rgba(20, 20, 20, 0.9); border-left: 4px solid #ff0000; border-radius: 0 20px 20px 20px; }
+        .msg-user { background: #ff0000; border-radius: 20px 20px 0 20px; font-weight: bold; }
+        .action-btn { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); transition: 0.3s; }
+        .action-btn:hover { background: #ff0000; border-color: #ff0000; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: #ff0000; }
     </style>
 </head>
 <body class="flex items-center justify-center p-4">
 
-    <div class="apex-container w-full max-w-md h-[92vh] flex flex-col relative">
+    <div class="apex-border w-full max-w-lg h-[95vh] bg-[#050505] rounded-[2rem] flex flex-col relative overflow-hidden">
         
-        <div class="p-6 border-b border-red-900/20 flex items-center justify-between">
+        <div class="p-6 border-b border-white/5 flex items-center justify-between bg-black/60">
             <div class="flex items-center gap-4">
-                <img src="/static/logo.png" onerror="this.src='https://i.ibb.co/vzP6Kk6/APEX-MIND-LOGO.png'" class="w-14 h-14 object-contain drop-shadow-[0_0_8px_#ff0000]">
+                <img src="/static/logo.png" onerror="this.src='https://i.ibb.co/vzP6Kk6/APEX-MIND-LOGO.png'" class="w-14 h-14 object-contain drop-shadow-[0_0_10px_#ff0000]">
                 <div>
-                    <h1 class="neon-text text-xl tracking-wider">APEX MIND</h1>
-                    <p class="text-[9px] text-red-500 font-bold tracking-[3px] uppercase">Elite Protocol</p>
-                </div>
-            </div>
-            <div id="xp-display" class="text-[10px] font-mono text-gray-500">000 XP</div>
-        </div>
-
-        <div class="xp-bar mx-6 mt-2">
-            <div id="xp-fill" class="xp-progress h-full" style="width: 5%"></div>
-        </div>
-
-        <div id="chat-box" class="flex-1 overflow-y-auto p-6 space-y-6">
-            <div class="animate__animated animate__fadeIn">
-                <div class="msg-ai p-4 rounded-2xl rounded-tl-none text-sm border border-white/5 shadow-2xl">
-                    <p class="italic text-red-500 font-bold mb-1">SYSTEM ONLINE</p>
-                    Добре дошли в ядрото на **APEX MIND**. Готови ли сте за Вашата трансформация?
+                    <h1 class="neon-red text-xl tracking-tighter">APEX MIND</h1>
+                    <p class="text-[9px] text-gray-500 uppercase tracking-[4px]">Olympia Level AI</p>
                 </div>
             </div>
         </div>
 
-        <div class="p-6 bg-black/40">
-            <div class="flex items-center gap-3 bg-white/5 p-1 rounded-xl border border-white/10 focus-within:border-red-600 transition-all">
-                <input type="text" id="user-input" class="flex-1 bg-transparent py-4 px-4 text-sm focus:outline-none" placeholder="Въведете команда...">
-                <button onclick="send()" class="bg-red-600 p-4 rounded-xl hover:bg-red-700 active:scale-90 transition-all shadow-[0_0_15px_rgba(255,0,0,0.4)]">
+        <div id="chat-container" class="flex-1 overflow-y-auto p-6 space-y-6">
+            <div class="animate__animated animate__fadeInLeft">
+                <div class="msg-ai p-5 text-sm shadow-2xl border border-white/5">
+                    <span class="text-red-500 font-bold tracking-widest text-[10px]">SYSTEM READY</span>
+                    <p class="mt-2 text-gray-300">Добре дошъл в елита. Тук не губим време. Кажи ми целта си и ще я постигнем заедно. 🔱🦾</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="utility-bar" class="px-6 py-2 flex gap-3 hidden">
+            <button onclick="copyLastResponse()" class="action-btn flex-1 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest text-gray-300">📋 Копирай плана</button>
+            <button onclick="window.print()" class="action-btn flex-1 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest text-gray-300">💾 Запази (PDF)</button>
+        </div>
+
+        <div class="p-6 bg-black/80">
+            <div class="flex items-center gap-3 bg-[#111] p-2 rounded-2xl border border-white/10 focus-within:border-red-600 transition-all shadow-inner">
+                <input type="text" id="user-msg" class="flex-1 bg-transparent py-3 px-4 text-sm focus:outline-none" placeholder="Пиши тук...">
+                <button onclick="handleSend()" class="bg-red-600 hover:bg-red-700 p-4 rounded-xl shadow-[0_0_20px_rgba(255,0,0,0.4)] active:scale-95 transition-all">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 fill-white" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
                 </button>
             </div>
@@ -64,38 +58,47 @@
     </div>
 
     <script>
-        let xp = 0;
-        function send() {
-            const input = document.getElementById('user-input');
-            const val = input.value.trim();
-            if(!val) return;
-            
-            appendMsg(val, 'user');
+        let lastAIResponse = "";
+
+        async function handleSend() {
+            const input = document.getElementById('user-msg');
+            const msg = input.value.trim();
+            if(!msg) return;
             input.value = '';
 
-            fetch('/chat', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({message: val})
-            })
-            .then(res => res.json())
-            .then(data => {
-                appendMsg(data.reply, 'ai');
-                xp += 20;
-                document.getElementById('xp-fill').style.width = (xp % 100) + '%';
-                document.getElementById('xp-display').innerText = xp + " XP";
-            });
+            render(msg, 'user');
+            
+            try {
+                const res = await fetch("/chat", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({ message: msg })
+                });
+                const data = await res.json();
+                lastAIResponse = data.reply;
+                render(data.reply, 'ai');
+                document.getElementById('utility-bar').classList.remove('hidden');
+            } catch(e) {
+                render("Грешка при връзката. Провери интернета си.", 'ai');
+            }
         }
 
-        function appendMsg(text, type) {
-            const box = document.getElementById('chat-box');
+        function render(text, type) {
+            const container = document.getElementById('chat-container');
             const isU = type === 'user';
             const div = document.createElement('div');
-            div.className = `flex ${isU ? 'justify-end' : 'justify-start'} animate__animated ${isU ? 'animate__fadeInRight' : 'animate__fadeInLeft'}`;
-            div.innerHTML = `<div class="${isU ? 'msg-user' : 'msg-ai'} p-4 rounded-2xl max-w-[85%] text-sm shadow-xl">${text}</div>`;
-            box.appendChild(div);
-            box.scrollTop = box.scrollHeight;
+            div.className = `flex ${isU ? 'justify-end' : 'justify-start'} animate__animated ${isU ? 'animate__fadeInUp' : 'animate__fadeInLeft'}`;
+            div.innerHTML = `<div class="${isU ? 'msg-user' : 'msg-ai'} p-5 max-w-[90%] text-sm shadow-2xl whitespace-pre-wrap">${text}</div>`;
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
         }
+
+        function copyLastResponse() {
+            navigator.clipboard.writeText(lastAIResponse);
+            alert("Планът е копиран в клипборда! ✅");
+        }
+
+        document.getElementById('user-msg').addEventListener('keypress', (e) => { if(e.key === 'Enter') handleSend(); });
     </script>
 </body>
 </html>
