@@ -6,22 +6,26 @@ import os
 app = Flask(__name__)
 CORS(app)
 
-# Взима API ключа от Railway Variables
+# Инициализация на клиента с API ключа от Railway
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 @app.route("/")
 def home():
-    # Променено от обикновен текст към зареждане на index.html
+    # Увери се, че index.html е в папка /templates
     return render_template("index.html")
 
 @app.route("/chat", methods=["POST"])
 def chat():
     try:
-        user_message = request.json.get("message")
-        
-        # Поправен модел на "gpt-4o-mini"
+        data = request.json
+        user_message = data.get("message")
+
+        if not user_message:
+            return jsonify({"error": "No message"}), 400
+
+        # ВАЖНО: Използваме правилния модел gpt-4o-mini
         response = client.chat.completions.create(
-            model="gpt-4o-mini", 
+            model="gpt-4o-mini",
             messages=[
                 {
                     "role": "system",
@@ -35,9 +39,10 @@ def chat():
         return jsonify({"reply": reply})
 
     except Exception as e:
-        # Това ще ти покаже точната грешка в конзолата на Railway
-        print(f"Грешка: {e}")
+        # Това ще принтира грешката в лога на Railway, за да я видиш
+        print(f"ERROR: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
