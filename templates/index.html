@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>APEX PULSE | PRO</title>
+    <title>APEX PULSE | PRO VERSION</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700&family=Inter:wght@400;700&display=swap" rel="stylesheet">
@@ -16,47 +16,54 @@
         }
 
         .app-wrapper { flex: 1; display: flex; flex-direction: column; position: relative; background: #000; overflow: hidden; }
+        
+        /* ФОНОВО ЛОГО */
         .bg-logo { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 85%; opacity: 0.1; z-index: 0; pointer-events: none; }
 
-        /* ФИКС ЗА ТАБЛИЦИТЕ - ЯСНИ РЕДОВЕ И КОЛОНИ */
+        /* ЧАТ ЗОНА */
         #chat-box { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 20px; z-index: 1; }
         
+        /* ТАБЛИЦИ - СУПЕР ЯСНИ И ПРОФЕСИОНАЛНИ */
         .msg-ai table { 
             width: 100%; border-collapse: collapse; margin: 15px 0; 
-            border: 2px solid var(--matrix); /* По-дебела външна рамка */
-            background: rgba(0, 10, 0, 0.9); 
+            border: 2px solid var(--matrix); 
+            background: rgba(0, 10, 0, 0.95); 
         }
         .msg-ai th { 
             background: var(--matrix); color: #000; padding: 12px 8px; 
             text-transform: uppercase; font-size: 10px; font-family: 'Orbitron';
-            border: 1px solid #000; /* Редове между заглавията */
+            border: 1px solid #000;
         }
         .msg-ai td { 
-            border: 1px solid rgba(57, 255, 20, 0.4); /* ЯСНИ ЛИНИИ МЕЖДУ КЛЕТКИТЕ */
+            border: 1px solid rgba(57, 255, 20, 0.4); 
             color: #fff; padding: 10px 6px; text-align: center; font-size: 11px; 
         }
 
         .msg-ai { background: rgba(20, 20, 20, 0.95); border-left: 4px solid var(--neon); border-radius: 0 20px 20px 20px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
         .msg-user { background: linear-gradient(135deg, #ff0000 0%, #800000 100%); border-radius: 20px 20px 0 20px; padding: 14px 20px; align-self: flex-end; font-weight: 700; }
 
-        /* ПРАВНА СЕКЦИЯ - ПО-ЯРКА И ЧЕТИМА */
+        /* ЛУКСОЗНО ИНТРО */
+        .welcome-card { 
+            background: rgba(255, 0, 0, 0.05); border: 1px solid var(--neon); 
+            padding: 25px; border-radius: 24px; backdrop-filter: blur(10px); 
+            box-shadow: 0 0 30px rgba(255, 0, 0, 0.2); 
+        }
+
+        /* ПРАВНА СЕКЦИЯ - ВИДИМА И ЛЕГИТИМНА */
         .legal-footer { 
             background: #080808; padding: 15px; text-align: center; 
             border-top: 1px solid #222; z-index: 10;
         }
         .legal-footer a { 
-            color: #bbb; font-size: 10px; margin: 0 12px; 
+            color: #ccc; font-size: 10px; margin: 0 12px; 
             text-transform: uppercase; font-weight: bold; text-decoration: underline;
         }
-        .legal-footer a:hover { color: var(--neon); }
         .legal-copy { font-size: 9px; color: #555; margin-top: 8px; letter-spacing: 1px; }
 
-        /* МОДАЛНИ ПРОЗОРЦИ */
+        /* МОДАЛИ */
         #legal-modal { display: none; position: fixed; inset: 0; background: #000; z-index: 2000; flex-direction: column; padding: 40px; overflow-y: auto; }
-        .modal-close { color: var(--neon); font-family: 'Orbitron'; margin-bottom: 20px; font-weight: bold; border: 1px solid var(--neon); padding: 10px; width: fit-content; }
-
         #paywall { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.98); z-index: 1000; flex-direction: column; align-items: center; justify-content: center; padding: 25px; }
-        .premium-card { background: #0a0a0a; border: 2px solid var(--neon); padding: 40px; border-radius: 40px; text-align: center; max-width: 340px; width: 100%; box-shadow: 0 0 50px rgba(255,0,0,0.4); }
+        .premium-card { background: #0a0a0a; border: 2px solid var(--neon); padding: 40px; border-radius: 40px; text-align: center; max-width: 340px; width: 100%; }
     </style>
 </head>
 <body>
@@ -69,17 +76,17 @@
                 <img src="{{ url_for('static', filename='logo.png') }}" class="w-8 h-8 rounded-full border border-red-600">
                 <div>
                     <h1 class="text-red-600 font-bold tracking-[2px] text-xs uppercase font-['Orbitron']">APEX PULSE PRO</h1>
-                    <p id="counter" class="text-[7px] text-gray-400 font-bold uppercase tracking-widest">3 Сесии Остават</p>
+                    <p id="counter" class="text-[7px] text-gray-400 font-bold uppercase">3 Сесии Остават</p>
                 </div>
             </div>
         </header>
 
         <div id="chat-box"></div>
 
-        <footer class="p-4 bg-black z-10">
-            <div class="flex items-center gap-2 bg-neutral-900 rounded-2xl p-1 border border-white/10 focus-within:border-red-600 transition-all">
-                <input type="text" id="user-in" class="flex-1 bg-transparent py-3 px-4 text-sm outline-none text-white placeholder-gray-600" placeholder="Въведи целта си...">
-                <button onclick="send()" class="bg-red-600 p-4 rounded-xl shadow-lg active:scale-90 transition-transform"><svg class="h-5 w-5 fill-white" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></button>
+        <footer class="p-4 bg-black/90 z-10 border-t border-white/5">
+            <div class="flex items-center gap-3 bg-white/5 rounded-2xl p-1 border border-white/10 focus-within:border-red-600">
+                <input type="text" id="user-in" class="flex-1 bg-transparent py-3 px-4 text-sm outline-none text-white" placeholder="Напиши целта си тук...">
+                <button onclick="send()" class="bg-red-600 p-4 rounded-xl shadow-lg active:scale-95"><svg class="h-5 w-5 fill-white" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></button>
             </div>
         </footer>
 
@@ -87,76 +94,25 @@
             <a onclick="showLegal('terms')">Общи Условия</a>
             <a onclick="showLegal('privacy')">Поверителност</a>
             <a onclick="showLegal('contact')">Контакт</a>
-            <div class="legal-copy text-white/20 uppercase tracking-tighter">© 2026 APEX PULSE PRO. SECURE PAYMENTS BY STRIPE.</div>
+            <div class="legal-copy uppercase tracking-widest">© 2026 APEX PULSE PRO. SECURE PAYMENTS BY STRIPE.</div>
         </div>
     </div>
 
     <div id="paywall">
         <div class="premium-card">
-            <h2 class="text-red-600 font-bold mb-4 font-['Orbitron']">ELITE UNLOCK</h2>
+            <h2 class="text-red-600 font-bold mb-4 font-['Orbitron'] text-xl">ELITE UNLOCK</h2>
             <div class="text-5xl font-black mb-2 text-white">1.99€</div>
             <p class="text-[11px] text-white font-bold mb-1 uppercase tracking-widest">ПЪЛЕН ДОСТЪП ЗА 30 ДНИ</p>
-            <p class="text-[9px] text-gray-500 mb-8 px-6 leading-relaxed">Вземи неограничени планове, персонализирани тренировки и AI поддръжка за един месец.</p>
+            <p class="text-[9px] text-gray-500 mb-8 px-6 leading-relaxed italic">По-евтино от едно кафе. По-ценно от злато.</p>
             <button onclick="pay()" class="w-full bg-red-600 py-5 rounded-2xl font-bold uppercase shadow-lg shadow-red-600/40 active:scale-95 transition-all">ОТКЛЮЧИ СЕГА</button>
             <p class="text-[7px] text-gray-700 mt-6 uppercase">Еднократно плащане. Без автоматични абонаменти.</p>
         </div>
     </div>
 
     <div id="legal-modal">
-        <button onclick="this.parentElement.style.display='none'" class="modal-close">✕ ЗАТВОРИ</button>
-        <div id="legal-content" class="text-gray-300 text-xs leading-relaxed font-light"></div>
+        <button onclick="this.parentElement.style.display='none'" class="text-red-600 font-bold mb-8 border border-red-600 p-2 text-[10px] w-fit">✕ ЗАТВОРИ</button>
+        <div id="legal-content" class="text-gray-300 text-xs leading-relaxed"></div>
     </div>
 
     <script>
-        const setHeight = () => { document.documentElement.style.setProperty('--vh', `${window.innerHeight * 0.01}px`); };
-        window.addEventListener('resize', setHeight); setHeight();
-
-        let count = 0;
-        const box = document.getElementById('chat-box');
-
-        window.onload = () => {
-            appendMsg("### СИСТЕМАТА Е АКТИВНА 🔱\nДобре дошъл в **APEX PULSE PRO**. Готов ли си за 30-дневна трансформация?", 'ai');
-        };
-
-        async function send() {
-            const input = document.getElementById('user-in');
-            const val = input.value.trim();
-            if(!val) return;
-            if(count >= 3) { document.getElementById('paywall').style.display = 'flex'; return; }
-            
-            appendMsg(val, 'user');
-            input.value = ''; count++;
-            document.getElementById('counter').innerText = `${3 - count} Сесии Остават`;
-
-            try {
-                const res = await fetch("/chat", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({ message: val }) });
-                const data = await res.json();
-                appendMsg(data.reply, 'ai');
-            } catch(e) { appendMsg("Грешка в ядрото. ⚡", 'ai'); }
-        }
-
-        async function pay() {
-            const res = await fetch("/create-checkout-session", { method: "POST" });
-            const data = await res.json();
-            window.location.href = data.url;
-        }
-
-        function appendMsg(text, type) {
-            const div = document.createElement('div');
-            div.className = type === 'user' ? 'msg-user' : 'msg-ai';
-            div.innerHTML = type === 'user' ? text : marked.parse(text);
-            box.appendChild(div);
-            box.scrollTop = box.scrollHeight;
-        }
-
-        function showLegal(type) {
-            const modal = document.getElementById('legal-modal');
-            const content = document.getElementById('legal-content');
-            if(type === 'terms') content.innerHTML = "<h1 class='text-red-600 text-lg mb-4'>ОБЩИ УСЛОВИЯ</h1><p>Услугата APEX PULSE PRO предоставя дигитално съдържание под формата на AI-генерирани съвети за тренировки и хранене. С плащането на такса от 1.99€, Вие получавате 30-дневен достъп. Услугата не замества професионален медицински съвет.</p>";
-            if(type === 'privacy') content.innerHTML = "<h1 class='text-red-600 text-lg mb-4'>ПОВЕРИТЕЛНОСТ</h1><p>Ние ценим Вашата лична информация. Плащанията се обработват чрез Stripe. Ние не съхраняваме данни за Вашите банкови карти. Вашите съобщения в чата се използват единствено за генериране на планове.</p>";
-            if(type === 'contact') content.innerHTML = "<h1 class='text-red-600 text-lg mb-4'>КОНТАКТ</h1><p>За въпроси и поддръжка, моля свържете се с нас на имейл: <b>support@apexpulse.pro</b>. Ще отговорим в рамките на 24 часа.</p>";
-            modal.style.display = 'flex';
-        }
-    </script>
-</body>
-</html>
+        const setHeight = () => { document.documentElement.style.setProperty('--vh
