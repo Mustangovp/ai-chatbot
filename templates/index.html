@@ -23,14 +23,13 @@
         .legal-footer { background: #080808; padding: 15px; text-align: center; border-top: 1px solid #222; z-index: 20; flex-shrink: 0; position: relative; }
         .legal-footer a { color: #ffffff !important; font-size: 11px; margin: 0 10px; text-transform: uppercase; font-weight: bold; text-decoration: underline; cursor: pointer; }
         .legal-copy { font-size: 9px; color: #666; margin-top: 5px; }
-        #legal-modal { display: none; position: fixed; inset: 0; background: #000; z-index: 2000; flex-direction: column; padding: 40px; overflow-y: auto; }
+        #legal-modal { display: none; position: fixed; inset: 0; background: #000; z-index: 2000; flex-direction: column; padding: 30px; overflow-y: auto; }
         .modal-close { color: var(--neon); font-family: 'Orbitron'; margin-bottom: 20px; font-weight: bold; border: 1px solid var(--neon); padding: 10px; cursor: pointer; width: fit-content; }
         #paywall { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.98); z-index: 1000; flex-direction: column; align-items: center; justify-content: center; padding: 25px; }
         .premium-card { background: #0a0a0a; border: 2px solid var(--neon); padding: 40px; border-radius: 40px; text-align: center; max-width: 340px; width: 100%; box-shadow: 0 0 50px rgba(255,0,0,0.5); }
     </style>
 </head>
 <body>
-
     <div class="app-wrapper">
         <img src="{{ url_for('static', filename='logo.png') }}" class="bg-logo">
         <header class="p-4 border-b border-white/5 bg-black/60 flex items-center justify-between z-10">
@@ -81,7 +80,7 @@
 
     <div id="legal-modal">
         <div onclick="this.parentElement.style.display='none'" class="modal-close">✕ ЗАТВОРИ</div>
-        <div id="legal-content" class="text-gray-300 text-xs leading-relaxed font-light"></div>
+        <div id="legal-content" class="text-gray-300 text-[10px] leading-relaxed font-light"></div>
     </div>
 
     <script>
@@ -114,9 +113,7 @@
                     <p class="text-red-500 font-bold mt-4 text-[10px] uppercase tracking-widest">Имаш 3 безплатни сесии. Дай газ! 🚀</p>
                 </div>
             `;
-            const div = document.createElement('div');
-            div.innerHTML = introHTML;
-            box.appendChild(div);
+            const div = document.createElement('div'); div.innerHTML = introHTML; box.appendChild(div);
         };
 
         async function send() {
@@ -124,8 +121,7 @@
             const val = input.value.trim();
             if(!val) return;
             if(count >= 3) { document.getElementById('paywall').style.display = 'flex'; return; }
-            appendMsg(val, 'user');
-            input.value = ''; 
+            appendMsg(val, 'user'); input.value = ''; 
             if(count >= 0) count++;
             if(count > 0) document.getElementById('counter').innerText = `● ${3 - count} Сесии Остават`;
             try {
@@ -146,16 +142,14 @@
             const div = document.createElement('div');
             div.className = type === 'user' ? 'msg-user' : 'msg-ai';
             div.innerHTML = type === 'user' ? text : marked.parse(text);
-            box.appendChild(div);
-            box.scrollTop = box.scrollHeight;
+            box.appendChild(div); box.scrollTop = box.scrollHeight;
         }
 
         function copyToClipboard() {
             const lastMsg = document.querySelector('.msg-ai:last-child');
             if (lastMsg) {
                 const text = lastMsg.innerText.replace(/🔱|ELITE STATUS: ACTIVE/g, '');
-                navigator.clipboard.writeText(text);
-                alert("Планът е копиран! 🔥");
+                navigator.clipboard.writeText(text); alert("Планът е копиран! 🔥");
             }
         }
 
@@ -169,25 +163,20 @@
                 <html>
                 <head>
                     <meta charset="UTF-8">
-                    <title>Apex Pulse Plan</title>
                     <style>
                         body { font-family: sans-serif; padding: 20px; color: #000; background: #fff; text-align: center; }
                         h1 { color: #ff0000; text-transform: uppercase; border-bottom: 2px solid #ff0000; padding-bottom: 10px; }
-                        table { width: 100%; border-collapse: collapse; margin-top: 20px; border: 1px solid #000; }
-                        th { background: #39ff14; color: #000; padding: 8px; border: 1px solid #000; font-size: 12px; text-transform: uppercase; }
+                        table { width: 100%; border-collapse: collapse; margin-top: 20px; border: 2px solid #000; }
+                        th { background: #39ff14; color: #000; padding: 8px; border: 1px solid #000; font-size: 12px; }
                         td { padding: 8px; border: 1px solid #000; text-align: center; font-size: 11px; }
-                        .footer { margin-top: 20px; font-size: 9px; color: #666; }
                     </style>
                 </head>
                 <body>
                     <h1>🔱 APEX PULSE PRO РЕЖИМ</h1>
                     ${table.outerHTML}
-                    <p class="footer">Feel the Pulse. Reach the Apex. Generated by apexpulse.pro</p>
+                    <p style="margin-top:20px; font-size:10px;">Генерирано от apexpulse.pro</p>
                     <script>
-                        window.onload = function() { 
-                            window.print(); 
-                            setTimeout(() => { window.close(); }, 500);
-                        }
+                        window.onload = function() { window.print(); }
                     <\/script>
                 </body>
                 </html>
@@ -200,14 +189,16 @@
             const content = document.getElementById('legal-content');
             let html = "";
             if(type === 'terms') {
-                html = "<h2 class='text-red-600 font-bold mb-4 uppercase text-lg'>Общи Условия</h2><p>APEX PULSE PRO предоставя софтуер с ИИ за фитнес. С плащане от 1.99€ получавате достъп за 30 дни. Услугата е за информация и не замества лекар.</p>";
+                html = `<h2 class='text-red-600 font-bold mb-2 uppercase text-xs'>Общи Условия</h2>
+                <p class='mb-2'>1. Услуга: APEX PULSE PRO предоставя софтуерни услуги чрез ИИ. 2. Плащания: Еднократно плащане от 1.99€ отключва PRO функции за 30 дни. 3. Отказ от отговорност: Всички планове са с информативна цел. Консултирайте се с лекар преди започване на диета или тренировки. 4. Право на отказ: Съгласно чл. 57, ал. 13 от ЗЗП, потребителят губи правото си на отказ след предоставяне на цифровото съдържание.</p>`;
             } else if(type === 'privacy') {
-                html = "<h2 class='text-red-600 font-bold mb-4 uppercase text-lg'>Поверителност</h2><p>Плащанията са през Stripe. Не съхраняваме карти. Чатът е само за Вашите планове.</p>";
+                html = `<h2 class='text-red-600 font-bold mb-2 uppercase text-xs'>Поверителност</h2>
+                <p class='mb-2'>1. Данни: Не събираме лични данни без Ваше съгласие. 2. Плащания: Всички финансови данни се обработват от Stripe. 3. Сигурност: Използваме SSL сертификати за защита на връзката. 4. Бисквитки: Използваме 'LocalStorage' единствено за да запомним Вашия платен абонамент в този браузър.</p>`;
             } else if(type === 'contact') {
-                html = "<h2 class='text-red-600 font-bold mb-4 uppercase text-lg'>Контакт</h2><p>Имейл: apexpulsepro@gmail.com</p>";
+                html = `<h2 class='text-red-600 font-bold mb-2 uppercase text-xs'>Контакт</h2>
+                <p><b>Бранд:</b> APEX PULSE PRO<br><b>Имейл:</b> apexpulsepro@gmail.com<br><b>Локация:</b> Перник, България<br><b>Поддръжка:</b> 24/7 чрез ИИ или имейл.</p>`;
             }
-            content.innerHTML = html;
-            modal.style.display = 'flex';
+            content.innerHTML = html; modal.style.display = 'flex';
         }
     </script>
 </body>
