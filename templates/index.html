@@ -9,99 +9,193 @@
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700&family=Inter:wght@400;700&display=swap" rel="stylesheet">
     <style>
         :root { --vh: 1vh; }
-        body { background: #000; color: #fff; font-family: 'Inter', sans-serif; height: calc(var(--vh) * 100); overflow: hidden; margin: 0; display: flex; flex-direction: column; }
-        .apex-card { flex: 1; display: flex; flex-direction: column; border: 2px solid #ff0000; background: radial-gradient(circle at top, #1a0000 0%, #000 100%); margin: 5px; border-radius: 20px; overflow: hidden; box-shadow: 0 0 30px rgba(255, 0, 0, 0.4); }
+        body { 
+            background: #000; 
+            color: #fff; 
+            font-family: 'Inter', sans-serif; 
+            height: calc(var(--vh) * 100); 
+            overflow: hidden; 
+            margin: 0; 
+            display: flex; 
+            flex-direction: column; 
+        }
+
+        /* ОСНОВНА КАРТА С ФОНОВО ЛОГО */
+        .apex-card { 
+            flex: 1; 
+            display: flex; 
+            flex-direction: column; 
+            position: relative;
+            border: 2px solid #ff0000; 
+            background: radial-gradient(circle at top, #1a0000 0%, #000 100%); 
+            margin: 5px; 
+            border-radius: 20px; 
+            overflow: hidden; 
+            box-shadow: 0 0 30px rgba(255, 0, 0, 0.4); 
+        }
+
+        /* ЕФЕКТНО ФОНОВО ЛОГО ЗА "УАУ" ПРЕЖИВЯВАНЕ */
+        .apex-card::before {
+            content: "";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 85%;
+            height: 85%;
+            background-image: url('https://i.ibb.co/vzP6Kk6/APEX-MIND-LOGO.png');
+            background-repeat: no-repeat;
+            background-position: center;
+            background-size: contain;
+            opacity: 0.08; /* Фина прозрачност за допаминов ефект без натоварване */
+            pointer-events: none;
+            z-index: 0;
+        }
+
         .neon-red { color: #ff0000; text-shadow: 0 0 15px #ff0000; font-family: 'Orbitron'; text-transform: uppercase; }
 
-        /* ПРОФЕСИОНАЛНА ГРАФИЧНА ТАБЛИЦА - БЕЗ ЧЕРТИ */
-        .msg-content table { width: 100%; border-collapse: separate; border-spacing: 0; margin: 15px 0; border-radius: 12px; overflow: hidden; border: 1px solid #ff0000; background: #0a0a0a; }
-        .msg-content th { background: linear-gradient(180deg, #ff0000 0%, #880000 100%); color: white; padding: 12px; font-size: 11px; text-transform: uppercase; border: none; }
+        /* СЪДЪРЖАНИЕ НА СЪОБЩЕНИЯТА */
+        #chat-box { position: relative; z-index: 1; flex-grow: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 20px; }
+        .msg-content table { width: 100%; border-collapse: separate; border-spacing: 0; margin: 15px 0; border-radius: 12px; overflow: hidden; border: 1px solid #ff0000; background: rgba(10, 10, 10, 0.8); }
+        .msg-content th { background: linear-gradient(180deg, #ff0000 0%, #880000 100%); color: white; padding: 12px; font-size: 11px; text-transform: uppercase; }
         .msg-content td { padding: 12px; font-size: 11px; border-bottom: 1px solid #1a1a1a; border-right: 1px solid #1a1a1a; color: #fff; text-align: center; }
-        .msg-content tr:last-child td { border-bottom: none; }
-        .msg-content h3 { color: #ff0000 !important; font-weight: bold; margin-top: 15px; font-size: 1.1rem; }
+        .msg-content h3 { color: #ff0000 !important; font-weight: bold; margin-top: 15px; }
         .msg-content strong { color: #ff4d4d; }
 
-        .msg-ai { background: rgba(255, 255, 255, 0.03); border-left: 5px solid #ff0000; border-radius: 0 20px 20px 20px; box-shadow: 10px 10px 30px rgba(0,0,0,0.5); }
-        .msg-user { background: linear-gradient(135deg, #ff0000 0%, #800000 100%); border-radius: 20px 20px 0 20px; font-weight: bold; }
-        
-        #chat-box { flex-grow: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 20px; }
+        .msg-ai { background: rgba(255, 255, 255, 0.05); border-left: 5px solid #ff0000; border-radius: 0 20px 20px 20px; backdrop-filter: blur(5px); }
+        .msg-user { background: linear-gradient(135deg, #ff0000 0%, #800000 100%); border-radius: 20px 20px 0 20px; font-weight: bold; align-self: flex-end; }
 
-        /* PAYWALLS (EURO) */
-        #paywall { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.98); z-index: 999; flex-direction: column; align-items: center; justify-content: center; padding: 25px; }
-        .plan-box { background: #0d0d0d; border: 1px solid #333; padding: 20px; border-radius: 20px; width: 100%; max-width: 280px; margin-bottom: 15px; text-align: center; }
-        .plan-box.featured { border: 2px solid #ff0000; box-shadow: 0 0 25px rgba(255,0,0,0.4); transform: scale(1.05); }
+        /* НОВИЯТ ОПТИМИЗИРАН PAYWALL (1.99€) */
+        #paywall { 
+            display: none; 
+            position: fixed; 
+            inset: 0; 
+            background: rgba(0,0,0,0.95); 
+            z-index: 999; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            padding: 25px; 
+            backdrop-filter: blur(10px);
+        }
+        .plan-box { 
+            background: rgba(20, 0, 0, 0.6); 
+            border: 2px solid #ff0000; 
+            padding: 30px; 
+            border-radius: 24px; 
+            width: 100%; 
+            max-width: 300px; 
+            text-align: center; 
+            box-shadow: 0 0 40px rgba(255,0,0,0.3);
+            margin-bottom: 25px;
+        }
 
-        /* 1.99 EUR TOOLS */
+        /* ИНСТРУМЕНТИ */
         .locked-tools { opacity: 0.3; filter: grayscale(1); pointer-events: none; }
-        .unlock-btn { background: rgba(255, 0, 0, 0.2); border: 1px solid #ff0000; color: #fff; width: 100%; py: 10px; border-radius: 12px; font-size: 10px; font-weight: bold; text-transform: uppercase; cursor: pointer; }
+        .unlock-btn { background: rgba(255, 0, 0, 0.1); border: 1px solid #ff0000; color: #fff; border-radius: 12px; font-size: 10px; font-weight: bold; cursor: pointer; transition: all 0.3s; }
+        .unlock-btn:hover { background: #ff0000; }
+        
+        header, footer { position: relative; z-index: 2; }
     </style>
 </head>
 <body>
 
     <div id="paywall">
-        <h2 class="neon-red text-2xl mb-8">LIMIT REACHED 🔱</h2>
-        <div class="plan-box"><p class="text-2xl font-bold">29.90 €</p><h4 class="text-[10px] text-gray-500 uppercase">One-Time Plan</h4></div>
-        <div class="plan-box featured"><p class="text-3xl font-bold">19.90 €</p><h4 class="text-[10px] text-gray-200 uppercase">Elite Monthly</h4></div>
-        <button onclick="location.reload()" class="w-full max-w-[280px] bg-red-600 py-4 rounded-xl font-bold uppercase shadow-lg">Отключи достъп</button>
+        <h2 class="neon-red text-2xl mb-2 text-center">LIMIT REACHED 🔱</h2>
+        <p class="text-gray-400 text-xs mb-8">Продължи своята трансформация сега</p>
+        
+        <div class="plan-box">
+            <h4 class="text-[10px] text-red-500 uppercase tracking-widest mb-2 font-bold">Elite Access</h4>
+            <p class="text-5xl font-bold mb-2">1.99 €</p>
+            <p class="text-[11px] text-gray-400">Еднократен достъп до ядрото на APEX MIND</p>
+        </div>
+
+        <button onclick="location.reload()" class="w-full max-w-[300px] bg-red-600 hover:bg-red-700 py-5 rounded-2xl font-bold uppercase shadow-[0_0_30px_#f00] transition-all transform active:scale-95">
+            ОТКЛЮЧИ ПЪЛЕН ДОСТЪП
+        </button>
+        <p class="text-[9px] text-gray-600 mt-6 uppercase tracking-tighter">Сигурно плащане | Криптирана връзка</p>
     </div>
 
     <div class="apex-card">
-        <div class="p-5 border-b border-red-900/20 flex items-center justify-between bg-black/40">
+        <div class="p-5 border-b border-red-900/20 flex items-center justify-between bg-black/60 backdrop-blur-md">
             <div class="flex items-center gap-4">
-                <img src="/static/logo.png" class="w-12 h-12 object-contain shadow-[0_0_15px_#f00]" onerror="this.src='https://i.ibb.co/vzP6Kk6/APEX-MIND-LOGO.png'">
-                <div><h1 class="neon-red text-lg tracking-tighter uppercase">APEX MIND</h1><p id="counter" class="text-[9px] text-red-500 font-bold tracking-[3px]">● 3 FREE SESSIONS LEFT</p></div>
+                <img src="https://i.ibb.co/vzP6Kk6/APEX-MIND-LOGO.png" class="w-12 h-12 object-contain shadow-[0_0_15px_#f00] rounded-full">
+                <div>
+                    <h1 class="neon-red text-lg tracking-tighter uppercase">APEX MIND</h1>
+                    <p id="counter" class="text-[9px] text-red-500 font-bold tracking-[3px]">● 3 FREE SESSIONS LEFT</p>
+                </div>
             </div>
         </div>
 
         <div id="chat-box"></div>
 
-        <div id="utility" class="px-6 py-2 flex flex-col gap-2 hidden bg-black/60">
-            <div id="tool-lock" class="flex gap-2 locked-tools"><button class="flex-1 bg-white/5 border border-white/10 py-3 rounded-xl text-[9px] font-bold uppercase text-white">📋 Копирай</button><button class="flex-1 bg-white/5 border border-white/10 py-3 rounded-xl text-[9px] font-bold uppercase text-white">💾 Запази</button></div>
+        <div id="utility" class="px-6 py-2 flex flex-col gap-2 hidden bg-black/80 backdrop-blur-md">
+            <div id="tool-lock" class="flex gap-2 locked-tools">
+                <button class="flex-1 bg-white/5 border border-white/10 py-3 rounded-xl text-[9px] font-bold uppercase">📋 Копирай</button>
+                <button class="flex-1 bg-white/5 border border-white/10 py-3 rounded-xl text-[9px] font-bold uppercase">💾 Запази</button>
+            </div>
             <button onclick="alert('Плащане 1.99€')" class="unlock-btn py-3">🔓 ОТКЛЮЧИ ИНСТРУМЕНТИТЕ ЗА 1.99 €</button>
         </div>
 
-        <div class="p-5 bg-black border-t border-white/5">
-            <div class="flex items-center gap-3 bg-[#0d0d0d] p-1 rounded-2xl border border-white/10 focus-within:border-red-600">
-                <input type="text" id="user-in" class="flex-1 bg-transparent py-3 px-4 text-sm outline-none text-white" placeholder="Напиши целта си...">
-                <button onclick="send()" class="bg-red-600 p-4 rounded-xl shadow-[0_0_20px_#f00]"><svg class="h-6 w-6 fill-white" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></button>
+        <div class="p-5 bg-black border-t border-white/5 relative z-10">
+            <div class="flex items-center gap-3 bg-[#0d0d0d] p-1 rounded-2xl border border-white/10 focus-within:border-red-600 transition-colors">
+                <input type="text" id="user-in" class="flex-1 bg-transparent py-3 px-4 text-sm outline-none text-white" placeholder="Напиши целта си тук...">
+                <button onclick="send()" class="bg-red-600 p-4 rounded-xl shadow-[0_0_20px_#f00] active:scale-90 transition-transform">
+                    <svg class="h-6 w-6 fill-white" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                </button>
             </div>
         </div>
     </div>
 
     <script>
         const setHeight = () => { document.documentElement.style.setProperty('--vh', `${window.innerHeight * 0.01}px`); };
-        window.visualViewport.addEventListener('resize', setHeight); setHeight();
+        window.addEventListener('resize', setHeight); setHeight();
 
         let count = 0;
         const box = document.getElementById('chat-box');
 
-        // ПРОФЕСИОНАЛНО ИНТРО С ЕМОДЖИТА
+        // ИНТРО СЪОБЩЕНИЕ
         window.onload = () => {
-            const intro = `### ДОБРЕ ДОШЪЛ В ЯДРОТО НА APEX MIND 🔱🔴\n\nАз не съм просто чатбот. Аз съм твоят **дигитален Рони Колман**! 🤖🦾\n\n**Какво правим днес:**\n* 🥩 **Елитно хранене:** Макроси до последното зрънце. 🥗\n* 🏋️ **Тренировки:** Програми, от които тежестите треперят. 💥\n* 🧠 **Дисциплина:** Тук извиненията умират. Резултатите живеят. 🔥\n\n**Имаш 3 БЕЗПЛАТНИ сесии.** Дай газ! 🚀`;
+            const intro = `### ДОБРЕ ДОШЪЛ В ЯДРОТО НА APEX MIND 🔱🔴\n\nАз съм твоят **дигитален партньор** в постигането на невъзможното. Тук градим дисциплина и тяло.\n\n**Твоите предимства:**\n* 🥩 **Елитен режим:** Хранене без компромиси.\n* 🏋️ **Експертни планове:** Научно обосновани тренировки.\n\n**Имаш 3 БЕЗПЛАТНИ сесии.** Използвай ги разумно! 🚀`;
             appendMsg(intro, 'ai');
         };
 
         async function send() {
             const input = document.getElementById('user-in');
             const val = input.value.trim();
-            if(!val || count >= 3) { if(count >= 3) document.getElementById('paywall').style.display = 'flex'; return; }
-            input.value = ''; count++;
+            
+            if(!val) return;
+            if(count >= 3) { document.getElementById('paywall').style.display = 'flex'; return; }
+            
+            input.value = ''; 
+            count++;
             document.getElementById('counter').innerText = `● ${3 - count} FREE SESSIONS LEFT`;
             
             appendMsg(val, 'user');
+
+            // Симулирана заявка (замени с твоя реален бекенд адрес)
             try {
-                const res = await fetch("/chat", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({ message: val }) });
+                const res = await fetch("/chat", { 
+                    method: "POST", 
+                    headers: {"Content-Type": "application/json"}, 
+                    body: JSON.stringify({ message: val }) 
+                });
                 const data = await res.json();
                 appendMsg(data.reply, 'ai');
                 document.getElementById('utility').classList.remove('hidden');
-            } catch(e) { appendMsg("System Error. 🔴", 'ai'); }
+            } catch(e) { 
+                // За демо цели, ако няма бекенд, показваме съобщение
+                setTimeout(() => {
+                    appendMsg("Грешка при връзката със сървъра. Увери се, че бекендът работи.", 'ai');
+                }, 1000);
+            }
         }
 
         function appendMsg(text, type) {
             const div = document.createElement('div');
-            div.className = `flex ${type === 'user' ? 'justify-end' : 'justify-start'} animate__animated fadeInUp`;
+            div.className = `flex ${type === 'user' ? 'justify-end' : 'justify-start'} mb-4`;
             const formatted = type === 'user' ? text : marked.parse(text);
-            div.innerHTML = `<div class="${type === 'user' ? 'msg-user' : 'msg-ai'} p-5 max-w-[95%] text-sm shadow-2xl msg-content">${formatted}</div>`;
+            div.innerHTML = `<div class="${type === 'user' ? 'msg-user' : 'msg-ai'} p-5 max-w-[90%] text-sm shadow-2xl msg-content">${formatted}</div>`;
             box.appendChild(div);
             box.scrollTop = box.scrollHeight;
         }
