@@ -171,25 +171,43 @@
         }
 
         function saveAsPDF() {
-            const lastTable = document.querySelector('.msg-ai:last-child table');
-            if (!lastTable) { alert("Първо генерирай режим!"); return; }
-            const printWindow = window.open('', '_blank');
-            const tableHtml = `
-                <html><head><title>APEX PULSE PRO</title><style>
-                    body { font-family: 'Inter', sans-serif; padding: 40px; text-align: center; }
-                    h1 { color: #ff0000; font-family: 'Orbitron'; text-transform: uppercase; border-bottom: 2px solid #ff0000; padding-bottom: 10px; }
-                    table { width: 100%; border-collapse: collapse; margin-top: 30px; }
-                    th { background: #39ff14; color: black; padding: 12px; border: 1px solid black; text-transform: uppercase; font-size: 12px; }
-                    td { padding: 12px; border: 1px solid #ddd; font-size: 12px; text-align: center; }
-                </style></head><body>
-                    <h1>🔱 APEX PULSE PRO: ТВОЯТ РЕЖИМ</h1>
-                    ${lastTable.outerHTML}
-                    <p style="font-size: 10px; color: #888; margin-top: 50px;">FEEL THE PULSE. REACH THE APEX.</p>
-                    <script>window.onload = function() { window.print(); window.close(); };<\/script>
-                </body></html>`;
-            printWindow.document.write(tableHtml);
-            printWindow.document.close();
-        }
+    const lastTable = document.querySelector('.msg-ai:last-child table');
+    if (!lastTable) { alert("Първо генерирай режим!"); return; }
+
+    // Създаваме скрит iframe за печат
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow.document;
+    const tableHtml = `
+        <html><head><style>
+            body { font-family: sans-serif; padding: 20px; text-align: center; }
+            h1 { color: #ff0000; text-transform: uppercase; border-bottom: 2px solid #ff0000; padding-bottom: 10px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th { background: #39ff14; color: black; padding: 10px; border: 1px solid black; font-size: 12px; }
+            td { padding: 10px; border: 1px solid #ddd; font-size: 11px; text-align: center; }
+        </style></head><body>
+            <h1>🔱 APEX PULSE PRO: ТВОЯТ РЕЖИМ</h1>
+            ${lastTable.outerHTML}
+            <p style="font-size: 9px; color: #888; margin-top: 30px;">FEEL THE PULSE. REACH THE APEX.</p>
+        </body></html>`;
+
+    doc.write(tableHtml);
+    doc.close();
+
+    // Даваме малко време на браузъра да зареди съдържанието в iframe-а
+    setTimeout(() => {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+        document.body.removeChild(iframe);
+    }, 500);
+}
 
         function showLegal(type) {
             const modal = document.getElementById('legal-modal');
