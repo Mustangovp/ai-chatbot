@@ -3,55 +3,38 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>APEX PULSE | PRO VERSION</title>
+    <title>APEX PULSE PRO</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700&family=Inter:wght@400;700&display=swap" rel="stylesheet">
     <style>
         :root { --vh: 1vh; --neon-red: #ff0000; --matrix-green: #39ff14; }
-        body { background: #000; color: #fff; font-family: 'Inter', sans-serif; height: calc(var(--vh) * 100); overflow: hidden; margin: 0; }
+        body { background: #000; color: #fff; font-family: 'Inter', sans-serif; height: calc(var(--vh) * 100); overflow: hidden; margin: 0; display: flex; flex-direction: column; }
+        .app-wrapper { flex: 1; display: flex; flex-direction: column; position: relative; background: radial-gradient(circle at center, #150000 0%, #000 100%); overflow: hidden; }
+        
+        /* ТАБЛИЦИ - ПРЕМИУМ ИЗГЛЕД */
+        .msg-ai table { width: 100%; border-collapse: collapse; margin: 15px 0; border: 1px solid var(--matrix-green); font-size: 10px; background: rgba(0,0,0,0.6); }
+        .msg-ai th { background: var(--matrix-green); color: #000; padding: 10px; text-transform: uppercase; font-family: 'Orbitron'; }
+        .msg-ai td { border: 1px solid rgba(57, 255, 20, 0.2); color: #e0e0e0; padding: 10px; text-align: center; }
 
-        .app-wrapper { height: 100%; display: flex; flex-direction: column; position: relative; background: radial-gradient(circle at center, #150000 0%, #000 100%); }
+        #chat-box { flex-grow: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 20px; z-index: 1; }
+        .msg-ai { background: rgba(20, 20, 20, 0.85); border-left: 3px solid var(--neon-red); border-radius: 0 20px 20px 20px; padding: 18px; max-width: 92%; backdrop-filter: blur(10px); }
+        .msg-user { background: linear-gradient(135deg, #ff0000 0%, #800000 100%); border-radius: 20px 20px 0 20px; padding: 12px 18px; max-width: 85%; align-self: flex-end; font-weight: 700; }
 
-        /* ПУЛСИРАЩО ЛОГО НА ФОН */
-        .bg-logo-watermark { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 85%; opacity: 0.08; pointer-events: none; z-index: 0; animation: pulse 8s infinite ease-in-out; }
-        @keyframes pulse { 0%, 100% { transform: translate(-50%, -50%) scale(1); } 50% { transform: translate(-50%, -50%) scale(1.05); } }
-
-        /* ЧАТ ЗОНА */
-        #chat-box { flex-grow: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 20px; position: relative; z-index: 1; }
-
-        /* ПРЕМИУМ ИНТРО КАРТА */
-        .welcome-card { background: rgba(255, 0, 0, 0.05); border: 1px solid var(--neon-red); padding: 25px; border-radius: 24px; backdrop-filter: blur(10px); box-shadow: 0 0 30px rgba(255, 0, 0, 0.2); }
-
-        /* СЪОБЩЕНИЯ */
-        .msg-ai { background: rgba(20, 20, 20, 0.8); border-left: 4px solid var(--neon-red); border-radius: 0 20px 20px 20px; padding: 18px; max-width: 92%; backdrop-filter: blur(10px); border: 1px solid rgba(255,0,0,0.1); }
-        .msg-user { background: linear-gradient(135deg, #ff0000 0%, #800000 100%); border-radius: 20px 20px 0 20px; padding: 12px 18px; max-width: 85%; align-self: flex-end; font-weight: 700; box-shadow: 0 5px 15px rgba(255,0,0,0.3); }
-
-        /* НЕОНОВО ЗЕЛЕНИ ТАБЛИЦИ (DATA LOOK) */
-        .msg-ai table { width: 100%; border-collapse: collapse; margin: 15px 0; border: 1px solid var(--matrix-green); font-family: 'Orbitron', sans-serif; background: rgba(0, 20, 0, 0.4); }
-        .msg-ai th { background: var(--matrix-green); color: #000; padding: 8px; font-size: 9px; text-transform: uppercase; }
-        .msg-ai td { border: 1px solid rgba(57, 255, 20, 0.2); color: var(--matrix-green); padding: 8px; text-align: center; font-size: 10px; text-shadow: 0 0 5px var(--matrix-green); }
-
-        /* PAYWALL */
         #paywall { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.98); z-index: 1000; flex-direction: column; align-items: center; justify-content: center; padding: 25px; }
-        .premium-card { background: #0a0a0a; border: 2px solid var(--neon-red); padding: 40px; border-radius: 40px; text-align: center; box-shadow: 0 0 60px rgba(255,0,0,0.4); width: 100%; max-width: 340px; }
+        .premium-card { background: #0a0a0a; border: 1px solid var(--neon-red); padding: 40px; border-radius: 40px; text-align: center; box-shadow: 0 0 50px rgba(255,0,0,0.4); width: 100%; max-width: 340px; }
 
-        /* INPUT AREA */
-        .input-container { background: rgba(10, 10, 10, 0.9); padding: 20px; border-t: 1px solid rgba(255,255,255,0.05); }
+        #legal-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 2000; flex-direction: column; padding: 30px; overflow-y: auto; }
     </style>
 </head>
 <body>
 
     <div class="app-wrapper">
-        <img src="{{ url_for('static', filename='logo.png') }}" class="bg-logo-watermark">
-
-        <header class="p-5 flex items-center justify-between border-b border-red-900/20 bg-black/40 backdrop-blur-md z-10">
+        <header class="p-5 flex items-center justify-between border-b border-red-900/20 bg-black/40 z-10">
             <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-full border border-red-600 flex items-center justify-center bg-black">
-                    <img src="{{ url_for('static', filename='logo.png') }}" class="w-6 h-6 object-contain">
-                </div>
+                <img src="{{ url_for('static', filename='logo.png') }}" class="w-10 h-10 object-contain rounded-full border border-red-600">
                 <div>
-                    <h1 class="text-red-600 font-bold tracking-[3px] text-sm uppercase font-['Orbitron']">APEX PULSE PRO</h1>
+                    <h1 class="text-red-600 font-bold tracking-[3px] text-xs uppercase font-['Orbitron']">APEX PULSE PRO</h1>
                     <p id="counter" class="text-[8px] text-gray-500 font-bold uppercase tracking-[2px]">3 Сесии Остават</p>
                 </div>
             </div>
@@ -59,48 +42,38 @@
 
         <div id="chat-box"></div>
 
-        <footer class="input-container z-10">
-            <div class="flex items-center gap-3 bg-white/5 rounded-2xl p-1.5 border border-white/10 focus-within:border-red-600 transition-all">
-                <input type="text" id="user-in" class="flex-1 bg-transparent py-3 px-4 text-sm outline-none text-white" placeholder="Въведи своята цел тук...">
-                <button onclick="send()" class="bg-red-600 p-4 rounded-xl active:scale-95 transition-transform">
-                    <svg class="h-5 w-5 fill-white" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-                </button>
+        <footer class="p-4 bg-black/80 z-10 border-t border-white/5">
+            <div class="flex items-center gap-3 bg-white/5 rounded-2xl p-1.5 border border-white/10 focus-within:border-red-600">
+                <input type="text" id="user-in" class="flex-1 bg-transparent py-3 px-4 text-sm outline-none text-white" placeholder="Цел на тренировката...">
+                <button onclick="send()" class="bg-red-600 p-4 rounded-xl active:scale-95"><svg class="h-5 w-5 fill-white" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></button>
             </div>
         </footer>
+
+        <div class="p-2 text-[8px] text-gray-700 flex justify-center gap-3 bg-black">
+            <span onclick="showLegal('terms')" class="cursor-pointer hover:text-red-500">ОБЩИ УСЛОВИЯ</span>
+            <span onclick="showLegal('privacy')" class="cursor-pointer hover:text-red-500">ПОВЕРИТЕЛНОСТ</span>
+        </div>
     </div>
 
     <div id="paywall">
         <div class="premium-card">
-            <h4 class="text-red-600 font-bold text-[10px] uppercase tracking-widest mb-2">Limit Reached</h4>
-            <h2 class="text-2xl font-bold mb-4 uppercase">ОТКЛЮЧИ ЯДРОТО</h2>
-            <div class="text-5xl font-black mb-2">1.99€</div>
-            <p class="text-[10px] text-gray-500 mb-8 uppercase italic">По-евтино от кафе. По-ценно от злато.</p>
-            <button onclick="location.reload()" class="w-full bg-red-600 py-4 rounded-2xl font-bold uppercase shadow-lg shadow-red-600/30">Активирай Елитен Достъп</button>
+            <h2 class="text-2xl font-bold mb-4 uppercase font-['Orbitron']">LIMIT REACHED</h2>
+            <div class="text-5xl font-black mb-2 tracking-tighter">1.99€</div>
+            <p class="text-[10px] text-gray-500 mb-8 uppercase tracking-widest">Елитен AI достъп</p>
+            <button onclick="pay()" class="w-full bg-red-600 py-4 rounded-2xl font-bold uppercase shadow-lg shadow-red-600/20">ОТКЛЮЧИ СЕГА</button>
         </div>
     </div>
 
-    <script>
-        const setHeight = () => { document.documentElement.style.setProperty('--vh', `${window.innerHeight * 0.01}px`); };
-        window.addEventListener('resize', setHeight); setHeight();
+    <div id="legal-modal" onclick="this.style.display='none'">
+        <div class="text-gray-300 text-xs" id="legal-text"></div>
+    </div>
 
+    <script>
         let count = 0;
         const box = document.getElementById('chat-box');
 
         window.onload = () => {
-            const introHTML = `
-                <div class="welcome-card">
-                    <h2 class="text-red-600 font-bold text-center mb-4 font-['Orbitron']">ДОБРЕ ДОШЪЛ В APEX PULSE PRO 🔱</h2>
-                    <p class="text-gray-300 text-xs leading-relaxed">
-                        Ти активира пробен достъп до най-мощния AI треньор. Тук не просто тренираме – тук оптимизираме.
-                        <br><br>
-                        ⚡ <b>Data-Driven</b> режими<br>
-                        ⚡ <b>Elite</b> програмиране
-                    </p>
-                </div>
-            `;
-            const div = document.createElement('div');
-            div.innerHTML = introHTML;
-            box.appendChild(div);
+            appendMsg("### СИСТЕМАТА Е АКТИВНА 🔱\nДобре дошъл в **APEX PULSE PRO**. Готов ли си за трансформация?", 'ai');
         };
 
         async function send() {
@@ -108,23 +81,22 @@
             const val = input.value.trim();
             if(!val) return;
             if(count >= 3) { document.getElementById('paywall').style.display = 'flex'; return; }
-
+            
             appendMsg(val, 'user');
-            input.value = '';
-            count++;
+            input.value = ''; count++;
             document.getElementById('counter').innerText = `${3 - count} Сесии Остават`;
 
             try {
-                const res = await fetch("/chat", {
-                    method: "POST",
-                    headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({ message: val })
-                });
+                const res = await fetch("/chat", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({ message: val }) });
                 const data = await res.json();
                 appendMsg(data.reply, 'ai');
-            } catch(e) {
-                appendMsg("Грешка при връзката с ядрото. Провери сървъра. ⚡", 'ai');
-            }
+            } catch(e) { appendMsg("Грешка в ядрото. ⚡", 'ai'); }
+        }
+
+        async function pay() {
+            const res = await fetch("/create-checkout-session", { method: "POST" });
+            const data = await res.json();
+            window.location.href = data.url;
         }
 
         function appendMsg(text, type) {
@@ -134,7 +106,13 @@
             box.appendChild(div);
             box.scrollTop = box.scrollHeight;
         }
-        document.getElementById('user-in').addEventListener('keypress', (e) => { if(e.key === 'Enter') send(); });
+
+        function showLegal(type) {
+            const modal = document.getElementById('legal-modal');
+            const text = document.getElementById('legal-text');
+            text.innerHTML = type === 'terms' ? "<h1>ОБЩИ УСЛОВИЯ</h1><p>Услугата е дигитална...</p>" : "<h1>ПОВЕРИТЕЛНОСТ</h1><p>Данните са защитени...</p>";
+            modal.style.display = 'flex';
+        }
     </script>
 </body>
 </html>
