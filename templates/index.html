@@ -13,42 +13,39 @@
 
         .app-wrapper { flex: 1; display: flex; flex-direction: column; position: relative; background: #000; overflow: hidden; }
 
-        /* ФИКС ЗА ЛОГОТО НА ЗАДЕН ПЛАН */
+        /* ФОНОВО ЛОГО - ТУК ГО ПРАВИМ ВИДИМО */
         .bg-logo { 
-            position: absolute; 
-            top: 50%; 
-            left: 50%; 
-            transform: translate(-50%, -50%); 
-            width: 85%; 
-            opacity: 0.15 !important; /* Увеличена видимост */
-            z-index: 0; 
-            pointer-events: none; 
-            filter: grayscale(1) brightness(0.8);
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+            width: 85%; opacity: 0.15; z-index: 0; pointer-events: none; 
         }
 
         #chat-box { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 20px; z-index: 1; position: relative; }
         
-        /* ТАБЛИЦИ - PRO LOOK */
+        /* СТИЛ НА ТАБЛИЦИТЕ */
         .msg-ai table { width: 100%; border-collapse: collapse; margin: 15px 0; border: 2px solid var(--matrix); background: rgba(0, 10, 0, 0.9); }
-        .msg-ai th { background: var(--matrix); color: #000; padding: 12px 8px; text-transform: uppercase; font-size: 10px; font-family: 'Orbitron'; border: 1px solid #000; }
-        .msg-ai td { border: 1px solid rgba(57, 255, 20, 0.4); color: #fff; padding: 10px 6px; text-align: center; font-size: 11px; }
+        .msg-ai th { background: var(--matrix); color: #000; padding: 10px; text-transform: uppercase; font-size: 10px; font-family: 'Orbitron'; border: 1px solid #000; }
+        .msg-ai td { border: 1px solid rgba(57, 255, 20, 0.4); color: #fff; padding: 10px; text-align: center; font-size: 11px; }
 
-        .msg-ai { background: rgba(20, 20, 20, 0.95); border-left: 4px solid var(--neon); border-radius: 0 20px 20px 20px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); backdrop-filter: blur(5px); }
+        .msg-ai { background: rgba(20, 20, 20, 0.95); border-left: 4px solid var(--neon); border-radius: 0 20px 20px 20px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
         .msg-user { background: linear-gradient(135deg, #ff0000 0%, #800000 100%); border-radius: 20px 20px 0 20px; padding: 14px 20px; align-self: flex-end; font-weight: 700; }
 
         /* ИНТРО КАРТА */
         .welcome-card { border: 2px solid var(--neon); background: rgba(255, 0, 0, 0.05); padding: 25px; border-radius: 24px; text-align: center; box-shadow: 0 0 20px rgba(255, 0, 0, 0.2); }
 
+        /* ИНСТРУМЕНТИ (LOCKED) */
+        .locked-tools { opacity: 0.2; filter: grayscale(1); pointer-events: none; transition: all 0.5s ease; }
+
         /* FOOTER */
         .legal-footer { background: #080808; padding: 15px; text-align: center; border-top: 1px solid #222; z-index: 10; }
         .legal-footer a { color: #bbb; font-size: 10px; margin: 0 12px; text-transform: uppercase; font-weight: bold; text-decoration: underline; cursor: pointer; }
-        .legal-copy { font-size: 9px; color: #555; margin-top: 8px; letter-spacing: 1px; }
+        .legal-copy { font-size: 9px; color: #555; margin-top: 8px; }
 
+        /* MODALS */
         #legal-modal { display: none; position: fixed; inset: 0; background: #000; z-index: 2000; flex-direction: column; padding: 40px; overflow-y: auto; }
-        .modal-close { color: var(--neon); font-family: 'Orbitron'; margin-bottom: 20px; font-weight: bold; border: 1px solid var(--neon); padding: 10px; width: fit-content; cursor: pointer; }
+        .modal-close { color: var(--neon); font-family: 'Orbitron'; margin-bottom: 20px; font-weight: bold; border: 1px solid var(--neon); padding: 10px; cursor: pointer; width: fit-content; }
 
         #paywall { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.98); z-index: 1000; flex-direction: column; align-items: center; justify-content: center; padding: 25px; }
-        .premium-card { background: #0a0a0a; border: 2px solid var(--neon); padding: 40px; border-radius: 40px; text-align: center; max-width: 340px; width: 100%; box-shadow: 0 0 50px rgba(255,0,0,0.4); }
+        .premium-card { background: #0a0a0a; border: 2px solid var(--neon); padding: 40px; border-radius: 40px; text-align: center; max-width: 340px; width: 100%; }
     </style>
 </head>
 <body>
@@ -61,17 +58,25 @@
                 <img src="{{ url_for('static', filename='logo.png') }}" class="w-8 h-8 rounded-full border border-red-600">
                 <div>
                     <h1 class="text-red-600 font-bold tracking-[2px] text-xs uppercase font-['Orbitron']">APEX PULSE PRO</h1>
-                    <p id="counter" class="text-[7px] text-gray-400 font-bold uppercase tracking-widest">3 Сесии Остават</p>
+                    <p id="counter" class="text-[7px] text-gray-400 font-bold uppercase tracking-widest">● 3 Сесии Остават</p>
                 </div>
             </div>
         </header>
 
         <div id="chat-box"></div>
 
+        <div id="utility" class="px-6 py-2 flex flex-col gap-2 bg-black/80 z-10 hidden">
+            <div id="tool-lock" class="flex gap-2 locked-tools">
+                <button onclick="copyToClipboard()" class="flex-1 bg-white/5 border border-white/10 py-3 rounded-xl text-[9px] font-bold uppercase">📋 Копирай плана</button>
+                <button onclick="window.print()" class="flex-1 bg-white/5 border border-white/10 py-3 rounded-xl text-[9px] font-bold uppercase">💾 Запази като PDF</button>
+            </div>
+            <button onclick="document.getElementById('paywall').style.display='flex'" class="unlock-info-btn text-[8px] text-red-500 font-bold uppercase tracking-tighter text-center mt-1">🔓 Отключи инструментите за 1.99€</button>
+        </div>
+
         <footer class="p-4 bg-black z-10">
-            <div class="flex items-center gap-2 bg-neutral-900 rounded-2xl p-1 border border-white/10 focus-within:border-red-600 transition-all shadow-lg">
+            <div class="flex items-center gap-2 bg-neutral-900 rounded-2xl p-1 border border-white/10 focus-within:border-red-600">
                 <input type="text" id="user-in" class="flex-1 bg-transparent py-3 px-4 text-sm outline-none text-white" placeholder="Напиши целта си тук...">
-                <button onclick="send()" class="bg-red-600 p-4 rounded-xl shadow-lg active:scale-90 transition-transform"><svg class="h-5 w-5 fill-white" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></button>
+                <button onclick="send()" class="bg-red-600 p-4 rounded-xl shadow-lg active:scale-90"><svg class="h-5 w-5 fill-white" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg></button>
             </div>
         </footer>
 
@@ -79,24 +84,25 @@
             <a onclick="showLegal('terms')">Общи Условия</a>
             <a onclick="showLegal('privacy')">Поверителност</a>
             <a onclick="showLegal('contact')">Контакт</a>
-            <div class="legal-copy uppercase tracking-tighter">© 2026 APEX PULSE PRO. SECURE PAYMENTS BY STRIPE.</div>
+            <div class="legal-copy uppercase tracking-tighter opacity-30">© 2026 APEX PULSE PRO. SECURE PAYMENTS BY STRIPE.</div>
         </div>
     </div>
 
     <div id="paywall">
         <div class="premium-card">
-            <h2 class="text-red-600 font-bold mb-4 font-['Orbitron'] tracking-tighter">ELITE UNLOCK</h2>
+            <h2 class="text-red-600 font-bold mb-4 font-['Orbitron']">ELITE UNLOCK</h2>
             <div class="text-5xl font-black mb-2 text-white">1.99€</div>
             <p class="text-[11px] text-white font-bold mb-1 uppercase tracking-widest">ПЪЛЕН ДОСТЪП ЗА 30 ДНИ</p>
-            <p class="text-[9px] text-gray-500 mb-8 px-6 leading-relaxed uppercase">Неограничени планове, тренировки и AI поддръжка за един месец.</p>
-            <button onclick="pay()" class="w-full bg-red-600 py-5 rounded-2xl font-bold uppercase shadow-lg shadow-red-600/40 active:scale-95 transition-all">ОТКЛЮЧИ СЕГА</button>
+            <p class="text-[9px] text-gray-500 mb-8 px-6">Неограничени планове, тренировки и AI поддръжка за един месец.</p>
+            <button onclick="pay()" class="w-full bg-red-600 py-5 rounded-2xl font-bold uppercase shadow-lg shadow-red-600/40">ОТКЛЮЧИ СЕГА</button>
             <p class="text-[7px] text-gray-700 mt-6 uppercase">Еднократно плащане. Без автоматични абонаменти.</p>
+            <button onclick="document.getElementById('paywall').style.display='none'" class="mt-4 text-[8px] text-gray-500 uppercase underline">Върни се в чата</button>
         </div>
     </div>
 
     <div id="legal-modal">
         <div onclick="this.parentElement.style.display='none'" class="modal-close">✕ ЗАТВОРИ</div>
-        <div id="legal-content" class="text-gray-300 text-xs leading-relaxed font-light"></div>
+        <div id="legal-content" class="text-gray-300 text-xs leading-relaxed"></div>
     </div>
 
     <script>
@@ -106,11 +112,23 @@
         let count = 0;
         const box = document.getElementById('chat-box');
 
+        // ПРОВЕРКА ЗА ПЛАЩАНЕ В ЛИНКА
         window.onload = () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const isPaid = urlParams.get('success') === 'true';
+
+            if (isPaid) {
+                count = -999999;
+                document.getElementById('tool-lock').classList.remove('locked-tools');
+                document.querySelector('.unlock-info-btn').style.display = 'none';
+                document.getElementById('counter').innerText = "● ELITE STATUS: ACTIVE";
+                document.getElementById('counter').style.color = "#39ff14";
+            }
+
             const introHTML = `
                 <div class="welcome-card">
-                    <h2 class="text-red-600 font-bold mb-4 font-['Orbitron'] text-lg">ДОБРЕ ДОШЪЛ В APEX PULSE PRO 🔱</h2>
-                    <p class="text-white text-sm mb-4">Аз съм твоят дигитален Рони Колман. Тук извиненията умират.</p>
+                    <h2 class="text-red-600 font-bold mb-4 font-['Orbitron'] text-lg uppercase">Добре дошъл в APEX PULSE PRO 🔱</h2>
+                    <p class="text-white text-sm mb-4 font-bold">Аз съм твоят дигитален Рони Колман. Тук извиненията умират.</p>
                     <div class="text-left space-y-2 text-xs text-gray-200">
                         <p>🥩 **Елитно хранене:** Макроси до последното зрънце. 🥗</p>
                         <p>🏋️ **Тренировки:** Програми, от които тежестите треперят. 💥</p>
@@ -119,9 +137,7 @@
                     <p class="text-red-500 font-bold mt-4 text-[10px] uppercase tracking-widest">Имаш 3 безплатни сесии. Дай газ! 🚀</p>
                 </div>
             `;
-            const div = document.createElement('div');
-            div.innerHTML = introHTML;
-            box.appendChild(div);
+            appendIntro(introHTML);
         };
 
         async function send() {
@@ -131,14 +147,16 @@
             if(count >= 3) { document.getElementById('paywall').style.display = 'flex'; return; }
             
             appendMsg(val, 'user');
-            input.value = ''; count++;
-            document.getElementById('counter').innerText = `${3 - count} Сесии Остават`;
+            input.value = ''; 
+            if(count >= 0) count++;
+            if(count > 0) document.getElementById('counter').innerText = `● ${3 - count} Сесии Остават`;
 
             try {
                 const res = await fetch("/chat", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({ message: val }) });
                 const data = await res.json();
                 appendMsg(data.reply, 'ai');
-            } catch(e) { appendMsg("Грешка в ядрото. ⚡", 'ai'); }
+                document.getElementById('utility').classList.remove('hidden');
+            } catch(e) { appendMsg("Грешка в системата. ⚡", 'ai'); }
         }
 
         async function pay() {
@@ -155,31 +173,26 @@
             box.scrollTop = box.scrollHeight;
         }
 
+        function appendIntro(html) {
+            const div = document.createElement('div');
+            div.innerHTML = html;
+            box.appendChild(div);
+        }
+
+        function copyToClipboard() {
+            const lastMsg = document.querySelector('.msg-ai:last-child');
+            if (lastMsg) {
+                navigator.clipboard.writeText(lastMsg.innerText);
+                alert("Планът е копиран! 🔥");
+            }
+        }
+
         function showLegal(type) {
             const modal = document.getElementById('legal-modal');
             const content = document.getElementById('legal-content');
-            if(type === 'terms') {
-                content.innerHTML = `
-                    <h1 class='text-red-600 text-lg mb-4'>ОБЩИ УСЛОВИЯ</h1>
-                    <p>1. ПРЕДМЕТ: APEX PULSE PRO предоставя дигитален достъп до AI софтуер за персонализирани съвети.</p>
-                    <p>2. ПЛАЩАНЕ: Цената от 1.99€ е за 30-дневен период. Това НЕ е автоматичен абонамент.</p>
-                    <p>3. ОГРАНИЧЕНИЕ: Услугата е само за информационни цели. Не замества лекарски съвет.</p>
-                    <p>4. ДОСТАВКА: Достъпът се предоставя веднага след успешно плащане чрез Stripe.</p>`;
-            }
-            if(type === 'privacy') {
-                content.innerHTML = `
-                    <h1 class='text-red-600 text-lg mb-4'>ПОВЕРИТЕЛНОСТ</h1>
-                    <p>1. ДАННИ: Ние не съхраняваме банкова информация. Всички плащания преминават през Stripe.</p>
-                    <p>2. ИЗПОЛЗВАНЕ: Вашите данни от чата се използват само за генериране на плановете Ви.</p>
-                    <p>3. КУКИТА: Използваме само системни бисквитки за поддържане на Вашата сесия.</p>`;
-            }
-            if(type === 'contact') {
-                content.innerHTML = `
-                    <h1 class='text-red-600 text-lg mb-4'>КОНТАКТ</h1>
-                    <p>За въпроси, техническа поддръжка или рекламации:</p>
-                    <p class='mt-4'>📧 Емейл: support@apexpulse.pro</p>
-                    <p>📍 Адрес: Дигитална услуга, ЕС</p>`;
-            }
+            if(type === 'terms') content.innerHTML = "<h2 class='text-red-600 font-bold mb-4 uppercase'>Общи Условия</h2><p>Услугата предоставя AI-генерирани фитнес съвети. Плащането от 1.99€ отключва 30-дневен достъп. Без автоматични абонаменти.</p>";
+            if(type === 'privacy') content.innerHTML = "<h2 class='text-red-600 font-bold mb-4 uppercase'>Поверителност</h2><p>Плащанията се обработват сигурно от Stripe. Вашата банкова информация не се съхранява от нас.</p>";
+            if(type === 'contact') content.innerHTML = "<h2 class='text-red-600 font-bold mb-4 uppercase'>Контакт</h2><p>За въпроси: support@apexpulse.pro. Отговор до 24 часа.</p>";
             modal.style.display = 'flex';
         }
     </script>
