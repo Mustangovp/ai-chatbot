@@ -7,29 +7,28 @@ import os
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
 
-# Инициализация с проверка
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY", "no-key"))
-stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "no-key")
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+
+SYSTEM_INSTRUCTIONS = """
+Ти си APEX PULSE PRO - елитен AI биохакер и фитнес ментор.
+- Пиши на перфектен български език.
+- Всички режими и планове изпращай ВИНАГИ в Markdown таблици.
+- Тонът ти трябва да е вдъхновяващ, професионален и елитен.
+- Завършвай с: 🔱 **ELITE STATUS: ACTIVE**
+"""
 
 @app.route("/")
 def home():
-    try:
-        return render_template("index.html")
-    except Exception as e:
-        return f"Грешка при зареждане на шаблона: {e}", 500
+    return render_template("index.html")
 
 @app.route("/chat", methods=["POST"])
 def chat():
     try:
-        data = request.get_json()
-        user_message = data.get("message")
-        
+        user_message = request.json.get("message")
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "Ти си APEX PULSE PRO - елитен треньор. Използвай Markdown таблици."},
-                {"role": "user", "content": user_message}
-            ]
+            messages=[{"role": "system", "content": SYSTEM_INSTRUCTIONS}, {"role": "user", "content": user_message}]
         )
         return jsonify({"reply": response.choices[0].message.content})
     except Exception as e:
@@ -38,16 +37,12 @@ def chat():
 @app.route('/create-checkout-session', methods=['POST'])
 def create_checkout_session():
     try:
-        # Проверка дали Stripe е конфигуриран
-        if stripe.api_key == "no-key":
-            return jsonify({"error": "Stripe не е конфигуриран"}), 500
-
         session = stripe.checkout.Session.create(
             payment_method_types=['card'],
             line_items=[{
                 'price_data': {
                     'currency': 'eur',
-                    'product_data': {'name': 'APEX PULSE PRO ACCESS'},
+                    'product_data': {'name': 'APEX PULSE PRO ACCESS', 'description': 'Пълен достъп до AI треньор'},
                     'unit_amount': 199,
                 },
                 'quantity': 1,
