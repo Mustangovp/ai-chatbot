@@ -7,15 +7,17 @@ import os
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
 
-# Ключове (увери се, че са в Railway Variables)
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
 SYSTEM_INSTRUCTIONS = """
-Ти си APEX PULSE PRO - елитен AI биохакер и фитнес ментор.
-- Пиши на перфектен български език.
-- Всички режими и планове изпращай ВИНАГИ в Markdown таблици.
-- Тонът ти е "Luxury Performance" – мотивиращ и професионален.
+Ти си APEX PULSE PRO - елитен AI биохакер. 
+ПРАВИЛА ЗА ПИСАНЕ:
+- Използвай ПЕРФЕКТЕН БЪЛГАРСКИ. 
+- ЗАБРАНЕНО Е използването на несъществуващи думи (напр. вместо 'минете' използвай 'напади', 'гребане' или 'преси').
+- ПРОВЕРЯВАЙ всяко упражнение дали е изписано правилно преди да го изпратиш.
+- Използвай Markdown таблици.
+- Тонът ти е "Luxury Performance".
 - Завършвай с: 🔱 **ELITE STATUS: ACTIVE**
 """
 
@@ -38,17 +40,13 @@ def chat():
 @app.route('/create-checkout-session', methods=['POST'])
 def create_checkout_session():
     try:
-        # Автоматично генериране на URL адресите спрямо хоста
         host_url = "https://" + request.host
         session = stripe.checkout.Session.create(
             payment_method_types=['card'],
             line_items=[{
                 'price_data': {
                     'currency': 'eur',
-                    'product_data': {
-                        'name': 'APEX PULSE ELITE PRO - 30 Дни',
-                        'description': 'Пълен неограничен достъп до AI ментор, планове и инструменти.',
-                    },
+                    'product_data': {'name': 'APEX PULSE ELITE PRO - 30 Дни'},
                     'unit_amount': 199,
                 },
                 'quantity': 1,
