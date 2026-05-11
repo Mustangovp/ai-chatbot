@@ -65,12 +65,11 @@ def chat():
 
 @app.route('/create-checkout-session', methods=['POST'])
 def create_checkout_session():
-    """Генерира Stripe Checkout сесия за 30-дневен достъп."""
-    if not stripe.api_key:
-        return jsonify({"error": "Платежната система не е конфигурирана."}), 500
-        
     try:
-        # Създаваме сесия за плащане на 1.99 EUR
+        # Взимаме базовия адрес на твоя сайт (напр. https://4727.up.railway.app)
+        # Използваме 'https', защото Stripe изисква защитена връзка
+        host_url = "https://" + request.host 
+        
         session = stripe.checkout.Session.create(
             payment_method_types=['card'],
             line_items=[{
@@ -78,21 +77,21 @@ def create_checkout_session():
                     'currency': 'eur',
                     'product_data': {
                         'name': 'APEX PULSE ELITE PRO - 30 Дни',
-                        'description': 'Пълен неограничен достъп до AI ментор, персонализирани режими и биохакинг за един месец.',
+                        'description': 'Пълен неограничен достъп до AI ментор.',
                     },
-                    'unit_amount': 199, # 1.99 EUR в центове
+                    'unit_amount': 199,
                 },
                 'quantity': 1,
             }],
             mode='payment',
-            # След успешно плащане Stripe връща потребителя тук
-            success_url=request.host_url + '?payment=success',
-            cancel_url=request.host_url + '?payment=cancel',
+            # Ето тук добавяме "success=true" ръчно към линка
+            success_url=host_url + '/?success=true',
+            cancel_url=host_url + '/?success=false',
         )
         return jsonify({'url': session.url})
-    
     except Exception as e:
-        print(f"Stripe грешка: {e}")
+        # Принтираме грешката в лога на Railway, за да я виждаш
+        print(f"Stripe Error: {e}")
         return jsonify(error=str(e)), 403
 
 if __name__ == "__main__":
