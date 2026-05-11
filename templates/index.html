@@ -103,7 +103,10 @@
 
         window.onload = () => {
             const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.get('success') === 'true') {
+            
+            // НОВО: Проверка за съществуващо плащане в паметта или нов успех
+            if (urlParams.get('success') === 'true' || localStorage.getItem('isElitePulse') === 'true') {
+                localStorage.setItem('isElitePulse', 'true'); // Запомняме в браузъра
                 count = -999999;
                 document.getElementById('tool-lock').classList.remove('locked-tools');
                 if(document.querySelector('.unlock-info-btn')) document.querySelector('.unlock-info-btn').style.display = 'none';
@@ -170,44 +173,42 @@
             }
         }
 
+        // НОВО: Оправена функция за PDF (само таблицата)
         function saveAsPDF() {
-    const lastTable = document.querySelector('.msg-ai:last-child table');
-    if (!lastTable) { alert("Първо генерирай режим!"); return; }
+            const lastMsg = document.querySelector('.msg-ai:last-child');
+            const table = lastMsg ? lastMsg.querySelector('table') : null;
+            
+            if (!table) { alert("Първо генерирай режим с таблица!"); return; }
 
-    // Създаваме скрит iframe за печат
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = '0';
-    document.body.appendChild(iframe);
-
-    const doc = iframe.contentWindow.document;
-    const tableHtml = `
-        <html><head><style>
-            body { font-family: sans-serif; padding: 20px; text-align: center; }
-            h1 { color: #ff0000; text-transform: uppercase; border-bottom: 2px solid #ff0000; padding-bottom: 10px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-            th { background: #39ff14; color: black; padding: 10px; border: 1px solid black; font-size: 12px; }
-            td { padding: 10px; border: 1px solid #ddd; font-size: 11px; text-align: center; }
-        </style></head><body>
-            <h1>🔱 APEX PULSE PRO: ТВОЯТ РЕЖИМ</h1>
-            ${lastTable.outerHTML}
-            <p style="font-size: 9px; color: #888; margin-top: 30px;">FEEL THE PULSE. REACH THE APEX.</p>
-        </body></html>`;
-
-    doc.write(tableHtml);
-    doc.close();
-
-    // Даваме малко време на браузъра да зареди съдържанието в iframe-а
-    setTimeout(() => {
-        iframe.contentWindow.focus();
-        iframe.contentWindow.print();
-        document.body.removeChild(iframe);
-    }, 500);
-}
+            const printWindow = window.open('', '_blank');
+            printWindow.document.write(`
+                <html>
+                <head>
+                    <title>APEX PULSE PRO - РЕЖИМ</title>
+                    <style>
+                        body { font-family: sans-serif; padding: 30px; text-align: center; color: #000; background: #fff; }
+                        h1 { color: #ff0000; text-transform: uppercase; border-bottom: 3px solid #ff0000; padding-bottom: 10px; margin-bottom: 20px; }
+                        table { width: 100%; border-collapse: collapse; margin-top: 20px; border: 2px solid #000; }
+                        th { background: #39ff14; color: black; padding: 12px; border: 1px solid black; text-transform: uppercase; font-size: 14px; }
+                        td { padding: 10px; border: 1px solid black; text-align: center; font-size: 13px; }
+                        .footer { margin-top: 40px; font-size: 10px; color: #888; border-top: 1px solid #eee; padding-top: 10px; }
+                    </style>
+                </head>
+                <body>
+                    <h1>🔱 APEX PULSE PRO: ТВОЯТ ЕЛИТЕН РЕЖИМ</h1>
+                    ${table.outerHTML}
+                    <div class="footer">Генерирано от apexpulse.pro - Feel the Pulse. Reach the Apex.</div>
+                    <script>
+                        window.onload = function() { 
+                            window.print(); 
+                            setTimeout(() => { window.close(); }, 300);
+                        }
+                    <\/script>
+                </body>
+                </html>
+            `);
+            printWindow.document.close();
+        }
 
         function showLegal(type) {
             const modal = document.getElementById('legal-modal');
