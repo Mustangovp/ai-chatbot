@@ -1,29 +1,22 @@
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from openai import OpenAI
+import stripe
 import os
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
 
-# Инициализация на клиента
+# Ключове от Environment Variables
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
-# ТОП ИНСТРУКЦИИ ЗА ЕЛИТЕН AI ТРЕНЬОР
 SYSTEM_INSTRUCTIONS = """
-Ти си APEX PULSE PRO - последно поколение AI за биохакинг, фитнес и трансформация.
-Твоята цел е да предоставиш преживяване за 200€ на цена от 1.99€.
-
-ПРАВИЛА:
-1. ПРАВОПИС: Пиши на перфектен, академичен български език. Без жаргон (освен фитнес терминология).
-2. ТАБЛИЦИ: Всички планове, макроси и графици ВИНАГИ се представят в Markdown таблици.
-3. ТОН: Тонът е "Luxury & High-Performance". Наричай потребителя "Атлет" или "Шампион".
-4. СТРУКТУРА: Използвай професионални термини (напр. "Хипертрофия", "Гликогенен синтез").
-5. ЕМОДЖИТА: Използвай 🔱, ⚡, 🔴 за акцент.
-6. ЗАВЪРШЕК: Всеки отговор завършва с:
----
-🔱 **ELITE STATUS: ACTIVE** 🔱
-*Feel the Pulse. Reach the Apex.*
+Ти си APEX PULSE PRO - елитен AI биохакер. 
+1. ПРАВОПИС: Перфектен български език.
+2. ТАБЛИЦИ: Използвай Markdown таблици за всички режими.
+3. ТОН: Авторитетен и мотивиращ.
+4. ЗАВЪРШЕК: 🔱 **ELITE STATUS: ACTIVE** 🔱
 """
 
 @app.route("/")
@@ -33,20 +26,38 @@ def home():
 @app.route("/chat", methods=["POST"])
 def chat():
     try:
-        user_data = request.json
-        user_message = user_data.get("message")
-        
+        user_message = request.json.get("message")
         response = client.chat.completions.create(
-            model="gpt-4o-mini", # Най-бързият и прецизен модел за случая
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": SYSTEM_INSTRUCTIONS},
                 {"role": "user", "content": user_message}
-            ],
-            temperature=0.7
+            ]
         )
         return jsonify({"reply": response.choices[0].message.content})
     except Exception as e:
-        return jsonify({"error": "Системата се оптимизира. Опитай отново. ⚡"}), 500
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/create-checkout-session', methods=['POST'])
+def create_checkout_session():
+    try:
+        session = stripe.checkout.Session.create(
+            payment_method_types=['card'],
+            line_items=[{
+                'price_data': {
+                    'currency': 'eur',
+                    'product_data': {'name': 'APEX PULSE PRO ACCESS'},
+                    'unit_amount': 199,
+                },
+                'quantity': 1,
+            }],
+            mode='payment',
+            success_url='https://' + request.host + '/?success=true',
+            cancel_url='https://' + request.host + '/?cancel=true',
+        )
+        return jsonify({'url': session.url})
+    except Exception as e:
+        return jsonify(error=str(e)), 403
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
