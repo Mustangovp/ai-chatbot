@@ -11,29 +11,20 @@
         :root { --vh: 1vh; --neon: #ff0000; --matrix: #39ff14; }
         body { background: #000; color: #fff; font-family: 'Inter', sans-serif; height: calc(var(--vh) * 100); overflow: hidden; margin: 0; display: flex; flex-direction: column; }
         .app-wrapper { flex: 1; display: flex; flex-direction: column; position: relative; background: #000; overflow: hidden; }
-
         .bg-logo { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 85%; opacity: 0.15; z-index: 0; pointer-events: none; filter: grayscale(1); }
-
         #chat-box { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 20px; z-index: 1; position: relative; }
-        
         .msg-ai table { width: 100%; border-collapse: collapse; margin: 15px 0; border: 2px solid var(--matrix); background: rgba(0, 10, 0, 0.9); }
         .msg-ai th { background: var(--matrix); color: #000; padding: 12px; text-transform: uppercase; font-size: 10px; font-family: 'Orbitron'; border: 1px solid #000; }
         .msg-ai td { border: 1px solid rgba(57, 255, 20, 0.4); color: #fff; padding: 10px; text-align: center; font-size: 11px; }
-
         .msg-ai { background: rgba(20, 20, 20, 0.95); border-left: 4px solid var(--neon); border-radius: 0 20px 20px 20px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
         .msg-user { background: linear-gradient(135deg, #ff0000 0%, #800000 100%); border-radius: 20px 20px 0 20px; padding: 14px 20px; align-self: flex-end; font-weight: 700; }
-
         .welcome-card { border: 2px solid var(--neon); background: rgba(255, 0, 0, 0.05); padding: 25px; border-radius: 24px; text-align: center; box-shadow: 0 0 20px rgba(255, 0, 0, 0.2); }
-
         .locked-tools { opacity: 0.2; filter: grayscale(1); pointer-events: none; transition: all 0.5s ease; }
-
         .legal-footer { background: #080808; padding: 15px; text-align: center; border-top: 1px solid #222; z-index: 20; flex-shrink: 0; position: relative; }
         .legal-footer a { color: #ffffff !important; font-size: 11px; margin: 0 10px; text-transform: uppercase; font-weight: bold; text-decoration: underline; cursor: pointer; }
         .legal-copy { font-size: 9px; color: #666; margin-top: 5px; }
-
         #legal-modal { display: none; position: fixed; inset: 0; background: #000; z-index: 2000; flex-direction: column; padding: 40px; overflow-y: auto; }
         .modal-close { color: var(--neon); font-family: 'Orbitron'; margin-bottom: 20px; font-weight: bold; border: 1px solid var(--neon); padding: 10px; cursor: pointer; width: fit-content; }
-
         #paywall { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.98); z-index: 1000; flex-direction: column; align-items: center; justify-content: center; padding: 25px; }
         .premium-card { background: #0a0a0a; border: 2px solid var(--neon); padding: 40px; border-radius: 40px; text-align: center; max-width: 340px; width: 100%; box-shadow: 0 0 50px rgba(255,0,0,0.5); }
     </style>
@@ -58,7 +49,7 @@
         <div id="utility" class="px-6 py-2 flex flex-col gap-2 bg-black/80 z-10 hidden">
             <div id="tool-lock" class="flex gap-2 locked-tools">
                 <button onclick="copyToClipboard()" class="flex-1 bg-white/5 border border-white/10 py-3 rounded-xl text-[9px] font-bold uppercase">📋 Копирай</button>
-                <button onclick="saveAsPDF()" class="flex-1 bg-white/5 border border-white/10 py-3 rounded-xl text-[9px] font-bold uppercase">💾 Запази (PDF)</button>
+                <button onclick="saveAsPDF()" class="flex-1 bg-white/5 border border-white/10 py-3 rounded-xl text-[9px] font-bold uppercase">💾 Изтегли План</button>
             </div>
             <p class="unlock-info-btn text-[8px] text-red-500 font-bold uppercase text-center mt-1">🔓 Отключи инструментите за 1.99€</p>
         </div>
@@ -104,9 +95,9 @@
         window.onload = () => {
             const urlParams = new URLSearchParams(window.location.search);
             
-            // НОВО: Проверка за съществуващо плащане в паметта или нов успех
+            // Запомняне на статус
             if (urlParams.get('success') === 'true' || localStorage.getItem('isElitePulse') === 'true') {
-                localStorage.setItem('isElitePulse', 'true'); // Запомняме в браузъра
+                localStorage.setItem('isElitePulse', 'true');
                 count = -999999;
                 document.getElementById('tool-lock').classList.remove('locked-tools');
                 if(document.querySelector('.unlock-info-btn')) document.querySelector('.unlock-info-btn').style.display = 'none';
@@ -173,41 +164,30 @@
             }
         }
 
-        // НОВО: Оправена функция за PDF (само таблицата)
+        // БРОНИРАНА ФУНКЦИЯ ЗА ИЗТЕГЛЯНЕ - Работи на всеки телефон!
         function saveAsPDF() {
             const lastMsg = document.querySelector('.msg-ai:last-child');
             const table = lastMsg ? lastMsg.querySelector('table') : null;
-            
-            if (!table) { alert("Първо генерирай режим с таблица!"); return; }
+            if (!table) { alert("Първо генерирай режим!"); return; }
 
-            const printWindow = window.open('', '_blank');
-            printWindow.document.write(`
-                <html>
-                <head>
-                    <title>APEX PULSE PRO - РЕЖИМ</title>
-                    <style>
-                        body { font-family: sans-serif; padding: 30px; text-align: center; color: #000; background: #fff; }
-                        h1 { color: #ff0000; text-transform: uppercase; border-bottom: 3px solid #ff0000; padding-bottom: 10px; margin-bottom: 20px; }
-                        table { width: 100%; border-collapse: collapse; margin-top: 20px; border: 2px solid #000; }
-                        th { background: #39ff14; color: black; padding: 12px; border: 1px solid black; text-transform: uppercase; font-size: 14px; }
-                        td { padding: 10px; border: 1px solid black; text-align: center; font-size: 13px; }
-                        .footer { margin-top: 40px; font-size: 10px; color: #888; border-top: 1px solid #eee; padding-top: 10px; }
-                    </style>
-                </head>
-                <body>
-                    <h1>🔱 APEX PULSE PRO: ТВОЯТ ЕЛИТЕН РЕЖИМ</h1>
-                    ${table.outerHTML}
-                    <div class="footer">Генерирано от apexpulse.pro - Feel the Pulse. Reach the Apex.</div>
-                    <script>
-                        window.onload = function() { 
-                            window.print(); 
-                            setTimeout(() => { window.close(); }, 300);
-                        }
-                    <\/script>
-                </body>
-                </html>
-            `);
-            printWindow.document.close();
+            let textContent = "🔱 APEX PULSE PRO - ТВОЯТ ЕЛИТЕН РЕЖИМ 🔱\n\n";
+            const rows = table.querySelectorAll('tr');
+            rows.forEach(row => {
+                const cols = row.querySelectorAll('th, td');
+                let rowData = "";
+                cols.forEach((col, index) => {
+                    rowData += col.innerText.toUpperCase() + (index === cols.length - 1 ? "" : " | ");
+                });
+                textContent += rowData + "\n" + "-".repeat(rowData.length) + "\n";
+            });
+            textContent += "\nGenerated by apexpulse.pro - Feel the Pulse. Reach the Apex.";
+
+            const blob = new Blob([textContent], { type: 'text/plain' });
+            const link = document.createElement('a');
+            link.href = window.URL.createObjectURL(blob);
+            link.download = "Apex_Pulse_Plan.txt";
+            link.click();
+            alert("Планът е изтеглен успешно! 🔥");
         }
 
         function showLegal(type) {
@@ -215,11 +195,11 @@
             const content = document.getElementById('legal-content');
             let html = "";
             if(type === 'terms') {
-                html = "<h2 class='text-red-600 font-bold mb-4 uppercase text-lg'>Общи Условия</h2><p>APEX PULSE PRO предоставя достъп до софтуер с изкуствен интелект за фитнес консултации. С извършване на плащането от 1.99€, Вие получавате цифрово съдържание за период от 30 дни. Съгласно чл. 57, ал. 13 от ЗЗП, потребителят се съгласява, че губи правото си на отказ след активиране на съдържанието. Услугата е само за информационни цели и не замества лекарски съвет.</p>";
+                html = "<h2 class='text-red-600 font-bold mb-4 uppercase text-lg'>Общи Условия</h2><p>APEX PULSE PRO предоставя достъп до софтуер с изкуствен интелект за фитнес консултации...</p>";
             } else if(type === 'privacy') {
-                html = "<h2 class='text-red-600 font-bold mb-4 uppercase text-lg'>Поверителност</h2><p>Вашата сигурност е наш приоритет. Всички плащания се обработват от Stripe съгласно международните стандарти за сигурност PCI. Ние не съхраняваме данни за банкови карти. Вашите съобщения в чата се използват единствено за генериране на планове и не се споделят с трети лица.</p>";
+                html = "<h2 class='text-red-600 font-bold mb-4 uppercase text-lg'>Поверителност</h2><p>Вашата сигурност е наш приоритет...</p>";
             } else if(type === 'contact') {
-                html = "<h2 class='text-red-600 font-bold mb-4 uppercase text-lg'>Контакт</h2><p>За въпроси, поддръжка или рекламации, моля свържете се с нас на: <br><br><b>Имейл:</b> apexpulsepro@gmail.com <br><b>Работно време:</b> 24/7 AI поддръжка.</p>";
+                html = "<h2 class='text-red-600 font-bold mb-4 uppercase text-lg'>Контакт</h2><p>Имейл: apexpulsepro@gmail.com</p>";
             }
             content.innerHTML = html;
             modal.style.display = 'flex';
