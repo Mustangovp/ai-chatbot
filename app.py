@@ -6,8 +6,25 @@ import os
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
 
-# Инициализация на клиента (увери се, че OPENAI_API_KEY е сетнат в Environment Variables)
+# Инициализация на клиента
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# ТОП ИНСТРУКЦИИ ЗА ЕЛИТЕН AI ТРЕНЬОР
+SYSTEM_INSTRUCTIONS = """
+Ти си APEX PULSE PRO - последно поколение AI за биохакинг, фитнес и трансформация.
+Твоята цел е да предоставиш преживяване за 200€ на цена от 1.99€.
+
+ПРАВИЛА:
+1. ПРАВОПИС: Пиши на перфектен, академичен български език. Без жаргон (освен фитнес терминология).
+2. ТАБЛИЦИ: Всички планове, макроси и графици ВИНАГИ се представят в Markdown таблици.
+3. ТОН: Тонът е "Luxury & High-Performance". Наричай потребителя "Атлет" или "Шампион".
+4. СТРУКТУРА: Използвай професионални термини (напр. "Хипертрофия", "Гликогенен синтез").
+5. ЕМОДЖИТА: Използвай 🔱, ⚡, 🔴 за акцент.
+6. ЗАВЪРШЕК: Всеки отговор завършва с:
+---
+🔱 **ELITE STATUS: ACTIVE** 🔱
+*Feel the Pulse. Reach the Apex.*
+"""
 
 @app.route("/")
 def home():
@@ -16,33 +33,21 @@ def home():
 @app.route("/chat", methods=["POST"])
 def chat():
     try:
-        user_message = request.json.get("message")
+        user_data = request.json
+        user_message = user_data.get("message")
         
-        # Инструкции, които превръщат отговора в продукт за 200€
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4o-mini", # Най-бързият и прецизен модел за случая
             messages=[
-                {
-                    "role": "system", 
-                    "content": """Ти си APEX PULSE - най-елитният AI фитнес ментор в света. 
-                    - ВИНАГИ генерирай тренировъчни и хранителни планове в MARKDOWN ТАБЛИЦИ.
-                    - Твоят стил е High-End: използвай думи като 'Атлет', 'Оптимизация', 'Ядро'.
-                    - Използвай валута EUR (€).
-                    - Бъди мотивиращ като Рони Колман, но интелигентен като учен.
-                    - Трябва да даваш толкова детайлни планове, че потребителят да се почувства късметлия, че ги получава за 1.99€.
-                    - Използвай емоджита за акцент: 🔱, ⚡, 🔴, 🥩.
-                    - Завършвай винаги с: Feel the Pulse. Reach the Apex."""
-                },
+                {"role": "system", "content": SYSTEM_INSTRUCTIONS},
                 {"role": "user", "content": user_message}
             ],
-            temperature=0.7 # За да бъде отговорът хем точен, хем интересен
+            temperature=0.7
         )
         return jsonify({"reply": response.choices[0].message.content})
     except Exception as e:
-        # Професионално съобщение за грешка
-        return jsonify({"error": "Системата се оптимизира. Опитай отново след малко. ⚡"}), 500
+        return jsonify({"error": "Системата се оптимизира. Опитай отново. ⚡"}), 500
 
 if __name__ == "__main__":
-    # Динамичен порт за Railway/Render
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
