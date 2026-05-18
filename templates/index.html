@@ -433,22 +433,86 @@ function rebuildChat(){
 
 function quickSend(msg){document.getElementById('user-in').value=msg;send();}
 
-async function send(){
-  const inp=document.getElementById('user-in');
-  const val=inp.value.trim();if(!val)return;
-  if(count>=3){document.getElementById('paywall').style.display='flex';return;}
-  appendMsg(val,'u');inp.value='';
-  if(count>=0)count++;updateBadge();
-  const typing=document.createElement('div');typing.className='typing';typing.id='typing';
-  typing.innerHTML='<div class="dot"></div><div class="dot"></div><div class="dot"></div>';
-  box.appendChild(typing);box.scrollTop=box.scrollHeight;
-  try{
-    const res=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:val})});
-    const data=await res.json();
-    const ty=document.getElementById('typing');if(ty)ty.remove();
-    appendMsg(data.reply,'a');
-    document.getElementById('utility').style.display='block';
-  }catch(e){const ty=document.getElementById('typing');if(ty)ty.remove();appendMsg(lang==='bg'?'Грешка в системата. Опитай отново.':'System error. Please try again.','a');}
+// ==========================================
+// 1. ЗАЩИТА И ПРОВЕРКА ЗА ПЛАЩАНЕ (Обфускация)
+// ==========================================
+let isElite = false;
+
+// Проверка за успешно плащане от Stripe
+if (window.location.search.includes('success=true')) {
+    const secureToken = btoa('elite_active_user_' + new Date().getTime());
+    localStorage.setItem('_apx_sec_tk', secureToken);
+    window.history.replaceState({}, document.title, "/");
+}
+
+// Проверка дали потребителят е платил (Elite)
+try {
+    let t = localStorage.getItem('_apx_sec_tk');
+    if (t && atob(t).includes('elite_active_user_')) {
+        isElite = true;
+    }
+} catch (e) {
+    isElite = false;
+}
+
+// ==========================================
+// 2. ФУНКЦИЯТА ЗА ИЗПРАЩАНЕ (С интегрирана защита)
+// ==========================================
+async function send(presetText = null) {
+  const inp = document.getElementById('user-in');
+  
+  // Поддържаме и бързите бутони (presetText) и ръчното писане
+  const val = presetText || inp.value.trim(); 
+  if(!val) return;
+
+  // ФРОНТЕНД ЗАЩИТА: Ако НЕ е платил и е стигнал лимита, показваме Paywall
+  if(!isElite && count >= 3) {
+      document.getElementById('paywall').style.display = 'flex';
+      return;
+  }
+
+  appendMsg(val, 'u');
+  inp.value = '';
+
+  // Увеличаваме брояча САМО ако потребителят е на безплатната версия
+  if(!isElite && count >= 0) {
+      count++;
+      updateBadge();
+  }
+
+  // Твоите красиви точки за зареждане
+  const typing = document.createElement('div');
+  typing.className = 'typing';
+  typing.id = 'typing';
+  typing.innerHTML = '<div class="dot"></div><div class="dot"></div><div class="dot"></div>';
+  box.appendChild(typing);
+  box.scrollTop = box.scrollHeight;
+
+  try {
+    const res = await fetch('/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+            message: val,
+            // ТАЙНИЯТ КЛЮЧ към сървъра
+            token: isElite ? "apx_sec_key_992x_elite" : "free_user"
+        })
+    });
+    
+    const data = await res.json();
+    
+    const ty = document.getElementById('typing');
+    if(ty) ty.remove();
+    
+    // Твоето форматиране на отговора
+    appendMsg(data.reply, 'a');
+    document.getElementById('utility').style.display = 'block';
+    
+  } catch(e) {
+    const ty = document.getElementById('typing');
+    if(ty) ty.remove();
+    appendMsg(lang === 'bg' ? 'Грешка в системата. Опитай отново.' : 'System error. Please try again.', 'a');
+  }
 }
 
 function updateBadge(){
