@@ -28,6 +28,7 @@
   --b:#1a8fff;--b2:rgba(26,143,255,0.15);
   --g:#39ff14;--g2:rgba(57,255,20,0.15);
   --gold:#d4af37;
+  --warn:#ffaa00;
   --surface:#05050c;--s2:#0d0d18;--s3:#161625;
   --border:rgba(255,255,255,0.08);--border2:rgba(255,255,255,0.18);
   --text:#f2eeea;--muted:#8a8596;
@@ -56,6 +57,10 @@ body{display:flex;flex-direction:column;position:relative;}
 #badge{font-size:10px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;padding:6px 13px;border-radius:20px;border:2px solid var(--r);color:var(--r);background:var(--r3);}
 .lang-btn{font-size:11px;font-weight:900;letter-spacing:2px;text-transform:uppercase;padding:6px 14px;border-radius:20px;border:2px solid rgba(255,255,255,0.35);color:#ffffff;background:rgba(255,255,255,0.08);cursor:pointer;transition:all .2s;font-family:'Barlow Condensed';}
 .lang-btn:hover{border-color:var(--b);color:var(--b);background:rgba(26,143,255,0.1);}
+
+/* Medical safety banner — small, always visible above input */
+.safety-banner{padding:7px 12px;background:rgba(255,170,0,0.08);border-top:1px solid rgba(255,170,0,0.2);border-bottom:1px solid rgba(255,170,0,0.2);font-size:10px;font-weight:700;color:#ffaa00;letter-spacing:.5px;text-align:center;line-height:1.4;flex-shrink:0;z-index:9;cursor:pointer;}
+.safety-banner:hover{background:rgba(255,170,0,0.13);}
 
 #chat-box{flex:1;overflow-y:auto;padding:18px 16px 10px;display:flex;flex-direction:column;gap:15px;z-index:5;position:relative;scroll-behavior:smooth;}
 #chat-box::-webkit-scrollbar{width:2px;}
@@ -92,23 +97,34 @@ body{display:flex;flex-direction:column;position:relative;}
 .qp.gold .qp-arrow{color:var(--gold);}
 .qp.green .qp-arrow{color:var(--g);}
 
-.msg-u{align-self:flex-end;background:linear-gradient(135deg,var(--r),#8a0000);border-radius:18px 18px 4px 18px;padding:12px 17px;font-size:15px;font-weight:700;max-width:82%;line-height:1.5;animation:msgIn .3s ease both;}
-.msg-a{background:rgba(10,10,20,0.93);border:1px solid var(--border2);border-left:3px solid var(--r);border-radius:4px 18px 18px 18px;padding:18px 17px 14px;font-size:14px;font-weight:600;line-height:1.7;position:relative;animation:msgIn .35s ease both;backdrop-filter:blur(10px);}
+.msg-u{align-self:flex-end;background:linear-gradient(135deg,var(--r),#8a0000);border-radius:18px 18px 4px 18px;padding:12px 17px;font-size:15px;font-weight:700;max-width:82%;line-height:1.5;animation:msgIn .3s ease both;word-wrap:break-word;}
+.msg-a{background:rgba(10,10,20,0.93);border:1px solid var(--border2);border-left:3px solid var(--r);border-radius:4px 18px 18px 18px;padding:18px 17px 14px;font-size:14px;font-weight:600;line-height:1.7;position:relative;animation:msgIn .35s ease both;backdrop-filter:blur(10px);max-width:100%;overflow:hidden;}
 .msg-a::before{content:'APEX AI';position:absolute;top:-9px;left:14px;font-family:'Bebas Neue';font-size:10px;letter-spacing:3px;color:var(--r);background:var(--surface);padding:0 7px;}
 
-.msg-a table{width:100%;border-collapse:collapse;margin:14px 0;border:2px solid rgba(57,255,20,0.45);}
-.msg-a th{background:rgba(57,255,20,0.16);color:var(--g);padding:10px 9px;text-transform:uppercase;font-size:10px;font-weight:900;letter-spacing:1.5px;border:2px solid rgba(57,255,20,0.4);}
-.msg-a td{border:1px solid rgba(57,255,20,0.25);color:var(--text);padding:9px;text-align:center;font-size:12px;font-weight:600;}
+/* TABLE WRAPPER - horizontal scroll on mobile */
+.msg-a .table-wrap{overflow-x:auto;margin:14px -8px 14px -8px;padding:0 8px;-webkit-overflow-scrolling:touch;}
+.msg-a .table-wrap::-webkit-scrollbar{height:4px;}
+.msg-a .table-wrap::-webkit-scrollbar-track{background:rgba(57,255,20,0.05);border-radius:2px;}
+.msg-a .table-wrap::-webkit-scrollbar-thumb{background:rgba(57,255,20,0.4);border-radius:2px;}
+.msg-a table{border-collapse:collapse;border:2px solid rgba(57,255,20,0.45);min-width:100%;}
+.msg-a th{background:rgba(57,255,20,0.16);color:var(--g);padding:10px 9px;text-transform:uppercase;font-size:10px;font-weight:900;letter-spacing:1.5px;border:2px solid rgba(57,255,20,0.4);white-space:nowrap;}
+.msg-a td{border:1px solid rgba(57,255,20,0.25);color:var(--text);padding:9px;text-align:center;font-size:12px;font-weight:600;white-space:nowrap;}
 .msg-a td:first-child{text-align:left;color:#d0ccd8;font-weight:700;}
 .msg-a tr:nth-child(even) td{background:rgba(57,255,20,0.05);}
 .msg-a tr:hover td{background:rgba(57,255,20,0.08);}
+.scroll-hint{font-size:9px;font-weight:700;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-top:-8px;margin-bottom:10px;text-align:center;opacity:.7;}
+
 .msg-a h1,.msg-a h2,.msg-a h3{font-family:'Bebas Neue';letter-spacing:2px;margin:14px 0 7px;}
 .msg-a h1{font-size:24px;color:var(--text);}
 .msg-a h2{font-size:19px;color:var(--gold);}
 .msg-a h3{font-size:16px;color:var(--g);}
 .msg-a strong{color:var(--gold);font-weight:900;}
-.msg-a p{margin-bottom:9px;}.msg-a p:last-child{margin-bottom:0;}
-.msg-a ul,.msg-a ol{padding-left:18px;}.msg-a li{margin-bottom:4px;}
+.msg-a p{margin-bottom:9px;word-wrap:break-word;}
+.msg-a p:last-child{margin-bottom:0;}
+.msg-a ul,.msg-a ol{padding-left:18px;}
+.msg-a li{margin-bottom:4px;}
+/* Style for medical warning inside AI responses */
+.msg-a blockquote,.msg-a p:has(strong:first-child):last-child{background:rgba(255,170,0,0.06);border-left:3px solid var(--warn);padding:10px 12px;border-radius:4px 12px 12px 4px;margin-top:14px;font-size:12px;color:#ffd584;}
 
 .typing{display:flex;align-items:center;gap:6px;padding:14px 18px;background:rgba(10,10,20,0.9);border:1px solid var(--border2);border-left:3px solid var(--r);border-radius:4px 18px 18px 18px;width:fit-content;}
 @keyframes bounce{0%,80%,100%{transform:scale(0.5);opacity:.3;}40%{transform:scale(1);opacity:1;}}
@@ -120,7 +136,7 @@ body{display:flex;flex-direction:column;position:relative;}
 .util-btn{flex:1;background:rgba(255,255,255,0.06);border:2px solid rgba(255,255,255,0.35);border-radius:10px;padding:11px 8px;font-size:12px;font-family:'Barlow Condensed';font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:#ffffff;cursor:pointer;transition:all .2s;}
 .util-btn:hover{border-color:var(--g);color:var(--g);background:rgba(57,255,20,0.08);}
 .util-btn:active{transform:scale(0.96);}
-.util-upgrade{text-align:center;font-size:11px;font-weight:800;color:var(--gold);letter-spacing:1.5px;text-transform:uppercase;margin-top:7px;cursor:pointer;opacity:.9;transition:opacity .2s;}
+.util-upgrade{text-align:center;font-size:11px;font-weight:800;color:var(--gold);letter-spacing:1.5px;text-transform:uppercase;margin-top:7px;cursor:pointer;opacity:.9;}
 .util-upgrade:hover{opacity:1;}
 
 .inp-area{padding:10px 16px 14px;background:rgba(5,5,12,0.93);flex-shrink:0;z-index:10;backdrop-filter:blur(20px);}
@@ -137,6 +153,23 @@ body{display:flex;flex-direction:column;position:relative;}
 .footer a{color:#9a96a8!important;font-size:10px;font-weight:700;margin:0 8px;text-transform:uppercase;letter-spacing:1px;text-decoration:none;cursor:pointer;transition:color .2s;}
 .footer a:hover{color:#ffffff!important;}
 .footer-copy{font-size:8px;color:#2a2838;margin-top:3px;letter-spacing:1px;text-transform:uppercase;}
+
+/* DISCLAIMER MODAL (shown on first visit) */
+#disclaimer-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.97);z-index:5000;flex-direction:column;align-items:center;justify-content:center;padding:22px;}
+.disc-card{background:var(--s2);border:2px solid var(--warn);border-radius:24px;padding:32px 26px;text-align:left;max-width:380px;width:100%;position:relative;overflow:hidden;max-height:90vh;overflow-y:auto;}
+.disc-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--warn);}
+.disc-icon{font-size:38px;text-align:center;margin-bottom:8px;}
+.disc-title{font-family:'Bebas Neue';font-size:24px;letter-spacing:3px;color:var(--warn);text-align:center;margin-bottom:14px;line-height:1.1;}
+.disc-text{font-size:13px;font-weight:600;color:var(--text);line-height:1.6;margin-bottom:14px;}
+.disc-text strong{color:var(--warn);font-weight:900;}
+.disc-list{font-size:12px;font-weight:600;color:#d0ccd8;line-height:1.7;margin-bottom:18px;padding-left:18px;}
+.disc-list li{margin-bottom:5px;}
+.disc-check{display:flex;align-items:flex-start;gap:10px;font-size:12px;font-weight:700;color:var(--text);margin-bottom:18px;cursor:pointer;line-height:1.4;user-select:none;}
+.disc-check input{width:20px;height:20px;flex-shrink:0;margin-top:1px;accent-color:var(--warn);cursor:pointer;}
+.disc-btn{width:100%;background:var(--warn);border:none;border-radius:14px;padding:16px;font-family:'Bebas Neue';font-size:18px;letter-spacing:3px;color:#000;cursor:pointer;transition:all .2s;font-weight:700;}
+.disc-btn:hover{background:#ffbb33;}
+.disc-btn:active{transform:scale(0.97);}
+.disc-btn:disabled{background:#3a3a3a;color:#666;cursor:not-allowed;}
 
 #paywall{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.97);z-index:1000;flex-direction:column;align-items:center;justify-content:center;padding:22px;}
 .pw-card{background:var(--s2);border:1px solid var(--border2);border-radius:26px;padding:36px 28px;text-align:center;max-width:320px;width:100%;position:relative;overflow:hidden;}
@@ -156,8 +189,11 @@ body{display:flex;flex-direction:column;position:relative;}
 .modal-close{font-family:'Bebas Neue';font-size:14px;letter-spacing:3px;color:var(--r);border:2px solid var(--r2);padding:10px 20px;border-radius:8px;cursor:pointer;width:fit-content;margin-bottom:20px;background:none;}
 #legal-content{color:#9a96a8;font-size:13px;font-weight:600;line-height:1.9;}
 #legal-content h2{font-family:'Bebas Neue';letter-spacing:2px;font-size:22px;color:var(--r);margin-bottom:12px;}
+#legal-content h3{font-family:'Bebas Neue';letter-spacing:2px;font-size:16px;color:var(--warn);margin:14px 0 8px;}
 #legal-content strong{color:var(--text);}
 #legal-content p{margin-bottom:12px;}
+#legal-content ul{padding-left:20px;margin-bottom:12px;}
+#legal-content li{margin-bottom:6px;}
 
 .toast-el{position:fixed;bottom:105px;left:50%;transform:translateX(-50%);background:var(--s3);border:2px solid rgba(57,255,20,0.5);color:var(--g);padding:11px 22px;border-radius:12px;font-size:12px;font-family:'Barlow Condensed';font-weight:800;z-index:9999;letter-spacing:1.5px;text-transform:uppercase;white-space:nowrap;}
 </style>
@@ -197,6 +233,10 @@ body{display:flex;flex-direction:column;position:relative;}
   </div>
 </div>
 
+<div class="safety-banner" onclick="showDisclaimer()">
+  ⚠️ <span data-key="safety-banner">Информативна цел · Не заменя медицинска консултация</span>
+</div>
+
 <div class="inp-area">
   <div class="inp-wrap">
     <input type="text" id="user-in" autocomplete="off">
@@ -209,8 +249,32 @@ body{display:flex;flex-direction:column;position:relative;}
 <div class="footer">
   <a onclick="showLegal('terms')" data-key="terms">Общи Условия</a>
   <a onclick="showLegal('privacy')" data-key="privacy">Поверителност</a>
+  <a onclick="showLegal('medical')" data-key="medical">Медицинско</a>
   <a onclick="showLegal('contact')" data-key="contact">Контакт</a>
   <div class="footer-copy">© 2026 APEX PULSE PRO · SECURE PAYMENTS BY STRIPE</div>
+</div>
+
+<!-- DISCLAIMER MODAL — shows on first visit -->
+<div id="disclaimer-modal">
+  <div class="disc-card">
+    <div class="disc-icon">⚠️</div>
+    <div class="disc-title" data-key="disc-title">Преди да започнеш</div>
+    <div class="disc-text" data-key="disc-text">
+      <strong>APEX PULSE PRO</strong> е AI асистент с <strong>информативна цел</strong>. Не съм лекар, диетолог или личен треньор. Всички планове са общи насоки, а не индивидуални медицински препоръки.
+    </div>
+    <ul class="disc-list">
+      <li data-key="disc-l1">Консултирай се с лекар преди да започнеш диета или тренировки</li>
+      <li data-key="disc-l2">Не следвай съветите ако имаш сърдечно, диабет, високо кръвно или други хронични заболявания</li>
+      <li data-key="disc-l3">Не за бременни, кърмещи или лица под 18 години</li>
+      <li data-key="disc-l4">Не за хора с хранителни разстройства</li>
+      <li data-key="disc-l5">Слушай тялото си — при болка или дискомфорт спри</li>
+    </ul>
+    <label class="disc-check">
+      <input type="checkbox" id="disc-agree" onchange="document.getElementById('disc-btn').disabled=!this.checked">
+      <span data-key="disc-agree">Прочетох и разбирам. Поемам пълна отговорност за решенията си.</span>
+    </label>
+    <button class="disc-btn" id="disc-btn" onclick="acceptDisclaimer()" disabled data-key="disc-btn">Разбрах →</button>
+  </div>
 </div>
 
 <div id="paywall">
@@ -257,17 +321,28 @@ const T={
     placeholder:'Опиши целта си...',
     copy:'Копирай плана',pdf:'Запази PDF',
     upgrade:'⚡ Отключи неограничени сесии за 1.99€',
-    terms:'Общи Условия',privacy:'Поверителност',contact:'Контакт',close:'Затвори',
+    terms:'Условия',privacy:'Поверителност',medical:'Медицинско',contact:'Контакт',close:'Затвори',
+    'safety-banner':'Информативна цел · Не заменя медицинска консултация',
     'pw-period':'Пълен достъп · 30 дни','pw-btn':'Отключи Сега →','pw-back':'Върни се в чата',
     f1:'Неограничени AI сесии',f2:'Персонализирани хранителни режими',f3:'Тренировъчни програми',f4:'PDF Export и Копиране',
+    'disc-title':'Преди да започнеш',
+    'disc-text':'APEX PULSE PRO е AI асистент с информативна цел. Не съм лекар, диетолог или личен треньор. Всички планове са общи насоки, а не индивидуални медицински препоръки.',
+    'disc-l1':'Консултирай се с лекар преди да започнеш диета или тренировки',
+    'disc-l2':'Не следвай съветите ако имаш сърдечно, диабет, високо кръвно или други хронични заболявания',
+    'disc-l3':'Не за бременни, кърмещи или лица под 18 години',
+    'disc-l4':'Не за хора с хранителни разстройства',
+    'disc-l5':'Слушай тялото си — при болка или дискомфорт спри',
+    'disc-agree':'Прочетох и разбирам. Поемам пълна отговорност за решенията си.',
+    'disc-btn':'Разбрах →',
     copySuccess:'Планът е копиран! 🔥',pdfError:'Първо генерирай режим с таблица!',
     pills:['🥩 Хранене','🏋️ Тренировки','🧠 Дисциплина','📊 PDF'],
     qp:[
-      {ico:'💥',t:'ИСКАМ ДА СЕ ВЗРИВЯ',d:'Максимален мускул за минимално време',arr:'Дай ми програмата →',cls:'red',m:'Искам максимален мускулен растеж. Дай ми интензивна тренировъчна програма и хранителен режим.'},
-      {ico:'🔥',t:'СТОПИ МАЗНИНИТЕ',d:'Режим за горене — без глад, без мъка',arr:'Стартирай режима →',cls:'blue',m:'Искам да изгоря мазнини бързо. Направи ми хранителен режим и кардио план за 30 дни.'},
-      {ico:'⚡',t:'НУЛЕВ СТАРТ',d:'Никога не съм вдигал — направи ме опасен',arr:'Трансформирай ме →',cls:'gold',m:'Аз съм пълен начинаещ. Дай ми пълен план от нулата — тренировки и хранене стъпка по стъпка.'},
-      {ico:'🏆',t:'ИЗГРАДИ ЕЛИТНО ТЯЛО',d:'Протеин, макроси, режим като на про',arr:'Покажи ми плана →',cls:'green',m:'Направи ми елитен хранителен режим с точни макроси и протеин за изграждане на мускулна маса.'},
+      {ico:'💥',t:'ИСКАМ ДА СЕ ВЗРИВЯ',d:'Максимален мускул за минимално време',arr:'Дай ми програмата →',cls:'red',m:'Искам максимален мускулен растеж. Дай ми интензивна тренировъчна програма и хранителен режим. Аз съм здрав, без хронични заболявания.'},
+      {ico:'🔥',t:'СТОПИ МАЗНИНИТЕ',d:'Режим за горене — без глад, без мъка',arr:'Стартирай режима →',cls:'blue',m:'Искам да изгоря мазнини здравословно. Направи ми хранителен режим и кардио план за 30 дни. Аз съм здрав, без хронични заболявания.'},
+      {ico:'⚡',t:'НУЛЕВ СТАРТ',d:'Никога не съм вдигал — направи ме опасен',arr:'Трансформирай ме →',cls:'gold',m:'Аз съм пълен начинаещ и здрав. Дай ми пълен план от нулата — тренировки и хранене стъпка по стъпка.'},
+      {ico:'🏆',t:'ИЗГРАДИ ЕЛИТНО ТЯЛО',d:'Протеин, макроси, режим като на про',arr:'Покажи ми плана →',cls:'green',m:'Направи ми хранителен режим с точни макроси и протеин за изграждане на мускулна маса. Аз съм здрав, без алергии.'},
     ],
+    scrollHint:'← плъзни хоризонтално →',
   },
   en:{
     welcome_title_pre:'Welcome to',
@@ -278,17 +353,28 @@ const T={
     placeholder:'Describe your goal...',
     copy:'Copy plan',pdf:'Save PDF',
     upgrade:'⚡ Unlock unlimited sessions for €1.99',
-    terms:'Terms',privacy:'Privacy',contact:'Contact',close:'Close',
+    terms:'Terms',privacy:'Privacy',medical:'Medical',contact:'Contact',close:'Close',
+    'safety-banner':'Informational only · Not a substitute for medical advice',
     'pw-period':'Full access · 30 days','pw-btn':'Unlock Now →','pw-back':'Back to chat',
     f1:'Unlimited AI sessions',f2:'Personalized nutrition plans',f3:'Training programs',f4:'PDF Export & Copy',
+    'disc-title':'Before you begin',
+    'disc-text':'APEX PULSE PRO is an AI assistant for informational purposes only. I am not a doctor, dietitian or personal trainer. All plans are general guidance, not individual medical advice.',
+    'disc-l1':'Consult a doctor before starting a diet or exercise plan',
+    'disc-l2':'Do not follow the advice if you have heart conditions, diabetes, high blood pressure or other chronic illnesses',
+    'disc-l3':'Not for pregnant, nursing or those under 18',
+    'disc-l4':'Not for people with eating disorders',
+    'disc-l5':'Listen to your body — stop at any pain or discomfort',
+    'disc-agree':'I have read and understood. I take full responsibility for my decisions.',
+    'disc-btn':'I understand →',
     copySuccess:'Plan copied! 🔥',pdfError:'First generate a plan with a table!',
     pills:['🥩 Nutrition','🏋️ Training','🧠 Discipline','📊 PDF'],
     qp:[
-      {ico:'💥',t:'EXPLODE MY GAINS',d:'Maximum muscle in minimum time',arr:'Give me the plan →',cls:'red',m:'I want maximum muscle growth. Give me an intense training program and nutrition plan.'},
-      {ico:'🔥',t:'BURN THE FAT',d:'Shred mode — no hunger, no pain',arr:'Start the protocol →',cls:'blue',m:'I want to burn fat fast. Create a nutrition plan and cardio protocol for 30 days.'},
-      {ico:'⚡',t:'ZERO TO BEAST',d:'Never trained — make me dangerous',arr:'Transform me →',cls:'gold',m:'I am a complete beginner. Give me a full plan from zero — training and nutrition step by step.'},
-      {ico:'🏆',t:'BUILD ELITE PHYSIQUE',d:'Protein, macros, pro-level regime',arr:'Show me the plan →',cls:'green',m:'Build me an elite nutrition plan with exact macros and protein for muscle building.'},
+      {ico:'💥',t:'EXPLODE MY GAINS',d:'Maximum muscle in minimum time',arr:'Give me the plan →',cls:'red',m:'I want maximum muscle growth. Give me an intense training program and nutrition plan. I am healthy with no chronic conditions.'},
+      {ico:'🔥',t:'BURN THE FAT',d:'Shred mode — no hunger, no pain',arr:'Start the protocol →',cls:'blue',m:'I want to burn fat in a healthy way. Create a nutrition plan and cardio protocol for 30 days. I am healthy with no chronic conditions.'},
+      {ico:'⚡',t:'ZERO TO BEAST',d:'Never trained — make me dangerous',arr:'Transform me →',cls:'gold',m:'I am a complete beginner and healthy. Give me a full plan from zero — training and nutrition step by step.'},
+      {ico:'🏆',t:'BUILD ELITE PHYSIQUE',d:'Protein, macros, pro-level regime',arr:'Show me the plan →',cls:'green',m:'Build me a nutrition plan with exact macros and protein for muscle building. I am healthy with no allergies.'},
     ],
+    scrollHint:'← swipe horizontally →',
   }
 };
 
@@ -304,6 +390,12 @@ function applyStaticLang(){
 let count=0;
 const box=document.getElementById('chat-box');
 
+function showDisclaimer(){document.getElementById('disclaimer-modal').style.display='flex';}
+function acceptDisclaimer(){
+  localStorage.setItem('apexDisclaimerAccepted','true');
+  document.getElementById('disclaimer-modal').style.display='none';
+}
+
 window.onload=()=>{
   const params=new URLSearchParams(window.location.search);
   if(params.get('success')==='true'||localStorage.getItem('isElitePulse')==='true'){
@@ -313,6 +405,9 @@ window.onload=()=>{
     document.querySelector('.util-upgrade').style.display='none';
   }
   rebuildChat();applyStaticLang();
+  if(!localStorage.getItem('apexDisclaimerAccepted')){
+    setTimeout(()=>{document.getElementById('disclaimer-modal').style.display='flex';},400);
+  }
 };
 
 function rebuildChat(){
@@ -363,7 +458,23 @@ async function pay(){const res=await fetch('/create-checkout-session',{method:'P
 
 function appendMsg(text,type){const div=document.createElement('div');
   div.className=type==='u'?'msg-u':'msg-a';
-  div.innerHTML=type==='u'?escHtml(text):marked.parse(text);
+  if(type==='u'){div.innerHTML=escHtml(text);}
+  else{
+    div.innerHTML=marked.parse(text);
+    // wrap tables in scrollable container
+    div.querySelectorAll('table').forEach(t=>{
+      const wrap=document.createElement('div');wrap.className='table-wrap';
+      t.parentNode.insertBefore(wrap,t);wrap.appendChild(t);
+      // add scroll hint if table is wider than container
+      setTimeout(()=>{
+        if(t.scrollWidth>wrap.clientWidth){
+          const hint=document.createElement('div');hint.className='scroll-hint';
+          hint.innerText=T[lang].scrollHint;
+          wrap.parentNode.insertBefore(hint,wrap.nextSibling);
+        }
+      },50);
+    });
+  }
   box.appendChild(div);box.scrollTop=box.scrollHeight;}
 
 function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -374,6 +485,7 @@ function copyPlan(){const msgs=document.querySelectorAll('.msg-a');const last=ms
 function savePDF(){const msgs=document.querySelectorAll('.msg-a');const last=msgs[msgs.length-1];
   const table=last?last.querySelector('table'):null;
   if(!table){toast(T[lang].pdfError);return;}
+  const disclaimer=lang==='bg'?'Този план е с информативна цел. Консултирайте се с лекар преди да започнете каквато и да е диета или тренировъчна програма.':'This plan is for informational purposes only. Consult a doctor before starting any diet or exercise program.';
   const pw=window.open('','_blank');
   pw.document.write(`<html><head><meta charset="UTF-8"><style>
     body{font-family:sans-serif;padding:28px;color:#111;background:#fff;}
@@ -383,10 +495,12 @@ function savePDF(){const msgs=document.querySelectorAll('.msg-a');const last=msg
     th{background:#39ff14;color:#000;padding:10px;font-size:11px;text-transform:uppercase;border:2px solid #000;letter-spacing:1.5px;font-weight:900;}
     td{padding:9px;border:1px solid #bbb;font-size:12px;text-align:center;font-weight:600;}
     td:first-child{text-align:left;font-weight:700;}tr:nth-child(even) td{background:#f5f5f5;}
-    .footer-pdf{font-size:10px;color:#bbb;margin-top:24px;text-align:center;border-top:1px solid #eee;padding-top:12px;letter-spacing:1px;}
+    .disclaimer{font-size:10px;color:#000;background:#fff5e0;border:1px solid #ffaa00;border-left:4px solid #ffaa00;padding:10px;margin-top:18px;line-height:1.5;}
+    .footer-pdf{font-size:10px;color:#bbb;margin-top:18px;text-align:center;border-top:1px solid #eee;padding-top:12px;letter-spacing:1px;}
   </style></head><body>
     <h1>🔱 APEX PULSE PRO</h1><p class="sub">apexpulse.pro · AI Fitness Coach</p>
     ${table.outerHTML}
+    <div class="disclaimer"><strong>⚠️ ${disclaimer}</strong></div>
     <div class="footer-pdf">Train the mind. Stimulate dopamine. Maximize YOU.</div>
     <script>window.onload=function(){window.print()}<\/script></body></html>`);
   pw.document.close();}
@@ -396,13 +510,62 @@ function toast(msg){document.querySelectorAll('.toast-el').forEach(e=>e.remove()
   document.body.appendChild(t);setTimeout(()=>t.remove(),2500);}
 
 const LEGAL={
-  bg:{terms:`<h2>Общи Условия</h2><p><strong>1. Услуга:</strong> APEX PULSE PRO предоставя AI-базирани фитнес и хранителни препоръки с информативна цел.</p><p><strong>2. Плащания:</strong> Еднократно плащане от 1.99€ отключва PRO функциите за 30 дни.</p><p><strong>3. Отказ от отговорност:</strong> Всички планове са с информативна цел. Консултирайте се с лекар преди промяна на диета или тренировки.</p><p><strong>4. Право на отказ:</strong> Съгласно чл. 57, ал. 13 от ЗЗП, потребителят губи правото си на отказ след предоставяне на цифровото съдържание.</p>`,
-    privacy:`<h2>Поверителност</h2><p>Не събираме лични данни без Ваше съгласие. Всички финансови данни се обработват от Stripe. Използваме SSL сертификати за защита. LocalStorage се използва единствено за запомняне на абонамент в браузъра.</p>`,
-    contact:`<h2>Контакт</h2><p><strong>Бранд:</strong> APEX PULSE PRO<br><strong>Имейл:</strong> apexpulsepro@gmail.com<br><strong>Локация:</strong> Перник, България<br><strong>Поддръжка:</strong> 24/7 чрез AI или имейл.</p>`},
-  en:{terms:`<h2>Terms of Service</h2><p><strong>1. Service:</strong> APEX PULSE PRO provides AI-based fitness and nutrition recommendations for informational purposes only.</p><p><strong>2. Payments:</strong> A one-time payment of €1.99 unlocks PRO features for 30 days.</p><p><strong>3. Disclaimer:</strong> All plans are for informational purposes. Consult a doctor before changing your diet or exercise routine.</p><p><strong>4. Right of withdrawal:</strong> Digital content is delivered immediately upon payment; the right of withdrawal is waived at that point.</p>`,
-    privacy:`<h2>Privacy Policy</h2><p>We do not collect personal data without your consent. All financial data is processed by Stripe. SSL certificates protect the connection. LocalStorage is used solely to remember your subscription status in this browser.</p>`,
-    contact:`<h2>Contact</h2><p><strong>Brand:</strong> APEX PULSE PRO<br><strong>Email:</strong> apexpulsepro@gmail.com<br><strong>Location:</strong> Pernik, Bulgaria<br><strong>Support:</strong> 24/7 via AI or email.</p>`}
+  bg:{
+    terms:`<h2>Общи Условия</h2>
+      <p><strong>1. Услуга:</strong> APEX PULSE PRO предоставя AI-базирани фитнес и хранителни препоръки с информативна цел. Услугата не заменя професионална медицинска консултация.</p>
+      <p><strong>2. Плащания:</strong> Еднократно плащане от 1.99€ отключва PRO функциите за 30 дни. Плащанията се обработват сигурно от Stripe.</p>
+      <p><strong>3. Отказ от отговорност:</strong> Всички планове са с информативна цел. Apex Pulse PRO, неговите създатели и собственици не носят отговорност за здравословни проблеми, наранявания или други последствия от използването на услугата. Винаги се консултирай с лекар преди да започнеш диета или тренировки.</p>
+      <p><strong>4. Право на отказ:</strong> Съгласно чл. 57, ал. 13 от ЗЗП, потребителят губи правото си на отказ след предоставяне на цифровото съдържание.</p>
+      <p><strong>5. Възрастови ограничения:</strong> Услугата е предназначена за пълнолетни (18+) лица в добро здравословно състояние.</p>`,
+    privacy:`<h2>Поверителност</h2>
+      <p>Не събираме лични данни без Ваше съгласие. Всички финансови данни се обработват от Stripe — Apex Pulse PRO няма достъп до карти, банкови данни или PIN кодове. Използваме SSL сертификати за защита. LocalStorage се използва единствено за запомняне на абонамент в браузъра и за съхраняване на потвърждението на медицинското предупреждение.</p>
+      <p>Google Analytics се използва за обща статистика без идентифициране на отделни потребители.</p>`,
+    medical:`<h2>Медицинско Предупреждение</h2>
+      <p><strong>APEX PULSE PRO Е AI АСИСТЕНТ — НЕ ЛЕКАР.</strong></p>
+      <p>Всички тренировъчни и хранителни препоръки са с информативна цел и не представляват медицински съвет. Преди да започнеш каквато и да е диета или тренировъчна програма:</p>
+      <ul>
+        <li>Консултирай се с личен лекар, особено ако имаш сърдечно заболяване, високо кръвно, диабет, астма или други хронични състояния</li>
+        <li>Не следвай съветите ако си бременна, кърмиш, или си под 18 години</li>
+        <li>Не следвай съветите ако имаш хранително разстройство (анорексия, булимия)</li>
+        <li>При прием на лекарства — консултирай се с лекар за възможни взаимодействия</li>
+        <li>При появата на болка, замайване, гадене или дискомфорт — спри и потърси медицинска помощ</li>
+      </ul>
+      <h3>Спешни случаи</h3>
+      <p>При спешен медицински случай се обади на <strong>112</strong>. AI асистентът не е заместител на медицинска помощ.</p>
+      <h3>Поемане на отговорност</h3>
+      <p>Използвайки APEX PULSE PRO, потвърждаваш че разбираш тези условия и поемаш пълна отговорност за решенията си относно собственото си здраве, диета и тренировки.</p>`,
+    contact:`<h2>Контакт</h2>
+      <p><strong>Бранд:</strong> APEX PULSE PRO<br><strong>Имейл:</strong> apexpulsepro@gmail.com<br><strong>Локация:</strong> Перник, България<br><strong>Поддръжка:</strong> 24/7 чрез AI или имейл.</p>`
+  },
+  en:{
+    terms:`<h2>Terms of Service</h2>
+      <p><strong>1. Service:</strong> APEX PULSE PRO provides AI-based fitness and nutrition recommendations for informational purposes only. The service does not replace professional medical consultation.</p>
+      <p><strong>2. Payments:</strong> A one-time payment of €1.99 unlocks PRO features for 30 days. Payments are processed securely by Stripe.</p>
+      <p><strong>3. Disclaimer:</strong> All plans are for informational purposes only. Apex Pulse PRO, its creators and owners are not liable for any health problems, injuries or consequences resulting from use of the service. Always consult a doctor before starting any diet or exercise.</p>
+      <p><strong>4. Right of withdrawal:</strong> Digital content is delivered immediately upon payment; the right of withdrawal is waived at that point.</p>
+      <p><strong>5. Age restrictions:</strong> The service is intended for adults (18+) in good health.</p>`,
+    privacy:`<h2>Privacy Policy</h2>
+      <p>We do not collect personal data without your consent. All financial data is processed by Stripe — Apex Pulse PRO has no access to cards, banking details or PIN codes. SSL certificates protect the connection. LocalStorage is used solely to remember your subscription status in this browser and to store medical disclaimer acceptance.</p>
+      <p>Google Analytics is used for general statistics without identifying individual users.</p>`,
+    medical:`<h2>Medical Disclaimer</h2>
+      <p><strong>APEX PULSE PRO IS AN AI ASSISTANT — NOT A DOCTOR.</strong></p>
+      <p>All training and nutrition recommendations are for informational purposes only and do not constitute medical advice. Before starting any diet or training program:</p>
+      <ul>
+        <li>Consult a personal doctor, especially if you have heart disease, high blood pressure, diabetes, asthma or other chronic conditions</li>
+        <li>Do not follow the advice if you are pregnant, nursing, or under 18</li>
+        <li>Do not follow the advice if you have an eating disorder (anorexia, bulimia)</li>
+        <li>If taking medications — consult a doctor for possible interactions</li>
+        <li>If pain, dizziness, nausea or discomfort occurs — stop and seek medical help</li>
+      </ul>
+      <h3>Emergency situations</h3>
+      <p>In a medical emergency call <strong>112</strong> (EU) or your local emergency number. The AI assistant is not a substitute for medical help.</p>
+      <h3>Acceptance of responsibility</h3>
+      <p>By using APEX PULSE PRO you confirm that you understand these terms and accept full responsibility for your decisions regarding your own health, diet and training.</p>`,
+    contact:`<h2>Contact</h2>
+      <p><strong>Brand:</strong> APEX PULSE PRO<br><strong>Email:</strong> apexpulsepro@gmail.com<br><strong>Location:</strong> Pernik, Bulgaria<br><strong>Support:</strong> 24/7 via AI or email.</p>`
+  }
 };
+
 function showLegal(type){document.getElementById('legal-content').innerHTML=(LEGAL[lang]||LEGAL.bg)[type]||'';document.getElementById('legal-modal').style.display='flex';}
 document.getElementById('user-in').addEventListener('keydown',e=>{if(e.key==='Enter')send();});
 </script>
