@@ -1,19 +1,25 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, session
 from flask_cors import CORS
 from openai import OpenAI
 import stripe
 import os
-
-# Речник за следене на IP адресите
-free_usage = {}
-# Таен ключ, който ще очакваме от фронтенда
-SECRET_FRONTEND_TOKEN = "apx_sec_key_992x_elite"
+import hashlib
+import hmac
+import time
+import secrets
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
-CORS(app)
+app.secret_key = os.getenv("FLASK_SECRET_KEY", secrets.token_hex(32))
+CORS(app, supports_credentials=True)
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+
+# Secret for signing elite tokens — set in Railway env vars
+ELITE_SECRET = os.getenv("ELITE_SECRET", "change-me-in-railway-env-vars")
+
+# Free sessions per user
+FREE_SESSIONS_LIMIT = 3
 
 SYSTEM_INSTRUCTIONS = """
 Ти си APEX PULSE PRO - AI асистент за фитнес и хранене с информативна цел.
@@ -35,8 +41,7 @@ SYSTEM_INSTRUCTIONS = """
    - Болка, замайване, прилошаване
    
    → НЕЗАБАВНО спри тренировъчните/хранителните съвети и кажи:
-   BG: "За твоята ситуация трябва задължително да се консултираш с лекар или специалист преди да започнеш каквато и да е тренировъчна програма или диета. Аз съм AI асистент с информативна цел и не мога да заместя медицинска консултация."
-   EN: "For your situation, you must consult a doctor or specialist before starting any training program or diet. I am an AI assistant for informational purposes and cannot replace medical advice."
+   "За твоята ситуация трябва задължително да се консултираш с лекар или специалист преди да започнеш каквато и да е тренировъчна програма или диета. Аз съм AI асистент с информативна цел и не мога да заместя медицинска консултация."
 
 3. АКО ПОТРЕБИТЕЛЯТ ИСКА:
    - Екстремно отслабване (повече от 1 кг седмично)
@@ -47,11 +52,8 @@ SYSTEM_INSTRUCTIONS = """
    
    → ОТКАЖИ и обясни защо е опасно. Предложи здравословна алтернатива.
 
-4. ВИНАГИ КОГАТО ДАВАШ план — задължително завършвай със съответното предупреждение според езика:
-   - За Български (BG):
-     ⚠️ **Важно:** Този план е с информативна цел. Преди да започнеш, консултирай се с личен лекар или квалифициран специалист — особено ако имаш здравословни проблеми, приемаш лекарства или си над 40 години. Слушай тялото си. При болка или дискомфорт — спри.
-   - For English (EN):
-     ⚠️ **Important:** This plan is for informational purposes only. Before starting, consult a physician or a qualified specialist — especially if you have health issues, take medications, or are over 40. Listen to your body. If you experience pain or discomfort — stop immediately.
+4. ВИНАГИ КОГАТО ДАВАШ план — задължително завършвай със:
+   ⚠️ **Важно:** Този план е с информативна цел. Преди да започнеш, консултирай се с личен лекар или квалифициран специалист — особено ако имаш здравословни проблеми, приемаш лекарства или си над 40 години. Слушай тялото си. При болка или дискомфорт — спри.
 
 ═══════════════════════════════════════════════════════════
 ЕЗИК И ТОН:
@@ -70,44 +72,89 @@ SYSTEM_INSTRUCTIONS = """
 - Използвай Markdown таблици за хранителните режими и тренировъчните програми.
 - Колоните в таблиците да са кратки (3-4 колони максимум за мобилни устройства).
 - Тонът: авторитетен, интелигентен, директен — но винаги отговорен.
-- Завършвай с: 🔱 **ELITE STATUS: ACTIVE**, последвано от медицинското предупреждение за съответния език.
-
-═══════════════════════════════════════════════════════════
-CRITICAL LANGUAGE RULE (ЕЗИКОВО ПРАВИЛО):
-═══════════════════════════════════════════════════════════
-ALWAYS respond in the EXACT same language as the user's prompt!
-- If the user writes in English (EN), your ENTIRE response MUST be in 100% perfect English. This includes ALL headers, tables, exercises, foods, tips, and the FINAL MEDICAL DISCLAIMER. NO Bulgarian words allowed!
-- Ако потребителят пише на Български (BG), отговаряй на 100% Български език.
+- Завършвай с: 🔱 **ELITE STATUS: ACTIVE**, последвано от медицинското предупреждение.
 """
+
+
+def make_elite_token(expires_at):
+    """Create a signed token that proves user has paid until expires_at."""
+    payload = f"{expires_at}"
+    sig = hmac.new(
+        ELITE_SECRET.encode(),
+        payload.encode(),
+        hashlib.sha256
+    ).hexdigest()[:32]
+    return f"{expires_at}.{sig}"
+
+
+def verify_elite_token(token):
+    """Verify a token is valid and not expired. Returns True if valid."""
+    if not token or '.' not in token:
+        return False
+    try:
+        expires_at_str, sig = token.rsplit('.', 1)
+        expected_sig = hmac.new(
+            ELITE_SECRET.encode(),
+            expires_at_str.encode(),
+            hashlib.sha256
+        ).hexdigest()[:32]
+        if not hmac.compare_digest(sig, expected_sig):
+            return False
+        expires_at = int(expires_at_str)
+        return time.time() < expires_at
+    except (ValueError, AttributeError):
+        return False
+
 
 @app.route("/")
 def home():
+    # If user came back from Stripe success, issue elite token
+    if request.args.get('success') == 'true':
+        # 30 days from now
+        expires_at = int(time.time()) + (30 * 24 * 60 * 60)
+        token = make_elite_token(expires_at)
+        session['elite_token'] = token
+        session['elite_expires'] = expires_at
+        # Reset session counter
+        session['chat_count'] = 0
     return render_template("index.html")
+
+
+@app.route("/api/status", methods=["GET"])
+def status():
+    """Tell the frontend if user is elite and how many sessions remain."""
+    elite_token = session.get('elite_token')
+    is_elite = elite_token and verify_elite_token(elite_token)
+    chat_count = session.get('chat_count', 0)
+    remaining = max(0, FREE_SESSIONS_LIMIT - chat_count)
+    return jsonify({
+        "elite": bool(is_elite),
+        "remaining": remaining if not is_elite else -1,
+        "elite_token": elite_token if is_elite else None
+    })
+
 
 @app.route("/chat", methods=["POST"])
 def chat():
     try:
-        user_message = request.json.get("message")
-        user_token = request.json.get("token")
+        # Check elite status
+        elite_token = session.get('elite_token')
+        is_elite = elite_token and verify_elite_token(elite_token)
         
-        # Взимаме реалното IP на потребителя
-        client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
-        if client_ip:
-            client_ip = client_ip.split(',')[0].strip()
-
-        # Проверяваме дали е платил
-        is_elite = (user_token == SECRET_FRONTEND_TOKEN)
-
-        # 🛑 СЪРВЪРНА ЗАЩИТА: Ако не е платил, проверяваме лимита
+        # If not elite, check session count
         if not is_elite:
-            current_usage = free_usage.get(client_ip, 0)
-            if current_usage >= 3:
-                return jsonify({"reply": "⛔ **SYSTEM MESSAGE / СИСТЕМНО СЪОБЩЕНИЕ:**\n\n**BG:** Изчерпа своя лимит от безплатни генерации на този IP адрес. За да продължиш да ползваш AI треньора неограничено, моля отключи **APEX PULSE ELITE PRO**.\n\n**EN:** You have reached your limit of free generations on this IP address. To continue using the AI coach without limits, please unlock **APEX PULSE ELITE PRO**."})
-            
-            # Увеличаваме брояча за това IP
-            free_usage[client_ip] = current_usage + 1
-
-        # Ако всичко е наред, пращаме към OpenAI
+            chat_count = session.get('chat_count', 0)
+            if chat_count >= FREE_SESSIONS_LIMIT:
+                return jsonify({
+                    "error": "limit_reached",
+                    "message": "Достигнат е лимитът от безплатни сесии. Отключи неограничен достъп за 1.99€."
+                }), 402  # Payment Required
+            session['chat_count'] = chat_count + 1
+        
+        user_message = request.json.get("message")
+        if not user_message or len(user_message) > 2000:
+            return jsonify({"error": "invalid_message"}), 400
+        
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
@@ -119,11 +166,12 @@ def chat():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
 @app.route('/create-checkout-session', methods=['POST'])
 def create_checkout_session():
     try:
         host_url = "https://" + request.host
-        session = stripe.checkout.Session.create(
+        checkout = stripe.checkout.Session.create(
             payment_method_types=['card'],
             line_items=[{
                 'price_data': {
@@ -137,9 +185,10 @@ def create_checkout_session():
             success_url=host_url + '/?success=true',
             cancel_url=host_url + '/?success=false',
         )
-        return jsonify({'url': session.url})
+        return jsonify({'url': checkout.url})
     except Exception as e:
         return jsonify(error=str(e)), 403
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
