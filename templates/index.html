@@ -37,6 +37,10 @@
 html,body{height:calc(var(--vh)*100);overflow:hidden;background:var(--surface);color:var(--text);font-family:'Barlow Condensed',sans-serif;}
 body{display:flex;flex-direction:column;position:relative;}
 
+  #chat-box > * {
+    flex-shrink: 0;
+}
+
 #canvas{position:fixed;inset:0;z-index:0;pointer-events:none;}
 .bg-logo{position:fixed;inset:0;z-index:1;pointer-events:none;display:flex;align-items:center;justify-content:center;}
 .bg-logo img{width:95%;max-width:520px;opacity:0.14;filter:saturate(1.5) brightness(1.1);object-fit:contain;mix-blend-mode:screen;}
