@@ -4,6 +4,11 @@ from openai import OpenAI
 import stripe
 import os
 
+# Речник за следене на IP адресите
+free_usage = {}
+# Таен ключ, който ще очакваме от фронтенда
+SECRET_FRONTEND_TOKEN = "apx_sec_key_992x_elite"
+
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
 
@@ -83,6 +88,28 @@ def home():
 def chat():
     try:
         user_message = request.json.get("message")
+        user_token = request.json.get("token") # Вземаме токена от браузъра
+        
+        # Взимаме реалното IP на потребителя (задължително за Railway)
+        client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+        if client_ip:
+            client_ip = client_ip.split(',')[0].strip()
+
+        # Проверяваме дали е платил
+        is_elite = (user_token == SECRET_FRONTEND_TOKEN)
+
+        # 🛑 СЪРВЪРНА ЗАЩИТА: Ако не е платил, проверяваме лимита
+        if not is_elite:
+            current_usage = free_usage.get(client_ip, 0)
+            if current_usage >= 3:
+    return jsonify({"reply": "⛔ **SYSTEM MESSAGE / СИСТЕМНО СЪОБЩЕНИЕ:**\n\n"
+                             "**BG:** Изчерпа своя лимит от безплатни генерации на този IP адрес. За да продължиш да ползваш AI треньора неограничено, моля отключи **APEX PULSE ELITE PRO**.\n\n"
+                             "**EN:** You have reached your limit of free generations on this IP address. To continue using the AI coach without limits, please unlock **APEX PULSE ELITE PRO**."})
+            
+            # Увеличаваме брояча за това IP
+            free_usage[client_ip] = current_usage + 1
+
+        # Ако всичко е наред (платил е или има още безплатни опити), пращаме към OpenAI
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
