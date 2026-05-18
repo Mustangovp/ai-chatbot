@@ -6,8 +6,8 @@
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-B3WLGXE2XM"></script>
 <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-B3WLGXE2XM');</script>
 <title>Apex Pulse PRO | AI Fitness Coach</title>
-<link rel="canonical" href="https://apexpulse.pro" />
 <meta name="description" content="Apex Pulse PRO - Your AI fitness coach for personalized nutrition and training programs.">
+<link rel="canonical" href="https://apexpulse.pro"/>
 <meta property="og:url" content="https://apexpulse.pro/"><meta property="og:type" content="website">
 <meta property="og:title" content="Apex Pulse PRO | AI Fitness Coach">
 <meta property="og:description" content="AI fitness coach for personalized nutrition and training programs.">
@@ -36,16 +36,10 @@
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{height:calc(var(--vh)*100);overflow:hidden;background:var(--surface);color:var(--text);font-family:'Barlow Condensed',sans-serif;}
 body{display:flex;flex-direction:column;position:relative;}
-
-  #chat-box > * {
-    flex-shrink: 0;
-}
-
 #canvas{position:fixed;inset:0;z-index:0;pointer-events:none;}
 .bg-logo{position:fixed;inset:0;z-index:1;pointer-events:none;display:flex;align-items:center;justify-content:center;}
 .bg-logo img{width:95%;max-width:520px;opacity:0.14;filter:saturate(1.5) brightness(1.1);object-fit:contain;mix-blend-mode:screen;}
 .scanlines{position:fixed;inset:0;z-index:2;pointer-events:none;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,0.05) 3px,rgba(0,0,0,0.05) 4px);}
-
 .hdr{display:flex;align-items:center;justify-content:space-between;padding:11px 16px;background:rgba(5,5,12,0.93);border-bottom:1px solid rgba(255,26,26,0.25);z-index:10;flex-shrink:0;backdrop-filter:blur(24px);position:relative;}
 .hdr::after{content:'';position:absolute;bottom:-1px;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,26,26,0.5),rgba(26,143,255,0.35),transparent);}
 .logo-wrap{display:flex;align-items:center;gap:11px;}
@@ -61,18 +55,13 @@ body{display:flex;flex-direction:column;position:relative;}
 #badge{font-size:10px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;padding:6px 13px;border-radius:20px;border:2px solid var(--r);color:var(--r);background:var(--r3);}
 .lang-btn{font-size:11px;font-weight:900;letter-spacing:2px;text-transform:uppercase;padding:6px 14px;border-radius:20px;border:2px solid rgba(255,255,255,0.35);color:#ffffff;background:rgba(255,255,255,0.08);cursor:pointer;transition:all .2s;font-family:'Barlow Condensed';}
 .lang-btn:hover{border-color:var(--b);color:var(--b);background:rgba(26,143,255,0.1);}
-
-/* Medical safety banner — small, always visible above input */
 .safety-banner{padding:7px 12px;background:rgba(255,170,0,0.08);border-top:1px solid rgba(255,170,0,0.2);border-bottom:1px solid rgba(255,170,0,0.2);font-size:10px;font-weight:700;color:#ffaa00;letter-spacing:.5px;text-align:center;line-height:1.4;flex-shrink:0;z-index:9;cursor:pointer;}
 .safety-banner:hover{background:rgba(255,170,0,0.13);}
-
 #chat-box{flex:1;overflow-y:auto;padding:18px 16px 10px;display:flex;flex-direction:column;gap:15px;z-index:5;position:relative;scroll-behavior:smooth;}
 #chat-box::-webkit-scrollbar{width:2px;}
 #chat-box::-webkit-scrollbar-thumb{background:var(--s3);}
-
 @keyframes fadeUp{from{opacity:0;transform:translateY(20px);}to{opacity:1;transform:translateY(0);}}
 @keyframes msgIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
-
 .welcome{background:rgba(10,10,20,0.90);border:1px solid var(--border2);border-radius:20px;padding:24px 20px;position:relative;overflow:hidden;animation:fadeUp .6s ease both;backdrop-filter:blur(12px);}
 .welcome::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,transparent,var(--r),var(--gold),var(--b),transparent);}
 .w-title{font-family:'Bebas Neue';font-size:30px;letter-spacing:4px;line-height:1;margin-bottom:6px;}
@@ -81,7 +70,6 @@ body{display:flex;flex-direction:column;position:relative;}
 .w-pills{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px;}
 .pill{font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;padding:5px 12px;border-radius:20px;border:1px solid rgba(255,255,255,0.2);color:var(--text);background:rgba(22,22,37,0.8);}
 .w-note{font-size:11px;font-weight:800;color:var(--gold);letter-spacing:1px;text-transform:uppercase;}
-
 .qp-section{animation:fadeUp .6s .18s ease both;opacity:0;}
 .qp-label{font-size:12px;font-weight:900;color:#aaa5b8;letter-spacing:3px;text-transform:uppercase;margin-bottom:9px;}
 .qp-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;}
@@ -96,16 +84,10 @@ body{display:flex;flex-direction:column;position:relative;}
 .qp-t{font-size:13px;font-weight:900;letter-spacing:.5px;text-transform:uppercase;display:block;color:#ffffff;margin-bottom:3px;line-height:1.2;}
 .qp-d{font-size:11px;font-weight:600;color:#9a96a8;display:block;line-height:1.4;margin-bottom:5px;}
 .qp-arrow{font-size:11px;font-weight:800;display:block;letter-spacing:.3px;}
-.qp.red .qp-arrow{color:var(--r);}
-.qp.blue .qp-arrow{color:var(--b);}
-.qp.gold .qp-arrow{color:var(--gold);}
-.qp.green .qp-arrow{color:var(--g);}
-
+.qp.red .qp-arrow{color:var(--r);}.qp.blue .qp-arrow{color:var(--b);}.qp.gold .qp-arrow{color:var(--gold);}.qp.green .qp-arrow{color:var(--g);}
 .msg-u{align-self:flex-end;background:linear-gradient(135deg,var(--r),#8a0000);border-radius:18px 18px 4px 18px;padding:12px 17px;font-size:15px;font-weight:700;max-width:82%;line-height:1.5;animation:msgIn .3s ease both;word-wrap:break-word;}
 .msg-a{background:rgba(10,10,20,0.93);border:1px solid var(--border2);border-left:3px solid var(--r);border-radius:4px 18px 18px 18px;padding:18px 17px 14px;font-size:14px;font-weight:600;line-height:1.7;position:relative;animation:msgIn .35s ease both;backdrop-filter:blur(10px);max-width:100%;overflow:hidden;}
 .msg-a::before{content:'APEX AI';position:absolute;top:-7px;left:14px;font-family:'Bebas Neue';font-size:10px;letter-spacing:3px;color:var(--r);background:var(--surface);padding:2px 7px;z-index:3;}
-
-/* TABLE WRAPPER - horizontal scroll on mobile */
 .msg-a .table-wrap{overflow-x:auto;margin:14px -8px 14px -8px;padding:0 8px;-webkit-overflow-scrolling:touch;}
 .msg-a .table-wrap::-webkit-scrollbar{height:4px;}
 .msg-a .table-wrap::-webkit-scrollbar-track{background:rgba(57,255,20,0.05);border-radius:2px;}
@@ -117,7 +99,6 @@ body{display:flex;flex-direction:column;position:relative;}
 .msg-a tr:nth-child(even) td{background:rgba(57,255,20,0.05);}
 .msg-a tr:hover td{background:rgba(57,255,20,0.08);}
 .scroll-hint{font-size:9px;font-weight:700;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-top:-8px;margin-bottom:10px;text-align:center;opacity:.7;}
-
 .msg-a h1,.msg-a h2,.msg-a h3{font-family:'Bebas Neue';letter-spacing:2px;margin:14px 0 7px;}
 .msg-a h1{font-size:24px;color:var(--text);}
 .msg-a h2{font-size:19px;color:var(--gold);}
@@ -127,14 +108,10 @@ body{display:flex;flex-direction:column;position:relative;}
 .msg-a p:last-child{margin-bottom:0;}
 .msg-a ul,.msg-a ol{padding-left:18px;}
 .msg-a li{margin-bottom:4px;}
-/* Style for medical warning inside AI responses */
-.msg-a blockquote,.msg-a p:has(strong:first-child):last-child{background:rgba(255,170,0,0.06);border-left:3px solid var(--warn);padding:10px 12px;border-radius:4px 12px 12px 4px;margin-top:14px;font-size:12px;color:#ffd584;}
-
 .typing{display:flex;align-items:center;gap:6px;padding:14px 18px;background:rgba(10,10,20,0.9);border:1px solid var(--border2);border-left:3px solid var(--r);border-radius:4px 18px 18px 18px;width:fit-content;}
 @keyframes bounce{0%,80%,100%{transform:scale(0.5);opacity:.3;}40%{transform:scale(1);opacity:1;}}
 .dot{width:7px;height:7px;background:var(--r);border-radius:50%;animation:bounce 1.2s infinite;}
 .dot:nth-child(2){animation-delay:.2s;}.dot:nth-child(3){animation-delay:.4s;}
-
 #utility{padding:9px 16px;background:rgba(5,5,12,0.93);border-top:1px solid rgba(255,255,255,0.12);z-index:10;flex-shrink:0;backdrop-filter:blur(20px);}
 .util-row{display:flex;gap:9px;}
 .util-btn{flex:1;background:rgba(255,255,255,0.06);border:2px solid rgba(255,255,255,0.35);border-radius:10px;padding:11px 8px;font-size:12px;font-family:'Barlow Condensed';font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:#ffffff;cursor:pointer;transition:all .2s;}
@@ -142,7 +119,6 @@ body{display:flex;flex-direction:column;position:relative;}
 .util-btn:active{transform:scale(0.96);}
 .util-upgrade{text-align:center;font-size:11px;font-weight:800;color:var(--gold);letter-spacing:1.5px;text-transform:uppercase;margin-top:7px;cursor:pointer;opacity:.9;}
 .util-upgrade:hover{opacity:1;}
-
 .inp-area{padding:10px 16px 14px;background:rgba(5,5,12,0.93);flex-shrink:0;z-index:10;backdrop-filter:blur(20px);}
 .inp-wrap{display:flex;align-items:center;gap:9px;background:rgba(255,255,255,0.05);border:2px solid rgba(255,255,255,0.2);border-radius:16px;padding:5px 5px 5px 16px;transition:all .2s;}
 .inp-wrap:focus-within{border-color:var(--r);box-shadow:0 0 0 3px rgba(255,26,26,0.1);}
@@ -152,13 +128,10 @@ body{display:flex;flex-direction:column;position:relative;}
 .send-btn:hover{background:#ff3333;box-shadow:0 0 30px rgba(255,26,26,0.85),0 0 60px rgba(255,26,26,0.35);}
 .send-btn:active{transform:scale(0.88);}
 .send-btn svg{fill:white;width:22px;height:22px;}
-
 .footer{background:rgba(5,5,12,0.96);padding:9px 16px;text-align:center;border-top:1px solid rgba(255,255,255,0.08);flex-shrink:0;z-index:10;}
 .footer a{color:#9a96a8!important;font-size:10px;font-weight:700;margin:0 8px;text-transform:uppercase;letter-spacing:1px;text-decoration:none;cursor:pointer;transition:color .2s;}
 .footer a:hover{color:#ffffff!important;}
 .footer-copy{font-size:8px;color:#2a2838;margin-top:3px;letter-spacing:1px;text-transform:uppercase;}
-
-/* DISCLAIMER MODAL (shown on first visit) */
 #disclaimer-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.97);z-index:5000;flex-direction:column;align-items:center;justify-content:center;padding:22px;}
 .disc-card{background:var(--s2);border:2px solid var(--warn);border-radius:24px;padding:32px 26px;text-align:left;max-width:380px;width:100%;position:relative;overflow:hidden;max-height:90vh;overflow-y:auto;}
 .disc-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--warn);}
@@ -174,7 +147,6 @@ body{display:flex;flex-direction:column;position:relative;}
 .disc-btn:hover{background:#ffbb33;}
 .disc-btn:active{transform:scale(0.97);}
 .disc-btn:disabled{background:#3a3a3a;color:#666;cursor:not-allowed;}
-
 #paywall{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.97);z-index:1000;flex-direction:column;align-items:center;justify-content:center;padding:22px;}
 .pw-card{background:var(--s2);border:1px solid var(--border2);border-radius:26px;padding:36px 28px;text-align:center;max-width:320px;width:100%;position:relative;overflow:hidden;}
 .pw-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--r),var(--gold),var(--b));}
@@ -188,7 +160,6 @@ body{display:flex;flex-direction:column;position:relative;}
 .pw-btn{width:100%;background:var(--r);border:none;border-radius:14px;padding:18px;font-family:'Bebas Neue';font-size:22px;letter-spacing:3px;color:white;cursor:pointer;transition:all .2s;box-shadow:0 0 20px rgba(255,26,26,0.4);}
 .pw-btn:hover{background:var(--r2);}.pw-btn:active{transform:scale(0.97);}
 .pw-back{margin-top:12px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;cursor:pointer;background:none;border:none;font-family:'Barlow Condensed';text-decoration:underline;}
-
 #legal-modal{display:none;position:fixed;inset:0;background:var(--surface);z-index:2000;flex-direction:column;padding:26px 20px;overflow-y:auto;}
 .modal-close{font-family:'Bebas Neue';font-size:14px;letter-spacing:3px;color:var(--r);border:2px solid var(--r2);padding:10px 20px;border-radius:8px;cursor:pointer;width:fit-content;margin-bottom:20px;background:none;}
 #legal-content{color:#9a96a8;font-size:13px;font-weight:600;line-height:1.9;}
@@ -198,7 +169,6 @@ body{display:flex;flex-direction:column;position:relative;}
 #legal-content p{margin-bottom:12px;}
 #legal-content ul{padding-left:20px;margin-bottom:12px;}
 #legal-content li{margin-bottom:6px;}
-
 .toast-el{position:fixed;bottom:105px;left:50%;transform:translateX(-50%);background:var(--s3);border:2px solid rgba(57,255,20,0.5);color:var(--g);padding:11px 22px;border-radius:12px;font-size:12px;font-family:'Barlow Condensed';font-weight:800;z-index:9999;letter-spacing:1.5px;text-transform:uppercase;white-space:nowrap;}
 </style>
 </head>
@@ -258,7 +228,6 @@ body{display:flex;flex-direction:column;position:relative;}
   <div class="footer-copy">© 2026 APEX PULSE PRO · SECURE PAYMENTS BY STRIPE</div>
 </div>
 
-<!-- DISCLAIMER MODAL — shows on first visit -->
 <div id="disclaimer-modal">
   <div class="disc-card">
     <div class="disc-icon">⚠️</div>
@@ -315,6 +284,9 @@ function draw(){ctx.clearRect(0,0,W,H);for(let i=0;i<pts.length;i++){const p=pts
 window.addEventListener('resize',resize);resize();draw();
 
 let lang='bg';
+let isElite=false;
+let remaining=3;
+
 const T={
   bg:{
     welcome_title_pre:'Добре дошъл в',
@@ -339,6 +311,7 @@ const T={
     'disc-agree':'Прочетох и разбирам. Поемам пълна отговорност за решенията си.',
     'disc-btn':'Разбрах →',
     copySuccess:'Планът е копиран! 🔥',pdfError:'Първо генерирай режим с таблица!',
+    limitReached:'Достигна лимита от безплатни сесии. Отключи за 1.99€!',
     pills:['🥩 Хранене','🏋️ Тренировки','🧠 Дисциплина','📊 PDF'],
     qp:[
       {ico:'💥',t:'ИСКАМ ДА СЕ ВЗРИВЯ',d:'Максимален мускул за минимално време',arr:'Дай ми програмата →',cls:'red',m:'Искам максимален мускулен растеж. Дай ми интензивна тренировъчна програма и хранителен режим. Аз съм здрав, без хронични заболявания.'},
@@ -371,6 +344,7 @@ const T={
     'disc-agree':'I have read and understood. I take full responsibility for my decisions.',
     'disc-btn':'I understand →',
     copySuccess:'Plan copied! 🔥',pdfError:'First generate a plan with a table!',
+    limitReached:'Free session limit reached. Unlock for €1.99!',
     pills:['🥩 Nutrition','🏋️ Training','🧠 Discipline','📊 PDF'],
     qp:[
       {ico:'💥',t:'EXPLODE MY GAINS',d:'Maximum muscle in minimum time',arr:'Give me the plan →',cls:'red',m:'I want maximum muscle growth. Give me an intense training program and nutrition plan. I am healthy with no chronic conditions.'},
@@ -391,7 +365,6 @@ function applyStaticLang(){
   updateBadge();
 }
 
-let count=0;
 const box=document.getElementById('chat-box');
 
 function showDisclaimer(){document.getElementById('disclaimer-modal').style.display='flex';}
@@ -400,14 +373,25 @@ function acceptDisclaimer(){
   document.getElementById('disclaimer-modal').style.display='none';
 }
 
-window.onload=()=>{
-  const params=new URLSearchParams(window.location.search);
-  if(params.get('success')==='true'||localStorage.getItem('isElitePulse')==='true'){
-    localStorage.setItem('isElitePulse','true');count=-999999;
-    const b=document.getElementById('badge');
-    b.innerHTML='● ELITE';b.style.borderColor='#d4af37';b.style.color='#d4af37';b.style.background='rgba(212,175,55,0.12)';
-    document.querySelector('.util-upgrade').style.display='none';
-  }
+async function fetchStatus(){
+  try{
+    const res=await fetch('/api/status',{credentials:'same-origin'});
+    const data=await res.json();
+    isElite=data.elite;
+    remaining=data.remaining;
+    if(isElite){
+      const b=document.getElementById('badge');
+      b.innerHTML='● ELITE';b.style.borderColor='#d4af37';b.style.color='#d4af37';b.style.background='rgba(212,175,55,0.12)';
+      const upgrade=document.querySelector('.util-upgrade');
+      if(upgrade)upgrade.style.display='none';
+    }else{
+      updateBadge();
+    }
+  }catch(e){console.error('Status check failed',e);}
+}
+
+window.onload=async()=>{
+  await fetchStatus();
   rebuildChat();applyStaticLang();
   if(!localStorage.getItem('apexDisclaimerAccepted')){
     setTimeout(()=>{document.getElementById('disclaimer-modal').style.display='flex';},400);
@@ -433,93 +417,34 @@ function rebuildChat(){
 
 function quickSend(msg){document.getElementById('user-in').value=msg;send();}
 
-// ==========================================
-// 1. ЗАЩИТА И ПРОВЕРКА ЗА ПЛАЩАНЕ (Обфускация)
-// ==========================================
-let isElite = false;
-
-// Проверка за успешно плащане от Stripe
-if (window.location.search.includes('success=true')) {
-    const secureToken = btoa('elite_active_user_' + new Date().getTime());
-    localStorage.setItem('_apx_sec_tk', secureToken);
-    window.history.replaceState({}, document.title, "/");
-}
-
-// Проверка дали потребителят е платил (Elite)
-try {
-    let t = localStorage.getItem('_apx_sec_tk');
-    if (t && atob(t).includes('elite_active_user_')) {
-        isElite = true;
+async function send(){
+  const inp=document.getElementById('user-in');
+  const val=inp.value.trim();if(!val)return;
+  if(!isElite&&remaining<=0){document.getElementById('paywall').style.display='flex';return;}
+  appendMsg(val,'u');inp.value='';
+  const typing=document.createElement('div');typing.className='typing';typing.id='typing';
+  typing.innerHTML='<div class="dot"></div><div class="dot"></div><div class="dot"></div>';
+  box.appendChild(typing);box.scrollTop=box.scrollHeight;
+  try{
+    const res=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({message:val})});
+    const ty=document.getElementById('typing');if(ty)ty.remove();
+    if(res.status===402){
+      document.getElementById('paywall').style.display='flex';
+      remaining=0;updateBadge();return;
     }
-} catch (e) {
-    isElite = false;
-}
-
-// ==========================================
-// 2. ФУНКЦИЯТА ЗА ИЗПРАЩАНЕ (С интегрирана защита)
-// ==========================================
-async function send(presetText = null) {
-  const inp = document.getElementById('user-in');
-  
-  // Поддържаме и бързите бутони (presetText) и ръчното писане
-  const val = presetText || inp.value.trim(); 
-  if(!val) return;
-
-  // ФРОНТЕНД ЗАЩИТА: Ако НЕ е платил и е стигнал лимита, показваме Paywall
-  if(!isElite && count >= 3) {
-      document.getElementById('paywall').style.display = 'flex';
-      return;
-  }
-
-  appendMsg(val, 'u');
-  inp.value = '';
-
-  // Увеличаваме брояча САМО ако потребителят е на безплатната версия
-  if(!isElite && count >= 0) {
-      count++;
-      updateBadge();
-  }
-
-  // Твоите красиви точки за зареждане
-  const typing = document.createElement('div');
-  typing.className = 'typing';
-  typing.id = 'typing';
-  typing.innerHTML = '<div class="dot"></div><div class="dot"></div><div class="dot"></div>';
-  box.appendChild(typing);
-  box.scrollTop = box.scrollHeight;
-
-  try {
-    const res = await fetch('/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-            message: val,
-            // ТАЙНИЯТ КЛЮЧ към сървъра
-            token: isElite ? "apx_sec_key_992x_elite" : "free_user"
-        })
-    });
-    
-    const data = await res.json();
-    
-    const ty = document.getElementById('typing');
-    if(ty) ty.remove();
-    
-    // Твоето форматиране на отговора
-    appendMsg(data.reply, 'a');
-    document.getElementById('utility').style.display = 'block';
-    
-  } catch(e) {
-    const ty = document.getElementById('typing');
-    if(ty) ty.remove();
-    appendMsg(lang === 'bg' ? 'Грешка в системата. Опитай отново.' : 'System error. Please try again.', 'a');
-  }
+    const data=await res.json();
+    if(data.error){appendMsg(lang==='bg'?'Грешка в системата. Опитай отново.':'System error. Please try again.','a');return;}
+    appendMsg(data.reply,'a');
+    document.getElementById('utility').style.display='block';
+    if(!isElite){remaining=Math.max(0,remaining-1);updateBadge();}
+  }catch(e){const ty=document.getElementById('typing');if(ty)ty.remove();appendMsg(lang==='bg'?'Грешка в системата. Опитай отново.':'System error. Please try again.','a');}
 }
 
 function updateBadge(){
-  if(count<=-999990)return;
-  const d=T[lang];const rem=3-count;const b=document.getElementById('badge');
-  if(rem<=0){b.innerHTML='● 0';b.style.color='#3a1010';}
-  else b.innerHTML=`● ${rem} <span id="badge-label">${rem===1?d.session:d.sessions}</span>`;
+  if(isElite)return;
+  const d=T[lang];const b=document.getElementById('badge');
+  if(remaining<=0){b.innerHTML='● 0';b.style.color='#3a1010';}
+  else b.innerHTML=`● ${remaining} <span id="badge-label">${remaining===1?d.session:d.sessions}</span>`;
 }
 
 async function pay(){const res=await fetch('/create-checkout-session',{method:'POST'});const data=await res.json();window.location.href=data.url;}
@@ -529,11 +454,9 @@ function appendMsg(text,type){const div=document.createElement('div');
   if(type==='u'){div.innerHTML=escHtml(text);}
   else{
     div.innerHTML=marked.parse(text);
-    // wrap tables in scrollable container
     div.querySelectorAll('table').forEach(t=>{
       const wrap=document.createElement('div');wrap.className='table-wrap';
       t.parentNode.insertBefore(wrap,t);wrap.appendChild(t);
-      // add scroll hint if table is wider than container
       setTimeout(()=>{
         if(t.scrollWidth>wrap.clientWidth){
           const hint=document.createElement('div');hint.className='scroll-hint';
@@ -582,12 +505,11 @@ const LEGAL={
     terms:`<h2>Общи Условия</h2>
       <p><strong>1. Услуга:</strong> APEX PULSE PRO предоставя AI-базирани фитнес и хранителни препоръки с информативна цел. Услугата не заменя професионална медицинска консултация.</p>
       <p><strong>2. Плащания:</strong> Еднократно плащане от 1.99€ отключва PRO функциите за 30 дни. Плащанията се обработват сигурно от Stripe.</p>
-      <p><strong>3. Отказ от отговорност:</strong> Всички планове са с информативна цел. Apex Pulse PRO, неговите създатели и собственици не носят отговорност за здравословни проблеми, наранявания или други последствия от използването на услугата. Винаги се консултирай с лекар преди да започнеш диета или тренировки.</p>
+      <p><strong>3. Отказ от отговорност:</strong> Всички планове са с информативна цел. Apex Pulse PRO, неговите създатели и собственици не носят отговорност за здравословни проблеми, наранявания или други последствия от използването на услугата.</p>
       <p><strong>4. Право на отказ:</strong> Съгласно чл. 57, ал. 13 от ЗЗП, потребителят губи правото си на отказ след предоставяне на цифровото съдържание.</p>
       <p><strong>5. Възрастови ограничения:</strong> Услугата е предназначена за пълнолетни (18+) лица в добро здравословно състояние.</p>`,
     privacy:`<h2>Поверителност</h2>
-      <p>Не събираме лични данни без Ваше съгласие. Всички финансови данни се обработват от Stripe — Apex Pulse PRO няма достъп до карти, банкови данни или PIN кодове. Използваме SSL сертификати за защита. LocalStorage се използва единствено за запомняне на абонамент в браузъра и за съхраняване на потвърждението на медицинското предупреждение.</p>
-      <p>Google Analytics се използва за обща статистика без идентифициране на отделни потребители.</p>`,
+      <p>Не събираме лични данни без Ваше съгласие. Всички финансови данни се обработват от Stripe. Използваме SSL сертификати за защита. Сесийни данни се пазят на сървъра за лимитиране на безплатните сесии. Google Analytics се използва за обща статистика без идентифициране на отделни потребители.</p>`,
     medical:`<h2>Медицинско Предупреждение</h2>
       <p><strong>APEX PULSE PRO Е AI АСИСТЕНТ — НЕ ЛЕКАР.</strong></p>
       <p>Всички тренировъчни и хранителни препоръки са с информативна цел и не представляват медицински съвет. Преди да започнеш каквато и да е диета или тренировъчна програма:</p>
@@ -599,36 +521,31 @@ const LEGAL={
         <li>При появата на болка, замайване, гадене или дискомфорт — спри и потърси медицинска помощ</li>
       </ul>
       <h3>Спешни случаи</h3>
-      <p>При спешен медицински случай се обади на <strong>112</strong>. AI асистентът не е заместител на медицинска помощ.</p>
-      <h3>Поемане на отговорност</h3>
-      <p>Използвайки APEX PULSE PRO, потвърждаваш че разбираш тези условия и поемаш пълна отговорност за решенията си относно собственото си здраве, диета и тренировки.</p>`,
+      <p>При спешен медицински случай се обади на <strong>112</strong>.</p>`,
     contact:`<h2>Контакт</h2>
       <p><strong>Бранд:</strong> APEX PULSE PRO<br><strong>Имейл:</strong> apexpulsepro@gmail.com<br><strong>Локация:</strong> Перник, България<br><strong>Поддръжка:</strong> 24/7 чрез AI или имейл.</p>`
   },
   en:{
     terms:`<h2>Terms of Service</h2>
-      <p><strong>1. Service:</strong> APEX PULSE PRO provides AI-based fitness and nutrition recommendations for informational purposes only. The service does not replace professional medical consultation.</p>
+      <p><strong>1. Service:</strong> APEX PULSE PRO provides AI-based fitness and nutrition recommendations for informational purposes only.</p>
       <p><strong>2. Payments:</strong> A one-time payment of €1.99 unlocks PRO features for 30 days. Payments are processed securely by Stripe.</p>
-      <p><strong>3. Disclaimer:</strong> All plans are for informational purposes only. Apex Pulse PRO, its creators and owners are not liable for any health problems, injuries or consequences resulting from use of the service. Always consult a doctor before starting any diet or exercise.</p>
-      <p><strong>4. Right of withdrawal:</strong> Digital content is delivered immediately upon payment; the right of withdrawal is waived at that point.</p>
+      <p><strong>3. Disclaimer:</strong> All plans are for informational purposes only. Apex Pulse PRO is not liable for any health problems or injuries.</p>
+      <p><strong>4. Right of withdrawal:</strong> Digital content is delivered immediately; the right of withdrawal is waived at that point.</p>
       <p><strong>5. Age restrictions:</strong> The service is intended for adults (18+) in good health.</p>`,
     privacy:`<h2>Privacy Policy</h2>
-      <p>We do not collect personal data without your consent. All financial data is processed by Stripe — Apex Pulse PRO has no access to cards, banking details or PIN codes. SSL certificates protect the connection. LocalStorage is used solely to remember your subscription status in this browser and to store medical disclaimer acceptance.</p>
-      <p>Google Analytics is used for general statistics without identifying individual users.</p>`,
+      <p>We do not collect personal data without your consent. All financial data is processed by Stripe. SSL certificates protect the connection. Session data is stored server-side to enforce free session limits. Google Analytics is used for general statistics.</p>`,
     medical:`<h2>Medical Disclaimer</h2>
       <p><strong>APEX PULSE PRO IS AN AI ASSISTANT — NOT A DOCTOR.</strong></p>
-      <p>All training and nutrition recommendations are for informational purposes only and do not constitute medical advice. Before starting any diet or training program:</p>
+      <p>All training and nutrition recommendations are for informational purposes only. Before starting any diet or training program:</p>
       <ul>
-        <li>Consult a personal doctor, especially if you have heart disease, high blood pressure, diabetes, asthma or other chronic conditions</li>
-        <li>Do not follow the advice if you are pregnant, nursing, or under 18</li>
-        <li>Do not follow the advice if you have an eating disorder (anorexia, bulimia)</li>
-        <li>If taking medications — consult a doctor for possible interactions</li>
-        <li>If pain, dizziness, nausea or discomfort occurs — stop and seek medical help</li>
+        <li>Consult a personal doctor, especially with chronic conditions</li>
+        <li>Do not follow if pregnant, nursing, or under 18</li>
+        <li>Do not follow if you have an eating disorder</li>
+        <li>If taking medications — consult a doctor</li>
+        <li>If pain or discomfort occurs — stop and seek medical help</li>
       </ul>
-      <h3>Emergency situations</h3>
-      <p>In a medical emergency call <strong>112</strong> (EU) or your local emergency number. The AI assistant is not a substitute for medical help.</p>
-      <h3>Acceptance of responsibility</h3>
-      <p>By using APEX PULSE PRO you confirm that you understand these terms and accept full responsibility for your decisions regarding your own health, diet and training.</p>`,
+      <h3>Emergency</h3>
+      <p>In an emergency call <strong>112</strong> (EU) or your local emergency number.</p>`,
     contact:`<h2>Contact</h2>
       <p><strong>Brand:</strong> APEX PULSE PRO<br><strong>Email:</strong> apexpulsepro@gmail.com<br><strong>Location:</strong> Pernik, Bulgaria<br><strong>Support:</strong> 24/7 via AI or email.</p>`
   }
