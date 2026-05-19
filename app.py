@@ -1,14 +1,28 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, redirect
 from flask_cors import CORS
 from openai import OpenAI
 import stripe
 import os
+import hmac
+import hashlib
+import time
+import base64
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+
+# ═══════════════════════════════════════════════════════════
+# SECURITY CONFIGURATION
+# Both must be set in Railway → Variables
+# APEX_SECRET = signs tokens for paying Stripe customers (30 days)
+# APEX_DEV_TOKEN = your personal lifetime access token
+# ═══════════════════════════════════════════════════════════
+SECRET = os.getenv("APEX_SECRET", "change-this-in-railway-to-a-long-random-string")
+DEV_TOKEN = os.getenv("APEX_DEV_TOKEN", "")
+
 
 SYSTEM_INSTRUCTIONS = """
 Ти си APEX PULSE PRO - AI асистент за фитнес и хранене с информативна цел.
@@ -75,9 +89,36 @@ ALWAYS respond in the EXACT same language as the user's prompt!
 - Ако потребителят пише на Български (BG), отговаряй на 100% Български език.
 """
 
+
+def make_token(expiry_timestamp: int) -> str:
+    """Create a signed access token (30 days for paying customers)."""
+    payload = str(expiry_timestamp).encode()
+    signature = hmac.new(SECRET.encode(), payload, hashlib.sha256).hexdigest()[:16]
+    token = base64.urlsafe_b64encode(f"{expiry_timestamp}.{signature}".encode()).decode().rstrip("=")
+    return token
+
+
+def verify_token(token: str) -> bool:
+    """Verify a token. Accepts DEV_TOKEN (unlimited) or signed Stripe token (30 days)."""
+    if DEV_TOKEN and token == DEV_TOKEN:
+        return True
+    try:
+        padded = token + "=" * (-len(token) % 4)
+        decoded = base64.urlsafe_b64decode(padded).decode()
+        expiry_str, signature = decoded.split(".")
+        expiry = int(expiry_str)
+        if time.time() > expiry:
+            return False
+        expected = hmac.new(SECRET.encode(), expiry_str.encode(), hashlib.sha256).hexdigest()[:16]
+        return hmac.compare_digest(signature, expected)
+    except Exception:
+        return False
+
+
 @app.route("/")
 def home():
     return render_template("index.html")
+
 
 @app.route("/chat", methods=["POST"])
 def chat():
@@ -94,6 +135,7 @@ def chat():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
 @app.route('/create-checkout-session', methods=['POST'])
 def create_checkout_session():
     try:
@@ -109,12 +151,38 @@ def create_checkout_session():
                 'quantity': 1,
             }],
             mode='payment',
-            success_url=host_url + '/?success=true',
+            success_url=host_url + '/success?session_id={CHECKOUT_SESSION_ID}',
             cancel_url=host_url + '/?success=false',
         )
         return jsonify({'url': session.url})
     except Exception as e:
         return jsonify(error=str(e)), 403
+
+
+@app.route('/success')
+def payment_success():
+    """After Stripe payment, verify with Stripe API, then issue a signed token."""
+    session_id = request.args.get('session_id')
+    if not session_id:
+        return redirect('/?success=false')
+    try:
+        session = stripe.checkout.Session.retrieve(session_id)
+        if session.payment_status == 'paid':
+            expiry = int(time.time()) + (30 * 24 * 60 * 60)
+            token = make_token(expiry)
+            return redirect(f'/?token={token}')
+        else:
+            return redirect('/?success=false')
+    except Exception:
+        return redirect('/?success=false')
+
+
+@app.route('/verify-token', methods=['POST'])
+def verify_token_endpoint():
+    """Frontend asks: is this stored token still valid?"""
+    token = request.json.get('token', '')
+    return jsonify({'valid': verify_token(token)})
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
