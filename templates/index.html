@@ -408,7 +408,7 @@ function applyStaticLang(){
   updateBadge();
 }
 
-let count=0;
+let count=parseInt(localStorage.getItem('apexCount')||'0',10);
 const box=document.getElementById('chat-box');
 
 function showDisclaimer(){document.getElementById('disclaimer-modal').style.display='flex';}
@@ -431,6 +431,7 @@ function acceptDisclaimer(){
 
 function activateElite(){
   count=-999999;
+  localStorage.removeItem('apexCount');
   const b=document.getElementById('badge');
   b.innerHTML='● ELITE';b.style.borderColor='#d4af37';b.style.color='#d4af37';b.style.background='rgba(212,175,55,0.12)';
   const up=document.querySelector('.util-upgrade');if(up)up.style.display='none';
@@ -483,7 +484,7 @@ async function send(){
   const val=inp.value.trim();if(!val)return;
   if(count>=3){document.getElementById('paywall').style.display='flex';return;}
   appendMsg(val,'u');inp.value='';
-  if(count>=0)count++;updateBadge();
+  if(count>=0){count++;localStorage.setItem('apexCount',String(count));}updateBadge();
   const typing=document.createElement('div');typing.className='typing';typing.id='typing';
   typing.innerHTML='<div class="dot"></div><div class="dot"></div><div class="dot"></div>';
   box.appendChild(typing);box.scrollTop=box.scrollHeight;
