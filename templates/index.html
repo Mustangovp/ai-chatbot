@@ -82,6 +82,12 @@ body{display:flex;flex-direction:column;position:relative;}
 .pill{font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;padding:5px 12px;border-radius:20px;border:1px solid rgba(255,255,255,0.2);color:var(--text);background:rgba(22,22,37,0.8);}
 .w-note{font-size:11px;font-weight:800;color:var(--gold);letter-spacing:1px;text-transform:uppercase;}
 
+/* HOOKS — minimalistic premium */
+.hook-headline{font-family:'Bebas Neue';font-size:28px;letter-spacing:2px;line-height:1.15;color:var(--text);margin-bottom:14px;text-shadow:0 2px 12px rgba(0,0,0,0.5);}
+.hook-headline .hl{color:var(--g);}
+.hook-headline .rd{color:var(--r);}
+.hook-sub{font-size:14px;font-weight:600;color:#b8b4c4;line-height:1.6;}
+
 .qp-section{animation:fadeUp .6s .18s ease both;opacity:0;}
 .qp-label{font-size:12px;font-weight:900;color:#aaa5b8;letter-spacing:3px;text-transform:uppercase;margin-bottom:9px;}
 .qp-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;}
@@ -278,6 +284,7 @@ body{display:flex;flex-direction:column;position:relative;}
       <span data-key="disc-agree">Прочетох и разбирам. Поемам пълна отговорност за решенията си.</span>
     </label>
     <button class="disc-btn" id="disc-btn" onclick="acceptDisclaimer()" disabled data-key="disc-btn">Разбрах →</button>
+    <button class="pw-back" onclick="document.getElementById('disclaimer-modal').style.display='none'" style="margin-top:10px;" data-key="pw-back">Затвори</button>
   </div>
 </div>
 
@@ -292,7 +299,7 @@ body{display:flex;flex-direction:column;position:relative;}
       <div class="pw-feat"><div class="pw-chk">✓</div><span data-key="f3">Тренировъчни програми</span></div>
       <div class="pw-feat"><div class="pw-chk">✓</div><span data-key="f4">PDF Export и Копиране</span></div>
     </div>
-    <button class="pw-btn" onclick="pay()" data-key="pw-btn">Отключи Сега →</button><br>
+    <button class="pw-btn" onclick="confirmAndPay()" data-key="pw-btn">Отключи Сега →</button><br>
     <button class="pw-back" onclick="document.getElementById('paywall').style.display='none'" data-key="pw-back">Върни се в чата</button>
   </div>
 </div>
@@ -319,6 +326,11 @@ const T={
   bg:{
     welcome_title_pre:'Добре дошъл в',
     welcome_sub:'Train the mind. Stimulate dopamine. Maximize YOU.',
+    hook_headline:'Личен <span class="hl">фитнес</span> и <span class="rd">хранителен</span> план за 30 секунди',
+    hook_sub:'AI треньор с правилни макроси, упражнения и таблици. Без чакане. Без скъпи специалисти.',
+    hook_proof:'Хиляди потребители използват APEX PULSE PRO',
+    hook_cta_text:'Пълен достъп 30 дни',
+    hook_cta_free:'3 БЕЗПЛАТНИ',
     sessions:'Сесии',session:'Сесия',
     free_note:'▸ 3 безплатни сесии · Без регистрация',
     quick_label:'ЗАПОЧНИ СЕГА',
@@ -351,6 +363,11 @@ const T={
   en:{
     welcome_title_pre:'Welcome to',
     welcome_sub:'Train the mind. Stimulate dopamine. Maximize YOU.',
+    hook_headline:'Personal <span class="hl">fitness</span> & <span class="rd">nutrition</span> plan in 30 seconds',
+    hook_sub:'AI coach with accurate macros, exercises and tables. No waiting. No expensive specialists.',
+    hook_proof:'Thousands of users trust APEX PULSE PRO',
+    hook_cta_text:'Full access 30 days',
+    hook_cta_free:'3 FREE',
     sessions:'Sessions',session:'Session',
     free_note:'▸ 3 free sessions · No registration',
     quick_label:'START NOW',
@@ -395,9 +412,21 @@ let count=0;
 const box=document.getElementById('chat-box');
 
 function showDisclaimer(){document.getElementById('disclaimer-modal').style.display='flex';}
+
+function confirmAndPay(){
+  if(localStorage.getItem('apexDisclaimerAccepted')==='true'){
+    pay();
+  }else{
+    document.getElementById('paywall').style.display='none';
+    document.getElementById('disclaimer-modal').style.display='flex';
+    window._pendingPay=true;
+  }
+}
+
 function acceptDisclaimer(){
   localStorage.setItem('apexDisclaimerAccepted','true');
   document.getElementById('disclaimer-modal').style.display='none';
+  if(window._pendingPay){window._pendingPay=false;pay();}
 }
 
 function activateElite(){
@@ -430,18 +459,13 @@ async function checkAccess(){
 window.onload=async()=>{
   await checkAccess();
   rebuildChat();applyStaticLang();
-  if(!localStorage.getItem('apexDisclaimerAccepted')){
-    setTimeout(()=>{document.getElementById('disclaimer-modal').style.display='flex';},400);
-  }
 };
 
 function rebuildChat(){
   box.innerHTML='';const d=T[lang];
   const w=document.createElement('div');w.className='welcome';
-  w.innerHTML=`<div class="w-title">${d.welcome_title_pre} <span class="ra">APEX</span> <span class="bl">PULSE</span> PRO</div>
-    <div class="w-sub">${d.welcome_sub}</div>
-    <div class="w-pills">${d.pills.map(p=>`<div class="pill">${p}</div>`).join('')}</div>
-    <div class="w-note">${d.free_note}</div>`;
+  w.innerHTML=`<div class="hook-headline">${d.hook_headline}</div>
+    <div class="hook-sub">${d.hook_sub}</div>`;
   box.appendChild(w);
   const qs=document.createElement('div');qs.className='qp-section';
   qs.innerHTML=`<div class="qp-label">${d.quick_label}</div>`;
