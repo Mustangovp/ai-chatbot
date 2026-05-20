@@ -123,13 +123,30 @@ def home():
 @app.route("/chat", methods=["POST"])
 def chat():
     try:
-        user_message = request.json.get("message")
+        data = request.json or {}
+        user_message = data.get("message", "")
+        history = data.get("history", [])  # Optional: list of {role, content} from ELITE users
+        token = data.get("token", "")
+
+        # Verify if ELITE token is valid — only ELITE users may send history
+        is_elite = bool(token) and verify_token(token)
+
+        # Build message list
+        messages = [{"role": "system", "content": SYSTEM_INSTRUCTIONS}]
+
+        if is_elite and isinstance(history, list):
+            # Keep only last 10 messages from history (safety cap)
+            safe_history = history[-10:]
+            for msg in safe_history:
+                if isinstance(msg, dict) and msg.get("role") in ("user", "assistant"):
+                    content = str(msg.get("content", ""))[:4000]  # cap each message
+                    messages.append({"role": msg["role"], "content": content})
+
+        messages.append({"role": "user", "content": user_message})
+
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": SYSTEM_INSTRUCTIONS},
-                {"role": "user", "content": user_message}
-            ]
+            messages=messages
         )
         return jsonify({"reply": response.choices[0].message.content})
     except Exception as e:
