@@ -179,6 +179,7 @@ def create_checkout_session():
                 'quantity': 1,
             }],
             mode='payment',
+            allow_promotion_codes=True,  # 👈 ТОВА Е НОВИЯТ РЕД, КОЙТО СЛАГАШ ТУК!
             success_url=host_url + '/success?session_id={CHECKOUT_SESSION_ID}',
             cancel_url=host_url + '/?success=false',
         )
