@@ -403,7 +403,7 @@ const T={
     'disc-l5':'Слушай тялото си — при болка или дискомфорт спри',
     'disc-agree':'Прочетох и разбирам. Поемам пълна отговорност за решенията си.',
     'disc-btn':'Разбрах →',
-    copySuccess:'Планът е копиран! 🔥',pdfError:'Първо генерирай режим с таблица!',
+    copySuccess:'Планът е копиран! 🔥',pdfError:'Първо задай въпрос на AI!',
     pills:['🥩 Хранене','🏋️ Тренировки','🧠 Дисциплина','📊 PDF'],
     qp:[
       {ico:'💥',t:'МАКСИМАЛЕН РАСТЕЖ',d:'Мускул и сила за минимално време',arr:'Дай ми програмата →',cls:'red',m:'Искам максимален мускулен растеж и сила. Дай ми интензивна тренировъчна програма и хранителен режим. Аз съм здрав, без хронични заболявания.'},
@@ -452,7 +452,7 @@ const T={
     'disc-l5':'Listen to your body — stop at any pain or discomfort',
     'disc-agree':'I have read and understood. I take full responsibility for my decisions.',
     'disc-btn':'I understand →',
-    copySuccess:'Plan copied! 🔥',pdfError:'First generate a plan with a table!',
+    copySuccess:'Plan copied! 🔥',pdfError:'First ask the AI a question!',
     pills:['🥩 Nutrition','🏋️ Training','🧠 Discipline','📊 PDF'],
     qp:[
       {ico:'💥',t:'MAXIMUM GROWTH',d:'Muscle and strength in minimum time',arr:'Give me the plan →',cls:'red',m:'I want maximum muscle growth and strength. Give me an intense training program and nutrition plan. I am healthy with no chronic conditions.'},
@@ -647,31 +647,101 @@ function appendMsg(text,type){const div=document.createElement('div');
 
 function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
-function copyPlan(){const msgs=document.querySelectorAll('.msg-a');const last=msgs[msgs.length-1];
-  if(last){navigator.clipboard.writeText(last.innerText);toast(T[lang].copySuccess);}}
+function copyPlan(){
+  const all=document.querySelectorAll('.msg-u, .msg-a');
+  if(!all.length){toast(T[lang].pdfError);return;}
+  let text='';
+  all.forEach(el=>{
+    if(el.classList.contains('msg-u')){
+      text+=(lang==='bg'?'\n\n━━━ ВЪПРОС ━━━\n':'\n\n━━━ QUESTION ━━━\n')+el.innerText+'\n';
+    }else{
+      text+=(lang==='bg'?'\n━━━ APEX AI ━━━\n':'\n━━━ APEX AI ━━━\n')+el.innerText+'\n';
+    }
+  });
+  text+='\n\n— apexpulse.pro';
+  navigator.clipboard.writeText(text.trim());
+  toast(T[lang].copySuccess);
+}
 
-function savePDF(){const msgs=document.querySelectorAll('.msg-a');const last=msgs[msgs.length-1];
-  const table=last?last.querySelector('table'):null;
-  if(!table){toast(T[lang].pdfError);return;}
-  const disclaimer=lang==='bg'?'Този план е с информативна цел. Консултирайте се с лекар преди да започнете каквато и да е диета или тренировъчна програма.':'This plan is for informational purposes only. Consult a doctor before starting any diet or exercise program.';
+function savePDF(){
+  const all=document.querySelectorAll('.msg-u, .msg-a');
+  if(!all.length){toast(T[lang].pdfError);return;}
+
+  // Build full conversation HTML for PDF
+  let sections='';
+  let hasContent=false;
+  all.forEach(el=>{
+    if(el.classList.contains('msg-u')){
+      const q=el.innerText.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      sections+=`<div class="user-q"><div class="q-label">${lang==='bg'?'ТВОЯТ ВЪПРОС':'YOUR QUESTION'}</div>${q}</div>`;
+    }else{
+      // Strip out the "APEX AI" pseudo-label from clone (it's CSS-only ::before, so innerHTML is clean)
+      const clone=el.cloneNode(true);
+      // Unwrap any .table-wrap divs so the table goes directly
+      clone.querySelectorAll('.table-wrap').forEach(w=>{
+        const t=w.querySelector('table');
+        if(t)w.parentNode.replaceChild(t,w);
+      });
+      // Remove scroll hints
+      clone.querySelectorAll('.scroll-hint').forEach(h=>h.remove());
+      sections+=`<div class="ai-a"><div class="a-label">🔱 APEX AI</div>${clone.innerHTML}</div>`;
+      hasContent=true;
+    }
+  });
+
+  if(!hasContent){toast(T[lang].pdfError);return;}
+
+  const disclaimer=lang==='bg'
+    ?'Този план е с информативна цел. Консултирай се с лекар преди да започнеш каквато и да е диета или тренировъчна програма.'
+    :'This plan is for informational purposes only. Consult a doctor before starting any diet or exercise program.';
+  const dateLabel=lang==='bg'?'Дата':'Date';
+  const today=new Date().toLocaleDateString(lang==='bg'?'bg-BG':'en-GB');
+
   const pw=window.open('','_blank');
-  pw.document.write(`<html><head><meta charset="UTF-8"><style>
-    body{font-family:sans-serif;padding:28px;color:#111;background:#fff;}
-    h1{color:#ff1a1a;text-transform:uppercase;border-bottom:3px solid #ff1a1a;padding-bottom:10px;font-size:20px;letter-spacing:3px;}
-    p.sub{font-size:11px;color:#888;margin-bottom:20px;letter-spacing:1px;text-transform:uppercase;}
-    table{width:100%;border-collapse:collapse;margin-top:6px;}
-    th{background:#39ff14;color:#000;padding:10px;font-size:11px;text-transform:uppercase;border:2px solid #000;letter-spacing:1.5px;font-weight:900;}
-    td{padding:9px;border:1px solid #bbb;font-size:12px;text-align:center;font-weight:600;}
-    td:first-child{text-align:left;font-weight:700;}tr:nth-child(even) td{background:#f5f5f5;}
-    .disclaimer{font-size:10px;color:#000;background:#fff5e0;border:1px solid #ffaa00;border-left:4px solid #ffaa00;padding:10px;margin-top:18px;line-height:1.5;}
-    .footer-pdf{font-size:10px;color:#bbb;margin-top:18px;text-align:center;border-top:1px solid #eee;padding-top:12px;letter-spacing:1px;}
+  pw.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Apex Pulse PRO Plan</title><style>
+    @page{margin:18mm 14mm;}
+    *{box-sizing:border-box;}
+    body{font-family:-apple-system,'Segoe UI',Arial,sans-serif;color:#111;background:#fff;margin:0;line-height:1.5;}
+    .pdf-header{border-bottom:3px solid #ff1a1a;padding-bottom:12px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:flex-end;}
+    .pdf-header h1{color:#ff1a1a;text-transform:uppercase;font-size:22px;letter-spacing:3px;margin:0;font-weight:900;}
+    .pdf-header .meta{font-size:10px;color:#888;text-align:right;text-transform:uppercase;letter-spacing:1px;}
+    .pdf-header .meta div{margin-bottom:2px;}
+    .user-q{background:#f5f5f7;border-left:4px solid #ff1a1a;padding:10px 14px;margin:18px 0 8px;border-radius:0 8px 8px 0;font-size:12px;color:#333;}
+    .q-label{font-size:9px;font-weight:900;color:#ff1a1a;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px;}
+    .ai-a{padding:6px 0 14px;border-bottom:1px dashed #ddd;margin-bottom:8px;}
+    .ai-a:last-child{border-bottom:none;}
+    .a-label{font-size:10px;font-weight:900;color:#39ff14;background:#0a0a14;padding:4px 8px;border-radius:4px;display:inline-block;letter-spacing:2px;margin-bottom:10px;}
+    .ai-a h1,.ai-a h2,.ai-a h3{margin:14px 0 8px;color:#111;}
+    .ai-a h1{font-size:18px;border-bottom:1px solid #ddd;padding-bottom:6px;}
+    .ai-a h2{font-size:15px;color:#666;}
+    .ai-a h3{font-size:13px;color:#39a020;}
+    .ai-a p{margin-bottom:8px;font-size:12px;}
+    .ai-a strong{color:#000;font-weight:700;}
+    .ai-a ul,.ai-a ol{padding-left:22px;margin-bottom:10px;font-size:12px;}
+    .ai-a li{margin-bottom:3px;}
+    .ai-a table{width:100%;border-collapse:collapse;margin:10px 0;page-break-inside:auto;}
+    .ai-a th{background:#39ff14;color:#000;padding:8px 6px;font-size:10px;text-transform:uppercase;border:1.5px solid #000;letter-spacing:1px;font-weight:900;}
+    .ai-a td{padding:7px 6px;border:1px solid #aaa;font-size:11px;text-align:center;}
+    .ai-a td:first-child{text-align:left;font-weight:600;}
+    .ai-a tr:nth-child(even) td{background:#f5f5f7;}
+    .ai-a tr{page-break-inside:avoid;}
+    .disclaimer{font-size:10px;color:#5a4400;background:#fff5e0;border:1px solid #ffaa00;border-left:4px solid #ffaa00;padding:12px;margin-top:24px;border-radius:6px;line-height:1.5;}
+    .footer-pdf{font-size:9px;color:#aaa;margin-top:16px;text-align:center;border-top:1px solid #eee;padding-top:10px;letter-spacing:1px;text-transform:uppercase;}
   </style></head><body>
-    <h1>🔱 APEX PULSE PRO</h1><p class="sub">apexpulse.pro · AI Fitness Coach</p>
-    ${table.outerHTML}
+    <div class="pdf-header">
+      <h1>🔱 APEX PULSE PRO</h1>
+      <div class="meta">
+        <div>apexpulse.pro</div>
+        <div>${dateLabel}: ${today}</div>
+      </div>
+    </div>
+    ${sections}
     <div class="disclaimer"><strong>⚠️ ${disclaimer}</strong></div>
     <div class="footer-pdf">Train the mind. Stimulate dopamine. Maximize YOU.</div>
-    <script>window.onload=function(){window.print()}<\/script></body></html>`);
-  pw.document.close();}
+    <script>window.onload=function(){setTimeout(function(){window.print();},250);}<\/script>
+  </body></html>`);
+  pw.document.close();
+}
 
 function toast(msg){document.querySelectorAll('.toast-el').forEach(e=>e.remove());
   const t=document.createElement('div');t.className='toast-el';t.innerText=msg;
