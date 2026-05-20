@@ -66,6 +66,18 @@ body{display:flex;flex-direction:column;position:relative;}
 .safety-banner{padding:7px 12px;background:rgba(255,170,0,0.08);border-top:1px solid rgba(255,170,0,0.2);border-bottom:1px solid rgba(255,170,0,0.2);font-size:10px;font-weight:700;color:#ffaa00;letter-spacing:.5px;text-align:center;line-height:1.4;flex-shrink:0;z-index:9;cursor:pointer;}
 .safety-banner:hover{background:rgba(255,170,0,0.13);}
 
+/* PERSISTENT ELITE BANNER — always visible above input */
+#elite-banner{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:linear-gradient(135deg,rgba(212,175,55,0.18),rgba(212,175,55,0.06));border-top:1px solid rgba(212,175,55,0.4);border-bottom:1px solid rgba(212,175,55,0.4);cursor:pointer;flex-shrink:0;z-index:9;transition:background .2s;}
+#elite-banner:hover{background:linear-gradient(135deg,rgba(212,175,55,0.28),rgba(212,175,55,0.1));}
+#elite-banner:active{transform:scale(0.98);}
+.eb-left{display:flex;align-items:center;gap:10px;min-width:0;flex:1;}
+.eb-crown{font-size:22px;flex-shrink:0;}
+.eb-text{min-width:0;}
+.eb-title{font-family:'Bebas Neue';font-size:14px;letter-spacing:2px;color:var(--gold);line-height:1;margin-bottom:2px;}
+.eb-sub{font-size:10px;font-weight:600;color:#d0ccd8;letter-spacing:.3px;line-height:1.3;}
+.eb-price{font-family:'Bebas Neue';font-size:18px;letter-spacing:1.5px;color:var(--gold);flex-shrink:0;}
+#elite-banner.hidden{display:none;}
+
 #chat-box{flex:1;overflow-y:auto;padding:18px 16px 10px;display:flex;flex-direction:column;gap:15px;z-index:5;position:relative;scroll-behavior:smooth;}
 #chat-box::-webkit-scrollbar{width:2px;}
 #chat-box::-webkit-scrollbar-thumb{background:var(--s3);}
@@ -264,6 +276,17 @@ body{display:flex;flex-direction:column;position:relative;}
   </div>
 </div>
 
+<div id="elite-banner" onclick="document.getElementById('paywall').style.display='flex'">
+  <div class="eb-left">
+    <span class="eb-crown">👑</span>
+    <div class="eb-text">
+      <div class="eb-title" data-key="eb-title">ОТКЛЮЧИ ELITE</div>
+      <div class="eb-sub" data-key="eb-sub">Неограничени сесии · AI памет · 30 дни</div>
+    </div>
+  </div>
+  <div class="eb-price">1.99€ →</div>
+</div>
+
 <div class="safety-banner" onclick="showDisclaimer()">
   ⚠️ <span data-key="safety-banner">Информативна цел · Не заменя медицинска консултация</span>
 </div>
@@ -368,6 +391,8 @@ const T={
     placeholder:'Опиши целта си...',
     copy:'Копирай плана',pdf:'Запази PDF',
     upgrade:'⚡ Отключи неограничени сесии за 1.99€',
+    'eb-title':'ОТКЛЮЧИ ELITE',
+    'eb-sub':'Неограничени сесии · AI памет · 30 дни',
     terms:'Условия',privacy:'Поверителност',medical:'Медицинско',contact:'Контакт',close:'Затвори',
     'safety-banner':'Информативна цел · Не заменя медицинска консултация',
     'pw-period':'Пълен достъп · 30 дни','pw-btn':'Отключи Сега →','pw-back':'Върни се в чата',
@@ -415,6 +440,8 @@ const T={
     placeholder:'Describe your goal...',
     copy:'Copy plan',pdf:'Save PDF',
     upgrade:'⚡ Unlock unlimited sessions for €1.99',
+    'eb-title':'UNLOCK ELITE',
+    'eb-sub':'Unlimited sessions · AI memory · 30 days',
     terms:'Terms',privacy:'Privacy',medical:'Medical',contact:'Contact',close:'Close',
     'safety-banner':'Informational only · Not a substitute for medical advice',
     'pw-period':'Full access · 30 days','pw-btn':'Unlock Now →','pw-back':'Back to chat',
@@ -477,6 +504,7 @@ function activateElite(){
   const b=document.getElementById('badge');
   b.innerHTML='● ELITE';b.style.borderColor='#d4af37';b.style.color='#d4af37';b.style.background='rgba(212,175,55,0.12)';
   const up=document.querySelector('.util-upgrade');if(up)up.style.display='none';
+  const eb=document.getElementById('elite-banner');if(eb)eb.classList.add('hidden');
 }
 
 async function checkAccess(){
@@ -511,35 +539,7 @@ function rebuildChat(){
     <div class="hook-sub">${d.hook_sub}</div>`;
   box.appendChild(w);
 
-  // TIER COMPARISON — only shown if user has not started chatting yet AND is not ELITE
-  if(count<3 && count>=0){
-    const tiers=document.createElement('div');
-    tiers.className='tier-section';
-    tiers.id='tier-section';
-    tiers.innerHTML=`
-      <div class="tier free" onclick="document.getElementById('user-in').focus()">
-        <span class="tier-badge">${d.tier_free_badge}</span>
-        <span class="tier-title">FREE</span>
-        <ul class="tier-list">
-          <li>${d.tier_free_1}</li>
-          <li>${d.tier_free_2}</li>
-          <li>${d.tier_free_3}</li>
-        </ul>
-        <div class="tier-cta">${d.tier_free_cta}</div>
-      </div>
-      <div class="tier elite" onclick="document.getElementById('paywall').style.display='flex'">
-        <span class="tier-badge">${d.tier_elite_badge}</span>
-        <span class="tier-title">👑 ELITE</span>
-        <ul class="tier-list">
-          <li>${d.tier_elite_1}</li>
-          <li>${d.tier_elite_2}</li>
-          <li>${d.tier_elite_3}</li>
-        </ul>
-        <div class="tier-cta">${d.tier_elite_cta}</div>
-      </div>`;
-    box.appendChild(tiers);
-  }
-
+  // Quick prompts go directly after welcome
   const qs=document.createElement('div');qs.className='qp-section';
   qs.innerHTML=`<div class="qp-label">${d.quick_label}</div>`;
   const grid=document.createElement('div');grid.className='qp-grid';
@@ -550,8 +550,7 @@ function rebuildChat(){
 }
 
 function hideTiers(){
-  const t=document.getElementById('tier-section');
-  if(t)t.style.display='none';
+  // Hide the persistent ELITE banner when chat starts (but keep it accessible via button)
 }
 
 function quickSend(msg){document.getElementById('user-in').value=msg;send();}
@@ -566,7 +565,7 @@ async function send(){
       document.getElementById('paywall').style.display='flex';
     }else{
       // Subtle reminder via toast instead of modal
-      toast(lang==='bg'?'⚡ Отключи ELITE за неограничен достъп':'⚡ Unlock ELITE for unlimited access');
+      toast(lang==='bg'?'👑 Натисни златния банер за ELITE':'👑 Tap the gold banner for ELITE');
     }
     return;
   }
