@@ -88,6 +88,27 @@ body{display:flex;flex-direction:column;position:relative;}
 .hook-headline .rd{color:var(--r);}
 .hook-sub{font-size:14px;font-weight:600;color:#b8b4c4;line-height:1.6;}
 
+/* TIER COMPARISON CARDS */
+.tier-section{margin-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:9px;animation:fadeUp .6s .1s ease both;}
+.tier{border-radius:14px;padding:13px 12px;cursor:pointer;transition:all .15s;text-align:left;position:relative;overflow:hidden;}
+.tier.free{background:rgba(15,15,25,0.85);border:1.5px solid rgba(255,255,255,0.18);}
+.tier.elite{background:linear-gradient(135deg,rgba(212,175,55,0.12),rgba(212,175,55,0.04));border:1.5px solid rgba(212,175,55,0.5);box-shadow:0 0 24px rgba(212,175,55,0.18);}
+.tier.elite:hover{transform:translateY(-3px);box-shadow:0 0 32px rgba(212,175,55,0.3);}
+.tier.free:hover{transform:translateY(-3px);border-color:rgba(255,255,255,0.32);}
+.tier:active{transform:scale(0.97);}
+.tier-badge{font-family:'Bebas Neue';font-size:11px;letter-spacing:2px;display:block;margin-bottom:6px;}
+.tier.free .tier-badge{color:#9a96a8;}
+.tier.elite .tier-badge{color:var(--gold);}
+.tier-title{font-family:'Bebas Neue';font-size:18px;letter-spacing:1.5px;color:var(--text);display:block;margin-bottom:8px;line-height:1;}
+.tier.elite .tier-title{color:var(--gold);}
+.tier-list{font-size:11px;font-weight:600;color:#b8b4c4;line-height:1.6;list-style:none;padding:0;}
+.tier-list li{display:flex;align-items:flex-start;gap:6px;margin-bottom:3px;}
+.tier-list li::before{content:'•';color:#5e5a66;font-weight:700;}
+.tier.elite .tier-list li::before{content:'✓';color:var(--gold);font-weight:900;}
+.tier-cta{margin-top:8px;font-size:11px;font-weight:900;letter-spacing:1.2px;text-transform:uppercase;}
+.tier.free .tier-cta{color:#5e5a66;}
+.tier.elite .tier-cta{color:var(--gold);}
+
 .qp-section{animation:fadeUp .6s .18s ease both;opacity:0;}
 .qp-label{font-size:12px;font-weight:900;color:#aaa5b8;letter-spacing:3px;text-transform:uppercase;margin-bottom:9px;}
 .qp-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;}
@@ -328,6 +349,16 @@ const T={
     welcome_sub:'Train the mind. Stimulate dopamine. Maximize YOU.',
     hook_headline:'Личен <span class="hl">фитнес</span> и <span class="rd">хранителен</span> план за 30 секунди',
     hook_sub:'AI треньор с правилни макроси, упражнения и таблици. Без чакане. Без скъпи специалисти.',
+    tier_free_badge:'Старт',
+    tier_free_1:'3 сесии',
+    tier_free_2:'Без памет',
+    tier_free_3:'PDF Export',
+    tier_free_cta:'Започни тук →',
+    tier_elite_badge:'ПРЕМИУМ · 1.99€',
+    tier_elite_1:'Неограничени сесии',
+    tier_elite_2:'AI помни целите ти',
+    tier_elite_3:'30 дни достъп',
+    tier_elite_cta:'Отключи ELITE →',
     hook_proof:'Хиляди потребители използват APEX PULSE PRO',
     hook_cta_text:'Пълен достъп 30 дни',
     hook_cta_free:'3 БЕЗПЛАТНИ',
@@ -353,7 +384,7 @@ const T={
     copySuccess:'Планът е копиран! 🔥',pdfError:'Първо генерирай режим с таблица!',
     pills:['🥩 Хранене','🏋️ Тренировки','🧠 Дисциплина','📊 PDF'],
     qp:[
-      {ico:'💥',t:'ИСКАМ ДА СЕ ВЗРИВЯ',d:'Максимален мускул за минимално време',arr:'Дай ми програмата →',cls:'red',m:'Искам максимален мускулен растеж. Дай ми интензивна тренировъчна програма и хранителен режим. Аз съм здрав, без хронични заболявания.'},
+      {ico:'💥',t:'МАКСИМАЛЕН РАСТЕЖ',d:'Мускул и сила за минимално време',arr:'Дай ми програмата →',cls:'red',m:'Искам максимален мускулен растеж и сила. Дай ми интензивна тренировъчна програма и хранителен режим. Аз съм здрав, без хронични заболявания.'},
       {ico:'🔥',t:'СТОПИ МАЗНИНИТЕ',d:'Режим за горене — без глад, без мъка',arr:'Стартирай режима →',cls:'blue',m:'Искам да изгоря мазнини здравословно. Направи ми хранителен режим и кардио план за 30 дни. Аз съм здрав, без хронични заболявания.'},
       {ico:'⚡',t:'НУЛЕВ СТАРТ',d:'Никога не съм вдигал — направи ме опасен',arr:'Трансформирай ме →',cls:'gold',m:'Аз съм пълен начинаещ и здрав. Дай ми пълен план от нулата — тренировки и хранене стъпка по стъпка.'},
       {ico:'🏆',t:'ИЗГРАДИ ЕЛИТНО ТЯЛО',d:'Протеин, макроси, режим като на про',arr:'Покажи ми плана →',cls:'green',m:'Направи ми хранителен режим с точни макроси и протеин за изграждане на мускулна маса. Аз съм здрав, без алергии.'},
@@ -365,6 +396,16 @@ const T={
     welcome_sub:'Train the mind. Stimulate dopamine. Maximize YOU.',
     hook_headline:'Personal <span class="hl">fitness</span> & <span class="rd">nutrition</span> plan in 30 seconds',
     hook_sub:'AI coach with accurate macros, exercises and tables. No waiting. No expensive specialists.',
+    tier_free_badge:'Start',
+    tier_free_1:'3 sessions',
+    tier_free_2:'No memory',
+    tier_free_3:'PDF Export',
+    tier_free_cta:'Start here →',
+    tier_elite_badge:'PREMIUM · €1.99',
+    tier_elite_1:'Unlimited sessions',
+    tier_elite_2:'AI remembers your goals',
+    tier_elite_3:'30 days access',
+    tier_elite_cta:'Unlock ELITE →',
     hook_proof:'Thousands of users trust APEX PULSE PRO',
     hook_cta_text:'Full access 30 days',
     hook_cta_free:'3 FREE',
@@ -390,7 +431,7 @@ const T={
     copySuccess:'Plan copied! 🔥',pdfError:'First generate a plan with a table!',
     pills:['🥩 Nutrition','🏋️ Training','🧠 Discipline','📊 PDF'],
     qp:[
-      {ico:'💥',t:'EXPLODE MY GAINS',d:'Maximum muscle in minimum time',arr:'Give me the plan →',cls:'red',m:'I want maximum muscle growth. Give me an intense training program and nutrition plan. I am healthy with no chronic conditions.'},
+      {ico:'💥',t:'MAXIMUM GROWTH',d:'Muscle and strength in minimum time',arr:'Give me the plan →',cls:'red',m:'I want maximum muscle growth and strength. Give me an intense training program and nutrition plan. I am healthy with no chronic conditions.'},
       {ico:'🔥',t:'BURN THE FAT',d:'Shred mode — no hunger, no pain',arr:'Start the protocol →',cls:'blue',m:'I want to burn fat in a healthy way. Create a nutrition plan and cardio protocol for 30 days. I am healthy with no chronic conditions.'},
       {ico:'⚡',t:'ZERO TO BEAST',d:'Never trained — make me dangerous',arr:'Transform me →',cls:'gold',m:'I am a complete beginner and healthy. Give me a full plan from zero — training and nutrition step by step.'},
       {ico:'🏆',t:'BUILD ELITE PHYSIQUE',d:'Protein, macros, pro-level regime',arr:'Show me the plan →',cls:'green',m:'Build me a nutrition plan with exact macros and protein for muscle building. I am healthy with no allergies.'},
@@ -432,6 +473,7 @@ function acceptDisclaimer(){
 function activateElite(){
   count=-999999;
   localStorage.removeItem('apexCount');
+  localStorage.removeItem('apexPaywallShown');
   const b=document.getElementById('badge');
   b.innerHTML='● ELITE';b.style.borderColor='#d4af37';b.style.color='#d4af37';b.style.background='rgba(212,175,55,0.12)';
   const up=document.querySelector('.util-upgrade');if(up)up.style.display='none';
@@ -468,6 +510,36 @@ function rebuildChat(){
   w.innerHTML=`<div class="hook-headline">${d.hook_headline}</div>
     <div class="hook-sub">${d.hook_sub}</div>`;
   box.appendChild(w);
+
+  // TIER COMPARISON — only shown if user has not started chatting yet AND is not ELITE
+  if(count<3 && count>=0){
+    const tiers=document.createElement('div');
+    tiers.className='tier-section';
+    tiers.id='tier-section';
+    tiers.innerHTML=`
+      <div class="tier free" onclick="document.getElementById('user-in').focus()">
+        <span class="tier-badge">${d.tier_free_badge}</span>
+        <span class="tier-title">FREE</span>
+        <ul class="tier-list">
+          <li>${d.tier_free_1}</li>
+          <li>${d.tier_free_2}</li>
+          <li>${d.tier_free_3}</li>
+        </ul>
+        <div class="tier-cta">${d.tier_free_cta}</div>
+      </div>
+      <div class="tier elite" onclick="document.getElementById('paywall').style.display='flex'">
+        <span class="tier-badge">${d.tier_elite_badge}</span>
+        <span class="tier-title">👑 ELITE</span>
+        <ul class="tier-list">
+          <li>${d.tier_elite_1}</li>
+          <li>${d.tier_elite_2}</li>
+          <li>${d.tier_elite_3}</li>
+        </ul>
+        <div class="tier-cta">${d.tier_elite_cta}</div>
+      </div>`;
+    box.appendChild(tiers);
+  }
+
   const qs=document.createElement('div');qs.className='qp-section';
   qs.innerHTML=`<div class="qp-label">${d.quick_label}</div>`;
   const grid=document.createElement('div');grid.className='qp-grid';
@@ -477,24 +549,74 @@ function rebuildChat(){
   qs.appendChild(grid);box.appendChild(qs);
 }
 
+function hideTiers(){
+  const t=document.getElementById('tier-section');
+  if(t)t.style.display='none';
+}
+
 function quickSend(msg){document.getElementById('user-in').value=msg;send();}
 
 async function send(){
   const inp=document.getElementById('user-in');
   const val=inp.value.trim();if(!val)return;
-  if(count>=3){document.getElementById('paywall').style.display='flex';return;}
+  // After 3 sessions — show paywall ONCE, then never again (ELITE buttons stay visible)
+  if(count>=3){
+    if(!localStorage.getItem('apexPaywallShown')){
+      localStorage.setItem('apexPaywallShown','true');
+      document.getElementById('paywall').style.display='flex';
+    }else{
+      // Subtle reminder via toast instead of modal
+      toast(lang==='bg'?'⚡ Отключи ELITE за неограничен достъп':'⚡ Unlock ELITE for unlimited access');
+    }
+    return;
+  }
   appendMsg(val,'u');inp.value='';
+  hideTiers();
   if(count>=0){count++;localStorage.setItem('apexCount',String(count));}updateBadge();
+
+  // Build request — include history ONLY for ELITE users
+  const isElite=count<=-999990;
+  const token=localStorage.getItem('apexToken')||'';
+  if(isElite)saveToHistory('user',val);
+
   const typing=document.createElement('div');typing.className='typing';typing.id='typing';
   typing.innerHTML='<div class="dot"></div><div class="dot"></div><div class="dot"></div>';
   box.appendChild(typing);box.scrollTop=box.scrollHeight;
+
+  const body={message:val};
+  if(isElite&&token){
+    body.token=token;
+    body.history=getChatHistory();
+  }
+
   try{
-    const res=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:val})});
+    const res=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const data=await res.json();
     const ty=document.getElementById('typing');if(ty)ty.remove();
     appendMsg(data.reply,'a');
+    // Save assistant reply for ELITE memory
+    if(isElite)saveToHistory('assistant',data.reply);
     document.getElementById('utility').style.display='block';
   }catch(e){const ty=document.getElementById('typing');if(ty)ty.remove();appendMsg(lang==='bg'?'Грешка в системата. Опитай отново.':'System error. Please try again.','a');}
+}
+
+/* ELITE CONVERSATION HISTORY (last 10 messages, only for paid users) */
+function getChatHistory(){
+  try{
+    const raw=localStorage.getItem('apexHistory');
+    if(!raw)return [];
+    const arr=JSON.parse(raw);
+    return Array.isArray(arr)?arr.slice(-10):[];
+  }catch(e){return [];}
+}
+
+function saveToHistory(role,content){
+  try{
+    const history=getChatHistory();
+    history.push({role,content:String(content).slice(0,4000)});
+    const trimmed=history.slice(-10);
+    localStorage.setItem('apexHistory',JSON.stringify(trimmed));
+  }catch(e){}
 }
 
 function updateBadge(){
