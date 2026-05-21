@@ -122,7 +122,8 @@ body{display:flex;flex-direction:column;position:relative;}
 .tier.elite .tier-cta{color:var(--gold);}
 
 .qp-section{animation:fadeUp .6s .18s ease both;opacity:0;}
-.qp-label{font-size:12px;font-weight:900;color:#aaa5b8;letter-spacing:3px;text-transform:uppercase;margin-bottom:9px;}
+.qp-label{font-size:13px;font-weight:900;color:var(--gold);letter-spacing:2px;text-transform:uppercase;margin-bottom:11px;text-align:center;padding:8px 12px;background:rgba(212,175,55,0.08);border:1px dashed rgba(212,175,55,0.3);border-radius:10px;animation:pulse-label 2.5s ease-in-out infinite;}
+@keyframes pulse-label{0%,100%{opacity:.85;}50%{opacity:1;}}
 .qp-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;}
 .qp{background:rgba(10,10,20,0.88);border:1px solid rgba(255,255,255,0.18);border-radius:14px;padding:14px 13px;cursor:pointer;transition:all .15s;text-align:left;backdrop-filter:blur(8px);}
 .qp:hover{transform:translateY(-3px);}
@@ -143,6 +144,8 @@ body{display:flex;flex-direction:column;position:relative;}
 .msg-u{align-self:flex-end;background:linear-gradient(135deg,var(--r),#8a0000);border-radius:18px 18px 4px 18px;padding:12px 17px;font-size:15px;font-weight:700;max-width:82%;line-height:1.5;animation:msgIn .3s ease both;word-wrap:break-word;}
 .msg-a{background:rgba(10,10,20,0.93);border:1px solid var(--border2);border-left:3px solid var(--r);border-radius:4px 18px 18px 18px;padding:18px 17px 14px;font-size:14px;font-weight:600;line-height:1.7;position:relative;animation:msgIn .35s ease both;backdrop-filter:blur(10px);max-width:100%;overflow:hidden;}
 .msg-a::before{content:'APEX AI';position:absolute;top:-9px;left:14px;font-family:'Bebas Neue';font-size:10px;letter-spacing:3px;color:var(--r);background:var(--surface);padding:0 7px;}
+.msg-a.greeting{border-left-color:var(--gold);background:linear-gradient(135deg,rgba(212,175,55,0.05),rgba(10,10,20,0.93));margin-top:8px;}
+.msg-a.greeting::before{content:'';display:none;}
 
 /* TABLE WRAPPER - horizontal scroll on mobile */
 .msg-a .table-wrap{overflow-x:auto;margin:14px -8px 14px -8px;padding:0 8px;-webkit-overflow-scrolling:touch;}
@@ -369,6 +372,7 @@ const T={
     welcome_sub:'Train the mind. Stimulate dopamine. Maximize YOU.',
     hook_headline:'Личен <span class="hl">фитнес</span> и <span class="rd">хранителен</span> план за 30 секунди',
     hook_sub:'AI треньор с правилни макроси, упражнения и таблици. Без чакане. Без скъпи специалисти.',
+    bot_greeting:'**Здравей! 🔱 Аз съм твоят AI треньор.**\n\nИзграждам персонални хранителни режими и тренировки за секунди.\n\n**Какво търсиш?** Маса, отслабване, форма или нещо друго?',
     tier_free_badge:'Старт',
     tier_free_1:'3 сесии',
     tier_free_2:'Без памет',
@@ -384,7 +388,7 @@ const T={
     hook_cta_free:'3 БЕЗПЛАТНИ',
     sessions:'Сесии',session:'Сесия',
     free_note:'▸ 3 безплатни сесии · Без регистрация',
-    quick_label:'ЗАПОЧНИ СЕГА',
+    quick_label:'👇 ИЛИ ИЗБЕРИ ГОТОВА ЦЕЛ ОТ ТУК',
     placeholder:'Опиши целта си...',
     copy:'Копирай плана',pdf:'Запази PDF',
     upgrade:'⚡ Отключи неограничени сесии за 1.99€',
@@ -418,6 +422,7 @@ const T={
     welcome_sub:'Train the mind. Stimulate dopamine. Maximize YOU.',
     hook_headline:'Personal <span class="hl">fitness</span> & <span class="rd">nutrition</span> plan in 30 seconds',
     hook_sub:'AI coach with accurate macros, exercises and tables. No waiting. No expensive specialists.',
+    bot_greeting:'**Hey! 🔱 I\'m your AI coach.**\n\nI build personal nutrition and training plans in seconds.\n\n**What are you after?** Muscle, weight loss, shape, or something else?',
     tier_free_badge:'Start',
     tier_free_1:'3 sessions',
     tier_free_2:'No memory',
@@ -433,7 +438,7 @@ const T={
     hook_cta_free:'3 FREE',
     sessions:'Sessions',session:'Session',
     free_note:'▸ 3 free sessions · No registration',
-    quick_label:'START NOW',
+    quick_label:'👇 OR PICK A READY GOAL',
     placeholder:'Describe your goal...',
     copy:'Copy plan',pdf:'Save PDF',
     upgrade:'⚡ Unlock unlimited sessions for €1.99',
@@ -531,12 +536,13 @@ window.onload=async()=>{
 
 function rebuildChat(){
   box.innerHTML='';const d=T[lang];
-  const w=document.createElement('div');w.className='welcome';
-  w.innerHTML=`<div class="hook-headline">${d.hook_headline}</div>
-    <div class="hook-sub">${d.hook_sub}</div>`;
-  box.appendChild(w);
 
-  // Quick prompts go directly after welcome
+  // Bot greeting — appears as first AI message (free, doesn't count as session)
+  const greeting=document.createElement('div');greeting.className='msg-a greeting';
+  greeting.innerHTML=marked.parse(d.bot_greeting);
+  box.appendChild(greeting);
+
+  // Quick prompts as suggested goals
   const qs=document.createElement('div');qs.className='qp-section';
   qs.innerHTML=`<div class="qp-label">${d.quick_label}</div>`;
   const grid=document.createElement('div');grid.className='qp-grid';
@@ -648,7 +654,7 @@ function appendMsg(text,type){const div=document.createElement('div');
 function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
 function copyPlan(){
-  const all=document.querySelectorAll('.msg-u, .msg-a');
+  const all=document.querySelectorAll('.msg-u, .msg-a:not(.greeting)');
   if(!all.length){toast(T[lang].pdfError);return;}
   let text='';
   all.forEach(el=>{
@@ -664,7 +670,7 @@ function copyPlan(){
 }
 
 function savePDF(){
-  const all=document.querySelectorAll('.msg-u, .msg-a');
+  const all=document.querySelectorAll('.msg-u, .msg-a:not(.greeting)');
   if(!all.length){toast(T[lang].pdfError);return;}
 
   // Build full conversation HTML for PDF
