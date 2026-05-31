@@ -88,6 +88,8 @@
     --border:rgba(255,255,255,0.08);
   }
   *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  section[id]{scroll-margin-top:80px;}
   html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:'Barlow Condensed','Arial Narrow',Arial,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden;}
   .font-display{font-family:'Bebas Neue','Arial Narrow',Arial,sans-serif;letter-spacing:0.02em;}
   
@@ -159,10 +161,8 @@
   .section-title{font-family:'Bebas Neue';font-size:clamp(30px,5vw,50px);letter-spacing:2px;color:var(--text);line-height:1.1;margin:0 0 14px;}
   .section-sub{font-size:16px;color:var(--muted);max-width:560px;margin:0 auto;line-height:1.6;}
   .features-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px;}
-  .feature-card{background:linear-gradient(180deg,var(--surface-light) 0%,var(--surface) 100%);border:1px solid var(--border);border-radius:16px;padding:32px 26px;position:relative;overflow:hidden;transition:all .3s;}
-  .feature-card::before{content:'';position:absolute;top:0;left:0;width:100%;height:1px;background:linear-gradient(90deg,transparent,rgba(255,26,26,0.5),transparent);opacity:0;transition:opacity .3s;}
-  .feature-card:hover{border-color:rgba(255,26,26,0.3);transform:translateY(-4px);box-shadow:0 16px 40px rgba(0,0,0,0.4);}
-  .feature-card:hover::before{opacity:1;}
+  .feature-card{background:linear-gradient(180deg,var(--surface-light) 0%,var(--surface) 100%);border:1px solid var(--border);border-radius:16px;padding:32px 26px;position:relative;overflow:hidden;}
+  .feature-card::before{content:'';position:absolute;top:0;left:0;width:100%;height:1px;background:linear-gradient(90deg,transparent,rgba(255,26,26,0.5),transparent);opacity:0.5;}
   .feature-icon{width:54px;height:54px;border-radius:12px;background:rgba(255,26,26,0.08);border:1px solid rgba(255,26,26,0.25);display:flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:20px;}
   .feature-title{font-family:'Bebas Neue';font-size:22px;letter-spacing:2px;color:var(--text);margin:0 0 10px;}
   .feature-desc{font-size:14px;color:#b8b4c4;line-height:1.6;}
@@ -315,16 +315,16 @@
     </a>
     <div class="nav-links">
       <a href="#goals" class="nav-link">Start</a>
-      <a href="#features" class="nav-link">Platform</a>
-      <a href="#trust" class="nav-link">Trust</a>
-      <a href="#pricing" class="nav-link">Pricing</a>
+      <a href="#features" class="nav-link" data-key="nav-platform">Platform</a>
+      <a href="#trust" class="nav-link" data-key="nav-trust">Trust</a>
+      <a href="#pricing" class="nav-link" data-key="nav-pricing">Pricing</a>
     </div>
     <div class="nav-right">
       <div class="nav-lang">
-        <span>BG</span>
-        <span class="active">EN</span>
+        <span data-lang="bg">BG</span>
+        <span data-lang="en" class="active">EN</span>
       </div>
-      <a href="/app" class="btn-launch">Launch App →</a>
+      <a href="/app" class="btn-launch" data-key="nav-launch">Launch App →</a>
     </div>
   </div>
 </nav>
@@ -334,47 +334,47 @@
   <div class="hero-inner">
     <div class="hero-badge"><span class="dot"></span> Next-Gen AI Fitness Intelligence</div>
     <h1 class="hero-title">
-      <div class="line1">TRAIN SMARTER.</div>
-      <div class="line2">BUILD THE BODY.</div>
-      <div class="line3">MAXIMIZE YOU.</div>
+      <div class="line1" data-key="hero-l1">TRAIN SMARTER.</div>
+      <div class="line2" data-key="hero-l2">BUILD THE BODY.</div>
+      <div class="line3" data-key="hero-l3">MAXIMIZE YOU.</div>
     </h1>
-    <p class="hero-sub">Your cinematic AI coach for elite transformation — personalized workouts, nutrition systems, recovery and PDF plans, all in one premium ecosystem.</p>
+    <p class="hero-sub" data-key="hero-sub">Your cinematic AI coach for elite transformation — personalized workouts, nutrition systems, recovery and PDF plans, all in one premium ecosystem.</p>
     <div class="hero-cta">
-      <a href="#goals" class="btn-primary">Begin Transformation →</a>
-      <a href="#features" class="btn-secondary">Explore Platform</a>
+      <a href="#goals" class="btn-primary" data-key="hero-cta-primary">Begin Transformation →</a>
+      <a href="#features" class="btn-secondary" data-key="hero-cta-secondary">Explore Platform</a>
     </div>
   </div>
 </section>
 
 <!-- TRUST BADGES under hero -->
 <div class="trust-row">
-  <div class="trust-item"><span class="icon">🇧🇬</span> Made in Bulgaria</div>
-  <div class="trust-item"><span class="icon">🔒</span> Secured by Stripe</div>
-  <div class="trust-item"><span class="icon">⚡</span> Instant AI Plans</div>
+  <div class="trust-item"><span class="icon">🇧🇬</span> <span data-key="badge-bg">Made in Bulgaria</span></div>
+  <div class="trust-item"><span class="icon">🔒</span> <span data-key="badge-stripe">Secured by Stripe</span></div>
+  <div class="trust-item"><span class="icon">⚡</span> <span data-key="badge-instant">Instant AI Plans</span></div>
 </div>
 
 <!-- FEATURES -->
 <section class="section" id="features">
   <div class="section-head">
-    <div class="section-label">● AI Coaching Ecosystem</div>
-    <h2 class="section-title">One platform. Every discipline.</h2>
-    <p class="section-sub">Apex Pulse PRO unifies training, nutrition and recovery into a single intelligent coaching loop.</p>
+    <div class="section-label" data-key="features-label">● AI Coaching Ecosystem</div>
+    <h2 class="section-title" data-key="features-title">One platform. Every discipline.</h2>
+    <p class="section-sub" data-key="features-sub">Apex Pulse PRO unifies training, nutrition and recovery into a single intelligent coaching loop.</p>
   </div>
   <div class="features-grid">
     <div class="feature-card">
       <div class="feature-icon">🏋️</div>
-      <h3 class="feature-title">Workout Generation</h3>
-      <p class="feature-desc">Periodized programs tuned to your level, equipment and recovery. Adapts in seconds, not weeks.</p>
+      <h3 class="feature-title" data-key="feat1-title">Workout Generation</h3>
+      <p class="feature-desc" data-key="feat1-desc">Periodized programs tuned to your level, equipment and recovery. Adapts in seconds, not weeks.</p>
     </div>
     <div class="feature-card">
       <div class="feature-icon">🥩</div>
-      <h3 class="feature-title">Nutrition Systems</h3>
-      <p class="feature-desc">Macros, meal frameworks, grocery lists — built around your body, your goals and your appetite.</p>
+      <h3 class="feature-title" data-key="feat2-title">Nutrition Systems</h3>
+      <p class="feature-desc" data-key="feat2-desc">Macros, meal frameworks, grocery lists — built around your body, your goals and your appetite.</p>
     </div>
     <div class="feature-card">
       <div class="feature-icon">🌙</div>
-      <h3 class="feature-title">Recovery Guidance</h3>
-      <p class="feature-desc">Sleep, mobility and deload protocols that protect your progress and prevent burnout.</p>
+      <h3 class="feature-title" data-key="feat3-title">Recovery Guidance</h3>
+      <p class="feature-desc" data-key="feat3-desc">Sleep, mobility and deload protocols that protect your progress and prevent burnout.</p>
     </div>
   </div>
 </section>
@@ -382,34 +382,34 @@
 <!-- QUICK GOALS — kicks directly into chat with AI generating the plan -->
 <section class="goals-section" id="goals">
   <div class="section-head">
-    <div class="section-label">● Start Now</div>
-    <h2 class="section-title">Pick your goal. AI starts working in 3 seconds.</h2>
-    <p class="section-sub">No forms. No setup. Tap a goal and the AI coach starts building your plan instantly.</p>
+    <div class="section-label" data-key="goals-label">● Start Now</div>
+    <h2 class="section-title" data-key="goals-title">Pick your goal. AI starts working in 3 seconds.</h2>
+    <p class="section-sub" data-key="goals-sub">No forms. No setup. Tap a goal and the AI coach starts building your plan instantly.</p>
   </div>
   <div class="goals-grid">
     <a href="/app?goal=growth" class="goal-card red">
       <div class="goal-ico">💪</div>
-      <h3 class="goal-title">BUILD MUSCLE</h3>
-      <p class="goal-desc">Strength and hypertrophy program with progressive overload and full nutrition.</p>
-      <div class="goal-arrow">Give me the plan →</div>
+      <h3 class="goal-title" data-key="goal1-title">BUILD MUSCLE</h3>
+      <p class="goal-desc" data-key="goal1-desc">Strength and hypertrophy program with progressive overload and full nutrition.</p>
+      <div class="goal-arrow" data-key="goal1-arrow">Give me the plan →</div>
     </a>
     <a href="/app?goal=burn" class="goal-card blue">
       <div class="goal-ico">🔥</div>
-      <h3 class="goal-title">LOSE FAT</h3>
-      <p class="goal-desc">Sustainable fat loss with structured nutrition and cardio protocol.</p>
-      <div class="goal-arrow">Start the protocol →</div>
+      <h3 class="goal-title" data-key="goal2-title">LOSE FAT</h3>
+      <p class="goal-desc" data-key="goal2-desc">Sustainable fat loss with structured nutrition and cardio protocol.</p>
+      <div class="goal-arrow" data-key="goal2-arrow">Start the protocol →</div>
     </a>
     <a href="/app?goal=zero" class="goal-card gold">
       <div class="goal-ico">⚡</div>
-      <h3 class="goal-title">START FROM ZERO</h3>
-      <p class="goal-desc">Complete beginner-friendly plan with step-by-step training and nutrition.</p>
-      <div class="goal-arrow">Transform me →</div>
+      <h3 class="goal-title" data-key="goal3-title">START FROM ZERO</h3>
+      <p class="goal-desc" data-key="goal3-desc">Complete beginner-friendly plan with step-by-step training and nutrition.</p>
+      <div class="goal-arrow" data-key="goal3-arrow">Transform me →</div>
     </a>
     <a href="/app?goal=build" class="goal-card green">
       <div class="goal-ico">🏆</div>
-      <h3 class="goal-title">ELITE PHYSIQUE</h3>
-      <p class="goal-desc">Advanced macros, precise protein targets and structured muscle-building regime.</p>
-      <div class="goal-arrow">Show me the plan →</div>
+      <h3 class="goal-title" data-key="goal4-title">ELITE PHYSIQUE</h3>
+      <p class="goal-desc" data-key="goal4-desc">Advanced macros, precise protein targets and structured muscle-building regime.</p>
+      <div class="goal-arrow" data-key="goal4-arrow">Show me the plan →</div>
     </a>
   </div>
 </section>
@@ -418,29 +418,29 @@
 <section class="trust-section" id="trust">
   <div class="trust-inner">
     <div class="section-head">
-      <div class="section-label" style="color:var(--gold);background:rgba(212,175,55,0.06);border-color:rgba(212,175,55,0.2);">● Trust & Legal</div>
-      <h2 class="section-title">Built for athletes. Engineered for trust.</h2>
+      <div class="section-label" style="color:var(--gold);background:rgba(212,175,55,0.06);border-color:rgba(212,175,55,0.2);" data-key="trust-label">● Trust & Legal</div>
+      <h2 class="section-title" data-key="trust-title">Built for athletes. Engineered for trust.</h2>
     </div>
     <div class="trust-grid">
       <div class="trust-card">
         <div class="trust-icon">🔐</div>
-        <h3 class="trust-title">Privacy First</h3>
-        <p class="trust-desc">Your data stays yours. No tracking, no profiling, no resale.</p>
+        <h3 class="trust-title" data-key="trust1-title">Privacy First</h3>
+        <p class="trust-desc" data-key="trust1-desc">Your data stays yours. No tracking, no profiling, no resale.</p>
       </div>
       <div class="trust-card">
         <div class="trust-icon">🛡️</div>
-        <h3 class="trust-title">GDPR-Compliant</h3>
-        <p class="trust-desc">Built to comply with EU and global data standards.</p>
+        <h3 class="trust-title" data-key="trust2-title">GDPR-Compliant</h3>
+        <p class="trust-desc" data-key="trust2-desc">Built to comply with EU and global data standards.</p>
       </div>
       <div class="trust-card">
         <div class="trust-icon">✨</div>
-        <h3 class="trust-title">Educational AI</h3>
-        <p class="trust-desc">Informational guidance — no medical diagnosis or claims.</p>
+        <h3 class="trust-title" data-key="trust3-title">Educational AI</h3>
+        <p class="trust-desc" data-key="trust3-desc">Informational guidance — no medical diagnosis or claims.</p>
       </div>
       <div class="trust-card">
         <div class="trust-icon">⚖️</div>
-        <h3 class="trust-title">Secure Payments</h3>
-        <p class="trust-desc">Processed by Stripe — PCI-DSS Level 1 encryption.</p>
+        <h3 class="trust-title" data-key="trust4-title">Secure Payments</h3>
+        <p class="trust-desc" data-key="trust4-desc">Processed by Stripe — PCI-DSS Level 1 encryption.</p>
       </div>
     </div>
   </div>
@@ -450,9 +450,9 @@
 <section class="pricing-section" id="pricing">
   <div class="pricing-inner">
     <div class="section-head">
-      <div class="section-label" style="color:var(--gold);background:rgba(212,175,55,0.06);border-color:rgba(212,175,55,0.2);">● Elite Access</div>
-      <h2 class="section-title">Choose your level of intelligence.</h2>
-      <p class="section-sub">One platform. Built around your transformation, not ours.</p>
+      <div class="section-label" style="color:var(--gold);background:rgba(212,175,55,0.06);border-color:rgba(212,175,55,0.2);" data-key="pricing-label">● Elite Access</div>
+      <h2 class="section-title" data-key="pricing-title">Choose your level of intelligence.</h2>
+      <p class="section-sub" data-key="pricing-sub">One platform. Built around your transformation, not ours.</p>
     </div>
 
     <!-- FOUNDING PRICE (active until May 31, 2026) -->
@@ -512,52 +512,52 @@
         <!-- FREE PLAN -->
         <div class="price-card">
           <div class="price-icon">✨</div>
-          <h3 class="price-tier">FREE</h3>
-          <div class="price-amount">€0<span class="small">/forever</span></div>
-          <div class="price-period">Try Apex Pulse PRO</div>
+          <h3 class="price-tier" data-key="free-tier">FREE</h3>
+          <div class="price-amount">€0<span class="small" data-key="free-amount-suffix">/forever</span></div>
+          <div class="price-period" data-key="free-period">Try Apex Pulse PRO</div>
           <ul class="price-features">
-            <li>3 AI coaching sessions</li>
-            <li>Sample workout & nutrition</li>
-            <li>PDF export</li>
-            <li class="muted">No conversation memory</li>
-            <li class="muted">No saved history</li>
-            <li class="muted">Limited features</li>
+            <li data-key="free-f1">3 AI coaching sessions</li>
+            <li data-key="free-f2">Sample workout & nutrition</li>
+            <li data-key="free-f3">PDF export</li>
+            <li class="muted" data-key="free-f4">No conversation memory</li>
+            <li class="muted" data-key="free-f5">No saved history</li>
+            <li class="muted" data-key="free-f6">Limited features</li>
           </ul>
-          <a href="/app" class="price-btn price-btn-outline">Start Free</a>
+          <a href="/app" class="price-btn price-btn-outline" data-key="free-btn">Start Free</a>
         </div>
 
         <!-- CORE PLAN (featured) -->
         <div class="price-card featured">
           <div class="price-icon">⚡</div>
-          <h3 class="price-tier">APEX CORE</h3>
-          <div class="price-amount">€9.99<span class="small">/30 days</span></div>
-          <div class="price-period">For Serious Athletes</div>
+          <h3 class="price-tier" data-key="core-tier">APEX CORE</h3>
+          <div class="price-amount">€9.99<span class="small" data-key="core-amount-suffix">/30 days</span></div>
+          <div class="price-period" data-key="core-period">For Serious Athletes</div>
           <ul class="price-features">
-            <li>Unlimited AI coaching sessions</li>
-            <li>Personalized workout plans</li>
-            <li>Nutrition & macro guidance</li>
-            <li>PDF export of all plans</li>
-            <li>Conversation memory (10 messages)</li>
-            <li>BG / EN multilingual support</li>
+            <li data-key="core-f1">Unlimited AI coaching sessions</li>
+            <li data-key="core-f2">Personalized workout plans</li>
+            <li data-key="core-f3">Nutrition & macro guidance</li>
+            <li data-key="core-f4">PDF export of all plans</li>
+            <li data-key="core-f5">Conversation memory (10 messages)</li>
+            <li data-key="core-f6">BG / EN multilingual support</li>
           </ul>
-          <a href="/app?plan=core" class="price-btn price-btn-primary">Activate CORE →</a>
+          <a href="/app?plan=core" class="price-btn price-btn-primary" data-key="core-btn">Activate CORE →</a>
         </div>
 
         <!-- PRO PLAN -->
         <div class="price-card">
           <div class="price-icon" style="background:rgba(212,175,55,0.1);border-color:rgba(212,175,55,0.3);">👑</div>
-          <h3 class="price-tier gold">APEX PRO</h3>
-          <div class="price-amount">€14.99<span class="small">/30 days</span></div>
-          <div class="price-period">For Elite Performance</div>
+          <h3 class="price-tier gold" data-key="pro-tier">APEX PRO</h3>
+          <div class="price-amount">€14.99<span class="small" data-key="pro-amount-suffix">/30 days</span></div>
+          <div class="price-period" data-key="pro-period">For Elite Performance</div>
           <ul class="price-features">
-            <li>Everything in CORE</li>
-            <li>Extended memory (30 messages)</li>
-            <li>Priority AI response</li>
-            <li class="soon">Anatomical muscle mapping</li>
-            <li class="soon">Video exercise demos</li>
-            <li class="soon">Weekly plan adjustments</li>
+            <li data-key="pro-f1">Everything in CORE</li>
+            <li data-key="pro-f2">Extended memory (30 messages)</li>
+            <li data-key="pro-f3">Priority AI response</li>
+            <li class="soon" data-key="pro-f4">Anatomical muscle mapping</li>
+            <li class="soon" data-key="pro-f5">Video exercise demos</li>
+            <li class="soon" data-key="pro-f6">Weekly plan adjustments</li>
           </ul>
-          <a href="/app?plan=pro" class="price-btn price-btn-gold">Go PRO →</a>
+          <a href="/app?plan=pro" class="price-btn price-btn-gold" data-key="pro-btn">Go PRO →</a>
         </div>
       </div>
     </div>
@@ -573,10 +573,10 @@
         <img src="/static/payment-logos/stripe.svg" alt="Stripe" class="pay-logo">
       </div>
       <div class="trust-mini" style="margin:0;background:transparent;border:none;padding:0;">
-        <div class="trust-mini-row"><span class="icon">🔒</span> <span>Card data encrypted by <strong>Stripe</strong> — never touches our servers</span></div>
-        <div class="trust-mini-row"><span class="icon">🛡️</span> <span>Same payment system used by <strong>Amazon, Google, Shopify</strong></span></div>
-        <div class="trust-mini-row"><span class="icon">🏦</span> <span>Your bank protects every purchase via Visa/Mastercard</span></div>
-        <div class="trust-mini-row"><span class="icon">⚡</span> <span>One-time payment · No auto-renewal · 30-day access</span></div>
+        <div class="trust-mini-row"><span class="icon">🔒</span> <span data-key="trust-mini-1">Card data encrypted by <strong>Stripe</strong> — never touches our servers</span></div>
+        <div class="trust-mini-row"><span class="icon">🛡️</span> <span data-key="trust-mini-2">Same payment system used by <strong>Amazon, Google, Shopify</strong></span></div>
+        <div class="trust-mini-row"><span class="icon">🏦</span> <span data-key="trust-mini-3">Your bank protects every purchase via Visa/Mastercard</span></div>
+        <div class="trust-mini-row"><span class="icon">⚡</span> <span data-key="trust-mini-4">One-time payment · No auto-renewal · 30-day access</span></div>
       </div>
     </div>
   </div>
@@ -593,7 +593,7 @@
           <div class="sub">AI Fitness Coach</div>
         </div>
       </div>
-      <p class="footer-tagline">Premium AI fitness intelligence. Train smarter, eat better, recover deeper. Made in Bulgaria with passion for elite transformation.</p>
+      <p class="footer-tagline" data-key="footer-tagline">Premium AI fitness intelligence. Train smarter, eat better, recover deeper. Made in Bulgaria with passion for elite transformation.</p>
       <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--muted);letter-spacing:1.5px;">
         <span>🇧🇬 MADE IN BULGARIA</span>
         <span>🔒 STRIPE PCI-DSS L1</span>
@@ -601,23 +601,23 @@
       </div>
     </div>
     <div class="footer-col">
-      <h4>Platform</h4>
-      <a href="/app">Launch App</a>
-      <a href="#features">Features</a>
-      <a href="#pricing">Pricing</a>
-      <a href="#trust">Trust & Legal</a>
+      <h4 data-key="footer-platform">Platform</h4>
+      <a href="/app" data-key="footer-launch-app">Launch App</a>
+      <a href="#features" data-key="footer-features">Features</a>
+      <a href="#pricing" data-key="footer-pricing">Pricing</a>
+      <a href="#trust" data-key="footer-trust">Trust & Legal</a>
     </div>
     <div class="footer-col">
-      <h4>Legal</h4>
-      <a href="#trust">Privacy Policy</a>
-      <a href="#trust">Terms of Service</a>
-      <a href="#trust">AI Disclaimer</a>
-      <a href="#trust">Refund Policy</a>
+      <h4 data-key="footer-legal">Legal</h4>
+      <a href="#trust" data-key="footer-privacy">Privacy Policy</a>
+      <a href="#trust" data-key="footer-terms">Terms of Service</a>
+      <a href="#trust" data-key="footer-disclaimer">AI Disclaimer</a>
+      <a href="#trust" data-key="footer-refund">Refund Policy</a>
     </div>
   </div>
   <div class="footer-bottom">
     <div style="margin-bottom:18px;">
-      <div style="font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:10px;">Accepted Payment Methods</div>
+      <div style="font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:10px;" data-key="footer-pay-label">Accepted Payment Methods</div>
       <div class="pay-methods" style="background:transparent;padding:0;">
         <img src="/static/payment-logos/visa.svg" alt="Visa" class="pay-logo">
         <img src="/static/payment-logos/mastercard.svg" alt="Mastercard" class="pay-logo">
@@ -628,7 +628,7 @@
         <img src="/static/payment-logos/stripe.svg" alt="Stripe" class="pay-logo">
       </div>
     </div>
-    © 2026 APEX PULSE PRO · ALL RIGHTS RESERVED · SECURE PAYMENTS BY STRIPE
+    <span data-key="footer-copyright">© 2026 APEX PULSE PRO · ALL RIGHTS RESERVED · SECURE PAYMENTS BY STRIPE</span>
   </div>
 </footer>
 
@@ -636,6 +636,260 @@
 <button id="scrollTop" class="scroll-top" aria-label="Scroll to top">↑</button>
 
 <script>
+  // ═══════════════════════════════════════════════════════════
+  // LANGUAGE SYSTEM — BG / EN
+  // Detect default from URL param or localStorage, fallback to BG
+  // ═══════════════════════════════════════════════════════════
+  const T = {
+    bg: {
+      // Navigation
+      'nav-platform': 'Платформа',
+      'nav-trust': 'Доверие',
+      'nav-pricing': 'Цени',
+      'nav-launch': 'Стартирай приложението →',
+      // Hero
+      'hero-l1': 'ТРЕНИРАЙ ПО-УМНО.',
+      'hero-l2': 'ИЗГРАДИ ТЯЛОТО.',
+      'hero-l3': 'МАКСИМИЗИРАЙ СЕБЕ СИ.',
+      'hero-sub': 'Твоят кинематографичен AI треньор за елитна трансформация — персонализирани тренировки, хранителни режими, възстановяване и PDF планове, всичко в една премиум екосистема.',
+      'hero-cta-primary': 'Започни трансформацията →',
+      'hero-cta-secondary': 'Разгледай платформата',
+      // Trust badges
+      'badge-bg': 'Създадено в България',
+      'badge-stripe': 'Защитено от Stripe',
+      'badge-instant': 'Мигновени AI планове',
+      // Features
+      'features-label': '● AI Coaching екосистема',
+      'features-title': 'Една платформа. Всяка дисциплина.',
+      'features-sub': 'Apex Pulse PRO обединява тренировки, хранене и възстановяване в един интелигентен coaching цикъл.',
+      'feat1-title': 'Генериране на тренировки',
+      'feat1-desc': 'Периодизирани програми, съобразени с твоето ниво, оборудване и възстановяване. Адаптират се за секунди, не седмици.',
+      'feat2-title': 'Хранителни режими',
+      'feat2-desc': 'Макроси, рамки за хранене, списъци с продукти — изградени около твоето тяло, цели и апетит.',
+      'feat3-title': 'Възстановяване',
+      'feat3-desc': 'Протоколи за сън, мобилност и deload, които защитават напредъка ти и предотвратяват прегаряне.',
+      // Goals
+      'goals-label': '● Започни сега',
+      'goals-title': 'Избери целта си. AI започва работа за 3 секунди.',
+      'goals-sub': 'Без формуляри. Без настройки. Натисни цел и AI треньорът започва да изгражда плана ти мигновено.',
+      'goal1-title': 'ИЗГРАДИ МУСКУЛИ',
+      'goal1-desc': 'Програма за сила и хипертрофия с прогресивно натоварване и пълно хранене.',
+      'goal1-arrow': 'Дай ми плана →',
+      'goal2-title': 'СВАЛИ МАЗНИНИ',
+      'goal2-desc': 'Устойчиво намаляване на мазнини със структурирано хранене и кардио протокол.',
+      'goal2-arrow': 'Започни протокола →',
+      'goal3-title': 'ЗАПОЧНИ ОТ НУЛАТА',
+      'goal3-desc': 'Пълен план за начинаещи с тренировки и хранене стъпка по стъпка.',
+      'goal3-arrow': 'Трансформирай ме →',
+      'goal4-title': 'ЕЛИТНА ФОРМА',
+      'goal4-desc': 'Прецизни макроси, точни протеинови цели и структуриран режим за мускулна маса.',
+      'goal4-arrow': 'Покажи ми плана →',
+      // Trust
+      'trust-label': '● Доверие и закон',
+      'trust-title': 'Изградено за атлети. Инженерирано за доверие.',
+      'trust1-title': 'Поверителност',
+      'trust1-desc': 'Твоите данни са твои. Без проследяване, без профилиране, без препродажба.',
+      'trust2-title': 'GDPR съвместимост',
+      'trust2-desc': 'Изградено според EU и глобални стандарти за данни.',
+      'trust3-title': 'Образователен AI',
+      'trust3-desc': 'Информационна насока — без медицинска диагноза или твърдения.',
+      'trust4-title': 'Сигурни плащания',
+      'trust4-desc': 'Обработено от Stripe — PCI-DSS Level 1 криптиране.',
+      // Pricing
+      'pricing-label': '● Елитен достъп',
+      'pricing-title': 'Избери своето ниво на интелигентност.',
+      'pricing-sub': 'Една платформа. Изградена около твоята трансформация, не нашата.',
+      'free-tier': 'БЕЗПЛАТЕН',
+      'free-amount-suffix': '/завинаги',
+      'free-period': 'Опитай Apex Pulse PRO',
+      'free-f1': '3 AI сесии',
+      'free-f2': 'Примерни тренировки и хранене',
+      'free-f3': 'PDF експорт',
+      'free-f4': 'Без AI памет',
+      'free-f5': 'Без запазена история',
+      'free-f6': 'Ограничени функции',
+      'free-btn': 'Започни безплатно',
+      'core-tier': 'APEX CORE',
+      'core-amount-suffix': '/30 дни',
+      'core-period': 'За сериозни атлети',
+      'core-f1': 'Неограничени AI сесии',
+      'core-f2': 'Персонализирани тренировки',
+      'core-f3': 'Хранене и макроси',
+      'core-f4': 'PDF експорт на всички планове',
+      'core-f5': 'AI памет (10 съобщения)',
+      'core-f6': 'BG / EN поддръжка',
+      'core-btn': 'Активирай CORE →',
+      'pro-tier': 'APEX PRO',
+      'pro-amount-suffix': '/30 дни',
+      'pro-period': 'За елитна производителност',
+      'pro-f1': 'Всичко в CORE',
+      'pro-f2': 'Разширена памет (30 съобщения)',
+      'pro-f3': 'Приоритетен AI отговор',
+      'pro-f4': 'Анатомична мускулна карта',
+      'pro-f5': 'Видео демонстрации',
+      'pro-f6': 'Седмични корекции',
+      'pro-btn': 'Към PRO →',
+      'trust-mini-1': 'Картовите данни се криптират от <strong>Stripe</strong> — никога не достигат нашите сървъри',
+      'trust-mini-2': 'Същата платежна система, използвана от <strong>Amazon, Google, Shopify</strong>',
+      'trust-mini-3': 'Твоята банка защитава всяка покупка чрез Visa/Mastercard',
+      'trust-mini-4': 'Еднократно плащане · Без auto-renewal · 30-дневен достъп',
+      // Footer
+      'footer-tagline': 'Премиум AI фитнес интелигентност. Тренирай по-умно, яж по-добре, възстановявай се по-дълбоко. Създадено в България със страст за елитна трансформация.',
+      'footer-platform': 'Платформа',
+      'footer-launch-app': 'Стартирай приложението',
+      'footer-features': 'Функции',
+      'footer-pricing': 'Цени',
+      'footer-trust': 'Доверие и закон',
+      'footer-legal': 'Законови',
+      'footer-privacy': 'Поверителност',
+      'footer-terms': 'Условия за ползване',
+      'footer-disclaimer': 'AI Disclaimer',
+      'footer-refund': 'Refund политика',
+      'footer-pay-label': 'Приети методи на плащане',
+      'footer-copyright': '© 2026 APEX PULSE PRO · ВСИЧКИ ПРАВА ЗАПАЗЕНИ · СИГУРНИ ПЛАЩАНИЯ ОТ STRIPE',
+    },
+    en: {
+      // Navigation
+      'nav-platform': 'Platform',
+      'nav-trust': 'Trust',
+      'nav-pricing': 'Pricing',
+      'nav-launch': 'Launch App →',
+      // Hero
+      'hero-l1': 'TRAIN SMARTER.',
+      'hero-l2': 'BUILD THE BODY.',
+      'hero-l3': 'MAXIMIZE YOU.',
+      'hero-sub': 'Your cinematic AI coach for elite transformation — personalized workouts, nutrition systems, recovery and PDF plans, all in one premium ecosystem.',
+      'hero-cta-primary': 'Begin Transformation →',
+      'hero-cta-secondary': 'Explore Platform',
+      // Trust badges
+      'badge-bg': 'Made in Bulgaria',
+      'badge-stripe': 'Secured by Stripe',
+      'badge-instant': 'Instant AI Plans',
+      // Features
+      'features-label': '● AI Coaching Ecosystem',
+      'features-title': 'One platform. Every discipline.',
+      'features-sub': 'Apex Pulse PRO unifies training, nutrition and recovery into a single intelligent coaching loop.',
+      'feat1-title': 'Workout Generation',
+      'feat1-desc': 'Periodized programs tuned to your level, equipment and recovery. Adapts in seconds, not weeks.',
+      'feat2-title': 'Nutrition Systems',
+      'feat2-desc': 'Macros, meal frameworks, grocery lists — built around your body, your goals and your appetite.',
+      'feat3-title': 'Recovery Guidance',
+      'feat3-desc': 'Sleep, mobility and deload protocols that protect your progress and prevent burnout.',
+      // Goals
+      'goals-label': '● Start Now',
+      'goals-title': 'Pick your goal. AI starts working in 3 seconds.',
+      'goals-sub': 'No forms. No setup. Tap a goal and the AI coach starts building your plan instantly.',
+      'goal1-title': 'BUILD MUSCLE',
+      'goal1-desc': 'Strength and hypertrophy program with progressive overload and full nutrition.',
+      'goal1-arrow': 'Give me the plan →',
+      'goal2-title': 'LOSE FAT',
+      'goal2-desc': 'Sustainable fat loss with structured nutrition and cardio protocol.',
+      'goal2-arrow': 'Start the protocol →',
+      'goal3-title': 'START FROM ZERO',
+      'goal3-desc': 'Complete beginner-friendly plan with step-by-step training and nutrition.',
+      'goal3-arrow': 'Transform me →',
+      'goal4-title': 'ELITE PHYSIQUE',
+      'goal4-desc': 'Advanced macros, precise protein targets and structured muscle-building regime.',
+      'goal4-arrow': 'Show me the plan →',
+      // Trust
+      'trust-label': '● Trust & Legal',
+      'trust-title': 'Built for athletes. Engineered for trust.',
+      'trust1-title': 'Privacy First',
+      'trust1-desc': 'Your data stays yours. No tracking, no profiling, no resale.',
+      'trust2-title': 'GDPR-Compliant',
+      'trust2-desc': 'Built to comply with EU and global data standards.',
+      'trust3-title': 'Educational AI',
+      'trust3-desc': 'Informational guidance — no medical diagnosis or claims.',
+      'trust4-title': 'Secure Payments',
+      'trust4-desc': 'Processed by Stripe — PCI-DSS Level 1 encryption.',
+      // Pricing
+      'pricing-label': '● Elite Access',
+      'pricing-title': 'Choose your level of intelligence.',
+      'pricing-sub': 'One platform. Built around your transformation, not ours.',
+      'free-tier': 'FREE',
+      'free-amount-suffix': '/forever',
+      'free-period': 'Try Apex Pulse PRO',
+      'free-f1': '3 AI coaching sessions',
+      'free-f2': 'Sample workout & nutrition',
+      'free-f3': 'PDF export',
+      'free-f4': 'No conversation memory',
+      'free-f5': 'No saved history',
+      'free-f6': 'Limited features',
+      'free-btn': 'Start Free',
+      'core-tier': 'APEX CORE',
+      'core-amount-suffix': '/30 days',
+      'core-period': 'For Serious Athletes',
+      'core-f1': 'Unlimited AI coaching sessions',
+      'core-f2': 'Personalized workout plans',
+      'core-f3': 'Nutrition & macro guidance',
+      'core-f4': 'PDF export of all plans',
+      'core-f5': 'Conversation memory (10 messages)',
+      'core-f6': 'BG / EN multilingual support',
+      'core-btn': 'Activate CORE →',
+      'pro-tier': 'APEX PRO',
+      'pro-amount-suffix': '/30 days',
+      'pro-period': 'For Elite Performance',
+      'pro-f1': 'Everything in CORE',
+      'pro-f2': 'Extended memory (30 messages)',
+      'pro-f3': 'Priority AI response',
+      'pro-f4': 'Anatomical muscle mapping',
+      'pro-f5': 'Video exercise demos',
+      'pro-f6': 'Weekly plan adjustments',
+      'pro-btn': 'Go PRO →',
+      'trust-mini-1': 'Card data encrypted by <strong>Stripe</strong> — never touches our servers',
+      'trust-mini-2': 'Same payment system used by <strong>Amazon, Google, Shopify</strong>',
+      'trust-mini-3': 'Your bank protects every purchase via Visa/Mastercard',
+      'trust-mini-4': 'One-time payment · No auto-renewal · 30-day access',
+      // Footer
+      'footer-tagline': 'Premium AI fitness intelligence. Train smarter, eat better, recover deeper. Made in Bulgaria with passion for elite transformation.',
+      'footer-platform': 'Platform',
+      'footer-launch-app': 'Launch App',
+      'footer-features': 'Features',
+      'footer-pricing': 'Pricing',
+      'footer-trust': 'Trust & Legal',
+      'footer-legal': 'Legal',
+      'footer-privacy': 'Privacy Policy',
+      'footer-terms': 'Terms of Service',
+      'footer-disclaimer': 'AI Disclaimer',
+      'footer-refund': 'Refund Policy',
+      'footer-pay-label': 'Accepted Payment Methods',
+      'footer-copyright': '© 2026 APEX PULSE PRO · ALL RIGHTS RESERVED · SECURE PAYMENTS BY STRIPE',
+    }
+  };
+  
+  // Default to BG for Bulgarian audience
+  let lang = localStorage.getItem('apexLang') || 'bg';
+  
+  function applyLang() {
+    document.documentElement.lang = lang;
+    document.querySelectorAll('[data-key]').forEach(el => {
+      const key = el.getAttribute('data-key');
+      if (T[lang][key] !== undefined) {
+        el.innerHTML = T[lang][key];
+      }
+    });
+    // Update active indicator in nav
+    document.querySelectorAll('.nav-lang span').forEach(s => {
+      s.classList.toggle('active', s.getAttribute('data-lang') === lang);
+    });
+  }
+  
+  function setLang(newLang) {
+    if (newLang !== 'bg' && newLang !== 'en') return;
+    lang = newLang;
+    localStorage.setItem('apexLang', lang);
+    applyLang();
+  }
+  
+  // Wire up nav-lang clicks
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.nav-lang span').forEach(s => {
+      s.style.cursor = 'pointer';
+      s.addEventListener('click', () => setLang(s.getAttribute('data-lang')));
+    });
+    applyLang();
+  });
+  
   // ═══════════════════════════════════════════════════════════
   // HYBRID PRICING TOGGLE
   // From June 1, 2026: set SHOW_FOUNDING_PRICE = false
