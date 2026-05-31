@@ -1,0 +1,15 @@
+# robots.txt for apexpulse.pro
+# Allow search engines to index the marketing landing page
+# Disallow the chat app (it's a private user interface, not for SEO)
+
+User-agent: *
+Allow: /$
+Disallow: /app
+Disallow: /app/
+Disallow: /app/success
+Disallow: /verify-token
+Disallow: /create-checkout-session
+Disallow: /chat
+
+# Sitemap location
+Sitemap: https://apexpulse.pro/sitemap.xml
