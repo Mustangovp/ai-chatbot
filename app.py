@@ -23,6 +23,18 @@ stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 SECRET = os.getenv("APEX_SECRET", "change-this-in-railway-to-a-long-random-string")
 DEV_TOKEN = os.getenv("APEX_DEV_TOKEN", "")
 
+# ═══════════════════════════════════════════════════════════
+# PRICING PLANS (in EUR cents)
+# - founding: €1.99 (active until May 31, 2026)
+# - core: €9.99 (from June 1, 2026)
+# - pro: €14.99 (from June 1, 2026)
+# ═══════════════════════════════════════════════════════════
+PLANS = {
+    "founding": {"name": "APEX PULSE ELITE PRO - 30 Дни", "amount": 199, "memory": 10},
+    "core":     {"name": "APEX PULSE CORE - 30 Days",     "amount": 999, "memory": 10},
+    "pro":      {"name": "APEX PULSE PRO - 30 Days",      "amount": 1499, "memory": 30},
+}
+
 
 SYSTEM_INSTRUCTIONS = """
 Ти си APEX PULSE PRO — авторитетен AI фитнес и хранителен асистент. 
@@ -126,9 +138,22 @@ def verify_token(token: str) -> bool:
         return False
 
 
+# ═══════════════════════════════════════════════════════════
+# ROUTES
+# / → Landing page (premium marketing + quick goals + pricing)
+# /app → Chat interface (minimal, ChatGPT-style)
+# ═══════════════════════════════════════════════════════════
+
 @app.route("/")
-def home():
-    return render_template("index.html")
+def landing():
+    """Premium landing page — first impression for new visitors."""
+    return render_template("landing.html")
+
+
+@app.route("/app")
+def app_chat():
+    """The AI chat interface — minimal, focused on AI conversation."""
+    return render_template("app.html")
 
 
 @app.route("/chat", methods=["POST"])
@@ -136,21 +161,22 @@ def chat():
     try:
         data = request.json or {}
         user_message = data.get("message", "")
-        history = data.get("history", [])  # Optional: list of {role, content} from ELITE users
+        history = data.get("history", [])
         token = data.get("token", "")
+        plan_hint = data.get("plan", "")  # 'core' or 'pro' — frontend may send this
 
-        # Verify if ELITE token is valid — only ELITE users may send history
         is_elite = bool(token) and verify_token(token)
-
-        # Build message list
         messages = [{"role": "system", "content": SYSTEM_INSTRUCTIONS}]
 
         if is_elite and isinstance(history, list):
-            # Keep only last 10 messages from history (safety cap)
-            safe_history = history[-10:]
+            # Memory cap based on plan:
+            # - PRO plan → 30 messages
+            # - CORE / founding / dev_token → 10 messages
+            memory_cap = 30 if plan_hint == "pro" else 10
+            safe_history = history[-memory_cap:]
             for msg in safe_history:
                 if isinstance(msg, dict) and msg.get("role") in ("user", "assistant"):
-                    content = str(msg.get("content", ""))[:4000]  # cap each message
+                    content = str(msg.get("content", ""))[:4000]
                     messages.append({"role": msg["role"], "content": content})
 
         messages.append({"role": "user", "content": user_message})
@@ -166,44 +192,64 @@ def chat():
 
 @app.route('/create-checkout-session', methods=['POST'])
 def create_checkout_session():
+    """
+    Creates a Stripe checkout session for the chosen plan.
+    Plans: 'founding' (€1.99), 'core' (€9.99), 'pro' (€14.99)
+    """
     try:
+        data = request.json or {}
+        plan_key = data.get('plan', 'founding')
+        if plan_key not in PLANS:
+            plan_key = 'founding'
+        
+        plan = PLANS[plan_key]
         host_url = "https://" + request.host
+        
         session = stripe.checkout.Session.create(
             payment_method_types=['card'],
             line_items=[{
                 'price_data': {
                     'currency': 'eur',
-                    'product_data': {'name': 'APEX PULSE ELITE PRO - 30 Дни'},
-                    'unit_amount': 199,
+                    'product_data': {'name': plan['name']},
+                    'unit_amount': plan['amount'],
                 },
                 'quantity': 1,
             }],
             mode='payment',
-            allow_promotion_codes=True,  # 👈 ТОВА Е НОВИЯТ РЕД, КОЙТО СЛАГАШ ТУК!
-            success_url=host_url + '/success?session_id={CHECKOUT_SESSION_ID}',
-            cancel_url=host_url + '/?success=false',
+            allow_promotion_codes=True,
+            success_url=host_url + '/app/success?session_id={CHECKOUT_SESSION_ID}',
+            cancel_url=host_url + '/app?success=false',
         )
         return jsonify({'url': session.url})
     except Exception as e:
         return jsonify(error=str(e)), 403
 
 
-@app.route('/success')
+@app.route('/app/success')
 def payment_success():
     """After Stripe payment, verify with Stripe API, then issue a signed token."""
     session_id = request.args.get('session_id')
     if not session_id:
-        return redirect('/?success=false')
+        return redirect('/app?success=false')
     try:
         session = stripe.checkout.Session.retrieve(session_id)
         if session.payment_status == 'paid':
             expiry = int(time.time()) + (30 * 24 * 60 * 60)
             token = make_token(expiry)
-            return redirect(f'/?token={token}')
+            return redirect(f'/app?token={token}')
         else:
-            return redirect('/?success=false')
+            return redirect('/app?success=false')
     except Exception:
-        return redirect('/?success=false')
+        return redirect('/app?success=false')
+
+
+@app.route('/success')
+def legacy_success_redirect():
+    """Backwards compatibility: old Stripe success URLs redirect to /app/success."""
+    session_id = request.args.get('session_id', '')
+    if session_id:
+        return redirect(f'/app/success?session_id={session_id}')
+    return redirect('/app')
 
 
 @app.route('/verify-token', methods=['POST'])
@@ -211,6 +257,133 @@ def verify_token_endpoint():
     """Frontend asks: is this stored token still valid?"""
     token = request.json.get('token', '')
     return jsonify({'valid': verify_token(token)})
+
+
+# ═══════════════════════════════════════════════════════════
+# FEEDBACK ENDPOINT
+# Receives feedback from users via "Feedback" button in chat
+# Sends email to apexpulsepro@gmail.com via Gmail SMTP
+# Falls back to logging if Gmail credentials not configured
+# 
+# Required Railway env vars (optional - works without):
+#   GMAIL_USER=apexpulsepro@gmail.com
+#   GMAIL_APP_PASSWORD=xxxxxxxxxxxxxxxx  (16-char app password)
+# ═══════════════════════════════════════════════════════════
+
+# Simple in-memory rate limit: 1 feedback per IP per 5 minutes
+_feedback_recent = {}
+
+@app.route('/feedback', methods=['POST'])
+def feedback_endpoint():
+    try:
+        # Basic rate limiting by IP
+        ip = request.headers.get('X-Forwarded-For', request.remote_addr or 'unknown').split(',')[0].strip()
+        now = time.time()
+        last = _feedback_recent.get(ip, 0)
+        if now - last < 300:  # 5 minutes
+            return jsonify({'ok': False, 'error': 'rate_limit'}), 429
+        
+        data = request.json or {}
+        fb_type = str(data.get('type', 'unknown'))[:30]
+        message = str(data.get('message', ''))[:1000]
+        email = str(data.get('email', ''))[:100]
+        lang = str(data.get('lang', 'bg'))[:5]
+        plan = str(data.get('plan', 'free'))[:20]
+        
+        # Validate type
+        allowed_types = {'positive', 'improvement', 'bug', 'idea'}
+        if fb_type not in allowed_types:
+            return jsonify({'ok': False, 'error': 'invalid_type'}), 400
+        
+        # Mark this IP as having sent recent feedback
+        _feedback_recent[ip] = now
+        # Clean old entries to prevent memory bloat
+        if len(_feedback_recent) > 1000:
+            cutoff = now - 600
+            for k in list(_feedback_recent.keys()):
+                if _feedback_recent[k] < cutoff:
+                    del _feedback_recent[k]
+        
+        # Compose email body
+        type_labels = {
+            'positive': '😊 Positive feedback',
+            'improvement': '🤔 Improvement suggestion',
+            'bug': '😞 Bug / issue report',
+            'idea': '💡 New idea',
+        }
+        type_label = type_labels.get(fb_type, fb_type)
+        
+        email_body = f"""APEX PULSE PRO — User Feedback
+
+Type: {type_label}
+User plan: {plan}
+Language: {lang}
+IP: {ip}
+
+User email (optional reply-to): {email or '(not provided)'}
+
+Message:
+{message or '(empty)'}
+
+---
+Sent automatically from apexpulse.pro feedback widget
+"""
+        
+        # Try sending via Gmail SMTP; fall back to logging if not configured
+        gmail_user = os.getenv('GMAIL_USER', '')
+        gmail_pass = os.getenv('GMAIL_APP_PASSWORD', '')
+        
+        if gmail_user and gmail_pass:
+            try:
+                import smtplib
+                from email.mime.text import MIMEText
+                from email.mime.multipart import MIMEMultipart
+                
+                msg = MIMEMultipart()
+                msg['From'] = gmail_user
+                msg['To'] = gmail_user  # send to self
+                if email:
+                    msg['Reply-To'] = email
+                msg['Subject'] = f'[Apex Feedback] {type_label}'
+                msg.attach(MIMEText(email_body, 'plain', 'utf-8'))
+                
+                with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=10) as smtp:
+                    smtp.login(gmail_user, gmail_pass)
+                    smtp.send_message(msg)
+                
+                print(f'[feedback] Email sent for type={fb_type}')
+            except Exception as e:
+                # Don't fail the request — feedback is logged in Railway logs
+                print(f'[feedback] SMTP error: {e}')
+                print(f'[feedback] FALLBACK LOG:\n{email_body}')
+        else:
+            # Gmail not configured — log to Railway logs
+            print('[feedback] Gmail not configured. FALLBACK LOG:')
+            print(email_body)
+        
+        return jsonify({'ok': True})
+    except Exception as e:
+        print(f'[feedback] error: {e}')
+        return jsonify({'ok': False, 'error': 'server_error'}), 500
+
+
+# ═══════════════════════════════════════════════════════════
+# SEO ROUTES — must be at root level, not in /static/
+# Search engines look for these at exact paths
+# ═══════════════════════════════════════════════════════════
+
+@app.route('/robots.txt')
+def robots_txt():
+    """Tell search engines what to crawl."""
+    from flask import send_from_directory
+    return send_from_directory('static', 'robots.txt', mimetype='text/plain')
+
+
+@app.route('/sitemap.xml')
+def sitemap_xml():
+    """List all pages on the site for search engines."""
+    from flask import send_from_directory
+    return send_from_directory('static', 'sitemap.xml', mimetype='application/xml')
 
 
 if __name__ == "__main__":
