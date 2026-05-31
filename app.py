@@ -168,11 +168,16 @@ def chat():
         is_elite = bool(token) and verify_token(token)
         messages = [{"role": "system", "content": SYSTEM_INSTRUCTIONS}]
 
-        if is_elite and isinstance(history, list):
-            # Memory cap based on plan:
-            # - PRO plan → 30 messages
-            # - CORE / founding / dev_token → 10 messages
+        # Memory cap based on plan:
+        # - PRO plan → 30 messages
+        # - CORE / founding / dev_token → 10 messages
+        # - FREE (no token) → 6 messages (taste of memory feature)
+        if is_elite:
             memory_cap = 30 if plan_hint == "pro" else 10
+        else:
+            memory_cap = 6
+
+        if isinstance(history, list):
             safe_history = history[-memory_cap:]
             for msg in safe_history:
                 if isinstance(msg, dict) and msg.get("role") in ("user", "assistant"):
@@ -181,13 +186,22 @@ def chat():
 
         messages.append({"role": "user", "content": user_message})
 
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=messages
-        )
-        return jsonify({"reply": response.choices[0].message.content})
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=messages
+            )
+            return jsonify({"reply": response.choices[0].message.content})
+        except Exception as openai_error:
+            # Log real error for ourselves
+            print(f"[chat] OpenAI error: {openai_error}")
+            # Return friendly message to user
+            return jsonify({
+                "reply": "AI треньорът е претоварен в момента. Моля, опитай отново след 30 секунди."
+            }), 200
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        print(f"[chat] Server error: {e}")
+        return jsonify({"error": "server_error"}), 500
 
 
 @app.route('/create-checkout-session', methods=['POST'])
