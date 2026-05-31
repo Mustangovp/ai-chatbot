@@ -166,14 +166,15 @@ def chat():
         plan_hint = data.get("plan", "")  # 'core' or 'pro' — frontend may send this
 
         is_elite = bool(token) and verify_token(token)
+        is_pro = is_elite and plan_hint == "pro"
         messages = [{"role": "system", "content": SYSTEM_INSTRUCTIONS}]
 
         # Memory cap based on plan:
-        # - PRO plan → 30 messages
+        # - PRO plan → 60 messages (premium extended memory)
         # - CORE / founding / dev_token → 10 messages
         # - FREE (no token) → 6 messages (taste of memory feature)
         if is_elite:
-            memory_cap = 30 if plan_hint == "pro" else 10
+            memory_cap = 60 if is_pro else 10
         else:
             memory_cap = 6
 
@@ -186,10 +187,21 @@ def chat():
 
         messages.append({"role": "user", "content": user_message})
 
+        # Model selection based on plan:
+        # - PRO → gpt-4o (premium model, smarter responses, better Bulgarian)
+        # - CORE / FREE → gpt-4o-mini (fast, cost-efficient)
+        model_to_use = "gpt-4o" if is_pro else "gpt-4o-mini"
+        
+        # Response length cap:
+        # - PRO → up to 4000 tokens (detailed comprehensive plans)
+        # - CORE / FREE → default ~1500 tokens
+        max_tokens = 4000 if is_pro else 1500
+
         try:
             response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=messages
+                model=model_to_use,
+                messages=messages,
+                max_tokens=max_tokens
             )
             return jsonify({"reply": response.choices[0].message.content})
         except Exception as openai_error:
