@@ -734,6 +734,8 @@ async function send(){
   const isElite=count<=-999990;
   const token=localStorage.getItem('apexToken')||'';
   if(isElite)saveToHistory('user',val);
+  // Also save to local memory for FREE users (for the 1-session memory taste)
+  if(!isElite)saveToFreeMemory('user',val);
 
   const typing=document.createElement('div');typing.className='typing';typing.id='typing';
   typing.innerHTML='<div class="dot"></div><div class="dot"></div><div class="dot"></div>';
@@ -746,6 +748,9 @@ async function send(){
     // Send plan hint so backend can apply correct memory cap (CORE=10, PRO=30)
     const plan=localStorage.getItem('apexPlan')||'core';
     body.plan=plan;
+  }else{
+    // FREE users: send last 6 messages so backend can give them a taste of memory
+    body.history=getFreeMemory();
   }
 
   try{
@@ -754,6 +759,7 @@ async function send(){
     const ty=document.getElementById('typing');if(ty)ty.remove();
     appendMsg(data.reply,'a');
     if(isElite)saveToHistory('assistant',data.reply);
+    if(!isElite)saveToFreeMemory('assistant',data.reply);
     document.getElementById('utility').style.display='flex';
     updateUtilityLocks();
   }catch(e){
@@ -777,6 +783,18 @@ function getChatHistory(){
 function saveToHistory(role,content){
   try{const history=getChatHistory();history.push({role,content:String(content).slice(0,4000)});
     const trimmed=history.slice(-30);localStorage.setItem('apexHistory',JSON.stringify(trimmed));}catch(e){}
+}
+
+// FREE user memory — kept in sessionStorage (clears on browser close)
+// Gives FREE users a "taste" of conversation memory (6 messages = ~3 question-answer pairs)
+function getFreeMemory(){
+  try{const raw=sessionStorage.getItem('apexFreeMemory');if(!raw)return [];
+    const arr=JSON.parse(raw);return Array.isArray(arr)?arr.slice(-6):[];}catch(e){return [];}
+}
+
+function saveToFreeMemory(role,content){
+  try{const mem=getFreeMemory();mem.push({role,content:String(content).slice(0,4000)});
+    const trimmed=mem.slice(-6);sessionStorage.setItem('apexFreeMemory',JSON.stringify(trimmed));}catch(e){}
 }
 
 function updateBadge(){
