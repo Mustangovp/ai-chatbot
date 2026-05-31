@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Apex Pulse PRO — AI Fitness Coach | Train Smarter. Build the Body.</title>
+<meta name="description" content="Premium AI fitness coach. Personalized workouts, nutrition systems, and recovery — all in one intelligent platform. Made in Bulgaria.">
+
+<!-- SEO: Canonical URL (tells Google this is the original page, not a duplicate) -->
+<link rel="canonical" href="https://apexpulse.pro/">
+
+<!-- SEO: Robots directive -->
+<meta name="robots" content="index, follow, max-image-preview:large">
+
+<!-- SEO: Author and keywords -->
+<meta name="author" content="Apex Pulse PRO">
+<meta name="keywords" content="AI fitness coach, personal trainer AI, workout plans, nutrition AI, fitness chatbot, AI training, gym AI, Bulgaria fitness app">
+
+<!-- Open Graph (Facebook, LinkedIn, Messenger share previews) -->
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://apexpulse.pro/">
+<meta property="og:title" content="Apex Pulse PRO — AI Fitness Coach">
+<meta property="og:description" content="Premium AI fitness coach. Personalized workouts, nutrition systems, and recovery — all in one intelligent platform.">
+<meta property="og:image" content="https://apexpulse.pro/static/logo.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta property="og:site_name" content="Apex Pulse PRO">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="bg_BG">
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:url" content="https://apexpulse.pro/">
+<meta name="twitter:title" content="Apex Pulse PRO — AI Fitness Coach">
+<meta name="twitter:description" content="Premium AI fitness coach. Personalized workouts, nutrition, and recovery.">
+<meta name="twitter:image" content="https://apexpulse.pro/static/logo.png">
+
+<!-- Schema.org structured data — helps Google understand what this is -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Apex Pulse PRO",
+  "url": "https://apexpulse.pro",
+  "description": "Premium AI fitness coach with personalized workouts, nutrition systems, and recovery guidance.",
+  "applicationCategory": "HealthApplication",
+  "operatingSystem": "Web",
+  "offers": {
+    "@type": "Offer",
+    "price": "1.99",
+    "priceCurrency": "EUR",
+    "availability": "https://schema.org/InStock"
+  },
+  "creator": {
+    "@type": "Organization",
+    "name": "Apex Pulse PRO",
+    "url": "https://apexpulse.pro"
+  },
+  "inLanguage": ["en", "bg"]
+}
+</script>
+
+<link rel="icon" href="/static/logo.png">
+
+<!-- Google Analytics -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-B3WLGXE2XM"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-B3WLGXE2XM');
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#05050c;
+    --surface:#0a0a14;
+    --surface-light:#13131f;
+    --red:#ff1a1a;
+    --red-glow:rgba(255,26,26,0.5);
+    --gold:#d4af37;
+    --green:#39ff14;
+    --text:#f2eeea;
+    --muted:#9a96a8;
+    --border:rgba(255,255,255,0.08);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:'Barlow Condensed','Arial Narrow',Arial,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden;}
+  .font-display{font-family:'Bebas Neue','Arial Narrow',Arial,sans-serif;letter-spacing:0.02em;}
+  
+  /* NAVIGATION */
+  .nav-wrap{position:sticky;top:0;z-index:50;background:rgba(5,5,12,0.85);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);}
+  .nav-inner{max-width:1200px;margin:0 auto;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;gap:24px;}
+  .nav-brand{display:flex;align-items:center;gap:12px;flex-shrink:0;text-decoration:none;}
+  .nav-logo{width:42px;height:42px;border-radius:8px;background:url('/static/logo.png') center/cover no-repeat;box-shadow:0 0 20px var(--red-glow);}
+  .nav-title{font-family:'Bebas Neue';font-size:18px;letter-spacing:2.5px;color:var(--text);}
+  .nav-title .ra{color:var(--red);}
+  .nav-sub{font-size:9px;letter-spacing:3px;color:var(--muted);text-transform:uppercase;margin-top:-3px;}
+  .nav-links{display:flex;align-items:center;gap:28px;}
+  .nav-link{font-size:13px;font-weight:600;color:#d0ccd8;text-decoration:none;letter-spacing:1px;text-transform:uppercase;transition:color .2s;}
+  .nav-link:hover{color:var(--red);}
+  .nav-right{display:flex;align-items:center;gap:16px;}
+  .nav-lang{display:flex;gap:8px;font-size:11px;font-weight:700;letter-spacing:1px;}
+  .nav-lang span{padding:4px 8px;border-radius:6px;cursor:pointer;color:var(--muted);transition:all .2s;}
+  .nav-lang span.active{color:var(--red);background:rgba(255,26,26,0.08);}
+  .nav-lang span:hover{color:var(--text);}
+  .btn-launch{background:linear-gradient(135deg,#ff1a1a,#cc0000);color:white;padding:10px 22px;border-radius:8px;font-family:'Bebas Neue';font-size:14px;letter-spacing:2px;border:none;cursor:pointer;box-shadow:0 0 20px var(--red-glow);transition:all .2s;text-decoration:none;display:inline-block;}
+  .btn-launch:hover{transform:translateY(-1px);box-shadow:0 0 30px var(--red-glow);}
+  
+  @media(max-width:768px){
+    .nav-links{display:none;}
+    .nav-inner{padding:10px 14px;gap:10px;}
+    .nav-title{font-size:14px;letter-spacing:2px;}
+    .nav-sub{font-size:8px;}
+    .nav-logo{width:36px;height:36px;}
+    .btn-launch{padding:8px 14px;font-size:12px;letter-spacing:1.5px;}
+  }
+  
+  /* HERO */
+  .hero{position:relative;min-height:85vh;display:flex;align-items:center;justify-content:center;padding:60px 24px 40px;overflow:hidden;}
+  .hero::before{content:'';position:absolute;inset:0;background:
+    radial-gradient(ellipse at 20% 30%,rgba(255,26,26,0.15) 0%,transparent 50%),
+    radial-gradient(ellipse at 80% 70%,rgba(212,175,55,0.08) 0%,transparent 50%),
+    linear-gradient(180deg,var(--bg) 0%,#0a0a18 100%);
+    z-index:-2;}
+  .hero::after{content:'';position:absolute;inset:0;background-image:
+    linear-gradient(rgba(255,26,26,0.05) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,26,26,0.05) 1px,transparent 1px);
+    background-size:50px 50px;
+    mask-image:radial-gradient(ellipse at center,black 0%,transparent 70%);
+    -webkit-mask-image:radial-gradient(ellipse at center,black 0%,transparent 70%);
+    z-index:-1;}
+  .hero-inner{max-width:900px;text-align:center;position:relative;z-index:1;}
+  .hero-badge{display:inline-flex;align-items:center;gap:8px;padding:8px 18px;background:rgba(255,26,26,0.08);border:1px solid rgba(255,26,26,0.3);border-radius:30px;font-size:11px;font-weight:800;letter-spacing:3px;color:var(--red);text-transform:uppercase;margin-bottom:28px;}
+  .hero-badge .dot{width:6px;height:6px;background:var(--red);border-radius:50%;animation:pulse 1.5s infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+  .hero-title{font-family:'Bebas Neue';font-size:clamp(36px,7vw,82px);line-height:0.95;letter-spacing:2px;margin:0 0 24px;text-shadow:0 4px 30px rgba(0,0,0,0.7);}
+  .hero-title .line1,.hero-title .line2{color:var(--text);}
+  .hero-title .line3{background:linear-gradient(135deg,#ff1a1a,#ff6b4a);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;text-shadow:none;}
+  .hero-sub{font-size:clamp(15px,2vw,18px);font-weight:500;color:#d0ccd8;max-width:620px;margin:0 auto 36px;line-height:1.6;}
+  .hero-cta{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-bottom:36px;}
+  .btn-primary{background:linear-gradient(135deg,#ff1a1a,#cc0000);color:white;padding:16px 32px;border-radius:10px;font-family:'Bebas Neue';font-size:17px;letter-spacing:2.5px;border:none;cursor:pointer;box-shadow:0 8px 30px var(--red-glow);transition:all .2s;display:inline-flex;align-items:center;gap:10px;text-decoration:none;}
+  .btn-primary:hover{transform:translateY(-2px);box-shadow:0 12px 40px var(--red-glow);}
+  .btn-secondary{background:transparent;color:var(--text);padding:16px 32px;border-radius:10px;font-family:'Bebas Neue';font-size:17px;letter-spacing:2.5px;border:1.5px solid rgba(255,255,255,0.2);cursor:pointer;transition:all .2s;text-decoration:none;display:inline-block;}
+  .btn-secondary:hover{border-color:var(--text);background:rgba(255,255,255,0.04);}
+  
+  /* TRUST BADGES under hero */
+  .trust-row{display:flex;justify-content:center;gap:32px;flex-wrap:wrap;padding:20px;background:rgba(0,0,0,0.3);border-top:1px solid var(--border);border-bottom:1px solid var(--border);}
+  .trust-item{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;letter-spacing:2px;color:var(--muted);text-transform:uppercase;}
+  .trust-item .icon{font-size:16px;}
+  
+  /* FEATURES SECTION */
+  .section{padding:80px 24px;max-width:1200px;margin:0 auto;}
+  .section-head{text-align:center;margin-bottom:56px;}
+  .section-label{display:inline-block;font-size:11px;font-weight:800;letter-spacing:4px;color:var(--red);text-transform:uppercase;padding:6px 14px;background:rgba(255,26,26,0.06);border:1px solid rgba(255,26,26,0.2);border-radius:30px;margin-bottom:18px;}
+  .section-title{font-family:'Bebas Neue';font-size:clamp(30px,5vw,50px);letter-spacing:2px;color:var(--text);line-height:1.1;margin:0 0 14px;}
+  .section-sub{font-size:16px;color:var(--muted);max-width:560px;margin:0 auto;line-height:1.6;}
+  .features-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px;}
+  .feature-card{background:linear-gradient(180deg,var(--surface-light) 0%,var(--surface) 100%);border:1px solid var(--border);border-radius:16px;padding:32px 26px;position:relative;overflow:hidden;transition:all .3s;}
+  .feature-card::before{content:'';position:absolute;top:0;left:0;width:100%;height:1px;background:linear-gradient(90deg,transparent,rgba(255,26,26,0.5),transparent);opacity:0;transition:opacity .3s;}
+  .feature-card:hover{border-color:rgba(255,26,26,0.3);transform:translateY(-4px);box-shadow:0 16px 40px rgba(0,0,0,0.4);}
+  .feature-card:hover::before{opacity:1;}
+  .feature-icon{width:54px;height:54px;border-radius:12px;background:rgba(255,26,26,0.08);border:1px solid rgba(255,26,26,0.25);display:flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:20px;}
+  .feature-title{font-family:'Bebas Neue';font-size:22px;letter-spacing:2px;color:var(--text);margin:0 0 10px;}
+  .feature-desc{font-size:14px;color:#b8b4c4;line-height:1.6;}
+  
+  /* TRUST SECTION */
+  .trust-section{background:linear-gradient(180deg,var(--bg) 0%,#080814 100%);padding:80px 24px;border-top:1px solid var(--border);}
+  .trust-inner{max-width:1200px;margin:0 auto;}
+  .trust-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:18px;}
+  .trust-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:28px 22px;text-align:center;transition:all .3s;}
+  .trust-card:hover{border-color:rgba(212,175,55,0.3);transform:translateY(-2px);}
+  .trust-icon{width:46px;height:46px;border-radius:50%;background:rgba(212,175,55,0.08);border:1px solid rgba(212,175,55,0.3);display:flex;align-items:center;justify-content:center;font-size:20px;margin:0 auto 14px;}
+  .trust-title{font-family:'Bebas Neue';font-size:16px;letter-spacing:2px;color:var(--text);margin:0 0 8px;}
+  .trust-desc{font-size:12px;color:var(--muted);line-height:1.5;}
+  
+  /* QUICK GOALS SECTION (interactive cards that send command to chat) */
+  .goals-section{padding:80px 24px;max-width:1200px;margin:0 auto;}
+  .goals-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;}
+  .goal-card{background:linear-gradient(180deg,var(--surface-light) 0%,var(--surface) 100%);border:1px solid var(--border);border-radius:16px;padding:28px 22px;cursor:pointer;text-align:left;transition:all .3s;display:flex;flex-direction:column;gap:8px;color:var(--text);font-family:inherit;text-decoration:none;position:relative;overflow:hidden;}
+  .goal-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;opacity:0;transition:opacity .3s;}
+  .goal-card:hover{transform:translateY(-5px);box-shadow:0 16px 40px rgba(0,0,0,0.5);}
+  .goal-card:hover::before{opacity:1;}
+  .goal-card.red{border-color:rgba(255,26,26,0.3);}
+  .goal-card.red::before{background:var(--red);box-shadow:0 0 20px var(--red-glow);}
+  .goal-card.red:hover{border-color:var(--red);}
+  .goal-card.blue{border-color:rgba(26,143,255,0.3);}
+  .goal-card.blue::before{background:#1a8fff;box-shadow:0 0 20px rgba(26,143,255,0.5);}
+  .goal-card.blue:hover{border-color:#1a8fff;}
+  .goal-card.gold{border-color:rgba(212,175,55,0.3);}
+  .goal-card.gold::before{background:var(--gold);box-shadow:0 0 20px rgba(212,175,55,0.5);}
+  .goal-card.gold:hover{border-color:var(--gold);}
+  .goal-card.green{border-color:rgba(57,255,20,0.3);}
+  .goal-card.green::before{background:var(--green);box-shadow:0 0 20px rgba(57,255,20,0.5);}
+  .goal-card.green:hover{border-color:var(--green);}
+  .goal-ico{font-size:32px;margin-bottom:6px;}
+  .goal-title{font-family:'Bebas Neue';font-size:22px;letter-spacing:2px;margin:0;}
+  .goal-card.red .goal-title{color:var(--red);}
+  .goal-card.blue .goal-title{color:#1a8fff;}
+  .goal-card.gold .goal-title{color:var(--gold);}
+  .goal-card.green .goal-title{color:var(--green);}
+  .goal-desc{font-size:13px;color:#b8b4c4;line-height:1.5;margin-bottom:8px;}
+  .goal-arrow{font-size:12px;font-weight:800;letter-spacing:2px;color:#cbc7d4;text-transform:uppercase;margin-top:auto;display:flex;align-items:center;gap:6px;}
+  
+  /* PRICING SECTION */
+  .pricing-section{background:linear-gradient(180deg,#080814 0%,var(--bg) 100%);padding:80px 24px;border-top:1px solid var(--border);}
+  .pricing-inner{max-width:1200px;margin:0 auto;}
+  .pricing-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px;align-items:stretch;}
+  .price-card{background:linear-gradient(180deg,var(--surface-light) 0%,var(--surface) 100%);border:1px solid var(--border);border-radius:18px;padding:36px 28px;position:relative;display:flex;flex-direction:column;transition:all .3s;}
+  .price-card:hover{transform:translateY(-4px);}
+  .price-card.featured{border-color:rgba(255,26,26,0.4);box-shadow:0 0 50px rgba(255,26,26,0.1);background:linear-gradient(180deg,rgba(255,26,26,0.04) 0%,var(--surface) 60%);}
+  .price-card.featured::before{content:'MOST CHOSEN';position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#ff1a1a,#cc0000);color:white;font-family:'Bebas Neue';font-size:11px;letter-spacing:3px;padding:6px 16px;border-radius:20px;white-space:nowrap;box-shadow:0 4px 20px var(--red-glow);}
+  .price-icon{width:48px;height:48px;border-radius:12px;background:rgba(255,26,26,0.08);border:1px solid rgba(255,26,26,0.2);display:flex;align-items:center;justify-content:center;font-size:22px;margin-bottom:18px;}
+  .price-card.featured .price-icon{background:rgba(255,26,26,0.15);border-color:rgba(255,26,26,0.4);}
+  .price-tier{font-family:'Bebas Neue';font-size:22px;letter-spacing:3px;color:var(--text);margin:0 0 4px;}
+  .price-tier.gold{color:var(--gold);}
+  .price-amount{font-family:'Bebas Neue';font-size:54px;letter-spacing:-1px;color:var(--text);line-height:1;margin:14px 0 4px;}
+  .price-amount .small{font-size:18px;color:var(--muted);font-weight:400;letter-spacing:1px;margin-left:4px;vertical-align:middle;}
+  .price-period{font-size:12px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:24px;}
+  .price-features{list-style:none;padding:0;margin:0 0 28px;flex-grow:1;}
+  .price-features li{padding:8px 0;font-size:14px;color:#cbc7d4;display:flex;align-items:flex-start;gap:10px;}
+  .price-features li::before{content:'✓';color:var(--red);font-weight:bold;flex-shrink:0;}
+  .price-features li.soon{color:var(--muted);}
+  .price-features li.soon::before{content:'🔜';color:var(--gold);}
+  .price-features li.soon::after{content:'COMING SOON';font-size:9px;letter-spacing:1.5px;color:var(--gold);background:rgba(212,175,55,0.1);border:1px solid rgba(212,175,55,0.3);padding:2px 6px;border-radius:4px;margin-left:auto;flex-shrink:0;align-self:center;}
+  .price-features li.muted{color:var(--muted);}
+  .price-features li.muted::before{content:'—';color:var(--muted);}
+  .price-btn{display:block;width:100%;padding:14px;border-radius:10px;font-family:'Bebas Neue';font-size:15px;letter-spacing:2.5px;text-align:center;cursor:pointer;border:none;transition:all .2s;text-decoration:none;}
+  .price-btn-outline{background:transparent;color:var(--text);border:1.5px solid rgba(255,255,255,0.2);}
+  .price-btn-outline:hover{border-color:var(--text);background:rgba(255,255,255,0.04);}
+  .price-btn-primary{background:linear-gradient(135deg,#ff1a1a,#cc0000);color:white;box-shadow:0 6px 20px var(--red-glow);}
+  .price-btn-primary:hover{transform:translateY(-1px);box-shadow:0 8px 30px var(--red-glow);}
+  .price-btn-gold{background:linear-gradient(135deg,#d4af37,#a08527);color:#000;}
+  .price-btn-gold:hover{transform:translateY(-1px);box-shadow:0 8px 30px rgba(212,175,55,0.4);}
+  
+  /* Founding price banner */
+  .founding-banner{max-width:760px;margin:0 auto 40px;padding:18px 22px;background:linear-gradient(135deg,rgba(212,175,55,0.1),rgba(212,175,55,0.04));border:1px solid rgba(212,175,55,0.3);border-radius:14px;text-align:center;}
+  .founding-banner .label{display:inline-block;background:var(--gold);color:#000;font-family:'Bebas Neue';font-size:11px;letter-spacing:3px;padding:4px 12px;border-radius:30px;margin-bottom:10px;}
+  .founding-banner .title{font-family:'Bebas Neue';font-size:20px;letter-spacing:2px;color:var(--gold);margin:0 0 6px;}
+  .founding-banner .desc{font-size:13px;color:#d0ccd8;margin:0;}
+  .founding-banner .desc strong{color:var(--gold);}
+  
+  /* Founding price card variant */
+  .founding-card{max-width:480px;margin:0 auto;background:linear-gradient(180deg,rgba(212,175,55,0.06) 0%,var(--surface) 80%);border:1.5px solid rgba(212,175,55,0.4);border-radius:18px;padding:40px 32px;position:relative;text-align:center;box-shadow:0 0 60px rgba(212,175,55,0.08);}
+  .founding-card::before{content:'FOUNDING PRICE · UNTIL MAY 31';position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#d4af37,#a08527);color:#000;font-family:'Bebas Neue';font-size:10px;letter-spacing:2.5px;padding:6px 14px;border-radius:20px;white-space:nowrap;}
+  .founding-card .price-amount{font-size:64px;color:var(--gold);margin:18px 0 8px;}
+  .founding-card .price-amount .small{color:#9a8530;}
+  .founding-card .price-strike{font-size:18px;color:var(--muted);text-decoration:line-through;margin-bottom:8px;}
+  
+  /* FOOTER */
+  footer{background:#03030a;border-top:1px solid var(--border);padding:50px 24px 30px;}
+  
+  /* TRUST SIGNALS - card-level micro trust */
+  .trust-mini{padding:14px 18px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:10px;margin:14px 0 18px;text-align:left;}
+  .trust-mini-row{display:flex;align-items:center;gap:8px;font-size:11.5px;color:#cbc7d4;padding:3px 0;}
+  .trust-mini-row .icon{font-size:13px;flex-shrink:0;}
+  .trust-mini-row strong{color:var(--text);font-weight:700;}
+  
+  /* Payment methods row - real SVG logos */
+  .pay-methods{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;align-items:center;margin:8px 0;padding:10px;background:rgba(255,255,255,0.02);border-radius:10px;}
+  .pay-logo{height:28px;width:auto;border-radius:5px;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.2));}
+  @media(max-width:768px){
+    .pay-logo{height:24px;}
+  }
+  
+  /* Trust strip above pricing */
+  .trust-strip{max-width:900px;margin:0 auto 40px;padding:18px 22px;background:linear-gradient(135deg,rgba(57,255,20,0.04),rgba(255,255,255,0.01));border:1px solid rgba(57,255,20,0.15);border-radius:14px;display:flex;justify-content:center;gap:30px;flex-wrap:wrap;}
+  .trust-strip-item{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;letter-spacing:1.5px;color:#cbc7d4;text-transform:uppercase;}
+  .trust-strip-item .icon{font-size:16px;color:var(--green);}
+  
+  @media(max-width:768px){
+    .trust-strip{gap:14px;padding:14px 16px;}
+    .trust-strip-item{font-size:10.5px;letter-spacing:1px;}
+  }
+  .footer-inner{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:2fr 1fr 1fr;gap:40px;}
+  .footer-brand{display:flex;align-items:center;gap:14px;margin-bottom:14px;}
+  .footer-brand .logo{width:46px;height:46px;border-radius:8px;background:url('/static/logo.png') center/cover no-repeat;}
+  .footer-brand-text .title{font-family:'Bebas Neue';font-size:18px;letter-spacing:3px;color:var(--text);}
+  .footer-brand-text .title .ra{color:var(--red);}
+  .footer-brand-text .sub{font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-top:2px;}
+  .footer-tagline{font-size:13px;color:var(--muted);max-width:380px;line-height:1.6;margin:0 0 18px;}
+  .footer-col h4{font-family:'Bebas Neue';font-size:13px;letter-spacing:3px;color:var(--text);margin:0 0 14px;text-transform:uppercase;}
+  .footer-col a{display:block;font-size:13px;color:var(--muted);text-decoration:none;padding:5px 0;transition:color .2s;}
+  .footer-col a:hover{color:var(--text);}
+  .footer-bottom{max-width:1200px;margin:40px auto 0;padding-top:24px;border-top:1px solid var(--border);text-align:center;font-size:11px;color:var(--muted);letter-spacing:1.5px;}
+  
+  @media(max-width:768px){
+    .footer-inner{grid-template-columns:1fr;gap:30px;}
+  }
+  /* SCROLL TO TOP BUTTON */
+  .scroll-top{position:fixed;bottom:24px;right:24px;width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#ff1a1a,#cc0000);color:#fff;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:bold;box-shadow:0 8px 24px var(--red-glow);z-index:90;opacity:0;visibility:hidden;transform:translateY(20px);transition:all .3s cubic-bezier(0.4,0,0.2,1);}
+  .scroll-top.visible{opacity:1;visibility:visible;transform:translateY(0);}
+  .scroll-top:hover{transform:translateY(-4px);box-shadow:0 12px 32px var(--red-glow);}
+  .scroll-top:active{transform:translateY(0);}
+  @media(max-width:768px){
+    .scroll-top{bottom:18px;right:18px;width:44px;height:44px;font-size:20px;}
+  }
+
+</style>
+</head>
+<body>
+
+<!-- NAVIGATION -->
+<nav class="nav-wrap">
+  <div class="nav-inner">
+    <a href="/" class="nav-brand">
+      <div class="nav-logo"></div>
+      <div>
+        <div class="nav-title"><span class="ra">APEX</span> PULSE PRO</div>
+        <div class="nav-sub">AI Fitness Coach</div>
+      </div>
+    </a>
+    <div class="nav-links">
+      <a href="#goals" class="nav-link">Start</a>
+      <a href="#features" class="nav-link">Platform</a>
+      <a href="#trust" class="nav-link">Trust</a>
+      <a href="#pricing" class="nav-link">Pricing</a>
+    </div>
+    <div class="nav-right">
+      <div class="nav-lang">
+        <span>BG</span>
+        <span class="active">EN</span>
+        <span>DE</span>
+      </div>
+      <a href="/app" class="btn-launch">Launch App →</a>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-inner">
+    <div class="hero-badge"><span class="dot"></span> Next-Gen AI Fitness Intelligence</div>
+    <h1 class="hero-title">
+      <div class="line1">TRAIN SMARTER.</div>
+      <div class="line2">BUILD THE BODY.</div>
+      <div class="line3">MAXIMIZE YOU.</div>
+    </h1>
+    <p class="hero-sub">Your cinematic AI coach for elite transformation — personalized workouts, nutrition systems, recovery and PDF plans, all in one premium ecosystem.</p>
+    <div class="hero-cta">
+      <a href="#goals" class="btn-primary">Begin Transformation →</a>
+      <a href="#features" class="btn-secondary">Explore Platform</a>
+    </div>
+  </div>
+</section>
+
+<!-- TRUST BADGES under hero -->
+<div class="trust-row">
+  <div class="trust-item"><span class="icon">🇧🇬</span> Made in Bulgaria</div>
+  <div class="trust-item"><span class="icon">🔒</span> Secured by Stripe</div>
+  <div class="trust-item"><span class="icon">⚡</span> Instant AI Plans</div>
+</div>
+
+<!-- FEATURES -->
+<section class="section" id="features">
+  <div class="section-head">
+    <div class="section-label">● AI Coaching Ecosystem</div>
+    <h2 class="section-title">One platform. Every discipline.</h2>
+    <p class="section-sub">Apex Pulse PRO unifies training, nutrition and recovery into a single intelligent coaching loop.</p>
+  </div>
+  <div class="features-grid">
+    <div class="feature-card">
+      <div class="feature-icon">🏋️</div>
+      <h3 class="feature-title">Workout Generation</h3>
+      <p class="feature-desc">Periodized programs tuned to your level, equipment and recovery. Adapts in seconds, not weeks.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🥩</div>
+      <h3 class="feature-title">Nutrition Systems</h3>
+      <p class="feature-desc">Macros, meal frameworks, grocery lists — built around your body, your goals and your appetite.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🌙</div>
+      <h3 class="feature-title">Recovery Guidance</h3>
+      <p class="feature-desc">Sleep, mobility and deload protocols that protect your progress and prevent burnout.</p>
+    </div>
+  </div>
+</section>
+
+<!-- QUICK GOALS — kicks directly into chat with AI generating the plan -->
+<section class="goals-section" id="goals">
+  <div class="section-head">
+    <div class="section-label">● Start Now</div>
+    <h2 class="section-title">Pick your goal. AI starts working in 3 seconds.</h2>
+    <p class="section-sub">No forms. No setup. Tap a goal and the AI coach starts building your plan instantly.</p>
+  </div>
+  <div class="goals-grid">
+    <a href="/app?goal=growth" class="goal-card red">
+      <div class="goal-ico">💪</div>
+      <h3 class="goal-title">BUILD MUSCLE</h3>
+      <p class="goal-desc">Strength and hypertrophy program with progressive overload and full nutrition.</p>
+      <div class="goal-arrow">Give me the plan →</div>
+    </a>
+    <a href="/app?goal=burn" class="goal-card blue">
+      <div class="goal-ico">🔥</div>
+      <h3 class="goal-title">LOSE FAT</h3>
+      <p class="goal-desc">Sustainable fat loss with structured nutrition and cardio protocol.</p>
+      <div class="goal-arrow">Start the protocol →</div>
+    </a>
+    <a href="/app?goal=zero" class="goal-card gold">
+      <div class="goal-ico">⚡</div>
+      <h3 class="goal-title">START FROM ZERO</h3>
+      <p class="goal-desc">Complete beginner-friendly plan with step-by-step training and nutrition.</p>
+      <div class="goal-arrow">Transform me →</div>
+    </a>
+    <a href="/app?goal=build" class="goal-card green">
+      <div class="goal-ico">🏆</div>
+      <h3 class="goal-title">ELITE PHYSIQUE</h3>
+      <p class="goal-desc">Advanced macros, precise protein targets and structured muscle-building regime.</p>
+      <div class="goal-arrow">Show me the plan →</div>
+    </a>
+  </div>
+</section>
+
+<!-- TRUST SECTION -->
+<section class="trust-section" id="trust">
+  <div class="trust-inner">
+    <div class="section-head">
+      <div class="section-label" style="color:var(--gold);background:rgba(212,175,55,0.06);border-color:rgba(212,175,55,0.2);">● Trust & Legal</div>
+      <h2 class="section-title">Built for athletes. Engineered for trust.</h2>
+    </div>
+    <div class="trust-grid">
+      <div class="trust-card">
+        <div class="trust-icon">🔐</div>
+        <h3 class="trust-title">Privacy First</h3>
+        <p class="trust-desc">Your data stays yours. No tracking, no profiling, no resale.</p>
+      </div>
+      <div class="trust-card">
+        <div class="trust-icon">🛡️</div>
+        <h3 class="trust-title">GDPR-Compliant</h3>
+        <p class="trust-desc">Built to comply with EU and global data standards.</p>
+      </div>
+      <div class="trust-card">
+        <div class="trust-icon">✨</div>
+        <h3 class="trust-title">Educational AI</h3>
+        <p class="trust-desc">Informational guidance — no medical diagnosis or claims.</p>
+      </div>
+      <div class="trust-card">
+        <div class="trust-icon">⚖️</div>
+        <h3 class="trust-title">Secure Payments</h3>
+        <p class="trust-desc">Processed by Stripe — PCI-DSS Level 1 encryption.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PRICING SECTION -->
+<section class="pricing-section" id="pricing">
+  <div class="pricing-inner">
+    <div class="section-head">
+      <div class="section-label" style="color:var(--gold);background:rgba(212,175,55,0.06);border-color:rgba(212,175,55,0.2);">● Elite Access</div>
+      <h2 class="section-title">Choose your level of intelligence.</h2>
+      <p class="section-sub">One platform. Built around your transformation, not ours.</p>
+    </div>
+
+    <!-- FOUNDING PRICE (active until May 31, 2026) -->
+    <div id="founding-section">
+      <div class="founding-banner">
+        <div class="label">⚡ LIMITED TIME</div>
+        <div class="title">FOUNDING PRICE — ENDS MAY 31</div>
+        <div class="desc">Get full ELITE access at our launch price. From <strong>June 1</strong>, new plans start at <strong>€9.99/month</strong>.</div>
+      </div>
+
+      <!-- Trust strip - real, verifiable claims -->
+      <div class="trust-strip">
+        <div class="trust-strip-item"><span class="icon">🇧🇬</span> Built in Bulgaria</div>
+        <div class="trust-strip-item"><span class="icon">🔒</span> Secured by Stripe</div>
+        <div class="trust-strip-item"><span class="icon">✓</span> GDPR Compliant</div>
+        <div class="trust-strip-item"><span class="icon">⚡</span> Instant Access</div>
+      </div>
+
+      <div class="founding-card">
+        <div class="price-icon" style="margin:0 auto 14px;background:rgba(212,175,55,0.12);border-color:rgba(212,175,55,0.3);">👑</div>
+        <h3 class="price-tier gold">APEX ELITE</h3>
+        <div class="price-strike">€9.99/mo</div>
+        <div class="price-amount">€1.99<span class="small">/30 days</span></div>
+        <div class="price-period">Founding Member Price</div>
+        <ul class="price-features" style="text-align:left;">
+          <li>Unlimited AI coaching sessions</li>
+          <li>Personalized workout plans</li>
+          <li>Nutrition & macro guidance</li>
+          <li>PDF export of all plans</li>
+          <li>Conversation memory (10 messages)</li>
+          <li>BG / EN / DE multilingual support</li>
+        </ul>
+        
+        <!-- Payment methods inside card -->
+        <div class="pay-methods">
+          <img src="/static/payment-logos/visa.svg" alt="Visa" class="pay-logo">
+          <img src="/static/payment-logos/mastercard.svg" alt="Mastercard" class="pay-logo">
+          <img src="/static/payment-logos/applepay.svg" alt="Apple Pay" class="pay-logo">
+          <img src="/static/payment-logos/googlepay.svg" alt="Google Pay" class="pay-logo">
+          <img src="/static/payment-logos/revolut.svg" alt="Revolut" class="pay-logo">
+        </div>
+        
+        <!-- Trust micro-copy -->
+        <div class="trust-mini">
+          <div class="trust-mini-row"><span class="icon">🔒</span> <span>Card data encrypted by <strong>Stripe</strong> — never touches our servers</span></div>
+          <div class="trust-mini-row"><span class="icon">🛡️</span> <span>Same payment system used by <strong>Amazon, Google, Shopify</strong></span></div>
+          <div class="trust-mini-row"><span class="icon">🏦</span> <span>Your bank protects every purchase via Visa/Mastercard</span></div>
+        </div>
+        
+        <a href="/app" class="price-btn price-btn-gold">Unlock ELITE — €1.99 →</a>
+      </div>
+    </div>
+
+    <!-- 3-PLAN PRICING (active from June 1, 2026) -->
+    <div id="plans-section" style="display:none;">
+      <div class="pricing-grid">
+        <!-- FREE PLAN -->
+        <div class="price-card">
+          <div class="price-icon">✨</div>
+          <h3 class="price-tier">FREE</h3>
+          <div class="price-amount">€0<span class="small">/forever</span></div>
+          <div class="price-period">Try Apex Pulse PRO</div>
+          <ul class="price-features">
+            <li>3 AI coaching sessions</li>
+            <li>Sample workout & nutrition</li>
+            <li>PDF export</li>
+            <li class="muted">No conversation memory</li>
+            <li class="muted">No saved history</li>
+            <li class="muted">Limited features</li>
+          </ul>
+          <a href="/app" class="price-btn price-btn-outline">Start Free</a>
+        </div>
+
+        <!-- CORE PLAN (featured) -->
+        <div class="price-card featured">
+          <div class="price-icon">⚡</div>
+          <h3 class="price-tier">APEX CORE</h3>
+          <div class="price-amount">€9.99<span class="small">/30 days</span></div>
+          <div class="price-period">For Serious Athletes</div>
+          <ul class="price-features">
+            <li>Unlimited AI coaching sessions</li>
+            <li>Personalized workout plans</li>
+            <li>Nutrition & macro guidance</li>
+            <li>PDF export of all plans</li>
+            <li>Conversation memory (10 messages)</li>
+            <li>BG / EN / DE multilingual support</li>
+          </ul>
+          <a href="/app?plan=core" class="price-btn price-btn-primary">Activate CORE →</a>
+        </div>
+
+        <!-- PRO PLAN -->
+        <div class="price-card">
+          <div class="price-icon" style="background:rgba(212,175,55,0.1);border-color:rgba(212,175,55,0.3);">👑</div>
+          <h3 class="price-tier gold">APEX PRO</h3>
+          <div class="price-amount">€14.99<span class="small">/30 days</span></div>
+          <div class="price-period">For Elite Performance</div>
+          <ul class="price-features">
+            <li>Everything in CORE</li>
+            <li>Extended memory (30 messages)</li>
+            <li>Priority AI response</li>
+            <li class="soon">Anatomical muscle mapping</li>
+            <li class="soon">Video exercise demos</li>
+            <li class="soon">Weekly plan adjustments</li>
+          </ul>
+          <a href="/app?plan=pro" class="price-btn price-btn-gold">Go PRO →</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Trust block under all plans -->
+    <div style="max-width:760px;margin:40px auto 0;padding:24px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:14px;">
+      <div class="pay-methods" style="margin-bottom:14px;">
+        <img src="/static/payment-logos/visa.svg" alt="Visa" class="pay-logo">
+        <img src="/static/payment-logos/mastercard.svg" alt="Mastercard" class="pay-logo">
+        <img src="/static/payment-logos/applepay.svg" alt="Apple Pay" class="pay-logo">
+        <img src="/static/payment-logos/googlepay.svg" alt="Google Pay" class="pay-logo">
+        <img src="/static/payment-logos/revolut.svg" alt="Revolut" class="pay-logo">
+        <img src="/static/payment-logos/stripe.svg" alt="Stripe" class="pay-logo">
+      </div>
+      <div class="trust-mini" style="margin:0;background:transparent;border:none;padding:0;">
+        <div class="trust-mini-row"><span class="icon">🔒</span> <span>Card data encrypted by <strong>Stripe</strong> — never touches our servers</span></div>
+        <div class="trust-mini-row"><span class="icon">🛡️</span> <span>Same payment system used by <strong>Amazon, Google, Shopify</strong></span></div>
+        <div class="trust-mini-row"><span class="icon">🏦</span> <span>Your bank protects every purchase via Visa/Mastercard</span></div>
+        <div class="trust-mini-row"><span class="icon">⚡</span> <span>One-time payment · No auto-renewal · 30-day access</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-inner">
+    <div>
+      <div class="footer-brand">
+        <div class="logo"></div>
+        <div class="footer-brand-text">
+          <div class="title"><span class="ra">APEX</span> PULSE PRO</div>
+          <div class="sub">AI Fitness Coach</div>
+        </div>
+      </div>
+      <p class="footer-tagline">Premium AI fitness intelligence. Train smarter, eat better, recover deeper. Made in Bulgaria with passion for elite transformation.</p>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--muted);letter-spacing:1.5px;">
+        <span>🇧🇬 MADE IN BULGARIA</span>
+        <span>🔒 STRIPE PCI-DSS L1</span>
+        <span>⚡ POWERED BY OPENAI</span>
+      </div>
+    </div>
+    <div class="footer-col">
+      <h4>Platform</h4>
+      <a href="/app">Launch App</a>
+      <a href="#features">Features</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#trust">Trust & Legal</a>
+    </div>
+    <div class="footer-col">
+      <h4>Legal</h4>
+      <a href="#trust">Privacy Policy</a>
+      <a href="#trust">Terms of Service</a>
+      <a href="#trust">AI Disclaimer</a>
+      <a href="#trust">Refund Policy</a>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <div style="margin-bottom:18px;">
+      <div style="font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:10px;">Accepted Payment Methods</div>
+      <div class="pay-methods" style="background:transparent;padding:0;">
+        <img src="/static/payment-logos/visa.svg" alt="Visa" class="pay-logo">
+        <img src="/static/payment-logos/mastercard.svg" alt="Mastercard" class="pay-logo">
+        <img src="/static/payment-logos/amex.svg" alt="American Express" class="pay-logo">
+        <img src="/static/payment-logos/applepay.svg" alt="Apple Pay" class="pay-logo">
+        <img src="/static/payment-logos/googlepay.svg" alt="Google Pay" class="pay-logo">
+        <img src="/static/payment-logos/revolut.svg" alt="Revolut" class="pay-logo">
+        <img src="/static/payment-logos/stripe.svg" alt="Stripe" class="pay-logo">
+      </div>
+    </div>
+    © 2026 APEX PULSE PRO · ALL RIGHTS RESERVED · SECURE PAYMENTS BY STRIPE
+  </div>
+</footer>
+
+<!-- Scroll to top button (must be in DOM before script below references it) -->
+<button id="scrollTop" class="scroll-top" aria-label="Scroll to top">↑</button>
+
+<script>
+  // ═══════════════════════════════════════════════════════════
+  // HYBRID PRICING TOGGLE
+  // From June 1, 2026: set SHOW_FOUNDING_PRICE = false
+  // This will hide the €1.99 card and show the 3-plan view
+  // ═══════════════════════════════════════════════════════════
+  const SHOW_FOUNDING_PRICE = true;
+  
+  if (!SHOW_FOUNDING_PRICE) {
+    document.getElementById('founding-section').style.display = 'none';
+    document.getElementById('plans-section').style.display = 'block';
+  }
+  
+  // Track CTA clicks in Google Analytics
+  document.querySelectorAll('a[href="/app"], a[href^="/app?"]').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+      if (typeof gtag === 'function') {
+        gtag('event', 'cta_click', {
+          'event_category': 'landing',
+          'event_label': this.textContent.trim()
+        });
+      }
+    });
+  });
+  
+  // ═══════════════════════════════════════════════════════════
+  // SCROLL TO TOP BUTTON
+  // Appears after user scrolls 400px down
+  // ═══════════════════════════════════════════════════════════
+  const scrollBtn = document.getElementById('scrollTop');
+  if (scrollBtn) {
+    window.addEventListener('scroll', () => {
+      if (window.scrollY > 400) {
+        scrollBtn.classList.add('visible');
+      } else {
+        scrollBtn.classList.remove('visible');
+      }
+    });
+    scrollBtn.addEventListener('click', () => {
+      window.scrollTo({top: 0, behavior: 'smooth'});
+    });
+  }
+</script>
+
+</body>
+</html>
