@@ -431,7 +431,9 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 // ═══════════════════════════════════════════════════════════
 const SHOW_FOUNDING_PRICE = false;
 
-let lang='bg';
+// Read language choice from landing page (saved in localStorage as 'apexLang')
+// Falls back to Bulgarian if nothing was chosen
+let lang=localStorage.getItem('apexLang')||'bg';
 const T={
   bg:{
     placeholder:'Опиши целта си...',
@@ -530,6 +532,7 @@ const T={
 
 function toggleLang(){
   lang=lang==='bg'?'en':'bg';
+  localStorage.setItem('apexLang',lang);
   document.getElementById('langBtn').innerText=lang==='bg'?'EN':'BG';
   document.documentElement.lang=lang;
   applyStaticLang();
@@ -650,6 +653,9 @@ function configurePaywall(){
 window.onload=async()=>{
   configurePaywall();
   await checkAccess();
+  // Sync language UI with the choice carried over from landing (or saved earlier)
+  document.getElementById('langBtn').innerText=lang==='bg'?'EN':'BG';
+  document.documentElement.lang=lang;
   applyStaticLang();
   
   // After returning from Stripe payment: restore the plan the user paid for
