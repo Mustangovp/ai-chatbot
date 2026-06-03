@@ -166,7 +166,9 @@ def chat():
         plan_hint = data.get("plan", "")  # 'core' or 'pro' — frontend may send this
 
         is_elite = bool(token) and verify_token(token)
-        is_pro = is_elite and plan_hint == "pro"
+        # The creator's DEV_TOKEN always gets full PRO access (for testing & live demos)
+        is_dev = bool(DEV_TOKEN) and token == DEV_TOKEN
+        is_pro = is_dev or (is_elite and plan_hint == "pro")
         messages = [{"role": "system", "content": SYSTEM_INSTRUCTIONS}]
 
         # Memory cap based on plan:
