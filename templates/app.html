@@ -54,8 +54,12 @@ body{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;}
 .nav-title .ra{color:var(--red);}
 .nav-sub{font-size:9px;letter-spacing:3px;color:var(--muted);text-transform:uppercase;margin-top:-3px;}
 .nav-right{display:flex;align-items:center;gap:14px;}
-.nav-badge{font-family:'Bebas Neue';font-size:13px;letter-spacing:2px;padding:6px 12px;border:1px solid var(--red);color:var(--red);border-radius:20px;background:rgba(232,69,69,0.08);}
+.nav-badge{font-family:'Bebas Neue';font-size:13px;letter-spacing:2px;padding:6px 12px;border:1px solid var(--muted);color:var(--text);border-radius:20px;background:rgba(255,255,255,0.05);}
 .nav-badge.elite{border-color:var(--gold);color:var(--gold);background:rgba(212,175,55,0.12);}
+/* Plan-specific badge colors: FREE=white, CORE=green, PRO=red */
+.nav-badge.plan-free{border-color:rgba(255,255,255,0.4);color:#f2eeea;background:rgba(255,255,255,0.06);}
+.nav-badge.plan-core{border-color:#39ff14;color:#39ff14;background:rgba(57,255,20,0.10);}
+.nav-badge.plan-pro{border-color:#e84545;color:#e84545;background:rgba(232,69,69,0.12);}
 .lang-btn{background:transparent;border:1px solid var(--border);color:var(--text);font-family:'Bebas Neue';font-size:12px;letter-spacing:2px;padding:6px 12px;border-radius:6px;cursor:pointer;transition:all .2s;}
 .lang-btn:hover{border-color:var(--red);color:var(--red);}
 
@@ -245,7 +249,7 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
       </div>
     </a>
     <div class="nav-right">
-      <span class="nav-badge" id="badge">● 3</span>
+      <span class="nav-badge plan-free" id="badge">● FREE · 3</span>
       <button class="fb-btn" onclick="openFeedback()" title="Изпрати мнение/препоръка">
         <span class="fb-icon">💬</span>
         <span class="fb-btn-text" data-key="fb-btn">Мнение</span>
@@ -593,10 +597,37 @@ function activateElite(){
   count=-999999;
   localStorage.removeItem('apexCount');
   localStorage.removeItem('apexPaywallShown');
-  const b=document.getElementById('badge');
-  b.innerHTML='● ELITE';
-  b.classList.add('elite');
+  updatePlanBadge();
   updateUtilityLocks();
+}
+
+// Shows the right badge text and color based on the user's plan
+// FREE = white, CORE = green, PRO = red
+function updatePlanBadge(){
+  const b=document.getElementById('badge');
+  if(!b)return;
+  // Remove all plan classes first
+  b.classList.remove('elite','plan-free','plan-core','plan-pro');
+
+  const isElite=count<=-999990;
+  if(!isElite){
+    // FREE user — show remaining questions in white
+    b.classList.add('plan-free');
+    const rem=3-count;
+    b.innerHTML=rem>0?`● FREE · ${rem}`:'● FREE · 0';
+    return;
+  }
+
+  // Paid/dev user — read which plan they have
+  const plan=(localStorage.getItem('apexPlan')||'core').toLowerCase();
+  if(plan==='pro'){
+    b.classList.add('plan-pro');
+    b.innerHTML='● PRO';
+  }else{
+    // core and founding both show as CORE (green)
+    b.classList.add('plan-core');
+    b.innerHTML='● CORE';
+  }
 }
 
 function updateUtilityLocks(){
@@ -619,7 +650,10 @@ async function checkAccess(){
       const res=await fetch('/verify-token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:urlToken})});
       const data=await res.json();
       if(data.valid){
-        localStorage.setItem('apexToken',urlToken);activateElite();
+        localStorage.setItem('apexToken',urlToken);
+        // DEV token gets PRO badge automatically
+        if(data.isDev)localStorage.setItem('apexPlan','pro');
+        activateElite();
         // Keep ?goal=X in URL but strip ?token=X
         const cleanParams=new URLSearchParams(window.location.search);
         cleanParams.delete('token');
@@ -634,7 +668,10 @@ async function checkAccess(){
     try{
       const res=await fetch('/verify-token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:stored})});
       const data=await res.json();
-      if(data.valid)activateElite();else localStorage.removeItem('apexToken');
+      if(data.valid){
+        if(data.isDev)localStorage.setItem('apexPlan','pro');
+        activateElite();
+      }else{localStorage.removeItem('apexToken');}
     }catch(e){}
   }
 }
@@ -804,10 +841,8 @@ function saveToFreeMemory(role,content){
 }
 
 function updateBadge(){
-  if(count<=-999990)return;
-  const rem=3-count;const b=document.getElementById('badge');
-  if(rem<=0){b.innerHTML='● 0';b.style.opacity='.5';}
-  else b.innerHTML=`● ${rem}`;
+  // Delegates to the plan-aware badge (handles FREE white / CORE green / PRO red)
+  updatePlanBadge();
 }
 
 async function pay(plan){
