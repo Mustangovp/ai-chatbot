@@ -282,9 +282,11 @@ def legacy_success_redirect():
 
 @app.route('/verify-token', methods=['POST'])
 def verify_token_endpoint():
-    """Frontend asks: is this stored token still valid?"""
+    """Frontend asks: is this stored token still valid? Also tells if it's the DEV token (gets PRO)."""
     token = request.json.get('token', '')
-    return jsonify({'valid': verify_token(token)})
+    is_valid = verify_token(token)
+    is_dev = bool(DEV_TOKEN) and token == DEV_TOKEN
+    return jsonify({'valid': is_valid, 'isDev': is_dev})
 
 
 # ═══════════════════════════════════════════════════════════
