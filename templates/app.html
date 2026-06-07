@@ -112,6 +112,7 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 .msg-u{align-self:flex-end;background:linear-gradient(135deg,rgba(232,69,69,0.18),rgba(232,69,69,0.06));border:1px solid rgba(232,69,69,0.3);border-bottom-right-radius:4px;color:var(--text);}
 .msg-a{align-self:flex-start;background:linear-gradient(135deg,rgba(10,10,20,0.95),rgba(20,20,32,0.95));border:1px solid var(--border);border-left:3px solid var(--red);border-bottom-left-radius:4px;color:#e8e4ee;}
 .msg-a.greeting{border-left-color:var(--gold);background:linear-gradient(135deg,rgba(212,175,55,0.05),rgba(10,10,20,0.93));}
+.msg-a.daily-limit-note{border-left-color:var(--gold);background:linear-gradient(135deg,rgba(212,175,55,0.07),rgba(10,10,20,0.95));max-width:100%;text-align:center;}
 .msg-a h1,.msg-a h2,.msg-a h3{font-family:'Bebas Neue';letter-spacing:1.5px;margin:14px 0 8px;color:var(--text);}
 .msg-a h1{font-size:22px;color:var(--red);}
 .msg-a h2{font-size:18px;color:var(--gold);}
@@ -306,9 +307,9 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 <!-- PAYWALL MODAL — shows after 1 free plan (FOMO: seen the value, now want more) -->
 <div id="paywall">
   <div class="pw-card">
-    <div class="pw-crown">🔥</div>
-    <h2 class="pw-title" id="pw-headline">Това беше само началото</h2>
-    <p class="pw-sub" id="pw-subheadline">Видя какво може Apex за един план. Представи си персонализиран треньор, който помни целите ти, адаптира програмата и е до теб всеки ден. Отключи пълния потенциал.</p>
+    <div class="pw-crown">🔱</div>
+    <h2 class="pw-title" id="pw-headline">Пълен достъп до Apex</h2>
+    <p class="pw-sub" id="pw-subheadline">Неограничен AI треньор, който помни целите ти и създава персонални програми за теб — 30 дни пълен достъп.</p>
     
     <!-- FOUNDING PRICE (active until May 31, 2026) -->
     <div id="founding-block">
@@ -459,8 +460,8 @@ const T={
     'disc-l5':'Слушай тялото си — при болка или дискомфорт спри',
     'disc-agree':'Прочетох и разбирам. Поемам пълна отговорност за решенията си.',
     'disc-btn':'Разбрах →',
-    pw_headline:'Това беше само началото',
-    pw_sub:'Видя какво може Apex за един план. Представи си персонализиран треньор, който помни целите ти, адаптира програмата и е до теб всеки ден. Отключи пълния потенциал.',
+    pw_headline:'Пълен достъп до Apex',
+    pw_sub:'Неограничен AI треньор, който помни целите ти и създава персонални програми за теб — 30 дни пълен достъп.',
     copySuccess:'Планът е копиран! 🔥',pdfError:'Първо задай въпрос на AI!',
     greeting:'**Здравей! 🔱 Аз съм твоят AI треньор.**\n\nЩе ти изградя персонален план за минути. Кажи ми малко за себе си:',
     chips:[
@@ -506,8 +507,8 @@ const T={
     'disc-l5':'Listen to your body — stop at any pain or discomfort',
     'disc-agree':'I have read and understood. I take full responsibility for my decisions.',
     'disc-btn':'I understand →',
-    pw_headline:'That was just the start',
-    pw_sub:'You saw what Apex can do for one plan. Imagine a personalized coach that remembers your goals, adapts your program, and is with you every day. Unlock the full potential.',
+    pw_headline:'Full access to Apex',
+    pw_sub:'An unlimited AI coach that remembers your goals and builds personalized programs for you — 30 days full access.',
     copySuccess:'Plan copied! 🔥',pdfError:'First ask the AI a question!',
     greeting:'**Hey! 🔱 I\'m your AI coach.**\n\nI\'ll build a personalized plan in minutes. Tell me a bit about yourself:',
     chips:[
@@ -757,16 +758,17 @@ async function send(){
   // Prevent double-send if already processing
   if(inp.disabled)return;
   
-  // FREE strategy: user gets ONE complete, impressive plan.
-  // On their SECOND attempt (count>=1), the paywall appears — right at the
-  // moment they want MORE. They've seen the value; now they want the full thing.
-  if(count>=1){
-    if(!localStorage.getItem('apexPaywallShown')){
-      localStorage.setItem('apexPaywallShown','true');
+  // FREE strategy (ChatGPT-style): chat freely up to a daily limit.
+  // When the limit is hit, show a soft "come back in X hours" message —
+  // NO paywall, NO pressure. The plans live on the landing page; impatient
+  // users discover them on their own. Waiting + affordable price sells itself.
+  const isEliteCheck=count<=-999990;
+  if(!isEliteCheck){
+    const limitInfo=checkFreeDailyLimit();
+    if(limitInfo.blocked){
+      showDailyLimit(limitInfo.hoursLeft);
+      return;
     }
-    track('paywall_shown',{plan_state:'free'});
-    document.getElementById('paywall').style.display='flex';
-    return;
   }
   
   // LOCK input + button while awaiting AI response (prevents accidental double-sends)
@@ -780,8 +782,8 @@ async function send(){
   if(greetEl)greetEl.remove();
   
   appendMsg(val,'u');inp.value='';
-  track('message_sent',{is_first:count===0});
-  if(count>=0){count++;localStorage.setItem('apexCount',String(count));}
+  track('message_sent',{});
+  if(!isEliteCheck)recordFreeMessage();
   updateBadge();
 
   const isElite=count<=-999990;
@@ -837,6 +839,63 @@ function getChatHistory(){
 function saveToHistory(role,content){
   try{const history=getChatHistory();history.push({role,content:String(content).slice(0,4000)});
     const trimmed=history.slice(-30);localStorage.setItem('apexHistory',JSON.stringify(trimmed));}catch(e){}
+}
+
+// ─────────────────────────────────────────────────────────
+// FREE daily limit (ChatGPT-style): chat freely up to a daily
+// cap, then wait until the 24h window resets. No paywall, no
+// pressure — just a soft "come back later". Plans live on the
+// landing page for those who don't want to wait.
+// ─────────────────────────────────────────────────────────
+const FREE_DAILY_LIMIT = 10;          // messages per 24h window
+const FREE_WINDOW_MS = 24*60*60*1000; // 24 hours
+
+function getFreeUsage(){
+  try{
+    const raw=localStorage.getItem('apexFreeUsage');
+    if(!raw)return {count:0, windowStart:Date.now()};
+    const u=JSON.parse(raw);
+    // If the 24h window has passed, reset
+    if(Date.now()-u.windowStart >= FREE_WINDOW_MS){
+      return {count:0, windowStart:Date.now()};
+    }
+    return u;
+  }catch(e){return {count:0, windowStart:Date.now()};}
+}
+
+function checkFreeDailyLimit(){
+  const u=getFreeUsage();
+  if(u.count >= FREE_DAILY_LIMIT){
+    const msLeft=FREE_WINDOW_MS-(Date.now()-u.windowStart);
+    const hoursLeft=Math.max(1, Math.ceil(msLeft/(60*60*1000)));
+    return {blocked:true, hoursLeft};
+  }
+  return {blocked:false};
+}
+
+function recordFreeMessage(){
+  const u=getFreeUsage();
+  u.count=(u.count||0)+1;
+  localStorage.setItem('apexFreeUsage',JSON.stringify(u));
+}
+
+function showDailyLimit(hoursLeft){
+  track('daily_limit_reached',{});
+  const box=document.getElementById('chat');
+  const note=document.createElement('div');
+  note.className='msg-a daily-limit-note';
+  const hrs = lang==='bg' ? `${hoursLeft} ч.` : `${hoursLeft}h`;
+  if(lang==='bg'){
+    note.innerHTML=`<strong>Достигна дневния безплатен лимит. 🔋</strong><br><br>`+
+      `Върни се след около <strong>${hrs}</strong>, за да продължиш безплатно.<br><br>`+
+      `<span style="color:var(--muted);font-size:13px;">Не ти се чака? Виж плановете на началната страница — пълен достъп за 30 дни.</span>`;
+  }else{
+    note.innerHTML=`<strong>You've reached today's free limit. 🔋</strong><br><br>`+
+      `Come back in about <strong>${hrs}</strong> to continue for free.<br><br>`+
+      `<span style="color:var(--muted);font-size:13px;">Don't want to wait? Check the plans on the home page — full access for 30 days.</span>`;
+  }
+  box.appendChild(note);
+  box.scrollTop=box.scrollHeight;
 }
 
 // FREE user memory — kept in sessionStorage (clears on browser close)
