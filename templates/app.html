@@ -113,6 +113,8 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 .msg-a{align-self:flex-start;background:linear-gradient(135deg,rgba(10,10,20,0.95),rgba(20,20,32,0.95));border:1px solid var(--border);border-left:3px solid var(--red);border-bottom-left-radius:4px;color:#e8e4ee;}
 .msg-a.greeting{border-left-color:var(--gold);background:linear-gradient(135deg,rgba(212,175,55,0.05),rgba(10,10,20,0.93));}
 .msg-a.daily-limit-note{border-left-color:var(--gold);background:linear-gradient(135deg,rgba(212,175,55,0.07),rgba(10,10,20,0.95));max-width:100%;text-align:center;}
+.limit-plan-btn{margin-top:12px;background:linear-gradient(135deg,var(--red),#c73838);color:#fff;border:none;font-family:inherit;font-size:14px;font-weight:600;padding:10px 22px;border-radius:8px;cursor:pointer;transition:all .2s;}
+.limit-plan-btn:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(232,69,69,0.4);}
 .msg-a h1,.msg-a h2,.msg-a h3{font-family:'Bebas Neue';letter-spacing:1.5px;margin:14px 0 8px;color:var(--text);}
 .msg-a h1{font-size:22px;color:var(--red);}
 .msg-a h2{font-size:18px;color:var(--gold);}
@@ -767,6 +769,11 @@ async function send(){
     const limitInfo=checkFreeDailyLimit();
     if(limitInfo.blocked){
       showDailyLimit(limitInfo.hoursLeft);
+      // Keep input usable (don't trap the user) but it won't send past limit
+      inp.disabled=false;
+      if(btn)btn.disabled=false;
+      inp.style.opacity='1';
+      if(btn)btn.style.opacity='1';
       return;
     }
   }
@@ -881,18 +888,22 @@ function recordFreeMessage(){
 
 function showDailyLimit(hoursLeft){
   track('daily_limit_reached',{});
-  const box=document.getElementById('chat');
+  const box=document.getElementById('chat-box');
+  if(!box)return;
   const note=document.createElement('div');
   note.className='msg-a daily-limit-note';
   const hrs = lang==='bg' ? `${hoursLeft} ч.` : `${hoursLeft}h`;
+  const planBtn = lang==='bg' ? 'Виж плановете' : 'View plans';
   if(lang==='bg'){
     note.innerHTML=`<strong>Достигна дневния безплатен лимит. 🔋</strong><br><br>`+
       `Върни се след около <strong>${hrs}</strong>, за да продължиш безплатно.<br><br>`+
-      `<span style="color:var(--muted);font-size:13px;">Не ти се чака? Виж плановете на началната страница — пълен достъп за 30 дни.</span>`;
+      `<span style="color:var(--muted);font-size:13px;">Не ти се чака? Получи пълен достъп за 30 дни.</span><br>`+
+      `<button class="limit-plan-btn" onclick="document.getElementById('paywall').style.display='flex'">${planBtn} →</button>`;
   }else{
     note.innerHTML=`<strong>You've reached today's free limit. 🔋</strong><br><br>`+
       `Come back in about <strong>${hrs}</strong> to continue for free.<br><br>`+
-      `<span style="color:var(--muted);font-size:13px;">Don't want to wait? Check the plans on the home page — full access for 30 days.</span>`;
+      `<span style="color:var(--muted);font-size:13px;">Don't want to wait? Get full access for 30 days.</span><br>`+
+      `<button class="limit-plan-btn" onclick="document.getElementById('paywall').style.display='flex'">${planBtn} →</button>`;
   }
   box.appendChild(note);
   box.scrollTop=box.scrollHeight;
