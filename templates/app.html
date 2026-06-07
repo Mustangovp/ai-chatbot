@@ -20,6 +20,12 @@
   function gtag(){dataLayer.push(arguments);}
   gtag('js', new Date());
   gtag('config', 'G-B3WLGXE2XM');
+
+  // Funnel tracking helper — fires GA events at key steps so we can see
+  // exactly where users drop off (goal click → AI response → paywall → checkout)
+  function track(eventName, params){
+    try{ gtag('event', eventName, params||{}); }catch(e){}
+  }
 </script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -249,7 +255,7 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
       </div>
     </a>
     <div class="nav-right">
-      <span class="nav-badge plan-free" id="badge">● FREE · 3</span>
+      <span class="nav-badge plan-free" id="badge">● FREE</span>
       <button class="fb-btn" onclick="openFeedback()" title="Изпрати мнение/препоръка">
         <span class="fb-icon">💬</span>
         <span class="fb-btn-text" data-key="fb-btn">Мнение</span>
@@ -297,12 +303,12 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
   </div>
 </div>
 
-<!-- PAYWALL MODAL — shows after 3 free sessions -->
+<!-- PAYWALL MODAL — shows after 1 free plan (FOMO: seen the value, now want more) -->
 <div id="paywall">
   <div class="pw-card">
-    <div class="pw-crown">👑</div>
-    <h2 class="pw-title" id="pw-headline">ОТКЛЮЧИ ELITE</h2>
-    <p class="pw-sub" id="pw-subheadline">Сесиите ти изтекоха. Избери план за неограничени AI планове.</p>
+    <div class="pw-crown">🔥</div>
+    <h2 class="pw-title" id="pw-headline">Това беше само началото</h2>
+    <p class="pw-sub" id="pw-subheadline">Видя какво може Apex за един план. Представи си персонализиран треньор, който помни целите ти, адаптира програмата и е до теб всеки ден. Отключи пълния потенциал.</p>
     
     <!-- FOUNDING PRICE (active until May 31, 2026) -->
     <div id="founding-block">
@@ -334,21 +340,21 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
       <div class="pw-plans">
         <div class="pw-plan core">
           <div class="pw-plan-name">CORE</div>
-          <div class="pw-plan-price">€9.99<span class="small">/30d</span></div>
+          <div class="pw-plan-price">€9.99<span class="small">/30д</span></div>
           <ul class="pw-plan-features">
-            <li>GPT-4o-mini AI</li>
-            <li>10 msg памет</li>
-            <li>PDF + Copy</li>
+            <li>Неограничени планове</li>
+            <li>Помни целите ти</li>
+            <li>PDF + копиране</li>
           </ul>
           <button class="pw-plan-btn" onclick="confirmAndPay('core')">Активирай CORE →</button>
         </div>
         <div class="pw-plan pro">
           <div class="pw-plan-name">PRO</div>
-          <div class="pw-plan-price">€14.99<span class="small">/30d</span></div>
+          <div class="pw-plan-price">€14.99<span class="small">/30д</span></div>
           <ul class="pw-plan-features">
-            <li><strong>GPT-4o</strong> премиум</li>
-            <li><strong>60 msg</strong> памет</li>
-            <li>Детайлни + приоритет</li>
+            <li><strong>Най-умният AI</strong></li>
+            <li><strong>Дълга памет</strong> (6× повече)</li>
+            <li>Детайлни програми</li>
           </ul>
           <button class="pw-plan-btn" onclick="confirmAndPay('pro')">Към PRO →</button>
         </div>
@@ -453,13 +459,13 @@ const T={
     'disc-l5':'Слушай тялото си — при болка или дискомфорт спри',
     'disc-agree':'Прочетох и разбирам. Поемам пълна отговорност за решенията си.',
     'disc-btn':'Разбрах →',
-    pw_headline:'ОТКЛЮЧИ ELITE',
-    pw_sub:'Сесиите ти изтекоха. Избери план за неограничени AI планове.',
+    pw_headline:'Това беше само началото',
+    pw_sub:'Видя какво може Apex за един план. Представи си персонализиран треньор, който помни целите ти, адаптира програмата и е до теб всеки ден. Отключи пълния потенциал.',
     copySuccess:'Планът е копиран! 🔥',pdfError:'Първо задай въпрос на AI!',
     greeting:'**Здравей! 🔱 Аз съм твоят AI треньор.**\n\nЩе ти изградя персонален план за минути. Кажи ми малко за себе си:',
     chips:[
-      'Искам мускулна маса',
       'Искам да отслабна',
+      'Искам мускулна маса',
       'Започвам от нула',
       'Искам по-добра форма'
     ],
@@ -500,13 +506,13 @@ const T={
     'disc-l5':'Listen to your body — stop at any pain or discomfort',
     'disc-agree':'I have read and understood. I take full responsibility for my decisions.',
     'disc-btn':'I understand →',
-    pw_headline:'UNLOCK ELITE',
-    pw_sub:'Your sessions are exhausted. Choose a plan for unlimited AI plans.',
+    pw_headline:'That was just the start',
+    pw_sub:'You saw what Apex can do for one plan. Imagine a personalized coach that remembers your goals, adapts your program, and is with you every day. Unlock the full potential.',
     copySuccess:'Plan copied! 🔥',pdfError:'First ask the AI a question!',
     greeting:'**Hey! 🔱 I\'m your AI coach.**\n\nI\'ll build a personalized plan in minutes. Tell me a bit about yourself:',
     chips:[
-      'I want muscle mass',
       'I want to lose weight',
+      'I want muscle mass',
       'I\'m starting from zero',
       'I want better shape'
     ],
@@ -575,6 +581,7 @@ function showGreeting(){
 }
 
 function confirmAndPay(plan){
+  track('checkout_started',{plan:plan});
   if(localStorage.getItem('apexDisclaimerAccepted')==='true'){
     pay(plan);
   }else{
@@ -611,10 +618,9 @@ function updatePlanBadge(){
 
   const isElite=count<=-999990;
   if(!isElite){
-    // FREE user — show remaining questions in white
+    // FREE user — clean white badge, NO countdown (countdown creates anxiety, not desire)
     b.classList.add('plan-free');
-    const rem=3-count;
-    b.innerHTML=rem>0?`● FREE · ${rem}`:'● FREE · 0';
+    b.innerHTML='● FREE';
     return;
   }
 
@@ -751,11 +757,14 @@ async function send(){
   // Prevent double-send if already processing
   if(inp.disabled)return;
   
-  // Check sessions BEFORE sending (for free users)
-  if(count>=3){
+  // FREE strategy: user gets ONE complete, impressive plan.
+  // On their SECOND attempt (count>=1), the paywall appears — right at the
+  // moment they want MORE. They've seen the value; now they want the full thing.
+  if(count>=1){
     if(!localStorage.getItem('apexPaywallShown')){
       localStorage.setItem('apexPaywallShown','true');
     }
+    track('paywall_shown',{plan_state:'free'});
     document.getElementById('paywall').style.display='flex';
     return;
   }
@@ -771,6 +780,7 @@ async function send(){
   if(greetEl)greetEl.remove();
   
   appendMsg(val,'u');inp.value='';
+  track('message_sent',{is_first:count===0});
   if(count>=0){count++;localStorage.setItem('apexCount',String(count));}
   updateBadge();
 
@@ -801,6 +811,7 @@ async function send(){
     const data=await res.json();
     const ty=document.getElementById('typing');if(ty)ty.remove();
     appendMsg(data.reply,'a');
+    track('ai_response',{plan_state:isElite?'paid':'free'});
     if(isElite)saveToHistory('assistant',data.reply);
     if(!isElite)saveToFreeMemory('assistant',data.reply);
     document.getElementById('utility').style.display='flex';
