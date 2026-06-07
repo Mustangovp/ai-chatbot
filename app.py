@@ -196,17 +196,11 @@ def chat():
         
         # Response length cap:
         # - PRO → up to 4000 tokens (detailed comprehensive plans)
-        # - CORE → ~1500 tokens
-        # - FREE → 2000 tokens for the ONE free plan (make it impressive = FOMO).
-        #   The free user gets a single, genuinely good, complete plan so they
-        #   SEE the value, then the paywall appears. Quality of this one answer
-        #   is the whole sales pitch.
-        if is_pro:
-            max_tokens = 4000
-        elif is_elite:
-            max_tokens = 1500
-        else:
-            max_tokens = 2000  # FREE: one generous, complete plan
+        # - CORE / FREE → ~1500 tokens (solid complete plans)
+        # FREE users now get a generous DAILY message limit (ChatGPT-style),
+        # so each individual answer is normal length — value comes from being
+        # able to chat freely, not from one oversized answer.
+        max_tokens = 4000 if is_pro else 1500
 
         try:
             response = client.chat.completions.create(
