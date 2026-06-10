@@ -47,6 +47,24 @@ LEAD_BONUS = 5
 FREE_WINDOW_SECONDS = 24 * 60 * 60
 _free_usage = {}   # ip -> {"count": int, "start": ts, "bonus": bool}
 
+# ── HONEST live counter for the landing page ──
+# Counts REAL AI responses today (resets at UTC midnight + on redeploy).
+# PLANS_TODAY_FLOOR env var sets a base so a redeploy doesn't show "0".
+_plans_today = {"day": "", "count": 0}
+
+def _bump_plans_today():
+    day = time.strftime('%Y-%m-%d', time.gmtime())
+    if _plans_today["day"] != day:
+        _plans_today["day"] = day
+        _plans_today["count"] = 0
+    _plans_today["count"] += 1
+
+def _get_plans_today():
+    day = time.strftime('%Y-%m-%d', time.gmtime())
+    base = int(os.getenv('PLANS_TODAY_FLOOR', '0') or 0)
+    n = _plans_today["count"] if _plans_today["day"] == day else 0
+    return base + n
+
 def _client_ip():
     return request.headers.get('X-Forwarded-For', request.remote_addr or 'unknown').split(',')[0].strip()
 
@@ -140,6 +158,66 @@ EN: "Before starting, please consult a doctor for your specific case."
 
 CRITICAL: ALWAYS respond in the EXACT same language as the user. Even the final medical disclaimer must match.
 """
+
+
+# ═══════════════════════════════════════════════════════════
+# EMAIL SENDING
+# Railway BLOCKS outbound SMTP (ports 25/465/587) on Free/Trial/
+# Hobby plans — Gmail SMTP will silently time out there.
+# Primary channel: Resend HTTPS API (works on ALL Railway plans).
+# Railway env vars:
+#   RESEND_API_KEY = re_xxxxxxxx        (from resend.com, free tier)
+#   MAIL_FROM      = APEX PULSE PRO <coach@apexpulse.pro>
+# Fallback: Gmail SMTP (only works on Railway Pro plan).
+# ═══════════════════════════════════════════════════════════
+import json as _json
+import urllib.request as _urlreq
+
+def send_email(to_addr: str, subject: str, body: str, reply_to: str = "") -> bool:
+    """Send a plain-text email. Returns True if accepted by a provider."""
+    # 1) Resend HTTPS API — survives Railway's SMTP block
+    resend_key = os.getenv('RESEND_API_KEY', '')
+    mail_from = os.getenv('MAIL_FROM', 'APEX PULSE PRO <onboarding@resend.dev>')
+    if resend_key:
+        try:
+            payload = {"from": mail_from, "to": [to_addr], "subject": subject, "text": body}
+            if reply_to:
+                payload["reply_to"] = reply_to
+            req = _urlreq.Request(
+                "https://api.resend.com/emails",
+                data=_json.dumps(payload).encode(),
+                headers={"Authorization": f"Bearer {resend_key}", "Content-Type": "application/json"},
+                method="POST",
+            )
+            with _urlreq.urlopen(req, timeout=10) as resp:
+                if 200 <= resp.status < 300:
+                    return True
+                print(f"[email] Resend HTTP {resp.status}: {resp.read()[:200]}")
+        except Exception as e:
+            print(f"[email] Resend error: {e}")
+    # 2) Gmail SMTP fallback (works only on Railway Pro plan)
+    gmail_user = os.getenv('GMAIL_USER', '')
+    gmail_pass = os.getenv('GMAIL_APP_PASSWORD', '')
+    if gmail_user and gmail_pass:
+        try:
+            import smtplib
+            from email.mime.text import MIMEText
+            msg = MIMEText(body, 'plain', 'utf-8')
+            msg['From'] = gmail_user
+            msg['To'] = to_addr
+            msg['Subject'] = subject
+            if reply_to:
+                msg['Reply-To'] = reply_to
+            with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=10) as smtp:
+                smtp.login(gmail_user, gmail_pass)
+                smtp.send_message(msg)
+            return True
+        except Exception as e:
+            print(f"[email] Gmail SMTP error (expected on Railway non-Pro plans): {e}")
+    else:
+        if not resend_key:
+            print('[email] WARNING: neither RESEND_API_KEY nor GMAIL credentials configured')
+    return False
 
 
 def make_token(expiry_timestamp: int, plan: str = "core") -> str:
@@ -264,6 +342,7 @@ def chat():
                 messages=messages,
                 max_tokens=max_tokens
             )
+            _bump_plans_today()  # honest landing counter: +1 real AI plan/response
             return jsonify({"reply": response.choices[0].message.content})
         except Exception as openai_error:
             # Log real error for ourselves
@@ -347,6 +426,12 @@ def legacy_success_redirect():
     return redirect('/app')
 
 
+@app.route('/stats')
+def stats_endpoint():
+    """Honest live counter for the landing page (real AI responses today)."""
+    return jsonify({'plans_today': _get_plans_today()})
+
+
 @app.route('/verify-token', methods=['POST'])
 def verify_token_endpoint():
     """Frontend asks: is this stored token still valid, and which plan does it carry?"""
@@ -393,65 +478,45 @@ Time: {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}
 
 Source: free-limit email capture (granted +{LEAD_BONUS} bonus messages)
 """
-        gmail_user = os.getenv('GMAIL_USER', '')
-        gmail_pass = os.getenv('GMAIL_APP_PASSWORD', '')
-        mail_sent = False
-        if gmail_user and gmail_pass:
-            try:
-                import smtplib
-                from email.mime.text import MIMEText
+        admin_addr = os.getenv('LEAD_NOTIFY_EMAIL', os.getenv('GMAIL_USER', 'apexpulsepro@gmail.com'))
 
-                with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=10) as smtp:
-                    smtp.login(gmail_user, gmail_pass)
+        # 1) Notification to us (the lead)
+        notify_sent = send_email(admin_addr, f'[Apex LEAD] {email}', body, reply_to=email)
 
-                    # 1) Notification to us (the lead)
-                    msg = MIMEText(body, 'plain', 'utf-8')
-                    msg['From'] = gmail_user
-                    msg['To'] = gmail_user
-                    msg['Subject'] = f'[Apex LEAD] {email}'
-                    smtp.send_message(msg)
-
-                    # 2) Welcome email TO THE USER — we promised them their plan
-                    if lang == 'bg':
-                        subject = 'Твоят план от APEX PULSE PRO 💪'
-                        user_body = (
-                            "Здравей!\n\n"
-                            "Благодарим, че пробва APEX PULSE PRO — твоят личен AI фитнес треньор.\n\n"
-                            + (f"Ето последния план, който AI треньорът създаде за теб:\n\n{'─'*40}\n{plan_text}\n{'─'*40}\n\n" if plan_text else "")
-                            + "Имаш +5 бонус съобщения днес — продължи разговора тук:\n"
-                            "https://apexpulse.pro/app\n\n"
-                            "А ако искаш AI треньор без никакви лимити, който помни целите ти\n"
-                            "и ти прави персонални програми всеки ден:\n"
-                            "→ APEX CORE — само €9.99 за 30 дни (€0.33/ден)\n"
-                            "https://apexpulse.pro/app?plan=core\n\n"
-                            "До скоро в залата (или вкъщи)! 🔥\n"
-                            "APEX PULSE PRO\n"
-                        )
-                    else:
-                        subject = 'Your plan from APEX PULSE PRO 💪'
-                        user_body = (
-                            "Hi!\n\n"
-                            "Thanks for trying APEX PULSE PRO — your personal AI fitness coach.\n\n"
-                            + (f"Here is the latest plan your AI coach created for you:\n\n{'─'*40}\n{plan_text}\n{'─'*40}\n\n" if plan_text else "")
-                            + "You have +5 bonus messages today — continue the conversation here:\n"
-                            "https://apexpulse.pro/app\n\n"
-                            "Want an AI coach with no limits that remembers your goals?\n"
-                            "→ APEX CORE — just €9.99 for 30 days (€0.33/day)\n"
-                            "https://apexpulse.pro/app?plan=core\n\n"
-                            "See you at the gym (or at home)! 🔥\n"
-                            "APEX PULSE PRO\n"
-                        )
-                    user_msg = MIMEText(user_body, 'plain', 'utf-8')
-                    user_msg['From'] = gmail_user
-                    user_msg['To'] = email
-                    user_msg['Subject'] = subject
-                    smtp.send_message(user_msg)
-                    mail_sent = True
-            except Exception as e:
-                print(f'[lead] SMTP error: {e}\n[lead] FALLBACK LOG:\n{body}')
+        # 2) Welcome email TO THE USER — we promised them their plan
+        if lang == 'bg':
+            subject = 'Твоят план от APEX PULSE PRO 💪'
+            user_body = (
+                "Здравей!\n\n"
+                "Благодарим, че пробва APEX PULSE PRO — твоят личен AI фитнес треньор.\n\n"
+                + (f"Ето последния план, който AI треньорът създаде за теб:\n\n{'─'*40}\n{plan_text}\n{'─'*40}\n\n" if plan_text else "")
+                + "Имаш +5 бонус съобщения днес — продължи разговора тук:\n"
+                "https://apexpulse.pro/app\n\n"
+                "А ако искаш AI треньор без никакви лимити, който помни целите ти\n"
+                "и ти прави персонални програми всеки ден:\n"
+                "→ APEX CORE — само €9.99 за 30 дни (€0.33/ден)\n"
+                "https://apexpulse.pro/app?plan=core\n\n"
+                "До скоро в залата (или вкъщи)! 🔥\n"
+                "APEX PULSE PRO\n"
+            )
         else:
-            print(f'[lead] WARNING: GMAIL_USER / GMAIL_APP_PASSWORD not set in Railway — no emails sent!')
-            print(f'[lead] LOG:\n{body}')
+            subject = 'Your plan from APEX PULSE PRO 💪'
+            user_body = (
+                "Hi!\n\n"
+                "Thanks for trying APEX PULSE PRO — your personal AI fitness coach.\n\n"
+                + (f"Here is the latest plan your AI coach created for you:\n\n{'─'*40}\n{plan_text}\n{'─'*40}\n\n" if plan_text else "")
+                + "You have +5 bonus messages today — continue the conversation here:\n"
+                "https://apexpulse.pro/app\n\n"
+                "Want an AI coach with no limits that remembers your goals?\n"
+                "→ APEX CORE — just €9.99 for 30 days (€0.33/day)\n"
+                "https://apexpulse.pro/app?plan=core\n\n"
+                "See you at the gym (or at home)! 🔥\n"
+                "APEX PULSE PRO\n"
+            )
+        mail_sent = send_email(email, subject, user_body)
+
+        if not (notify_sent or mail_sent):
+            print(f'[lead] No email provider worked. LOG:\n{body}')
 
         return jsonify({'ok': True, 'bonus': LEAD_BONUS, 'mail_sent': mail_sent})
     except Exception as e:
@@ -529,37 +594,13 @@ Message:
 Sent automatically from apexpulse.pro feedback widget
 """
         
-        # Try sending via Gmail SMTP; fall back to logging if not configured
-        gmail_user = os.getenv('GMAIL_USER', '')
-        gmail_pass = os.getenv('GMAIL_APP_PASSWORD', '')
-        
-        if gmail_user and gmail_pass:
-            try:
-                import smtplib
-                from email.mime.text import MIMEText
-                from email.mime.multipart import MIMEMultipart
-                
-                msg = MIMEMultipart()
-                msg['From'] = gmail_user
-                msg['To'] = gmail_user  # send to self
-                if email:
-                    msg['Reply-To'] = email
-                msg['Subject'] = f'[Apex Feedback] {type_label}'
-                msg.attach(MIMEText(email_body, 'plain', 'utf-8'))
-                
-                with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=10) as smtp:
-                    smtp.login(gmail_user, gmail_pass)
-                    smtp.send_message(msg)
-                
-                print(f'[feedback] Email sent for type={fb_type}')
-            except Exception as e:
-                # Don't fail the request — feedback is logged in Railway logs
-                print(f'[feedback] SMTP error: {e}')
-                print(f'[feedback] FALLBACK LOG:\n{email_body}')
+        # Send via Resend HTTPS API (Railway blocks SMTP) with Gmail fallback
+        admin_addr = os.getenv('LEAD_NOTIFY_EMAIL', os.getenv('GMAIL_USER', 'apexpulsepro@gmail.com'))
+        sent = send_email(admin_addr, f'[Apex Feedback] {type_label}', email_body, reply_to=email)
+        if sent:
+            print(f'[feedback] Email sent for type={fb_type}')
         else:
-            # Gmail not configured — log to Railway logs
-            print('[feedback] Gmail not configured. FALLBACK LOG:')
-            print(email_body)
+            print(f'[feedback] No email provider worked. FALLBACK LOG:\n{email_body}')
         
         return jsonify({'ok': True})
     except Exception as e:
