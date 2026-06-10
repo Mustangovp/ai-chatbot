@@ -268,9 +268,15 @@ def chat():
         except Exception as openai_error:
             # Log real error for ourselves
             print(f"[chat] OpenAI error: {openai_error}")
+            # The user got NOTHING — refund this message to their free limit
+            if not is_elite:
+                u = _free_usage.get(_client_ip())
+                if u and u["count"] > 0:
+                    u["count"] -= 1
             # Return friendly message to user
             return jsonify({
-                "reply": "AI треньорът е претоварен в момента. Моля, опитай отново след 30 секунди."
+                "reply": "AI треньорът е претоварен в момента. Моля, опитай отново след 30 секунди.",
+                "not_counted": True
             }), 200
     except Exception as e:
         print(f"[chat] Server error: {e}")
@@ -369,6 +375,7 @@ def save_lead():
         data = request.json or {}
         email = str(data.get('email', '')).strip()[:120]
         lang = str(data.get('lang', 'bg'))[:5]
+        plan_text = str(data.get('plan_text', ''))[:6000]
         if '@' not in email or '.' not in email.split('@')[-1] or len(email) < 6:
             return jsonify({'ok': False, 'error': 'invalid_email'}), 400
 
@@ -388,23 +395,65 @@ Source: free-limit email capture (granted +{LEAD_BONUS} bonus messages)
 """
         gmail_user = os.getenv('GMAIL_USER', '')
         gmail_pass = os.getenv('GMAIL_APP_PASSWORD', '')
+        mail_sent = False
         if gmail_user and gmail_pass:
             try:
                 import smtplib
                 from email.mime.text import MIMEText
-                msg = MIMEText(body, 'plain', 'utf-8')
-                msg['From'] = gmail_user
-                msg['To'] = gmail_user
-                msg['Subject'] = f'[Apex LEAD] {email}'
+
                 with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=10) as smtp:
                     smtp.login(gmail_user, gmail_pass)
+
+                    # 1) Notification to us (the lead)
+                    msg = MIMEText(body, 'plain', 'utf-8')
+                    msg['From'] = gmail_user
+                    msg['To'] = gmail_user
+                    msg['Subject'] = f'[Apex LEAD] {email}'
                     smtp.send_message(msg)
+
+                    # 2) Welcome email TO THE USER — we promised them their plan
+                    if lang == 'bg':
+                        subject = 'Твоят план от APEX PULSE PRO 💪'
+                        user_body = (
+                            "Здравей!\n\n"
+                            "Благодарим, че пробва APEX PULSE PRO — твоят личен AI фитнес треньор.\n\n"
+                            + (f"Ето последния план, който AI треньорът създаде за теб:\n\n{'─'*40}\n{plan_text}\n{'─'*40}\n\n" if plan_text else "")
+                            + "Имаш +5 бонус съобщения днес — продължи разговора тук:\n"
+                            "https://apexpulse.pro/app\n\n"
+                            "А ако искаш AI треньор без никакви лимити, който помни целите ти\n"
+                            "и ти прави персонални програми всеки ден:\n"
+                            "→ APEX CORE — само €9.99 за 30 дни (€0.33/ден)\n"
+                            "https://apexpulse.pro/app?plan=core\n\n"
+                            "До скоро в залата (или вкъщи)! 🔥\n"
+                            "APEX PULSE PRO\n"
+                        )
+                    else:
+                        subject = 'Your plan from APEX PULSE PRO 💪'
+                        user_body = (
+                            "Hi!\n\n"
+                            "Thanks for trying APEX PULSE PRO — your personal AI fitness coach.\n\n"
+                            + (f"Here is the latest plan your AI coach created for you:\n\n{'─'*40}\n{plan_text}\n{'─'*40}\n\n" if plan_text else "")
+                            + "You have +5 bonus messages today — continue the conversation here:\n"
+                            "https://apexpulse.pro/app\n\n"
+                            "Want an AI coach with no limits that remembers your goals?\n"
+                            "→ APEX CORE — just €9.99 for 30 days (€0.33/day)\n"
+                            "https://apexpulse.pro/app?plan=core\n\n"
+                            "See you at the gym (or at home)! 🔥\n"
+                            "APEX PULSE PRO\n"
+                        )
+                    user_msg = MIMEText(user_body, 'plain', 'utf-8')
+                    user_msg['From'] = gmail_user
+                    user_msg['To'] = email
+                    user_msg['Subject'] = subject
+                    smtp.send_message(user_msg)
+                    mail_sent = True
             except Exception as e:
                 print(f'[lead] SMTP error: {e}\n[lead] FALLBACK LOG:\n{body}')
         else:
-            print(f'[lead] Gmail not configured. LOG:\n{body}')
+            print(f'[lead] WARNING: GMAIL_USER / GMAIL_APP_PASSWORD not set in Railway — no emails sent!')
+            print(f'[lead] LOG:\n{body}')
 
-        return jsonify({'ok': True, 'bonus': LEAD_BONUS})
+        return jsonify({'ok': True, 'bonus': LEAD_BONUS, 'mail_sent': mail_sent})
     except Exception as e:
         print(f'[lead] error: {e}')
         return jsonify({'ok': False, 'error': 'server_error'}), 500
