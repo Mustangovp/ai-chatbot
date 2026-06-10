@@ -419,12 +419,8 @@
     <p class="section-sub" data-key="goals-sub">No forms. No setup. Tap a goal and the AI coach starts building your plan instantly.</p>
   </div>
   <div class="goals-grid">
-    <a href="/app?goal=growth" class="goal-card red">
-      <div class="goal-ico">💪</div>
-      <h3 class="goal-title" data-key="goal1-title">BUILD MUSCLE</h3>
-      <p class="goal-desc" data-key="goal1-desc">Strength and hypertrophy program with progressive overload and full nutrition.</p>
-      <div class="goal-arrow" data-key="goal1-arrow">Give me the plan →</div>
-    </a>
+    <!-- Order matches REAL ad audience (women 35–54 searching weight loss):
+         LOSE FAT first, beginner second, muscle goals after. -->
     <a href="/app?goal=burn" class="goal-card blue">
       <div class="goal-ico">🔥</div>
       <h3 class="goal-title" data-key="goal2-title">LOSE FAT</h3>
@@ -436,6 +432,12 @@
       <h3 class="goal-title" data-key="goal3-title">START FROM ZERO</h3>
       <p class="goal-desc" data-key="goal3-desc">Complete beginner-friendly plan with step-by-step training and nutrition.</p>
       <div class="goal-arrow" data-key="goal3-arrow">Transform me →</div>
+    </a>
+    <a href="/app?goal=growth" class="goal-card red">
+      <div class="goal-ico">💪</div>
+      <h3 class="goal-title" data-key="goal1-title">BUILD MUSCLE</h3>
+      <p class="goal-desc" data-key="goal1-desc">Strength and hypertrophy program with progressive overload and full nutrition.</p>
+      <div class="goal-arrow" data-key="goal1-arrow">Give me the plan →</div>
     </a>
     <a href="/app?goal=build" class="goal-card green">
       <div class="goal-ico">🏆</div>
@@ -487,59 +489,20 @@
       <p class="section-sub" data-key="pricing-sub">One platform. Built around your transformation, not ours.</p>
     </div>
 
-    <!-- FOUNDING PRICE (active until May 31, 2026) -->
-    <div id="founding-section">
-      <div class="founding-banner">
-        <div class="label">⚡ LIMITED TIME</div>
-        <div class="title">FOUNDING PRICE — ENDS MAY 31</div>
-        <div class="desc">Get full ELITE access at our launch price. From <strong>June 1</strong>, new plans start at <strong>€9.99/month</strong>.</div>
-      </div>
+    <!-- Founding era ended May 31 — section removed so crawlers/social previews
+         never see stale "LIMITED TIME" content. Discounts now via Stripe promo codes. -->
+    <div id="founding-section" style="display:none;"></div>
 
-      <!-- Trust strip - real, verifiable claims -->
-      <div class="trust-strip">
-        <div class="trust-strip-item"><span class="icon">🇧🇬</span> Built in Bulgaria</div>
-        <div class="trust-strip-item"><span class="icon">🔒</span> Secured by Stripe</div>
-        <div class="trust-strip-item"><span class="icon">✓</span> GDPR Compliant</div>
-        <div class="trust-strip-item"><span class="icon">⚡</span> Instant Access</div>
-      </div>
-
-      <div class="founding-card">
-        <div class="price-icon" style="margin:0 auto 14px;background:rgba(212,175,55,0.12);border-color:rgba(212,175,55,0.3);">👑</div>
-        <h3 class="price-tier gold">APEX ELITE</h3>
-        <div class="price-strike">€9.99/mo</div>
-        <div class="price-amount">€1.99<span class="small">/30 days</span></div>
-        <div class="price-period">Founding Member Price</div>
-        <ul class="price-features" style="text-align:left;">
-          <li>Unlimited AI coaching sessions</li>
-          <li>Personalized workout plans</li>
-          <li>Nutrition & macro guidance</li>
-          <li>PDF export of all plans</li>
-          <li>Conversation memory (10 messages)</li>
-          <li>BG / EN multilingual support</li>
-        </ul>
-        
-        <!-- Payment methods inside card -->
-        <div class="pay-methods">
-          <img src="/static/payment-logos/visa.svg" alt="Visa" class="pay-logo">
-          <img src="/static/payment-logos/mastercard.svg" alt="Mastercard" class="pay-logo">
-          <img src="/static/payment-logos/applepay.svg" alt="Apple Pay" class="pay-logo">
-          <img src="/static/payment-logos/googlepay.svg" alt="Google Pay" class="pay-logo">
-          <img src="/static/payment-logos/revolut.svg" alt="Revolut" class="pay-logo">
-        </div>
-        
-        <!-- Trust micro-copy -->
-        <div class="trust-mini">
-          <div class="trust-mini-row"><span class="icon">🔒</span> <span>Card data encrypted by <strong>Stripe</strong> — never touches our servers</span></div>
-          <div class="trust-mini-row"><span class="icon">🛡️</span> <span>Same payment system used by <strong>Amazon, Google, Shopify</strong></span></div>
-          <div class="trust-mini-row"><span class="icon">🏦</span> <span>Your bank protects every purchase via Visa/Mastercard</span></div>
-        </div>
-        
-        <a href="/app" class="price-btn price-btn-gold">Unlock ELITE — €1.99 →</a>
-      </div>
+    <!-- Trust strip - real, verifiable claims -->
+    <div class="trust-strip">
+      <div class="trust-strip-item"><span class="icon">🇧🇬</span> Built in Bulgaria</div>
+      <div class="trust-strip-item"><span class="icon">🔒</span> Secured by Stripe</div>
+      <div class="trust-strip-item"><span class="icon">✓</span> GDPR Compliant</div>
+      <div class="trust-strip-item"><span class="icon">⚡</span> Instant Access</div>
     </div>
 
     <!-- 3-PLAN PRICING (active from June 1, 2026) -->
-    <div id="plans-section" style="display:none;">
+    <div id="plans-section">
       <div class="pricing-grid">
         <!-- FREE PLAN -->
         <div class="price-card">
