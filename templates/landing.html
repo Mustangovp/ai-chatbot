@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!DOCT<!DOCTYPE html>
 <html lang="bg">
 <head>
 <meta charset="UTF-8">
@@ -260,4 +260,530 @@ footer a:hover{color:var(--text);}
   </div>
 </nav>
 
-<header class="her
+<header class="hero wrap">
+  <div class="eyebrow"><span class="dot"></span> <span data-key="eyebrow">AI треньор · на български · 24/7</span></div>
+  <h1 data-key-html="h1">Твоята цел.<br><span class="grad">Твоят план.</span><br>60 секунди.</h1>
+  <p class="sub" data-key="sub">Личен AI треньор, който създава програма за хранене и движение точно за твоето тяло, ниво и ежедневие. Без зала, без срам, без чакане.</p>
+
+  <!-- INTERACTIVE GOAL LINE: continues the sentence they typed in Google -->
+  <div class="goal-line">
+    <div class="gl-text">
+      <span data-key="gl-want">Искам да сваля</span>
+      <select id="gl-kg">
+        <option value="3">3 кг</option>
+        <option value="5" selected>5 кг</option>
+        <option value="8">8 кг</option>
+        <option value="10">10 кг</option>
+        <option value="15">15 кг</option>
+        <option value="20">20+ кг</option>
+      </select>
+      <span data-key="gl-for">за</span>
+      <select id="gl-time">
+        <option value="2w">2 седмици</option>
+        <option value="1m" selected>1 месец</option>
+        <option value="2m">2 месеца</option>
+        <option value="3m">3+ месеца</option>
+      </select>
+    </div>
+    <button class="gl-btn" onclick="heroGo()" data-key="gl-btn">Дай ми плана — безплатно →</button>
+    <div class="gl-alt"><span data-key="gl-alt1">Друга цел?</span> <a href="#goals" data-key="gl-alt2">Мускули, тонус или старт от нулата ↓</a></div>
+  </div>
+  <div class="micro" data-key="micro">10 безплатни съобщения всеки ден · без карта, без регистрация</div>
+
+  <div class="paystrip">
+    <div class="ps-label" data-key="ps-label">Сигурно плащане чрез</div>
+    <img src="/static/payment-logos/visa.svg" alt="Visa">
+    <img src="/static/payment-logos/mastercard.svg" alt="Mastercard">
+    <img src="/static/payment-logos/applepay.svg" alt="Apple Pay" class="dark">
+    <img src="/static/payment-logos/googlepay.svg" alt="Google Pay">
+    <img src="/static/payment-logos/revolut.svg" alt="Revolut" class="dark">
+    <img src="/static/payment-logos/stripe.svg" alt="Stripe">
+  </div>
+
+  <div class="proof" id="proof"><span class="p-num" id="proof-num">0</span> <span data-key="proof-label">плана създадени днес</span></div>
+
+  <svg class="pulseline" viewBox="0 0 520 60" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M0 30 H120 L150 8 L185 52 L215 18 L235 30 H300 L330 12 L360 48 L385 24 L400 30 H520"/>
+  </svg>
+</header>
+
+<div class="phone-stage">
+  <div class="ring"></div>
+  <div class="phone" aria-hidden="true">
+    <div class="notch"></div>
+    <div class="ph-nav">
+      <div class="ph-brand">
+        <div class="ph-logo"></div>
+        <div><div class="ph-title"><span class="ra">APEX</span> PULSE PRO</div><div class="ph-sub">AI Fitness Coach</div></div>
+      </div>
+      <span class="ph-badge">● FREE</span>
+    </div>
+    <div class="chat">
+      <div class="bub u" data-key="ph-u">Искам да сваля няколко килограма — без зала и без диети-чудо. Откъде да започна?</div>
+      <div class="bub a" data-key="ph-a">Точно за това съм тук. 💪 Кажи ми само: колко често можеш да се движиш седмично и какво обичаш да ядеш? Ето как ще изглежда първият ти ден:</div>
+      <div class="plan-card">
+        <div class="pc-head">
+          <div class="pc-title" data-key="ph-day">Ден 1 · Твоят план</div>
+          <div class="pc-kcal" data-key="ph-bal">балансиран ✓</div>
+        </div>
+        <div class="plan-row"><span data-key="ph-r1">Закуска: овесена каша + ябълка</span><span>340</span></div>
+        <div class="plan-row"><span data-key="ph-r2">Обяд: пиле + киноа + салата</span><span>520</span></div>
+        <div class="plan-row"><span data-key="ph-r3">Вечеря: риба + зеленчуци</span><span>430</span></div>
+        <div class="plan-row"><span data-key="ph-r4">Движение: 30 мин бързо ходене</span><span>🔥</span></div>
+      </div>
+      <div class="typing"><i></i><i></i><i></i></div>
+    </div>
+    <div class="ph-input">
+      <div class="ph-field" data-key="ph-field">Опиши целта си...</div>
+      <div class="ph-send">➤</div>
+    </div>
+  </div>
+</div>
+
+<section class="wrap" id="how">
+  <div class="sec-label" data-key="how-label">Как работи</div>
+  <h2 data-key="how-title">Три стъпки. Нула излишни.</h2>
+  <div class="steps">
+    <div class="step"><div class="s-num">1</div><h3 data-key="how1-t">Кажи целта си</h3><p data-key="how1-p">„5 кг за месец", „мускули", „старт от нулата" — с твои думи, на български.</p></div>
+    <div class="step"><div class="s-num">2</div><h3 data-key="how2-t">AI треньорът пита</h3><p data-key="how2-p">2-3 кратки въпроса за тялото, нивото и деня ти. Нищо излишно.</p></div>
+    <div class="step"><div class="s-num">3</div><h3 data-key="how3-t">Получаваш плана</h3><p data-key="how3-p">Хранене + движение за твоя живот. Питай, променяй, продължавай — той е твой.</p></div>
+  </div>
+</section>
+
+<section class="wrap" id="goals">
+  <div class="sec-label" data-key="goals-label">Избери цел</div>
+  <h2 data-key="goals-title">Откъде започваме?</h2>
+  <p class="sec-sub" data-key="goals-sub">Натискаш една карта — AI треньорът пита каквото му трябва и ти дава план. Толкова.</p>
+  <div class="goals">
+    <a class="goal burn" href="/app?goal=burn" onclick="track('goal_click',{goal:'burn'})"><div class="g-ico">🔥</div><h3 data-key="g1-t">Отслабване</h3><p data-key="g1-p">Сваляш килограми с реалистично меню и движение, което се вписва в деня ти.</p><div class="go" data-key="g1-go">Дай ми плана →</div></a>
+    <a class="goal zero" href="/app?goal=zero" onclick="track('goal_click',{goal:'zero'})"><div class="g-ico">⚡</div><h3 data-key="g2-t">От нулата</h3><p data-key="g2-p">Никога не си тренирал(а)? План стъпка по стъпка, без излагане и без болка.</p><div class="go" data-key="g2-go">Започвам →</div></a>
+    <a class="goal muscle" href="/app?goal=growth" onclick="track('goal_click',{goal:'growth'})"><div class="g-ico">💪</div><h3 data-key="g3-t">Мускули</h3><p data-key="g3-p">Сила и маса с прогресивно натоварване и хранене с точни макроси.</p><div class="go" data-key="g3-go">Покажи ми →</div></a>
+    <a class="goal elite" href="/app?goal=build" onclick="track('goal_click',{goal:'build'})"><div class="g-ico">🏆</div><h3 data-key="g4-t">Elite режим</h3><p data-key="g4-p">За напреднали: прецизни макроси, периодизация, максимални резултати.</p><div class="go" data-key="g4-go">Влизам →</div></a>
+  </div>
+</section>
+
+<svg class="divider" viewBox="0 0 1200 44" preserveAspectRatio="none" aria-hidden="true"><path d="M0 22 H400 L430 6 L465 38 L495 14 L515 22 H1200"/></svg>
+
+<section class="wrap" id="pricing">
+  <div class="sec-label" data-key="pr-label">Планове</div>
+  <h2 data-key="pr-title">Колкото едно кафе на ден.</h2>
+  <p class="sec-sub" data-key="pr-sub">Без абонамент-капан: плащаш за 30 дни, без автоматично подновяване.</p>
+  <div class="plans">
+    <div class="plan">
+      <div class="p-name">FREE</div>
+      <div class="p-price">€0</div>
+      <div class="p-day" data-key="pr-free-day">завинаги</div>
+      <ul>
+        <li data-key="pr-f1">10 съобщения на ден</li>
+        <li data-key="pr-f2">Планове за хранене и тренировки</li>
+        <li class="off" data-key="pr-f3">AI памет за целите ти</li>
+        <li class="off" data-key="pr-f4">PDF на плановете</li>
+      </ul>
+      <a href="/app" class="p-btn" data-key="pr-free-btn" onclick="track('cta_click',{place:'plan_free'})">Пробвай безплатно</a>
+    </div>
+    <div class="plan hot">
+      <div class="tag" data-key="pr-tag">НАЙ-ИЗБИРАН</div>
+      <div class="p-name">CORE</div>
+      <div class="p-price">€9.99<span data-key="pr-per">/30 дни</span></div>
+      <div class="p-day" data-key="pr-core-day">€0.33 на ден</div>
+      <ul>
+        <li data-key="pr-c1"><b>Неограничени</b> съобщения</li>
+        <li data-key="pr-c2">AI помни целите и прогреса ти</li>
+        <li data-key="pr-c3">PDF на всеки план</li>
+        <li data-key="pr-c4">BG / EN</li>
+      </ul>
+      <a href="/app?plan=core" class="p-btn" data-key="pr-core-btn" onclick="track('checkout_intent',{plan:'core',place:'landing'})">Активирай CORE</a>
+    </div>
+    <div class="plan">
+      <div class="p-name">PRO</div>
+      <div class="p-price">€14.99<span data-key="pr-per2">/30 дни</span></div>
+      <div class="p-day" data-key="pr-pro-day">€0.50 на ден</div>
+      <ul>
+        <li data-key="pr-p1">Всичко от CORE</li>
+        <li data-key="pr-p2"><b>Най-умният AI модел</b></li>
+        <li data-key="pr-p3">6× по-дълга памет</li>
+        <li data-key="pr-p4">Детайлни програми до последния грам</li>
+      </ul>
+      <a href="/app?plan=pro" class="p-btn" data-key="pr-pro-btn" onclick="track('checkout_intent',{plan:'pro',place:'landing'})">Към PRO</a>
+    </div>
+  </div>
+
+  <div class="trustblock">
+    <div class="tb-logos">
+      <img src="/static/payment-logos/visa.svg" alt="Visa">
+      <img src="/static/payment-logos/mastercard.svg" alt="Mastercard">
+      <img src="/static/payment-logos/applepay.svg" alt="Apple Pay" class="dark">
+      <img src="/static/payment-logos/googlepay.svg" alt="Google Pay">
+      <img src="/static/payment-logos/revolut.svg" alt="Revolut" class="dark">
+      <img src="/static/payment-logos/stripe.svg" alt="Stripe">
+      <img src="/static/payment-logos/amex.svg" alt="Amex">
+    </div>
+    <div class="tb-row" data-key="tb1">🔒 Плащането минава изцяло през <b>Stripe</b> — системата на Amazon, Google и Shopify</div>
+    <div class="tb-row" data-key="tb2">🏦 Картовите ти данни <b>никога не докосват наши сървъри</b></div>
+    <div class="tb-row" data-key="tb3">💶 <b>7-дневна гаранция</b> — не ти хареса? Връщаме парите, без въпроси</div>
+    <div class="tb-row" data-key="tb4">🚫 <b>Без абонамент-капан</b> — плащаш веднъж за 30 дни, нищо не се подновява само</div>
+  </div>
+</section>
+
+<section class="wrap" id="faq">
+  <div class="sec-label">FAQ</div>
+  <h2 data-key="faq-title">Честни отговори</h2>
+  <div style="margin-top:24px;">
+    <details class="faq-item"><summary data-key="fq1">Безопасно ли е плащането?</summary><div class="fa-body" data-key="fa1">Да. Плащането се обработва изцяло от Stripe — същата система, която ползват Amazon и Google. Ние не виждаме и не съхраняваме номера на картата ти. Имаш и 7-дневна гаранция за връщане на парите.</div></details>
+    <details class="faq-item"><summary data-key="fq2">Какво точно е AI треньорът?</summary><div class="fa-body" data-key="fa2">Изкуствен интелект, обучен да създава персонални програми за хранене и движение. Питаш на български, той пита обратно каквото му трябва, и получаваш план за твоето тяло и твоя ден — не шаблон от списание.</div></details>
+    <details class="faq-item"><summary data-key="fq3">Това абонамент ли е?</summary><div class="fa-body" data-key="fa3">Не. Плащаш веднъж за 30 дни достъп. Нищо не се подновява автоматично и не е нужно да помниш да спираш нещо. Изтече ли — решаваш сам(а) дали искаш още.</div></details>
+    <details class="faq-item"><summary data-key="fq4">Замества ли лекар или диетолог?</summary><div class="fa-body" data-key="fa4">Не. AI треньорът дава общи насоки за тренировки и хранене и не е медицински съвет. При здравословни състояния се консултирай с лекар, преди да започнеш нова програма.</div></details>
+  </div>
+</section>
+
+<footer class="wrap">
+  <img src="/static/logo.png" alt="" style="width:40px;opacity:.8;"><br><br>
+  APEX PULSE PRO · Built in Bulgaria 🇧🇬<br>
+  <span style="font-size:11px;" data-key="foot-trader">[Данни на търговеца — попълват се преди пускане]</span>
+  <div class="foot-links">
+    <a href="#" onclick="event.preventDefault();showLegal('terms')" data-key="foot-terms">Общи условия</a>
+    <a href="#" onclick="event.preventDefault();showLegal('privacy')" data-key="foot-privacy">Поверителност</a>
+    <a href="#" onclick="event.preventDefault();showLegal('refund')" data-key="foot-refund">Връщане</a>
+    <a href="#" onclick="event.preventDefault();showLegal('medical')" data-key="foot-ai">AI Disclaimer</a>
+    <a href="#" onclick="event.preventDefault();showCookieBar(true)" data-key="foot-cookies">Бисквитки</a>
+  </div>
+</footer>
+
+<button class="to-top" id="to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Към началото">↑</button>
+
+<div class="cookiebar" id="cookiebar">
+  <span class="cb-text" data-key="cb-text">Използваме бисквитки за анализ и подобряване на услугата. Избери:</span>
+  <button class="cb-decline" onclick="setConsent(false)" data-key="cb-no">Само нужните</button>
+  <button class="cb-accept" onclick="setConsent(true)" data-key="cb-yes">Приемам</button>
+</div>
+
+<div id="legal-modal" onclick="if(event.target===this)closeLegal()">
+  <div class="lm-box">
+    <button class="lm-close" onclick="closeLegal()">✕</button>
+    <div id="legal-content"></div>
+  </div>
+</div>
+
+<script>
+/* ═══════════ LANGUAGE ═══════════ */
+let lang='bg';
+try{lang=localStorage.getItem('apexLang')||'bg';}catch(e){}
+
+const T={
+  en:{
+    'nav-cta':'Start free',
+    'eyebrow':'AI coach · instant · 24/7',
+    'h1':'Your goal.<br><span class="grad">Your plan.</span><br>60 seconds.',
+    'sub':'A personal AI coach that builds a nutrition and movement program for YOUR body, level and daily life. No gym required, no judgement, no waiting.',
+    'gl-want':'I want to lose','gl-for':'in',
+    'gl-btn':'Get my plan — free →',
+    'gl-alt1':'Different goal?','gl-alt2':'Muscle, tone or starting from zero ↓',
+    'micro':'10 free messages every day · no card, no signup',
+    'ps-label':'Secure payments via',
+    'proof-label':'plans created today',
+    'ph-u':"I want to lose a few kilos — no gym, no miracle diets. Where do I start?",
+    'ph-a':"That's exactly what I'm here for. I asked you 3 quick questions and here's your first week — realistic, no starving: 💪",
+    'ph-day':'Day 1 · Your plan','ph-bal':'balanced ✓',
+    'ph-r1':'Breakfast: oatmeal + apple','ph-r2':'Lunch: chicken + quinoa + salad','ph-r3':'Dinner: fish + vegetables','ph-r4':'Movement: 30 min brisk walk','ph-field':'Describe your goal...','ph-a':"That's exactly what I'm here for. \ud83d\udcaa Just tell me: how often can you move weekly, and what do you like to eat? Here's your day one:",
+    'how-label':'How it works','how-title':'Three steps. Zero fluff.',
+    'how1-t':'State your goal','how1-p':'"5 kg in a month", "muscle", "starting from zero" — in your own words.',
+    'how2-t':'The AI coach asks','how2-p':'2-3 quick questions about your body, level and day. Nothing extra.',
+    'how3-t':'Get your plan','how3-p':'Nutrition + movement for your life. Ask, adjust, keep going — it adapts to you.',
+    'goals-label':'Pick a goal','goals-title':'Where do we start?','goals-sub':'Tap a card — the AI coach asks what it needs and gives you a plan. That simple.',
+    'g1-t':'Lose weight','g1-p':'Drop the kilos with a realistic menu and movement that fits your day.','g1-go':'Get my plan →',
+    'g2-t':'From zero','g2-p':"Never trained? Step-by-step plan, no embarrassment, no pain.",'g2-go':"I'm starting →",
+    'g3-t':'Build muscle','g3-p':'Strength and mass with progressive overload and precise macros.','g3-go':'Show me →',
+    'g4-t':'Elite mode','g4-p':'Advanced: precise macros, periodization, maximum results.','g4-go':"I'm in →",
+    'pr-label':'Plans','pr-title':'Less than a coffee a day.','pr-sub':'No subscription trap: pay for 30 days, nothing auto-renews.',
+    'pr-free-day':'forever','pr-f1':'10 messages per day','pr-f2':'Nutrition & training plans','pr-f3':'AI memory for your goals','pr-f4':'PDF of your plans','pr-free-btn':'Try for free',
+    'pr-tag':'MOST POPULAR','pr-per':'/30 days','pr-per2':'/30 days',
+    'pr-core-day':'€0.33 per day','pr-c1':'<b>Unlimited</b> messages','pr-c2':'AI remembers your goals & progress','pr-c3':'PDF for every plan','pr-c4':'BG / EN','pr-core-btn':'Activate CORE',
+    'pr-pro-day':'€0.50 per day','pr-p1':'Everything in CORE','pr-p2':'<b>The smartest AI model</b>','pr-p3':'6× longer memory','pr-p4':'Detailed programs down to the gram','pr-pro-btn':'Go PRO',
+    'tb1':'🔒 Payments handled entirely by <b>Stripe</b> — trusted by Amazon, Google & Shopify',
+    'tb2':'🏦 Your card data <b>never touches our servers</b>',
+    'tb3':"💶 <b>7-day guarantee</b> — didn't like it? Money back, no questions",
+    'tb4':'🚫 <b>No subscription trap</b> — one payment for 30 days, nothing renews on its own',
+    'faq-title':'Honest answers',
+    'fq1':'Is the payment safe?','fa1':'Yes. Payments are processed entirely by Stripe — the same system Amazon and Google use. We never see or store your card number. You also get a 7-day money-back guarantee.',
+    'fq2':'What exactly is the AI coach?','fa2':'An AI trained to build personal nutrition and movement programs. You ask in plain language, it asks back what it needs, and you get a plan for your body and your day — not a magazine template.',
+    'fq3':'Is this a subscription?','fa3':'No. You pay once for 30 days of access. Nothing renews automatically and there is nothing to remember to cancel. When it expires — you decide if you want more.',
+    'fq4':'Does it replace a doctor or dietitian?','fa4':'No. The AI coach gives general training and nutrition guidance and is not medical advice. If you have health conditions, consult a doctor before starting a new program.',
+    'foot-trader':'[Trader details — to be filled before launch]',
+    'foot-terms':'Terms','foot-privacy':'Privacy','foot-refund':'Refunds','foot-ai':'AI Disclaimer','foot-cookies':'Cookies',
+    'cb-text':'We use cookies for analytics and to improve the service. Choose:','cb-no':'Essential only','cb-yes':'Accept'
+  },
+  bg:{} /* BG текстовете са в HTML-а по подразбиране */
+};
+
+function applyLang(){
+  document.documentElement.lang=lang;
+  document.querySelectorAll('.lang-toggle span').forEach(s=>s.classList.toggle('active',s.dataset.lang===lang));
+  document.querySelectorAll('[data-key]').forEach(el=>{
+    const k=el.getAttribute('data-key');
+    if(lang==='en'&&T.en[k]!==undefined){el.innerHTML=T.en[k];}
+    else if(lang==='bg'&&el.dataset.bg!==undefined){el.innerHTML=el.dataset.bg;}
+  });
+  document.querySelectorAll('[data-key-html]').forEach(el=>{
+    const k=el.getAttribute('data-key-html');
+    if(lang==='en'&&T.en[k]!==undefined){el.innerHTML=T.en[k];}
+    else if(lang==='bg'&&el.dataset.bg!==undefined){el.innerHTML=el.dataset.bg;}
+  });
+  // селектите в goal line
+  const kg=document.getElementById('gl-kg'),tm=document.getElementById('gl-time');
+  if(lang==='en'){
+    [...kg.options].forEach(o=>o.text=o.value==='20'?'20+ kg':o.value+' kg');
+    tm.options[0].text='2 weeks';tm.options[1].text='1 month';tm.options[2].text='2 months';tm.options[3].text='3+ months';
+  }else{
+    [...kg.options].forEach(o=>o.text=o.value==='20'?'20+ кг':o.value+' кг');
+    tm.options[0].text='2 седмици';tm.options[1].text='1 месец';tm.options[2].text='2 месеца';tm.options[3].text='3+ месеца';
+  }
+}
+// Запазваме BG оригиналите преди първа смяна
+document.addEventListener('DOMContentLoaded',()=>{
+  document.querySelectorAll('[data-key],[data-key-html]').forEach(el=>{el.dataset.bg=el.innerHTML;});
+  if(lang==='en')applyLang();
+});
+document.getElementById('lang-toggle').addEventListener('click',e=>{
+  if(e.target.dataset.lang&&e.target.dataset.lang!==lang){
+    lang=e.target.dataset.lang;
+    try{localStorage.setItem('apexLang',lang);}catch(err){}
+    applyLang();
+    track('lang_switch',{to:lang});
+  }
+});
+
+/* ═══════════ TRACKING (respects consent mode) ═══════════ */
+function track(name,params){try{gtag('event',name,params||{});}catch(e){}}
+
+/* ═══════════ HERO GOAL → CHAT ═══════════ */
+function heroGo(){
+  const kg=document.getElementById('gl-kg').value;
+  const tmEl=document.getElementById('gl-time');
+  const tmTxt=tmEl.options[tmEl.selectedIndex].text;
+  let msg;
+  if(lang==='en'){
+    msg=`I want to lose ${kg==='20'?'20+':kg} kg in ${tmTxt}. Give me a realistic nutrition and movement plan that fits everyday life.`;
+  }else{
+    msg=`Искам да сваля ${kg==='20'?'20+':kg} кг за ${tmTxt}. Дай ми реалистичен план за хранене и движение, който се вписва в ежедневието ми.`;
+  }
+  track('hero_goal_click',{kg:kg,time:tmEl.value});
+  window.location.href='/app?q='+encodeURIComponent(msg);
+}
+
+/* ═══════════ HONEST COUNTER ═══════════ */
+fetch('/stats').then(r=>r.json()).then(d=>{
+  if(d&&d.plans_today>=15){ // показваме само когато числото внушава живот
+    const el=document.getElementById('proof-num');
+    const target=d.plans_today;let cur=0;
+    document.getElementById('proof').classList.add('show');
+    const step=Math.max(1,Math.floor(target/30));
+    const iv=setInterval(()=>{cur=Math.min(target,cur+step);el.textContent=cur;if(cur>=target)clearInterval(iv);},40);
+  }
+}).catch(()=>{});
+
+/* ═══════════ COOKIE CONSENT ═══════════ */
+function showCookieBar(force){
+  let saved=null;
+  try{saved=localStorage.getItem('apexConsent');}catch(e){}
+  if(force||!saved)document.getElementById('cookiebar').classList.add('show');
+}
+function setConsent(granted){
+  try{localStorage.setItem('apexConsent',granted?'granted':'denied');}catch(e){}
+  if(granted){
+    gtag('consent','update',{'analytics_storage':'granted','ad_storage':'granted','ad_user_data':'granted','ad_personalization':'granted'});
+  }
+  document.getElementById('cookiebar').classList.remove('show');
+}
+showCookieBar(false);
+
+/* ═══════════ LEGAL MODAL ═══════════ */
+const LEGAL = {
+    bg: {
+      terms: `<h2>Общи Условия</h2>
+        <p><strong>1. Услуга:</strong> APEX PULSE PRO предоставя AI-базирани фитнес и хранителни препоръки с информативна цел. Услугата не заменя професионална медицинска консултация или индивидуален диетолог.</p>
+        <p><strong>2. Регистрация:</strong> Не се изисква регистрация за използване на безплатната версия. За платените планове се изисква имейл за издаване на касова бележка от Stripe.</p>
+        <p><strong>3. Плащания:</strong> Еднократно плащане отключва PRO функциите за 30 дни. Плащанията се обработват сигурно от Stripe (PCI-DSS Level 1). Apex Pulse PRO няма достъп до данни на карти или банкови сметки.</p>
+        <p><strong>4. Срок на достъп:</strong> Достъпът е валиден 30 дни от датата на плащане. След изтичане потребителят може да заплати отново за нов 30-дневен период. Услугата не е автоматично подновяваща се (без auto-renewal).</p>
+        <p><strong>5. Отказ от отговорност:</strong> Всички планове и съвети са с информативна цел. Apex Pulse PRO, неговите създатели и собственици не носят отговорност за здравословни проблеми, наранявания, нежелани реакции или други последствия от използването на услугата. Винаги се консултирай с лекар преди да започнеш диета или тренировъчна програма.</p>
+        <p><strong>6. Право на отказ:</strong> Съгласно чл. 57, ал. 13 от Закона за защита на потребителите (ЗЗП), при предоставяне на цифрово съдържание, което не се доставя на материален носител, потребителят губи правото си на отказ след началото на предоставянето на съдържанието със изричното му съгласие. Чрез плащането и започването на използването на услугата потребителят дава своето изрично съгласие.</p>
+        <p><strong>7. Възрастови ограничения:</strong> Услугата е предназначена за пълнолетни (18+) лица в добро здравословно състояние. Лица под 18 години не трябва да използват услугата без съгласие и придружаване от пълнолетен.</p>
+        <p><strong>8. Забранена употреба:</strong> Потребителят се съгласява да не използва услугата за незаконни цели, спам, злонамерени действия или нарушаване на правата на трети лица.</p>
+        <p><strong>9. Промени в условията:</strong> Apex Pulse PRO си запазва правото да актуализира тези условия. Активното използване на услугата след промените означава съгласие с актуализираната версия.</p>
+        <p><strong>10. Приложимо право:</strong> Тези условия се регулират от законите на Република България. Всички спорове се решават от компетентните български съдилища.</p>`,
+      privacy: `<h2>Политика за Поверителност</h2>
+        <p><strong>Кои данни събираме:</strong> Apex Pulse PRO събира минимална информация за функционирането на услугата:</p>
+        <ul>
+          <li>Съдържанието на твоите въпроси към AI (за обработка от OpenAI)</li>
+          <li>Имейл адрес — само при плащане (предоставен на Stripe)</li>
+          <li>Анонимни статистики чрез Google Analytics (без идентифициране на отделни потребители)</li>
+          <li>Технически данни като IP адрес и тип браузър — стандартни сървърни логове</li>
+        </ul>
+        <p><strong>Какво НЕ събираме:</strong></p>
+        <ul>
+          <li>Лични финансови данни — обработват се изключително от Stripe</li>
+          <li>Данни на банкови карти, PIN кодове или CVV — не виждаме нищо от тях</li>
+          <li>Чувствителни лични данни (ЕГН, паспорт, адрес)</li>
+        </ul>
+        <p><strong>Как съхраняваме данните:</strong> Връзката е защитена със SSL/TLS криптиране. LocalStorage в твоя браузър се използва само за запомняне на абонамента и потвърждение на медицинското предупреждение. Тези данни не се изпращат към сървъра ни.</p>
+        <p><strong>Услуги на трети страни:</strong></p>
+        <ul>
+          <li><strong>OpenAI</strong> — обработва AI разговорите (политика: openai.com/privacy)</li>
+          <li><strong>Stripe</strong> — обработва плащанията (политика: stripe.com/privacy)</li>
+          <li><strong>Google Analytics</strong> — анонимна статистика на ползване</li>
+          <li><strong>Railway</strong> — хостинг на приложението</li>
+        </ul>
+        <p><strong>Твоите права (GDPR):</strong> Имаш право на достъп, корекция, изтриване и преносимост на твоите данни. За упражняване на тези права, свържи се с apexpulsepro@gmail.com.</p>
+        <p><strong>Срок на съхранение:</strong> Данните за плащане се съхраняват от Stripe съгласно техните политики (обикновено 7 години за данъчни цели). Сървърни логове се изтриват автоматично след 30 дни.</p>
+        <p><strong>Контакт за privacy въпроси:</strong> apexpulsepro@gmail.com</p>`,
+      medical: `<h2>Медицинско Предупреждение и AI Disclaimer</h2>
+        <p><strong>APEX PULSE PRO Е AI АСИСТЕНТ — НЕ ЛЕКАР, НЕ ДИЕТОЛОГ, НЕ ЛИЧЕН ТРЕНЬОР.</strong></p>
+        <p>Всички тренировъчни и хранителни препоръки, генерирани от AI, са с информативна и образователна цел. Те не представляват:</p>
+        <ul>
+          <li>Медицински съвет или диагноза</li>
+          <li>Лечение на заболявания</li>
+          <li>Замяна на консултация с лекар, диетолог или личен треньор</li>
+          <li>Гаранция за резултати или промяна в тялото</li>
+        </ul>
+        <p><strong>Преди да започнеш каквато и да е диета или тренировъчна програма:</strong></p>
+        <ul>
+          <li>Консултирай се с личен лекар, особено ако имаш сърдечно заболяване, високо кръвно, диабет, астма или други хронични състояния</li>
+          <li>Не следвай съветите ако си бременна, кърмиш, или си под 18 години</li>
+          <li>Не следвай съветите ако имаш или си имал хранително разстройство (анорексия, булимия, BED)</li>
+          <li>При прием на лекарства — консултирай се с лекар за възможни взаимодействия с тренировки или хранителен режим</li>
+          <li>При появата на болка, замайване, гадене, задух или дискомфорт по време на тренировка — спри незабавно и потърси медицинска помощ</li>
+        </ul>
+        <p><strong>Ограничения на AI:</strong> AI моделът може да греши, да дава неточна информация или да пропуска важни нюанси на твоята ситуация. Винаги верифицирай критична информация с професионалист.</p>
+        <h3>Спешни случаи</h3>
+        <p>При спешен медицински случай се обади на <strong>112</strong> (Европейски номер) или местен номер за спешна помощ. AI асистентът не е заместител на медицинска помощ.</p>
+        <p><strong>С използването на услугата потвърждаваш, че разбираш и приемаш горните ограничения.</strong></p>`,
+      refund: `<h2>Политика за Възстановяване</h2>
+        <p><strong>Основно правило:</strong> Apex Pulse PRO е цифрово съдържание, което се предоставя незабавно след плащане. Съгласно чл. 57, ал. 13 от Закона за защита на потребителите (ЗЗП), <strong>правото на отказ от договор отпада</strong> след началото на изпълнение на цифровото съдържание с изричното съгласие на потребителя.</p>
+        <p>При плащане потребителят се съгласява изрично, че услугата започва незабавно и че се отказва от правото на 14-дневен отказ.</p>
+        <h3>Изключения — кога има възможност за refund</h3>
+        <p>Apex Pulse PRO може да върне сумата в следните случаи:</p>
+        <ul>
+          <li><strong>Технически проблем от наша страна:</strong> Услугата не работи или не е достъпна за повече от 24 часа след плащането</li>
+          <li><strong>Двойно плащане:</strong> Случайно си платил два пъти за един и същ период</li>
+          <li><strong>Грешно плащане:</strong> Платил си грешен план поради техническа грешка на сайта</li>
+          <li><strong>Подвеждаща информация:</strong> Получаваш услуга, която съществено се различава от описаната</li>
+        </ul>
+        <h3>Как да поискаш refund</h3>
+        <p>Изпрати имейл на <strong>apexpulsepro@gmail.com</strong> с:</p>
+        <ul>
+          <li>Имейл адреса с който си платил</li>
+          <li>Дата на плащане</li>
+          <li>Сума</li>
+          <li>Причина за искането</li>
+        </ul>
+        <p>Ще получиш отговор в рамките на 5 работни дни. Ако заявката е одобрена, сумата ще бъде върната по същата карта чрез Stripe в рамките на 5-10 работни дни.</p>
+        <h3>Chargeback предупреждение</h3>
+        <p>Преди да започнеш процедура за chargeback в твоята банка, моля свържи се първо с нас. Това спестява време и притеснения на всички страни.</p>`,
+    },
+    en: {
+      terms: `<h2>Terms of Service</h2>
+        <p><strong>1. Service:</strong> APEX PULSE PRO provides AI-based fitness and nutrition recommendations for informational purposes only. The service does not replace professional medical consultation or a personal dietitian.</p>
+        <p><strong>2. Registration:</strong> No registration required for the free version. Paid plans require an email for receipt issuance via Stripe.</p>
+        <p><strong>3. Payments:</strong> A one-time payment unlocks PRO features for 30 days. Payments are processed securely by Stripe (PCI-DSS Level 1). Apex Pulse PRO has no access to card or bank data.</p>
+        <p><strong>4. Access duration:</strong> Access is valid for 30 days from payment. After expiration, users may pay again for a new 30-day period. The service is not auto-renewing.</p>
+        <p><strong>5. Disclaimer:</strong> All plans and advice are for informational purposes only. Apex Pulse PRO, its creators and owners are not liable for any health problems, injuries, adverse reactions or other consequences from using the service. Always consult a doctor before starting any diet or training program.</p>
+        <p><strong>6. Right of withdrawal:</strong> Under Article 57(13) of the Bulgarian Consumer Protection Act (transposing EU Directive 2011/83/EU), for digital content not delivered on a tangible medium, the user waives the right of withdrawal upon commencement of content delivery with their explicit consent. By paying and beginning to use the service, the user provides this explicit consent.</p>
+        <p><strong>7. Age restrictions:</strong> The service is intended for adults (18+) in good health. Persons under 18 must not use the service without adult consent and supervision.</p>
+        <p><strong>8. Prohibited use:</strong> The user agrees not to use the service for illegal purposes, spam, malicious actions, or violation of third-party rights.</p>
+        <p><strong>9. Changes to terms:</strong> Apex Pulse PRO reserves the right to update these terms. Continued use after changes indicates acceptance of the updated version.</p>
+        <p><strong>10. Applicable law:</strong> These terms are governed by the laws of the Republic of Bulgaria. All disputes shall be resolved by competent Bulgarian courts.</p>`,
+      privacy: `<h2>Privacy Policy</h2>
+        <p><strong>Data we collect:</strong> Apex Pulse PRO collects minimal information needed for service operation:</p>
+        <ul>
+          <li>Content of your questions to the AI (for processing by OpenAI)</li>
+          <li>Email address — only upon payment (provided to Stripe)</li>
+          <li>Anonymous statistics via Google Analytics (no individual user identification)</li>
+          <li>Technical data such as IP address and browser type — standard server logs</li>
+        </ul>
+        <p><strong>What we DON'T collect:</strong></p>
+        <ul>
+          <li>Personal financial data — processed exclusively by Stripe</li>
+          <li>Card data, PIN codes or CVV — we never see any of these</li>
+          <li>Sensitive personal data (national ID, passport, address)</li>
+        </ul>
+        <p><strong>How we store data:</strong> Connection is secured with SSL/TLS encryption. LocalStorage in your browser is used only to remember subscription and disclaimer acceptance. This data is not sent to our server.</p>
+        <p><strong>Third-party services:</strong></p>
+        <ul>
+          <li><strong>OpenAI</strong> — processes AI conversations (policy: openai.com/privacy)</li>
+          <li><strong>Stripe</strong> — processes payments (policy: stripe.com/privacy)</li>
+          <li><strong>Google Analytics</strong> — anonymous usage statistics</li>
+          <li><strong>Railway</strong> — application hosting</li>
+        </ul>
+        <p><strong>Your rights (GDPR):</strong> You have the right to access, correct, delete and port your data. To exercise these rights, contact apexpulsepro@gmail.com.</p>
+        <p><strong>Retention period:</strong> Payment data is stored by Stripe per their policies (typically 7 years for tax purposes). Server logs are auto-deleted after 30 days.</p>
+        <p><strong>Privacy contact:</strong> apexpulsepro@gmail.com</p>`,
+      medical: `<h2>Medical Disclaimer and AI Notice</h2>
+        <p><strong>APEX PULSE PRO IS AN AI ASSISTANT — NOT A DOCTOR, DIETITIAN, OR PERSONAL TRAINER.</strong></p>
+        <p>All training and nutrition recommendations generated by the AI are for informational and educational purposes only. They do not constitute:</p>
+        <ul>
+          <li>Medical advice or diagnosis</li>
+          <li>Treatment of medical conditions</li>
+          <li>Replacement of consultation with a doctor, dietitian, or personal trainer</li>
+          <li>Guarantee of results or body transformation</li>
+        </ul>
+        <p><strong>Before starting any diet or training program:</strong></p>
+        <ul>
+          <li>Consult a personal doctor, especially if you have heart disease, high blood pressure, diabetes, asthma or other chronic conditions</li>
+          <li>Do not follow the advice if you are pregnant, nursing, or under 18</li>
+          <li>Do not follow the advice if you have or had an eating disorder (anorexia, bulimia, BED)</li>
+          <li>If taking medication — consult a doctor about possible interactions with training or nutrition</li>
+          <li>If pain, dizziness, nausea, shortness of breath or discomfort occurs during training — stop immediately and seek medical help</li>
+        </ul>
+        <p><strong>AI limitations:</strong> The AI model may err, provide inaccurate information, or miss important nuances of your situation. Always verify critical information with a professional.</p>
+        <h3>Emergency situations</h3>
+        <p>In a medical emergency call <strong>112</strong> (EU number) or your local emergency number. The AI assistant is not a substitute for medical help.</p>
+        <p><strong>By using the service, you confirm understanding and acceptance of the above limitations.</strong></p>`,
+      refund: `<h2>Refund Policy</h2>
+        <p><strong>General rule:</strong> Apex Pulse PRO is digital content delivered immediately upon payment. Under Article 57(13) of the Bulgarian Consumer Protection Act (transposing EU Directive 2011/83/EU), <strong>the right of withdrawal is waived</strong> upon commencement of digital content delivery with explicit consumer consent.</p>
+        <p>By paying, the user explicitly agrees that the service starts immediately and waives the right of 14-day withdrawal.</p>
+        <h3>Exceptions — when refund is possible</h3>
+        <p>Apex Pulse PRO may refund payment in the following cases:</p>
+        <ul>
+          <li><strong>Technical issue on our side:</strong> Service unavailable for more than 24 hours after payment</li>
+          <li><strong>Duplicate payment:</strong> Accidental payment twice for the same period</li>
+          <li><strong>Wrong payment:</strong> Paid the wrong plan due to a technical error on the site</li>
+          <li><strong>Misleading information:</strong> Receiving a service significantly different from described</li>
+        </ul>
+        <h3>How to request a refund</h3>
+        <p>Send an email to <strong>apexpulsepro@gmail.com</strong> with:</p>
+        <ul>
+          <li>Email address used for payment</li>
+          <li>Payment date</li>
+          <li>Amount</li>
+          <li>Reason for request</li>
+        </ul>
+        <p>You will receive a response within 5 business days. If approved, the refund will be issued to the same card via Stripe within 5-10 business days.</p>
+        <h3>Chargeback notice</h3>
+        <p>Before initiating a chargeback with your bank, please contact us first. This saves time and worry for all parties.</p>`,
+    }
+  };
+
+function showLegal(type){
+  const content=(LEGAL[lang]||LEGAL.bg)[type]||'';
+  document.getElementById('legal-content').innerHTML=content;
+  document.getElementById('legal-modal').classList.add('active');
+  document.body.style.overflow='hidden';
+}
+function closeLegal(){
+  document.getElementById('legal-modal').classList.remove('active');
+  document.body.style.overflow='';
+}
+
+/* scroll-to-top видим след първия екран */
+(function(){
+  const b=document.getElementById('to-top');
+  window.addEventListener('scroll',()=>{b.classList.toggle('show',window.scrollY>600);},{passive:true});
+})();
+
+/* счупено изображение → скрий елегантно вместо счупена иконка */
+document.querySelectorAll('img').forEach(im=>{im.addEventListener('error',()=>{im.style.display='none';});});
+
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeLegal();});
+</script>
+</body>
+</html>
+
