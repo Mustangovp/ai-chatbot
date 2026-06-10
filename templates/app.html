@@ -313,30 +313,8 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
     <h2 class="pw-title" id="pw-headline">Пълен достъп до Apex</h2>
     <p class="pw-sub" id="pw-subheadline">Неограничен AI треньор, който помни целите ти и създава персонални програми за теб — 30 дни пълен достъп.</p>
     
-    <!-- FOUNDING PRICE (active until May 31, 2026) -->
-    <div id="founding-block">
-      <div class="pw-founding">
-        <div class="pw-founding-label">⚡ Founding Price · Ends May 31</div>
-        <div class="pw-founding-price">€1.99<span class="small">/30 days</span></div>
-        <div class="pw-founding-features">Unlimited sessions · AI memory · PDF · BG/EN</div>
-        
-        <!-- Payment methods shown PROMINENTLY before button (trust booster) -->
-        <div class="pw-pay-methods">
-          <img src="/static/payment-logos/visa.svg" alt="Visa" class="pw-pay-logo">
-          <img src="/static/payment-logos/mastercard.svg" alt="Mastercard" class="pw-pay-logo">
-          <img src="/static/payment-logos/applepay.svg" alt="Apple Pay" class="pw-pay-logo">
-          <img src="/static/payment-logos/googlepay.svg" alt="Google Pay" class="pw-pay-logo">
-          <img src="/static/payment-logos/revolut.svg" alt="Revolut" class="pw-pay-logo">
-          <img src="/static/payment-logos/stripe.svg" alt="Stripe" class="pw-pay-logo">
-        </div>
-        <div class="pw-trust">
-          <div class="row">🔒 <span><strong>Stripe</strong> · used by Amazon, Google, Shopify</span></div>
-          <div class="row">🏦 <span>Card data never touches our servers</span></div>
-        </div>
-        
-        <button class="pw-btn" onclick="confirmAndPay('founding')">Unlock ELITE — €1.99 →</button>
-      </div>
-    </div>
+    <!-- Founding €1.99 era is over — removed. Use Stripe Promotion Codes for discounts. -->
+    <div id="founding-block" style="display:none;"></div>
     
     <!-- 3-PLAN CHOICE (active from June 1, 2026) -->
     <div id="plans-block" style="display:none;">
@@ -660,8 +638,8 @@ async function checkAccess(){
       const data=await res.json();
       if(data.valid){
         localStorage.setItem('apexToken',urlToken);
-        // DEV token gets PRO badge automatically
-        if(data.isDev)localStorage.setItem('apexPlan','pro');
+        // Plan now comes from the SIGNED token (server-verified) — not guessable client-side
+        if(data.plan&&data.plan!=='free')localStorage.setItem('apexPlan',data.plan);
         activateElite();
         // Keep ?goal=X in URL but strip ?token=X
         const cleanParams=new URLSearchParams(window.location.search);
@@ -678,7 +656,7 @@ async function checkAccess(){
       const res=await fetch('/verify-token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:stored})});
       const data=await res.json();
       if(data.valid){
-        if(data.isDev)localStorage.setItem('apexPlan','pro');
+        if(data.plan&&data.plan!=='free')localStorage.setItem('apexPlan',data.plan);
         activateElite();
       }else{localStorage.removeItem('apexToken');}
     }catch(e){}
@@ -807,9 +785,7 @@ async function send(){
   if(isElite&&token){
     body.token=token;
     body.history=getChatHistory();
-    // Send plan hint so backend can apply correct memory cap (CORE=10, PRO=30)
-    const plan=localStorage.getItem('apexPlan')||'core';
-    body.plan=plan;
+    // Plan is encoded inside the signed token — no hint needed anymore
   }else{
     // FREE users: send last 6 messages so backend can give them a taste of memory
     body.history=getFreeMemory();
@@ -819,10 +795,17 @@ async function send(){
     const res=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const data=await res.json();
     const ty=document.getElementById('typing');if(ty)ty.remove();
+    // Server-side free limit hit (works even if localStorage was wiped/incognito)
+    if(data.limit_reached){
+      showDailyLimit(data.hours_left||24);
+      return;
+    }
     appendMsg(data.reply,'a');
     track('ai_response',{plan_state:isElite?'paid':'free'});
     if(isElite)saveToHistory('assistant',data.reply);
     if(!isElite)saveToFreeMemory('assistant',data.reply);
+    // Lead capture moment: 2 free messages left → offer email-for-PDF + bonus
+    if(!isElite)maybeShowLeadCapture();
     document.getElementById('utility').style.display='flex';
     updateUtilityLocks();
   }catch(e){
@@ -849,13 +832,22 @@ function saveToHistory(role,content){
 }
 
 // ─────────────────────────────────────────────────────────
-// FREE daily limit (ChatGPT-style): chat freely up to a daily
-// cap, then wait until the 24h window resets. No paywall, no
-// pressure — just a soft "come back later". Plans live on the
-// landing page for those who don't want to wait.
+// FREE daily limit: chat freely up to a daily cap.
+// localStorage = soft wall (UX). Server enforces the real one.
+// Leaving an email grants +LEAD_BONUS extra messages (and gives
+// us a contactable lead — the biggest funnel fix).
 // ─────────────────────────────────────────────────────────
 const FREE_DAILY_LIMIT = 10;          // messages per 24h window
+const LEAD_BONUS = 5;                 // extra messages for leaving email
 const FREE_WINDOW_MS = 24*60*60*1000; // 24 hours
+
+function hasLeadBonus(){
+  try{return localStorage.getItem('apexLeadBonus')==='true';}catch(e){return false;}
+}
+
+function effectiveFreeLimit(){
+  return FREE_DAILY_LIMIT + (hasLeadBonus()?LEAD_BONUS:0);
+}
 
 function getFreeUsage(){
   try{
@@ -872,7 +864,7 @@ function getFreeUsage(){
 
 function checkFreeDailyLimit(){
   const u=getFreeUsage();
-  if(u.count >= FREE_DAILY_LIMIT){
+  if(u.count >= effectiveFreeLimit()){
     const msLeft=FREE_WINDOW_MS-(Date.now()-u.windowStart);
     const hoursLeft=Math.max(1, Math.ceil(msLeft/(60*60*1000)));
     return {blocked:true, hoursLeft};
@@ -886,27 +878,86 @@ function recordFreeMessage(){
   localStorage.setItem('apexFreeUsage',JSON.stringify(u));
 }
 
+// ─────────────────────────────────────────────────────────
+// LIMIT SCREEN — offer FIRST, waiting second.
+// This is the highest-intent moment in the whole funnel:
+// the user is mid-conversation and wants MORE. Lead with the
+// upgrade, keep "come back later" as the quiet alternative.
+// ─────────────────────────────────────────────────────────
 function showDailyLimit(hoursLeft){
   track('daily_limit_reached',{});
   const box=document.getElementById('chat-box');
   if(!box)return;
+  if(box.querySelector('.daily-limit-note'))return; // don't stack duplicates
   const note=document.createElement('div');
   note.className='msg-a daily-limit-note';
   const hrs = lang==='bg' ? `${hoursLeft} ч.` : `${hoursLeft}h`;
-  const planBtn = lang==='bg' ? 'Виж плановете' : 'View plans';
   if(lang==='bg'){
-    note.innerHTML=`<strong>Достигна дневния безплатен лимит. 🔋</strong><br><br>`+
-      `Върни се след около <strong>${hrs}</strong>, за да продължиш безплатно.<br><br>`+
-      `<span style="color:var(--muted);font-size:13px;">Не ти се чака? Получи пълен достъп за 30 дни.</span><br>`+
-      `<button class="limit-plan-btn" onclick="document.getElementById('paywall').style.display='flex'">${planBtn} →</button>`;
+    note.innerHTML=`<strong>Хареса ли ти как работи AI треньорът? 💪</strong><br><br>`+
+      `Ти използва всичките си безплатни съобщения за днес — точно когато стана интересно.<br><br>`+
+      `<strong>Продължи СЕГА без лимит:</strong> неограничени съобщения, AI памет за целите ти, PDF на всеки план.<br>`+
+      `<span style="color:var(--gold);font-weight:600;">CORE — €9.99 за 30 дни (€0.33/ден — по-малко от едно кафе)</span><br>`+
+      `<button class="limit-plan-btn" onclick="track('limit_upgrade_click',{});pay('core')">Продължи без лимит — €9.99 →</button><br>`+
+      `<span style="color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underline;" onclick="document.getElementById('paywall').style.display='flex'">Виж всички планове</span><br><br>`+
+      `<span style="color:var(--muted);font-size:12px;">Или се върни след около ${hrs} за нови безплатни съобщения.</span>`;
   }else{
-    note.innerHTML=`<strong>You've reached today's free limit. 🔋</strong><br><br>`+
-      `Come back in about <strong>${hrs}</strong> to continue for free.<br><br>`+
-      `<span style="color:var(--muted);font-size:13px;">Don't want to wait? Get full access for 30 days.</span><br>`+
-      `<button class="limit-plan-btn" onclick="document.getElementById('paywall').style.display='flex'">${planBtn} →</button>`;
+    note.innerHTML=`<strong>Enjoying your AI coach? 💪</strong><br><br>`+
+      `You've used all your free messages for today — right when it got interesting.<br><br>`+
+      `<strong>Continue NOW without limits:</strong> unlimited messages, AI memory for your goals, PDF for every plan.<br>`+
+      `<span style="color:var(--gold);font-weight:600;">CORE — €9.99 for 30 days (€0.33/day — less than a coffee)</span><br>`+
+      `<button class="limit-plan-btn" onclick="track('limit_upgrade_click',{});pay('core')">Continue unlimited — €9.99 →</button><br>`+
+      `<span style="color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underline;" onclick="document.getElementById('paywall').style.display='flex'">See all plans</span><br><br>`+
+      `<span style="color:var(--muted);font-size:12px;">Or come back in about ${hrs} for new free messages.</span>`;
   }
   box.appendChild(note);
   box.scrollTop=box.scrollHeight;
+}
+
+// ─────────────────────────────────────────────────────────
+// LEAD CAPTURE — shown once, when 2 free messages remain.
+// Value exchange: email → +5 bonus messages + plan "saved".
+// Every non-converting free user used to vanish forever;
+// now they become a contactable lead.
+// ─────────────────────────────────────────────────────────
+function maybeShowLeadCapture(){
+  try{
+    if(localStorage.getItem('apexLeadCaptured')==='true')return;
+    if(localStorage.getItem('apexLeadShown')==='true')return;
+    const u=getFreeUsage();
+    if(u.count !== FREE_DAILY_LIMIT-2)return; // exactly at "2 left"
+    localStorage.setItem('apexLeadShown','true');
+    track('lead_capture_shown',{});
+    const box=document.getElementById('chat-box');
+    if(!box)return;
+    const note=document.createElement('div');
+    note.className='msg-a daily-limit-note';
+    note.id='lead-capture-box';
+    const txt = lang==='bg'
+      ? {t:'Остават ти 2 безплатни съобщения ⏳',d:'Не губи плана си! Остави email и получаваш <strong>+5 бонус съобщения</strong> днес + плановете си на пощата.',ph:'твоят@email.com',btn:'Вземи +5 съобщения →',ok:'✅ Готово! Имаш +5 бонус съобщения. Продължавай!',err:'Невалиден email. Опитай пак.'}
+      : {t:'2 free messages left ⏳',d:"Don't lose your plan! Leave your email and get <strong>+5 bonus messages</strong> today + your plans by email.",ph:'your@email.com',btn:'Get +5 messages →',ok:'✅ Done! You have +5 bonus messages. Keep going!',err:'Invalid email. Try again.'};
+    note.innerHTML=`<strong>${txt.t}</strong><br><br>${txt.d}<br><br>`+
+      `<input type="email" id="lead-email" placeholder="${txt.ph}" style="width:100%;max-width:280px;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.2);background:rgba(0,0,0,0.4);color:#fff;font-family:inherit;font-size:14px;" />`+
+      `<button class="limit-plan-btn" style="margin-left:6px;" onclick="submitLead('${txt.ok.replace(/'/g,"\\'")}','${txt.err.replace(/'/g,"\\'")}')">${txt.btn}</button>`;
+    box.appendChild(note);
+    box.scrollTop=box.scrollHeight;
+  }catch(e){}
+}
+
+async function submitLead(okMsg,errMsg){
+  const inp=document.getElementById('lead-email');
+  const email=(inp&&inp.value||'').trim();
+  if(!email||email.indexOf('@')<1){toast(errMsg);return;}
+  try{
+    const res=await fetch('/save-lead',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,lang})});
+    const data=await res.json();
+    if(data.ok){
+      localStorage.setItem('apexLeadCaptured','true');
+      localStorage.setItem('apexLeadBonus','true');
+      track('lead_captured',{});
+      const boxEl=document.getElementById('lead-capture-box');
+      if(boxEl)boxEl.innerHTML=`<strong>${okMsg}</strong>`;
+    }else{toast(errMsg);}
+  }catch(e){toast(errMsg);}
 }
 
 // FREE user memory — kept in sessionStorage (clears on browser close)
@@ -941,7 +992,7 @@ async function pay(plan){
       }catch(e){}
     }
     
-    const res=await fetch('/create-checkout-session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plan:plan||'founding'})});
+    const res=await fetch('/create-checkout-session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plan:plan||'core'})});
     const data=await res.json();
     if(data.url){window.location.href=data.url;}
     else{toast(T[lang].payError);}
