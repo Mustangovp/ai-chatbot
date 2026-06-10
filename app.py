@@ -25,15 +25,44 @@ DEV_TOKEN = os.getenv("APEX_DEV_TOKEN", "")
 
 # ═══════════════════════════════════════════════════════════
 # PRICING PLANS (in EUR cents)
-# - founding: €1.99 (active until May 31, 2026)
-# - core: €9.99 (from June 1, 2026)
-# - pro: €14.99 (from June 1, 2026)
+# - core: €9.99 / 30 days
+# - pro: €14.99 / 30 days
+# NOTE: 'founding' (€1.99) is REMOVED from purchasable plans.
+# For intro discounts use Stripe Promotion Codes instead
+# (allow_promotion_codes=True is already enabled in checkout).
 # ═══════════════════════════════════════════════════════════
 PLANS = {
-    "founding": {"name": "APEX PULSE ELITE PRO - 30 Дни", "amount": 199, "memory": 10},
-    "core":     {"name": "APEX PULSE CORE - 30 Days",     "amount": 999, "memory": 10},
-    "pro":      {"name": "APEX PULSE PRO - 30 Days",      "amount": 1499, "memory": 30},
+    "core": {"name": "APEX PULSE CORE - 30 Days", "amount": 999,  "memory": 10},
+    "pro":  {"name": "APEX PULSE PRO - 30 Days",  "amount": 1499, "memory": 30},
 }
+
+# ═══════════════════════════════════════════════════════════
+# SERVER-SIDE FREE LIMIT (per IP, in-memory)
+# localStorage alone is trivially bypassed (incognito = reset).
+# This is a second wall. Resets on Railway redeploy — acceptable.
+# Users who leave their email get +LEAD_BONUS extra messages.
+# ═══════════════════════════════════════════════════════════
+FREE_DAILY_LIMIT = 10
+LEAD_BONUS = 5
+FREE_WINDOW_SECONDS = 24 * 60 * 60
+_free_usage = {}   # ip -> {"count": int, "start": ts, "bonus": bool}
+
+def _client_ip():
+    return request.headers.get('X-Forwarded-For', request.remote_addr or 'unknown').split(',')[0].strip()
+
+def _get_free_usage(ip):
+    now = time.time()
+    u = _free_usage.get(ip)
+    if not u or now - u["start"] >= FREE_WINDOW_SECONDS:
+        u = {"count": 0, "start": now, "bonus": False}
+        _free_usage[ip] = u
+    # prevent unbounded memory growth
+    if len(_free_usage) > 5000:
+        cutoff = now - FREE_WINDOW_SECONDS
+        for k in list(_free_usage.keys()):
+            if _free_usage[k]["start"] < cutoff:
+                del _free_usage[k]
+    return u
 
 
 SYSTEM_INSTRUCTIONS = """
@@ -113,29 +142,47 @@ CRITICAL: ALWAYS respond in the EXACT same language as the user. Even the final 
 """
 
 
-def make_token(expiry_timestamp: int) -> str:
-    """Create a signed access token (30 days for paying customers)."""
-    payload = str(expiry_timestamp).encode()
-    signature = hmac.new(SECRET.encode(), payload, hashlib.sha256).hexdigest()[:16]
-    token = base64.urlsafe_b64encode(f"{expiry_timestamp}.{signature}".encode()).decode().rstrip("=")
+def make_token(expiry_timestamp: int, plan: str = "core") -> str:
+    """Create a signed access token that ALSO encodes the paid plan.
+    Format v2: base64(expiry.plan.signature) — signature covers expiry+plan,
+    so the frontend can no longer claim PRO after paying for CORE."""
+    if plan not in PLANS:
+        plan = "core"
+    payload = f"{expiry_timestamp}.{plan}"
+    signature = hmac.new(SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()[:16]
+    token = base64.urlsafe_b64encode(f"{payload}.{signature}".encode()).decode().rstrip("=")
     return token
 
 
-def verify_token(token: str) -> bool:
-    """Verify a token. Accepts DEV_TOKEN (unlimited) or signed Stripe token (30 days)."""
+def verify_token(token: str):
+    """Verify a token. Returns (is_valid, plan).
+    - DEV_TOKEN → (True, 'pro')
+    - v2 tokens (expiry.plan.sig) → plan comes from the signed payload
+    - v1 legacy tokens (expiry.sig) → treated as 'core' (existing customers keep access)
+    """
     if DEV_TOKEN and token == DEV_TOKEN:
-        return True
+        return True, "pro"
     try:
         padded = token + "=" * (-len(token) % 4)
         decoded = base64.urlsafe_b64decode(padded).decode()
-        expiry_str, signature = decoded.split(".")
-        expiry = int(expiry_str)
-        if time.time() > expiry:
-            return False
-        expected = hmac.new(SECRET.encode(), expiry_str.encode(), hashlib.sha256).hexdigest()[:16]
-        return hmac.compare_digest(signature, expected)
+        parts = decoded.split(".")
+        if len(parts) == 3:  # v2: expiry.plan.signature
+            expiry_str, plan, signature = parts
+            payload = f"{expiry_str}.{plan}"
+        elif len(parts) == 2:  # v1 legacy: expiry.signature
+            expiry_str, signature = parts
+            plan = "core"
+            payload = expiry_str
+        else:
+            return False, None
+        if time.time() > int(expiry_str):
+            return False, None
+        expected = hmac.new(SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()[:16]
+        if hmac.compare_digest(signature, expected):
+            return True, (plan if plan in PLANS else "core")
+        return False, None
     except Exception:
-        return False
+        return False, None
 
 
 # ═══════════════════════════════════════════════════════════
@@ -163,18 +210,27 @@ def chat():
         user_message = data.get("message", "")
         history = data.get("history", [])
         token = data.get("token", "")
-        plan_hint = data.get("plan", "")  # 'core' or 'pro' — frontend may send this
+        # NOTE: plan is now derived from the SIGNED token, never from the frontend.
 
-        is_elite = bool(token) and verify_token(token)
-        # The creator's DEV_TOKEN always gets full PRO access (for testing & live demos)
+        is_elite, token_plan = verify_token(token) if token else (False, None)
         is_dev = bool(DEV_TOKEN) and token == DEV_TOKEN
-        is_pro = is_dev or (is_elite and plan_hint == "pro")
+        is_pro = is_elite and token_plan == "pro"
+
+        # ── SERVER-SIDE FREE LIMIT ──
+        # localStorage limit is the soft wall; this is the real one.
+        if not is_elite:
+            ip = _client_ip()
+            usage = _get_free_usage(ip)
+            limit = FREE_DAILY_LIMIT + (LEAD_BONUS if usage.get("bonus") else 0)
+            if usage["count"] >= limit:
+                hours_left = max(1, int((FREE_WINDOW_SECONDS - (time.time() - usage["start"])) // 3600) + 1)
+                return jsonify({"limit_reached": True, "hours_left": hours_left}), 200
+            usage["count"] += 1
+
         messages = [{"role": "system", "content": SYSTEM_INSTRUCTIONS}]
 
-        # Memory cap based on plan:
-        # - PRO plan → 60 messages (premium extended memory)
-        # - CORE / founding / dev_token → 10 messages
-        # - FREE (no token) → 6 messages (taste of memory feature)
+        # Memory cap based on plan (from signed token):
+        # - PRO → 60 messages, CORE → 10, FREE → 6 (taste of memory)
         if is_elite:
             memory_cap = 60 if is_pro else 10
         else:
@@ -229,9 +285,9 @@ def create_checkout_session():
     """
     try:
         data = request.json or {}
-        plan_key = data.get('plan', 'founding')
+        plan_key = data.get('plan', 'core')
         if plan_key not in PLANS:
-            plan_key = 'founding'
+            plan_key = 'core'
         
         plan = PLANS[plan_key]
         host_url = "https://" + request.host
@@ -248,6 +304,7 @@ def create_checkout_session():
             }],
             mode='payment',
             allow_promotion_codes=True,
+            metadata={'plan': plan_key},  # plan travels server-side through Stripe
             success_url=host_url + '/app/success?session_id={CHECKOUT_SESSION_ID}',
             cancel_url=host_url + '/app?success=false',
         )
@@ -265,8 +322,9 @@ def payment_success():
     try:
         session = stripe.checkout.Session.retrieve(session_id)
         if session.payment_status == 'paid':
+            paid_plan = (session.metadata or {}).get('plan', 'core')
             expiry = int(time.time()) + (30 * 24 * 60 * 60)
-            token = make_token(expiry)
+            token = make_token(expiry, paid_plan)
             return redirect(f'/app?token={token}')
         else:
             return redirect('/app?success=false')
@@ -285,11 +343,71 @@ def legacy_success_redirect():
 
 @app.route('/verify-token', methods=['POST'])
 def verify_token_endpoint():
-    """Frontend asks: is this stored token still valid? Also tells if it's the DEV token (gets PRO)."""
+    """Frontend asks: is this stored token still valid, and which plan does it carry?"""
     token = request.json.get('token', '')
-    is_valid = verify_token(token)
+    is_valid, plan = verify_token(token)
     is_dev = bool(DEV_TOKEN) and token == DEV_TOKEN
-    return jsonify({'valid': is_valid, 'isDev': is_dev})
+    return jsonify({'valid': is_valid, 'isDev': is_dev, 'plan': plan or 'free'})
+
+
+# ═══════════════════════════════════════════════════════════
+# LEAD CAPTURE — the single biggest funnel leak fix.
+# Free user leaves email near the limit → gets +5 bonus messages
+# AND we get a contactable lead for follow-up offers.
+# Email is sent to GMAIL_USER (same SMTP as feedback) + logged.
+# ═══════════════════════════════════════════════════════════
+_lead_recent = {}
+
+@app.route('/save-lead', methods=['POST'])
+def save_lead():
+    try:
+        ip = _client_ip()
+        now = time.time()
+        if now - _lead_recent.get(ip, 0) < 60:
+            return jsonify({'ok': False, 'error': 'rate_limit'}), 429
+
+        data = request.json or {}
+        email = str(data.get('email', '')).strip()[:120]
+        lang = str(data.get('lang', 'bg'))[:5]
+        if '@' not in email or '.' not in email.split('@')[-1] or len(email) < 6:
+            return jsonify({'ok': False, 'error': 'invalid_email'}), 400
+
+        _lead_recent[ip] = now
+        # Grant the bonus messages to this IP's free window
+        usage = _get_free_usage(ip)
+        usage["bonus"] = True
+
+        body = f"""APEX PULSE PRO — New Lead
+
+Email: {email}
+Language: {lang}
+IP: {ip}
+Time: {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}
+
+Source: free-limit email capture (granted +{LEAD_BONUS} bonus messages)
+"""
+        gmail_user = os.getenv('GMAIL_USER', '')
+        gmail_pass = os.getenv('GMAIL_APP_PASSWORD', '')
+        if gmail_user and gmail_pass:
+            try:
+                import smtplib
+                from email.mime.text import MIMEText
+                msg = MIMEText(body, 'plain', 'utf-8')
+                msg['From'] = gmail_user
+                msg['To'] = gmail_user
+                msg['Subject'] = f'[Apex LEAD] {email}'
+                with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=10) as smtp:
+                    smtp.login(gmail_user, gmail_pass)
+                    smtp.send_message(msg)
+            except Exception as e:
+                print(f'[lead] SMTP error: {e}\n[lead] FALLBACK LOG:\n{body}')
+        else:
+            print(f'[lead] Gmail not configured. LOG:\n{body}')
+
+        return jsonify({'ok': True, 'bonus': LEAD_BONUS})
+    except Exception as e:
+        print(f'[lead] error: {e}')
+        return jsonify({'ok': False, 'error': 'server_error'}), 500
 
 
 # ═══════════════════════════════════════════════════════════
