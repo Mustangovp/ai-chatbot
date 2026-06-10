@@ -706,6 +706,18 @@ window.onload=async()=>{
     return;
   }
   
+  // If a FREE user reloads the page AFTER hitting the limit, don't pretend
+  // everything is fine — show the offer immediately and lock the input.
+  const isEliteOnLoad=count<=-999990;
+  if(!isEliteOnLoad){
+    const li=checkFreeDailyLimit();
+    if(li.blocked){
+      showGreeting();
+      showDailyLimit(li.hoursLeft);
+      return;
+    }
+  }
+  
   // Check for goal parameter from landing page
   const params=new URLSearchParams(window.location.search);
   const goal=params.get('goal');
@@ -746,12 +758,7 @@ async function send(){
   if(!isEliteCheck){
     const limitInfo=checkFreeDailyLimit();
     if(limitInfo.blocked){
-      showDailyLimit(limitInfo.hoursLeft);
-      // Keep input usable (don't trap the user) but it won't send past limit
-      inp.disabled=false;
-      if(btn)btn.disabled=false;
-      inp.style.opacity='1';
-      if(btn)btn.style.opacity='1';
+      showDailyLimit(limitInfo.hoursLeft); // shows offer AND locks the input
       return;
     }
   }
@@ -797,10 +804,15 @@ async function send(){
     const ty=document.getElementById('typing');if(ty)ty.remove();
     // Server-side free limit hit (works even if localStorage was wiped/incognito)
     if(data.limit_reached){
+      window._apexLimitHit=true;
       showDailyLimit(data.hours_left||24);
       return;
     }
     appendMsg(data.reply,'a');
+    // Server says this message wasn't counted (OpenAI error) → refund locally too
+    if(data.not_counted&&!isElite){
+      try{const u=getFreeUsage();if(u.count>0){u.count--;localStorage.setItem('apexFreeUsage',JSON.stringify(u));}}catch(e){}
+    }
     track('ai_response',{plan_state:isElite?'paid':'free'});
     if(isElite)saveToHistory('assistant',data.reply);
     if(!isElite)saveToFreeMemory('assistant',data.reply);
@@ -812,12 +824,15 @@ async function send(){
     const ty=document.getElementById('typing');if(ty)ty.remove();
     appendMsg(lang==='bg'?'Грешка в системата. Опитай отново.':'System error. Please try again.','a');
   }finally{
-    // UNLOCK input + button after response (success OR error)
-    inp.disabled=false;
-    if(btn)btn.disabled=false;
-    inp.style.opacity='1';
-    if(btn)btn.style.opacity='1';
-    inp.focus();
+    // UNLOCK input + button after response (success OR error) —
+    // EXCEPT when the limit was hit (then it stays locked on purpose)
+    if(!window._apexLimitHit){
+      inp.disabled=false;
+      if(btn)btn.disabled=false;
+      inp.style.opacity='1';
+      if(btn)btn.style.opacity='1';
+      inp.focus();
+    }
   }
 }
 
@@ -884,13 +899,27 @@ function recordFreeMessage(){
 // the user is mid-conversation and wants MORE. Lead with the
 // upgrade, keep "come back later" as the quiet alternative.
 // ─────────────────────────────────────────────────────────
+function lockChatInput(){
+  // Limit reached → lock the input so Enter can't be spammed.
+  try{
+    const i=document.getElementById('user-in');
+    const b=document.querySelector('.send-btn');
+    if(i){i.disabled=true;i.style.opacity='0.5';
+      i.placeholder=lang==='bg'?'Дневният лимит е достигнат — виж офертата по-горе ↑':'Daily limit reached — see the offer above ↑';}
+    if(b){b.disabled=true;b.style.opacity='0.5';}
+  }catch(e){}
+}
+
 function showDailyLimit(hoursLeft){
   track('daily_limit_reached',{});
   const box=document.getElementById('chat-box');
   if(!box)return;
-  if(box.querySelector('.daily-limit-note'))return; // don't stack duplicates
+  // Dedup by UNIQUE ID — never by class (the lead-capture box shares the
+  // styling class, and matching on class silently blocked this screen).
+  if(document.getElementById('limit-offer-box')){lockChatInput();return;}
   const note=document.createElement('div');
   note.className='msg-a daily-limit-note';
+  note.id='limit-offer-box';
   const hrs = lang==='bg' ? `${hoursLeft} ч.` : `${hoursLeft}h`;
   if(lang==='bg'){
     note.innerHTML=`<strong>Хареса ли ти как работи AI треньорът? 💪</strong><br><br>`+
@@ -911,10 +940,8 @@ function showDailyLimit(hoursLeft){
   }
   box.appendChild(note);
   box.scrollTop=box.scrollHeight;
+  lockChatInput();
 }
-
-// ─────────────────────────────────────────────────────────
-// LEAD CAPTURE — shown once, when 2 free messages remain.
 // Value exchange: email → +5 bonus messages + plan "saved".
 // Every non-converting free user used to vanish forever;
 // now they become a contactable lead.
@@ -947,8 +974,23 @@ async function submitLead(okMsg,errMsg){
   const inp=document.getElementById('lead-email');
   const email=(inp&&inp.value||'').trim();
   if(!email||email.indexOf('@')<1){toast(errMsg);return;}
+  // Instant feedback: lock the button so the user KNOWS the click registered
+  const btnEl=document.querySelector('#lead-capture-box .limit-plan-btn');
+  if(btnEl){
+    if(btnEl.disabled)return; // double-click guard
+    btnEl.disabled=true;
+    btnEl.dataset.orig=btnEl.innerText;
+    btnEl.innerText=lang==='bg'?'Изпращам...':'Sending...';
+    btnEl.style.opacity='0.6';
+  }
+  // Grab the user's latest plan from the chat so we can email it to them
+  let planText='';
   try{
-    const res=await fetch('/save-lead',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,lang})});
+    const msgs=document.querySelectorAll('#chat-box .msg-a:not(.daily-limit-note):not(.greeting)');
+    if(msgs.length)planText=msgs[msgs.length-1].innerText.slice(0,6000);
+  }catch(e){}
+  try{
+    const res=await fetch('/save-lead',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,lang,plan_text:planText})});
     const data=await res.json();
     if(data.ok){
       localStorage.setItem('apexLeadCaptured','true');
@@ -956,8 +998,14 @@ async function submitLead(okMsg,errMsg){
       track('lead_captured',{});
       const boxEl=document.getElementById('lead-capture-box');
       if(boxEl)boxEl.innerHTML=`<strong>${okMsg}</strong>`;
-    }else{toast(errMsg);}
-  }catch(e){toast(errMsg);}
+    }else{
+      toast(errMsg);
+      if(btnEl){btnEl.disabled=false;btnEl.innerText=btnEl.dataset.orig||btnEl.innerText;btnEl.style.opacity='1';}
+    }
+  }catch(e){
+    toast(errMsg);
+    if(btnEl){btnEl.disabled=false;btnEl.innerText=btnEl.dataset.orig||btnEl.innerText;btnEl.style.opacity='1';}
+  }
 }
 
 // FREE user memory — kept in sessionStorage (clears on browser close)
