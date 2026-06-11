@@ -186,7 +186,14 @@ def send_email(to_addr: str, subject: str, body: str, reply_to: str = "") -> boo
             req = _urlreq.Request(
                 "https://api.resend.com/emails",
                 data=_json.dumps(payload).encode(),
-                headers={"Authorization": f"Bearer {resend_key}", "Content-Type": "application/json"},
+                headers={
+                    "Authorization": f"Bearer {resend_key}",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                    # Cloudflare in front of Resend blocks the default
+                    # "Python-urllib" signature with error 1010 — identify properly
+                    "User-Agent": "ApexPulsePro/1.0 (+https://apexpulse.pro)",
+                },
                 method="POST",
             )
             with _urlreq.urlopen(req, timeout=10) as resp:
