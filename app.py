@@ -194,7 +194,14 @@ def send_email(to_addr: str, subject: str, body: str, reply_to: str = "") -> boo
                     return True
                 print(f"[email] Resend HTTP {resp.status}: {resp.read()[:200]}")
         except Exception as e:
-            print(f"[email] Resend error: {e}")
+            # Print the FULL Resend response body — it contains the exact reason
+            detail = ''
+            try:
+                if hasattr(e, 'read'):
+                    detail = e.read().decode()[:300]
+            except Exception:
+                pass
+            print(f"[email] Resend error: {e} | from={mail_from!r} | detail: {detail}")
     # 2) Gmail SMTP fallback (works only on Railway Pro plan)
     gmail_user = os.getenv('GMAIL_USER', '')
     gmail_pass = os.getenv('GMAIL_APP_PASSWORD', '')
