@@ -1,4 +1,4 @@
-<!DOCT<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="bg">
 <head>
 <meta charset="UTF-8">
@@ -48,7 +48,7 @@ gtag('config', 'G-B3WLGXE2XM');
   --radius:20px;
 }
 *{margin:0;padding:0;box-sizing:border-box;}
-html{scroll-behavior:smooth;}
+html{scroll-behavior:smooth;overflow-x:hidden;max-width:100vw;}
 body{background:var(--bg);color:var(--text);font-family:'Manrope',sans-serif;line-height:1.6;overflow-x:hidden;-webkit-font-smoothing:antialiased;}
 .wrap{max-width:1100px;margin:0 auto;padding:0 20px;}
 a{color:inherit;}
@@ -75,7 +75,7 @@ h1 .grad{background:var(--pulse);-webkit-background-clip:text;background-clip:te
 .hero .sub{color:var(--muted);font-size:clamp(14.5px,2.5vw,17.5px);max-width:560px;margin:16px auto 0;font-weight:500;position:relative;}
 
 /* INTERACTIVE GOAL LINE — mirrors what people type in Google */
-.goal-line{margin:26px auto 0;max-width:560px;background:var(--surface);border:1px solid rgba(255,255,255,.12);border-radius:var(--radius);padding:20px 18px;position:relative;box-shadow:0 14px 50px rgba(0,0,0,.4);}
+.goal-line{margin:26px auto 0;max-width:min(560px,100%);box-sizing:border-box;background:var(--surface);border:1px solid rgba(255,255,255,.12);border-radius:var(--radius);padding:20px 18px;position:relative;box-shadow:0 14px 50px rgba(0,0,0,.4);}
 .goal-line .gl-text{font-size:clamp(16px,3.4vw,21px);font-weight:700;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;line-height:1.9;}
 .goal-line select{appearance:none;-webkit-appearance:none;background:var(--surface2);border:1.5px solid rgba(245,33,45,.5);color:var(--text);font-family:'Unbounded';font-weight:700;font-size:clamp(14px,3vw,17px);padding:7px 28px 7px 14px;border-radius:12px;cursor:pointer;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M0 0l5 6 5-6z' fill='%23F5212D'/></svg>");background-repeat:no-repeat;background-position:right 10px center;}
 .goal-line .gl-btn{display:block;width:100%;margin-top:16px;background:var(--pulse);color:#fff;border:none;font-family:'Manrope';font-weight:800;font-size:16.5px;padding:16px;border-radius:14px;cursor:pointer;box-shadow:0 8px 28px rgba(245,33,45,.38);transition:transform .15s;}
@@ -102,11 +102,11 @@ h1 .grad{background:var(--pulse);-webkit-background-clip:text;background-clip:te
 @media (prefers-reduced-motion:reduce){.pulseline path{animation:none;stroke-dashoffset:0;}.eyebrow .dot{animation:none;}.ring{animation:none;}}
 
 /* PHONE */
-.phone-stage{display:flex;justify-content:center;padding:40px 0 8px;position:relative;}
-.ring{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:370px;height:370px;border-radius:50%;border:2px solid transparent;background:conic-gradient(from 180deg,var(--brand),var(--ember),var(--amber),var(--cyan),var(--lime),var(--brand)) border-box;-webkit-mask:linear-gradient(#fff 0 0) padding-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;opacity:.3;animation:spin 14s linear infinite;}
+.phone-stage{display:flex;justify-content:center;padding:40px 0 8px;position:relative;overflow:hidden;}
+.ring{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:min(370px,90vw);height:min(370px,90vw);border-radius:50%;border:2px solid transparent;background:conic-gradient(from 180deg,var(--brand),var(--ember),var(--amber),var(--cyan),var(--lime),var(--brand)) border-box;-webkit-mask:linear-gradient(#fff 0 0) padding-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;opacity:.3;animation:spin 14s linear infinite;}
 @keyframes spin{to{transform:translate(-50%,-50%) rotate(360deg);}}
 /* PHONE = ОГЛЕДАЛО на реалния /app интерфейс (стилове 1:1 от app.html) */
-.phone{position:relative;width:308px;background:var(--bg);border:1px solid rgba(255,255,255,.12);border-radius:36px;padding:12px 0 0;box-shadow:0 30px 80px rgba(0,0,0,.6),0 0 60px rgba(245,33,45,.14);overflow:hidden;}
+.phone{position:relative;width:min(308px,94vw);background:var(--bg);border:1px solid rgba(255,255,255,.12);border-radius:36px;padding:12px 0 0;box-shadow:0 30px 80px rgba(0,0,0,.6),0 0 60px rgba(245,33,45,.14);overflow:hidden;}
 .phone .notch{width:90px;height:5px;background:rgba(255,255,255,.15);border-radius:3px;margin:0 auto 10px;}
 .ph-nav{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.1);background:var(--surface);}
 .ph-brand{display:flex;align-items:center;gap:8px;}
@@ -438,8 +438,7 @@ footer a:hover{color:var(--text);}
 
 <footer class="wrap">
   <img src="/static/logo.png" alt="" style="width:40px;opacity:.8;"><br><br>
-  APEX PULSE PRO · Built in Bulgaria 🇧🇬<br>
-  <span style="font-size:11px;" data-key="foot-trader">[Данни на търговеца — попълват се преди пускане]</span>
+  APEX PULSE PRO · Built in Bulgaria 🇧🇬
   <div class="foot-links">
     <a href="#" onclick="event.preventDefault();showLegal('terms')" data-key="foot-terms">Общи условия</a>
     <a href="#" onclick="event.preventDefault();showLegal('privacy')" data-key="foot-privacy">Поверителност</a>
@@ -508,7 +507,6 @@ const T={
     'fq2':'What exactly is the AI coach?','fa2':'An AI trained to build personal nutrition and movement programs. You ask in plain language, it asks back what it needs, and you get a plan for your body and your day — not a magazine template.',
     'fq3':'Is this a subscription?','fa3':'No. You pay once for 30 days of access. Nothing renews automatically and there is nothing to remember to cancel. When it expires — you decide if you want more.',
     'fq4':'Does it replace a doctor or dietitian?','fa4':'No. The AI coach gives general training and nutrition guidance and is not medical advice. If you have health conditions, consult a doctor before starting a new program.',
-    'foot-trader':'[Trader details — to be filled before launch]',
     'foot-terms':'Terms','foot-privacy':'Privacy','foot-refund':'Refunds','foot-ai':'AI Disclaimer','foot-cookies':'Cookies',
     'cb-text':'We use cookies for analytics and to improve the service. Choose:','cb-no':'Essential only','cb-yes':'Accept'
   },
@@ -786,4 +784,3 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeLegal();});
 </script>
 </body>
 </html>
-
