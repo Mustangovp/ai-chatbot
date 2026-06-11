@@ -58,6 +58,8 @@ img{max-width:100%;}
 nav{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;max-width:1100px;margin:0 auto;gap:10px;}
 .logo{display:flex;align-items:center;gap:10px;font-family:'Unbounded';font-weight:700;font-size:14px;letter-spacing:.5px;text-decoration:none;}
 .logo img{width:34px;height:34px;filter:drop-shadow(0 0 10px rgba(245,33,45,.5));}
+.logo{line-height:1.25;}
+.logo-slogan{font-family:'Manrope';font-size:9px;font-weight:700;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;}
 .nav-right{display:flex;align-items:center;gap:12px;}
 .lang-toggle{display:flex;border:1px solid rgba(255,255,255,.15);border-radius:20px;overflow:hidden;font-size:12px;font-weight:800;}
 .lang-toggle span{padding:6px 11px;cursor:pointer;color:var(--muted);}
@@ -250,7 +252,9 @@ footer a:hover{color:var(--text);}
 </defs></svg>
 
 <nav>
-  <a class="logo" href="/"><img src="/static/logo.png" alt="Apex Pulse PRO"> APEX PULSE <span style="color:var(--brand);">PRO</span></a>
+  <a class="logo" href="/"><img src="/static/logo.png" alt="Apex Pulse PRO">
+    <span><span style="color:var(--brand);">APEX</span> PULSE PRO<br><span class="logo-slogan" data-key="slogan">Твоят връх. Твоят пулс.</span></span>
+  </a>
   <div class="nav-right">
     <div class="lang-toggle" id="lang-toggle">
       <span data-lang="bg" class="active">BG</span>
@@ -470,7 +474,7 @@ try{lang=localStorage.getItem('apexLang')||'bg';}catch(e){}
 
 const T={
   en:{
-    'nav-cta':'Start free',
+    'nav-cta':'Start free','slogan':'Your peak. Your pulse.',
     'eyebrow':'AI coach · instant · 24/7',
     'h1':'Your goal.<br><span class="grad">Your plan.</span><br>60 seconds.',
     'sub':'A personal AI coach that builds a nutrition and movement program for YOUR body, level and daily life. No gym required, no judgement, no waiting.',
