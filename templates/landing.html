@@ -7,7 +7,11 @@
 <meta name="description" content="Кажи целта си — '5 кг за месец' — и получи персонален план за хранене и движение веднага. Безплатно начало, без карта. AI фитнес треньор на български.">
 <meta property="og:title" content="Apex Pulse PRO — Твоят личен AI треньор">
 <meta property="og:description" content="План за отслабване, хранене и движение, направен за теб за 60 секунди. Безплатно начало.">
-<meta property="og:image" content="https://apexpulse.pro/static/banner.png">
+<meta property="og:image" content="https://apexpulse.pro/static/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://apexpulse.pro/static/og.png">
 <meta property="og:url" content="https://apexpulse.pro/">
 <meta property="og:type" content="website">
 <link rel="icon" href="/static/logo.png">
@@ -87,7 +91,7 @@ h1 .grad{background:var(--pulse);-webkit-background-clip:text;background-clip:te
 .micro{color:var(--muted);font-size:12.5px;margin-top:14px;position:relative;}
 
 /* payment strip under hero */
-.paystrip{display:flex;justify-content:center;align-items:center;gap:9px;flex-wrap:wrap;margin-top:18px;position:relative;}
+.paystrip{position:relative;display:flex;justify-content:center;align-items:center;gap:9px;flex-wrap:wrap;margin-top:18px;position:relative;}
 .paystrip .ps-label{width:100%;text-align:center;font-size:11.5px;color:var(--muted);font-weight:600;margin-bottom:2px;}
 .paystrip img{height:24px;width:auto;border-radius:4px;background:#fff;padding:2px 5px;}
 .paystrip img.dark{background:#000;}
@@ -242,6 +246,18 @@ footer a:hover{color:var(--text);}
 .to-top{position:fixed;bottom:74px;right:16px;width:46px;height:46px;border-radius:50%;background:var(--pulse);color:#fff;border:none;font-size:19px;cursor:pointer;z-index:998;box-shadow:0 6px 22px rgba(245,33,45,.4);display:none;align-items:center;justify-content:center;transition:transform .15s;}
 .to-top.show{display:flex;}
 .to-top:active{transform:scale(.92);}
+
+/* AURORA EMBERS — дишаща жарава зад hero (GPU-friendly: само transform) */
+.aurora{position:absolute;inset:-120px;overflow:hidden;pointer-events:none;}
+.aurora i{position:absolute;border-radius:50%;filter:blur(90px);will-change:transform;}
+.aurora .a1{width:560px;height:560px;left:-160px;top:-80px;background:radial-gradient(circle,rgba(245,33,45,.16),transparent 65%);animation:drift1 26s ease-in-out infinite alternate;}
+.aurora .a2{width:520px;height:520px;right:-180px;top:60px;background:radial-gradient(circle,rgba(255,106,60,.12),transparent 65%);animation:drift2 34s ease-in-out infinite alternate;}
+.aurora .a3{width:680px;height:680px;left:50%;bottom:-260px;transform:translateX(-50%);background:radial-gradient(circle,rgba(122,14,20,.22),transparent 62%);animation:drift3 30s ease-in-out infinite alternate;}
+@keyframes drift1{from{transform:translate3d(0,0,0) scale(1);}to{transform:translate3d(90px,60px,0) scale(1.15);}}
+@keyframes drift2{from{transform:translate3d(0,0,0) scale(1.05);}to{transform:translate3d(-80px,90px,0) scale(.92);}}
+@keyframes drift3{from{transform:translate3d(-50%,0,0) scale(1);}to{transform:translate3d(-44%,-60px,0) scale(1.12);}}
+@media (prefers-reduced-motion:reduce){.aurora i{animation:none;}}
+@media (max-width:480px){.aurora i{filter:blur(70px);}}
 </style>
 </head>
 <body>
@@ -265,6 +281,7 @@ footer a:hover{color:var(--text);}
 </nav>
 
 <header class="hero wrap">
+  <div class="aurora" aria-hidden="true"><i class="a1"></i><i class="a2"></i><i class="a3"></i></div>
   <div class="eyebrow"><span class="dot"></span> <span data-key="eyebrow">AI треньор · на български · 24/7</span></div>
   <h1 data-key-html="h1">Твоята цел.<br><span class="grad">Твоят план.</span><br>60 секунди.</h1>
   <p class="sub" data-key="sub">Личен AI треньор, който създава програма за хранене и движение точно за твоето тяло, ниво и ежедневие. Без зала, без срам, без чакане.</p>
