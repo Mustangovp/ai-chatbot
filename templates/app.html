@@ -11,6 +11,10 @@
 <!-- Allow indexing but tell Google the canonical (main page) is / -->
 <meta name="robots" content="noindex, nofollow">
 
+<meta property="og:title" content="Apex Pulse PRO — Личен AI треньор">
+<meta property="og:description" content="Кажи целта си и получи план за хранене и движение за 60 секунди. На български.">
+<meta property="og:image" content="https://apexpulse.pro/static/og.png">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="/static/logo.png">
 
 <!-- Google Analytics -->
@@ -166,7 +170,8 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 .util-btn.locked::after{content:'🔒';position:absolute;top:-6px;right:-6px;font-size:12px;background:var(--surface);border-radius:50%;padding:2px;border:1px solid var(--border);}
 
 /* ── PAYWALL MODAL (only when sessions exhausted) ── */
-#paywall,#disclaimer-modal,#legal-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.97);z-index:1000;flex-direction:column;align-items:center;justify-content:center;padding:22px;}
+#paywall,#disclaimer-modal,#legal-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.97);z-index:1000;flex-direction:column;align-items:center;justify-content:flex-start;padding:22px;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+#paywall>*,#disclaimer-modal>*,#legal-modal>*{margin-top:auto;margin-bottom:auto;}
 .pw-card{max-width:min(520px,calc(100vw - 24px));width:100%;box-sizing:border-box;background:linear-gradient(180deg,var(--surface-light),var(--surface));border:1.5px solid rgba(255,177,60,0.4);border-radius:18px;padding:36px 28px;text-align:center;position:relative;box-shadow:0 0 80px rgba(255,177,60,0.12);}
 .pw-crown{font-size:42px;margin-bottom:14px;}
 .pw-title{font-family:'Unbounded';font-size:20px;letter-spacing:.5px;color:var(--gold);margin:0 0 6px;}
@@ -1092,7 +1097,13 @@ function appendMsg(text,type){
       },50);
     });
   }
-  box.appendChild(div);box.scrollTop=box.scrollHeight;
+  box.appendChild(div);
+  if(type==='u'){box.scrollTop=box.scrollHeight;}
+  else{
+    // Дълъг отговор: води читателя към НАЧАЛОТО му, не към края
+    const top=box.scrollTop+div.getBoundingClientRect().top-box.getBoundingClientRect().top-10;
+    box.scrollTo({top:Math.max(0,top),behavior:'smooth'});
+  }
 }
 
 function escHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
