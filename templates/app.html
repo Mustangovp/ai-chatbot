@@ -870,7 +870,9 @@ async function send(){
       if(btn)btn.disabled=false;
       inp.style.opacity='1';
       if(btn)btn.style.opacity='1';
-      inp.focus();
+      // ВАЖНО: focus() на мобилен скролва до полето (най-долу) и „хвърля" четящия в края.
+      // Фокусираме само на широки екрани, където това е удобство, не пречка.
+      if(window.innerWidth>900)inp.focus();
     }
   }
 }
@@ -882,18 +884,22 @@ async function readChatStream(res){
   const killTyping=()=>{const ty=document.getElementById('typing');if(ty)ty.remove();};
   const render=(final)=>{
     if(!div)return;
-    div.innerHTML=marked.parse(acc);
-    if(final)decorateTables(div);
+    try{
+      div.innerHTML=marked.parse(acc);
+      if(final)decorateTables(div);
+    }catch(err){div.textContent=acc;}
   };
   const finalize=()=>{
     if(finished||!div)return;finished=true;
-    render(true);
-    track('ai_response',{plan_state:isElite?'paid':'free'});
-    if(isElite)saveToHistory('assistant',acc);
-    if(!isElite)saveToFreeMemory('assistant',acc);
-    if(!isElite)maybeShowLeadCapture();
-    document.getElementById('utility').style.display='flex';
-    updateUtilityLocks();
+    try{
+      render(true);
+      track('ai_response',{plan_state:isElite?'paid':'free'});
+      if(isElite)saveToHistory('assistant',acc);
+      if(!isElite)saveToFreeMemory('assistant',acc);
+      if(!isElite)maybeShowLeadCapture();
+      const ut=document.getElementById('utility');if(ut)ut.style.display='flex';
+      updateUtilityLocks();
+    }catch(err){/* отговорът вече е на екрана — пост-обработката не бива да вдига грешка */}
   };
   while(true){
     const {value,done}=await reader.read();
@@ -918,10 +924,9 @@ async function readChatStream(res){
         if(!div){
           killTyping();
           div=document.createElement('div');div.className='msg-a';box.appendChild(div);
-          // Една-единствена настройка на погледа: началото на отговора в зрителното поле.
-          // После НЕ местим нищо — текстът тече надолу, човекът чете и скролва сам.
-          const top=box.scrollTop+div.getBoundingClientRect().top-box.getBoundingClientRect().top-8;
-          box.scrollTo({top:Math.max(0,top),behavior:'smooth'});
+          // Водим погледа към НАЧАЛОТО на отговора веднъж; после текстът тече надолу
+          // и човекът чете/скролва сам — никакво авто-местене на края.
+          div.scrollIntoView({behavior:'smooth',block:'start'});
         }
         const now=Date.now();
         if(now-last>90){render(false);last=now;}
