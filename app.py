@@ -356,7 +356,7 @@ def chat():
         ip_for_refund = _client_ip() if not is_elite else None
 
         def sse(obj):
-            return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+            return "data: " + _json.dumps(obj, ensure_ascii=False) + "\n\n"
 
         def generate():
             full = []
