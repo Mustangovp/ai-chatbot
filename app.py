@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template, redirect
+from flask import Flask, request, jsonify, render_template, redirect, Response, stream_with_context
 from flask_cors import CORS
 from openai import OpenAI
 import stripe
@@ -350,27 +350,55 @@ def chat():
         # able to chat freely, not from one oversized answer.
         max_tokens = 4000 if is_pro else 1500
 
-        try:
-            response = client.chat.completions.create(
-                model=model_to_use,
-                messages=messages,
-                max_tokens=max_tokens
-            )
-            _bump_plans_today()  # honest landing counter: +1 real AI plan/response
-            return jsonify({"reply": response.choices[0].message.content})
-        except Exception as openai_error:
-            # Log real error for ourselves
-            print(f"[chat] OpenAI error: {openai_error}")
-            # The user got NOTHING — refund this message to their free limit
-            if not is_elite:
-                u = _free_usage.get(_client_ip())
-                if u and u["count"] > 0:
-                    u["count"] -= 1
-            # Return friendly message to user
-            return jsonify({
-                "reply": "AI треньорът е претоварен в момента. Моля, опитай отново след 30 секунди.",
-                "not_counted": True
-            }), 200
+        # ── STREAMING (SSE) ──
+        # Отговорът тече към браузъра токен по токен, както се генерира.
+        # Същият брой токени, същата цена — променя се само доставката.
+        ip_for_refund = _client_ip() if not is_elite else None
+
+        def sse(obj):
+            return "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+
+        def generate():
+            full = []
+            try:
+                stream = client.chat.completions.create(
+                    model=model_to_use,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    stream=True
+                )
+                for chunk in stream:
+                    delta = None
+                    if chunk.choices and chunk.choices[0].delta:
+                        delta = chunk.choices[0].delta.content
+                    if delta:
+                        full.append(delta)
+                        yield sse({"t": delta})
+                _bump_plans_today()  # honest landing counter: +1 real AI plan
+                yield sse({"done": True})
+            except Exception as openai_error:
+                print(f"[chat] OpenAI error: {openai_error}")
+                if full:
+                    # Потребителят вече получи почти всичко — завършваме чисто
+                    _bump_plans_today()
+                    yield sse({"done": True})
+                else:
+                    # Нищо не е стигнало → връщаме съобщението в лимита му
+                    if ip_for_refund:
+                        u = _free_usage.get(ip_for_refund)
+                        if u and u["count"] > 0:
+                            u["count"] -= 1
+                    yield sse({
+                        "error": True,
+                        "not_counted": True,
+                        "reply": "AI треньорът е претоварен в момента. Моля, опитай отново след 30 секунди."
+                    })
+
+        return Response(
+            stream_with_context(generate()),
+            mimetype="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+        )
     except Exception as e:
         print(f"[chat] Server error: {e}")
         return jsonify({"error": "server_error"}), 500
