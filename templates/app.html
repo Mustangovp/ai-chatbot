@@ -815,9 +815,9 @@ async function send(){
 
   const isElite=count<=-999990;
   const token=localStorage.getItem('apexToken')||'';
-  if(isElite)saveToHistory('user',val);
-  // Also save to local memory for FREE users (for the 1-session memory taste)
-  if(!isElite)saveToFreeMemory('user',val);
+  // ВАЖНО: НЕ записваме user съобщението в паметта ТУК.
+  // Сървърът добавя текущото съобщение сам; ако го сложим и в history,
+  // се получава дубликат и контекстът се избутва. Записваме го след изпращане.
 
   const typing=document.createElement('div');typing.className='typing';typing.id='typing';
   typing.innerHTML='<div class="dot"></div><div class="dot"></div><div class="dot"></div>';
@@ -826,11 +826,12 @@ async function send(){
   const body={message:val};
   if(isElite&&token){
     body.token=token;
-    body.history=getChatHistory();
-    // Plan is encoded inside the signed token — no hint needed anymore
+    body.history=getChatHistory();   // чете предишния разговор (БЕЗ текущия въпрос)
+    saveToHistory('user',val);       // ...после записва текущия за следващия път
   }else{
     // FREE users: send last 6 messages so backend can give them a taste of memory
-    body.history=getFreeMemory();
+    body.history=getFreeMemory();    // чете предишния разговор (БЕЗ текущия въпрос)
+    saveToFreeMemory('user',val);    // ...после записва текущия за следващия път
   }
 
   try{
@@ -1115,12 +1116,12 @@ async function submitLead(okMsg,errMsg){
 // Gives FREE users a "taste" of conversation memory (6 messages = ~3 question-answer pairs)
 function getFreeMemory(){
   try{const raw=sessionStorage.getItem('apexFreeMemory');if(!raw)return [];
-    const arr=JSON.parse(raw);return Array.isArray(arr)?arr.slice(-6):[];}catch(e){return [];}
+    const arr=JSON.parse(raw);return Array.isArray(arr)?arr.slice(-12):[];}catch(e){return [];}
 }
 
 function saveToFreeMemory(role,content){
   try{const mem=getFreeMemory();mem.push({role,content:String(content).slice(0,4000)});
-    const trimmed=mem.slice(-6);sessionStorage.setItem('apexFreeMemory',JSON.stringify(trimmed));}catch(e){}
+    const trimmed=mem.slice(-12);sessionStorage.setItem('apexFreeMemory',JSON.stringify(trimmed));}catch(e){}
 }
 
 function updateBadge(){
