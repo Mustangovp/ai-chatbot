@@ -135,14 +135,17 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 .quick-chip{background:rgba(255,177,60,0.08);border:1px solid rgba(255,177,60,0.3);color:var(--gold);padding:8px 14px;border-radius:20px;font-family:inherit;font-size:13px;letter-spacing:0.5px;cursor:pointer;transition:all .2s;}
 .quick-chip:hover{background:rgba(255,177,60,0.18);border-color:var(--gold);transform:translateY(-1px);}
 
-/* ── TABLES ── */
-.table-wrap{overflow-x:auto;margin:12px 0;border-radius:8px;border:1px solid rgba(57,255,20,0.2);}
-.msg-a table{width:100%;border-collapse:collapse;font-size:13px;background:rgba(0,0,0,0.3);}
-.msg-a th{background:linear-gradient(135deg,rgba(57,255,20,0.18),rgba(57,255,20,0.06));color:var(--green);padding:10px 8px;font-family:'Unbounded';font-size:12px;letter-spacing:2px;text-transform:uppercase;border:1px solid rgba(57,255,20,0.3);text-align:center;}
-.msg-a td{padding:8px 7px;border:1px solid rgba(255,255,255,0.06);text-align:center;color:#dbd6e2;}
-.msg-a td:first-child{text-align:left;font-weight:600;color:#fff;}
-.msg-a tr:nth-child(even) td{background:rgba(255,255,255,0.02);}
-.msg-a tr:hover td{background:rgba(57,255,20,0.04);}
+/* ── TABLES — бранд йерархия: тихи заглавия, силни данни ── */
+.table-wrap{overflow-x:auto;margin:14px 0;border-radius:10px;border:1px solid rgba(245,33,45,.18);background:rgba(0,0,0,.25);}
+.msg-a table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:340px;}
+.msg-a thead th{background:rgba(245,33,45,.07);color:var(--muted);padding:10px 12px;font-size:10.5px;letter-spacing:1.6px;text-transform:uppercase;font-weight:700;text-align:left;border-bottom:2px solid var(--red);white-space:nowrap;}
+.msg-a td{padding:11px 12px;border-bottom:1px solid rgba(255,255,255,.05);text-align:left;color:#dbd6e2;font-variant-numeric:tabular-nums;}
+.msg-a td:first-child{font-weight:700;color:#fff;}
+.msg-a td:last-child{font-weight:700;color:var(--gold);white-space:nowrap;}
+.msg-a tbody tr:nth-child(even) td{background:rgba(255,255,255,.022);}
+.msg-a tbody tr:last-child td{border-bottom:none;}
+.msg-a tr.row-total td{color:var(--red);font-weight:800;border-top:2px solid rgba(245,33,45,.4);background:rgba(245,33,45,.05);}
+.msg-a tr:hover td{background:rgba(245,33,45,.05);}
 .scroll-hint{font-size:10px;color:var(--muted);text-align:center;margin:4px 0 8px;letter-spacing:1px;opacity:.7;}
 
 /* ── TYPING INDICATOR ── */
@@ -832,26 +835,30 @@ async function send(){
 
   try{
     const res=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    const data=await res.json();
-    const ty=document.getElementById('typing');if(ty)ty.remove();
-    // Server-side free limit hit (works even if localStorage was wiped/incognito)
-    if(data.limit_reached){
-      window._apexLimitHit=true;
-      showDailyLimit(data.hours_left||24);
-      return;
+    const ctype=(res.headers.get('content-type')||'');
+    if(ctype.indexOf('text/event-stream')!==-1){
+      // ── ЖИВ ПОТОК: отговорът се пише пред очите, както се ражда ──
+      await readChatStream(res);
+    }else{
+      // Резервен път (стар сървър / limit отговор като JSON)
+      const data=await res.json();
+      const ty=document.getElementById('typing');if(ty)ty.remove();
+      if(data.limit_reached){
+        window._apexLimitHit=true;
+        showDailyLimit(data.hours_left||24);
+        return;
+      }
+      appendMsg(data.reply,'a');
+      if(data.not_counted&&!isElite){
+        try{const u=getFreeUsage();if(u.count>0){u.count--;localStorage.setItem('apexFreeUsage',JSON.stringify(u));}}catch(e){}
+      }
+      track('ai_response',{plan_state:isElite?'paid':'free'});
+      if(isElite)saveToHistory('assistant',data.reply);
+      if(!isElite)saveToFreeMemory('assistant',data.reply);
+      if(!isElite)maybeShowLeadCapture();
+      document.getElementById('utility').style.display='flex';
+      updateUtilityLocks();
     }
-    appendMsg(data.reply,'a');
-    // Server says this message wasn't counted (OpenAI error) → refund locally too
-    if(data.not_counted&&!isElite){
-      try{const u=getFreeUsage();if(u.count>0){u.count--;localStorage.setItem('apexFreeUsage',JSON.stringify(u));}}catch(e){}
-    }
-    track('ai_response',{plan_state:isElite?'paid':'free'});
-    if(isElite)saveToHistory('assistant',data.reply);
-    if(!isElite)saveToFreeMemory('assistant',data.reply);
-    // Lead capture moment: 2 free messages left → offer email-for-PDF + bonus
-    if(!isElite)maybeShowLeadCapture();
-    document.getElementById('utility').style.display='flex';
-    updateUtilityLocks();
   }catch(e){
     const ty=document.getElementById('typing');if(ty)ty.remove();
     appendMsg(lang==='bg'?'Грешка в системата. Опитай отново.':'System error. Please try again.','a');
@@ -866,6 +873,65 @@ async function send(){
       inp.focus();
     }
   }
+}
+
+async function readChatStream(res){
+  const reader=res.body.getReader();
+  const dec=new TextDecoder();
+  let buf='',acc='',div=null,last=0,finished=false;
+  const killTyping=()=>{const ty=document.getElementById('typing');if(ty)ty.remove();};
+  const render=(final)=>{
+    if(!div)return;
+    div.innerHTML=marked.parse(acc);
+    if(final)decorateTables(div);
+  };
+  const finalize=()=>{
+    if(finished||!div)return;finished=true;
+    render(true);
+    track('ai_response',{plan_state:isElite?'paid':'free'});
+    if(isElite)saveToHistory('assistant',acc);
+    if(!isElite)saveToFreeMemory('assistant',acc);
+    if(!isElite)maybeShowLeadCapture();
+    document.getElementById('utility').style.display='flex';
+    updateUtilityLocks();
+  };
+  while(true){
+    const {value,done}=await reader.read();
+    if(done)break;
+    buf+=dec.decode(value,{stream:true});
+    let idx;
+    while((idx=buf.indexOf('\n\n'))!==-1){
+      const line=buf.slice(0,idx).trim();buf=buf.slice(idx+2);
+      if(line.indexOf('data:')!==0)continue;
+      let ev;try{ev=JSON.parse(line.slice(5));}catch(e){continue;}
+      if(ev.limit_reached){window._apexLimitHit=true;killTyping();showDailyLimit(ev.hours_left||24);return;}
+      if(ev.error){
+        killTyping();
+        if(!div)appendMsg(ev.reply||(lang==='bg'?'Грешка в системата. Опитай отново.':'System error. Please try again.'),'a');
+        if(ev.not_counted&&!isElite){
+          try{const u=getFreeUsage();if(u.count>0){u.count--;localStorage.setItem('apexFreeUsage',JSON.stringify(u));}}catch(e){}
+        }
+        return;
+      }
+      if(ev.t){
+        acc+=ev.t;
+        if(!div){
+          killTyping();
+          div=document.createElement('div');div.className='msg-a';box.appendChild(div);
+          // Една-единствена настройка на погледа: началото на отговора в зрителното поле.
+          // После НЕ местим нищо — текстът тече надолу, човекът чете и скролва сам.
+          const top=box.scrollTop+div.getBoundingClientRect().top-box.getBoundingClientRect().top-8;
+          box.scrollTo({top:Math.max(0,top),behavior:'smooth'});
+        }
+        const now=Date.now();
+        if(now-last>90){render(false);last=now;}
+      }
+      if(ev.done){finalize();return;}
+    }
+  }
+  // Потокът прекъсна без 'done' (мрежа): пазим полученото или показваме грешка
+  if(div){finalize();}
+  else{killTyping();appendMsg(lang==='bg'?'Грешка в системата. Опитай отново.':'System error. Please try again.','a');}
 }
 
 function getChatHistory(){
@@ -1079,23 +1145,33 @@ async function pay(plan){
   }catch(e){toast(T[lang].payError);}
 }
 
+function decorateTables(div){
+  div.querySelectorAll('table').forEach(t=>{
+    if(t.parentElement&&t.parentElement.classList.contains('table-wrap'))return;
+    const wrap=document.createElement('div');wrap.className='table-wrap';
+    t.parentNode.insertBefore(wrap,t);wrap.appendChild(t);
+    // Тоталите говорят с бранд гласа
+    t.querySelectorAll('tr').forEach(r=>{
+      const c=r.cells&&r.cells[0]?r.cells[0].textContent.trim().toLowerCase():'';
+      if(/^(общо|итого|total)/.test(c))r.classList.add('row-total');
+    });
+    setTimeout(()=>{
+      if(t.scrollWidth>wrap.clientWidth){
+        const hint=document.createElement('div');hint.className='scroll-hint';
+        hint.innerText=T[lang].scrollHint;
+        wrap.parentNode.insertBefore(hint,wrap.nextSibling);
+      }
+    },50);
+  });
+}
+
 function appendMsg(text,type){
   const div=document.createElement('div');
   div.className=type==='u'?'msg-u':'msg-a';
   if(type==='u'){div.innerHTML=escHtml(text);}
   else{
     div.innerHTML=marked.parse(text);
-    div.querySelectorAll('table').forEach(t=>{
-      const wrap=document.createElement('div');wrap.className='table-wrap';
-      t.parentNode.insertBefore(wrap,t);wrap.appendChild(t);
-      setTimeout(()=>{
-        if(t.scrollWidth>wrap.clientWidth){
-          const hint=document.createElement('div');hint.className='scroll-hint';
-          hint.innerText=T[lang].scrollHint;
-          wrap.parentNode.insertBefore(hint,wrap.nextSibling);
-        }
-      },50);
-    });
+    decorateTables(div);
   }
   box.appendChild(div);
   if(type==='u'){box.scrollTop=box.scrollHeight;}
