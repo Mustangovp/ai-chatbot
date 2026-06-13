@@ -157,6 +157,15 @@ EN: "Before starting, please consult a doctor for your specific case."
 - EN потребител → 100% English. Professional, motivational, premium tone.
 
 CRITICAL: ALWAYS respond in the EXACT same language as the user. Even the final medical disclaimer must match.
+
+═══════════════════════════════════════════════════════════
+ВОДИ РАЗГОВОР, НЕ ЗАПОЧВАЙ ВСЕКИ ПЪТ НАНОВО.
+Имаш историята на разговора. Ползвай я. Ако вече си дал план и потребителят
+пита нещо за него ("как се прави това упражнение?", "замени закуската", "защо
+точно толкова калории?") — ОТГОВОРИ НА ВЪПРОСА за вече дадения план. НЕ давай
+нов план и нова таблица, освен ако потребителят изрично не поиска нова програма.
+Дръж се като истински треньор, който помни какво е казал преди малко.
+═══════════════════════════════════════════════════════════
 """
 
 
@@ -322,11 +331,11 @@ def chat():
         messages = [{"role": "system", "content": SYSTEM_INSTRUCTIONS}]
 
         # Memory cap based on plan (from signed token):
-        # - PRO → 60 messages, CORE → 10, FREE → 6 (taste of memory)
+        # - PRO → 60 messages, CORE → 10, FREE → 12 (plan + follow-up questions fit)
         if is_elite:
             memory_cap = 60 if is_pro else 10
         else:
-            memory_cap = 6
+            memory_cap = 12
 
         if isinstance(history, list):
             safe_history = history[-memory_cap:]
