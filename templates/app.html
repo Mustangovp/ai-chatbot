@@ -171,6 +171,8 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 .util-btn.locked{opacity:0.55;cursor:pointer;position:relative;}
 .util-btn.locked:hover{border-color:var(--gold);color:var(--gold);opacity:0.75;}
 .util-btn.locked::after{content:'🔒';position:absolute;top:-6px;right:-6px;font-size:12px;background:var(--surface);border-radius:50%;padding:2px;border:1px solid var(--border);}
+.pdf-msg-btn{display:inline-flex;align-items:center;gap:5px;margin-top:12px;padding:5px 13px;background:transparent;border:1px solid rgba(255,255,255,0.1);color:var(--muted);font-family:inherit;font-size:12px;letter-spacing:.4px;border-radius:6px;cursor:pointer;transition:all .2s;}
+.pdf-msg-btn:hover{border-color:var(--red);color:var(--text);}
 
 /* ── PAYWALL MODAL (only when sessions exhausted) ── */
 #paywall,#disclaimer-modal,#legal-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.97);z-index:1000;flex-direction:column;align-items:center;justify-content:flex-start;padding:22px;overflow-y:auto;-webkit-overflow-scrolling:touch;}
@@ -929,6 +931,7 @@ async function readChatStream(res, isElite){
       if(!isElite)maybeShowLeadCapture();
       const ut=document.getElementById('utility');if(ut)ut.style.display='flex';
       updateUtilityLocks();
+      addPdfBtn(div);
     }catch(err){/* отговорът вече е на екрана — пост-обработката не бива да вдига грешка */}
   };
   while(true){
@@ -1207,6 +1210,7 @@ function appendMsg(text,type){
   else{
     div.innerHTML=marked.parse(text);
     decorateTables(div);
+    addPdfBtn(div);
   }
   box.appendChild(div);
   if(type==='u'){box.scrollTop=box.scrollHeight;}
@@ -1243,6 +1247,80 @@ function copyPlan(){
   toast(T[lang].copySuccess);
 }
 
+function addPdfBtn(msgDiv){
+  const btn=document.createElement('button');
+  btn.className='pdf-msg-btn';
+  btn.innerHTML='⬇ '+(lang==='bg'?'Свали като PDF':'Download as PDF');
+  btn.title=lang==='bg'?'Свали плана като PDF':'Download this plan as PDF';
+  btn.onclick=()=>saveMessagePDF(msgDiv);
+  msgDiv.appendChild(btn);
+}
+
+function saveMessagePDF(msgEl){
+  if(!isEliteUser()){
+    document.getElementById('paywall').style.display='flex';
+    toast(lang==='bg'?'🔒 Премиум функция':'🔒 Premium feature');
+    return;
+  }
+  const clone=msgEl.cloneNode(true);
+  clone.querySelectorAll('.pdf-msg-btn,.scroll-hint,.quick-chips').forEach(e=>e.remove());
+  clone.querySelectorAll('.table-wrap').forEach(w=>{
+    const t=w.querySelector('table');if(t)w.parentNode.replaceChild(t,w);
+  });
+  const disclaimer=lang==='bg'
+    ?'Този план е с информативна цел. Консултирай се с лекар преди да започнеш каквато и да е диета или тренировъчна програма.'
+    :'This plan is for informational purposes only. Consult a doctor before starting any diet or exercise program.';
+  const dateStr=new Date().toLocaleDateString(lang==='bg'?'bg-BG':'en-GB',{day:'2-digit',month:'long',year:'numeric'});
+  const pw=window.open('','_blank');
+  if(!pw){toast(lang==='bg'?'Позволи изскачащи прозорци в браузъра':'Allow popups in your browser');return;}
+  pw.document.write(`<!DOCTYPE html><html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>APEX PULSE PRO — ${lang==='bg'?'Твоят план':'Your Plan'}</title>
+<style>
+@page{margin:14mm 12mm;}
+*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+body{font-family:-apple-system,'Segoe UI',Arial,sans-serif;color:#111;background:#fff;margin:0 auto;padding:20px;line-height:1.65;max-width:640px;}
+.pdf-header{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #F5212D;padding-bottom:12px;margin-bottom:22px;}
+.pdf-logo{color:#F5212D;font-size:20px;font-weight:900;text-transform:uppercase;letter-spacing:1px;margin:0;}
+.pdf-meta{font-size:10px;color:#999;text-align:right;text-transform:uppercase;letter-spacing:.8px;line-height:1.7;}
+h1,h2,h3{margin:14px 0 8px;color:#111;}
+h1{font-size:17px;border-bottom:1px solid #e8e8e8;padding-bottom:6px;}
+h2{font-size:15px;color:#333;}
+h3{font-size:13px;color:#2a7d1a;}
+p{margin:0 0 10px;font-size:13px;}
+strong{font-weight:700;color:#000;}
+ul,ol{padding-left:20px;margin:0 0 10px;font-size:13px;}
+li{margin-bottom:4px;}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:12px;}
+th{background:#B6FF3C;color:#000;padding:8px 7px;font-size:10px;text-transform:uppercase;border:1.5px solid #000;letter-spacing:1px;font-weight:900;}
+td{padding:7px;border:1px solid #c0c0c0;text-align:center;}
+td:first-child{text-align:left;font-weight:600;}
+tr:nth-child(even) td{background:#f7f7f9;}
+tr{page-break-inside:avoid;}
+.disclaimer{font-size:11px;color:#5a4400;background:#fff8e8;border-left:4px solid #f0a800;padding:10px 14px;margin-top:22px;border-radius:0 6px 6px 0;line-height:1.6;}
+.footer-pdf{font-size:9px;color:#bbb;text-align:center;border-top:1px solid #eee;padding-top:10px;margin-top:16px;letter-spacing:1.2px;text-transform:uppercase;}
+.print-btn{display:none;}
+@media screen{
+  .pdf-header{flex-wrap:wrap;gap:6px;}
+  .pdf-meta{text-align:left;}
+  .print-btn{display:block;width:100%;max-width:300px;margin:24px auto 0;padding:14px;background:#F5212D;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.5px;}
+}
+@media print{.print-btn{display:none!important;}}
+</style></head><body>
+<div class="pdf-header">
+  <div class="pdf-logo">🔱 APEX PULSE PRO</div>
+  <div class="pdf-meta"><div>apexpulse.pro</div><div>${dateStr}</div></div>
+</div>
+${clone.innerHTML}
+<div class="disclaimer"><strong>⚠️ ${disclaimer}</strong></div>
+<div class="footer-pdf">Train the mind. Stimulate dopamine. Maximize YOU.</div>
+<button class="print-btn" onclick="window.print()">${lang==='bg'?'⬇ Запази / Принтирай':'⬇ Save / Print'}</button>
+<script>if(window.innerWidth>900){setTimeout(()=>window.print(),300);}<\/script>
+</body></html>`);
+  pw.document.close();
+}
+
 function savePDF(){
   // FREE users see a locked feature prompt instead
   if(!isEliteUser()){
@@ -1262,7 +1340,7 @@ function savePDF(){
       clone.querySelectorAll('.table-wrap').forEach(w=>{
         const t=w.querySelector('table');if(t)w.parentNode.replaceChild(t,w);
       });
-      clone.querySelectorAll('.scroll-hint, .quick-chips').forEach(h=>h.remove());
+      clone.querySelectorAll('.scroll-hint,.quick-chips,.pdf-msg-btn').forEach(h=>h.remove());
       sections+=`<div class="ai-a"><div class="a-label">🔱 APEX AI</div>${clone.innerHTML}</div>`;
       hasContent=true;
     }
