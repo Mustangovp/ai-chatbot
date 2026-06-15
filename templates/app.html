@@ -839,7 +839,7 @@ async function send(){
     const ctype=(res.headers.get('content-type')||'');
     if(ctype.indexOf('text/event-stream')!==-1){
       // ── ЖИВ ПОТОК: отговорът се пише пред очите, както се ражда ──
-      await readChatStream(res);
+      await readChatStream(res, isElite);
     }else{
       // Резервен път (стар сървър / limit отговор като JSON)
       const data=await res.json();
@@ -878,7 +878,7 @@ async function send(){
   }
 }
 
-async function readChatStream(res){
+async function readChatStream(res, isElite){
   const reader=res.body.getReader();
   const dec=new TextDecoder();
   let buf='',acc='',div=null,last=0,finished=false;
