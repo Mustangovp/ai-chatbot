@@ -11,7 +11,13 @@ import base64
 from werkzeug.middleware.proxy_fix import ProxyFix
 app = Flask(__name__, static_folder='static', template_folder='templates')
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
-CORS(app)
+CORS(app, origins=[
+    "https://apexpulse.pro",
+    "https://www.apexpulse.pro",
+    "http://localhost:5000",
+    "http://127.0.0.1:5000",
+    "http://localhost:3000",
+])
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
@@ -265,7 +271,7 @@ def make_token(expiry_timestamp: int, plan: str = "core") -> str:
     if plan not in PLANS:
         plan = "core"
     payload = f"{expiry_timestamp}.{plan}"
-    signature = hmac.new(SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()[:16]
+    signature = hmac.new(SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()[:32]
     token = base64.urlsafe_b64encode(f"{payload}.{signature}".encode()).decode().rstrip("=")
     return token
 
@@ -293,12 +299,26 @@ def verify_token(token: str):
             return False, None
         if time.time() > int(expiry_str):
             return False, None
-        expected = hmac.new(SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()[:16]
-        if hmac.compare_digest(signature, expected):
+        full = hmac.new(SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
+        # Try 32-char (new) first, then 16-char (legacy) for tokens issued before #12 fix
+        if hmac.compare_digest(signature, full[:32]) or hmac.compare_digest(signature, full[:16]):
             return True, (plan if plan in PLANS else "core")
         return False, None
     except Exception:
         return False, None
+
+
+# ═══════════════════════════════════════════════════════════
+# SECURITY HEADERS — added to every response
+# ═══════════════════════════════════════════════════════════
+
+@app.after_request
+def add_security_headers(response):
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=()'
+    return response
 
 
 # ═══════════════════════════════════════════════════════════
@@ -461,7 +481,8 @@ def create_checkout_session():
         )
         return jsonify({'url': session.url})
     except Exception as e:
-        return jsonify(error=str(e)), 403
+        print(f'[checkout] Stripe error: {e}')
+        return jsonify({'error': 'checkout_failed'}), 403
 
 
 @app.route('/app/success')
@@ -604,6 +625,11 @@ def save_lead():
             return jsonify({'ok': False, 'error': 'invalid_email'}), 400
 
         _lead_recent[ip] = now
+        if len(_lead_recent) > 2000:
+            cutoff = now - 120
+            for k in list(_lead_recent.keys()):
+                if _lead_recent[k] < cutoff:
+                    del _lead_recent[k]
         # Grant the bonus messages to this IP's free window
         usage = _get_free_usage(ip)
         usage["bonus"] = True
