@@ -45,9 +45,9 @@ gtag('config', 'G-B3WLGXE2XM');
 <style>
 :root{
   --bg:#0B0E14; --surface:#121724; --surface2:#1A2133;
-  --text:#F2F5FA; --muted:#8B93A7;
-  --brand:#F5212D; --ember:#FF6A3C; --amber:#FFB13C;
-  --cyan:#38E0FF; --lime:#B6FF3C; --steel:#8B9AFF;
+  --text:#F2F5FA; --muted:#8B93A7; --border:rgba(255,255,255,0.1);
+  --brand:#F5212D; --ember:#FF6A3C; --gold:#FFB13C;
+  --cyan:#38E0FF; --lime:#B6FF3C;
   --pulse:linear-gradient(90deg,#F5212D,#FF6A3C);
   --radius:20px;
 }
@@ -59,7 +59,8 @@ a{color:inherit;}
 img{max-width:100%;}
 
 /* NAV */
-nav{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;max-width:1100px;margin:0 auto;gap:10px;}
+nav{position:sticky;top:0;z-index:50;background:rgba(5,5,12,0.92);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid rgba(255,255,255,.07);}
+.nav-inner{display:flex;align-items:center;justify-content:space-between;max-width:1100px;margin:0 auto;padding:16px 20px;gap:10px;}
 .logo{display:flex;align-items:center;gap:10px;font-family:'Unbounded';font-weight:700;font-size:14px;letter-spacing:.5px;text-decoration:none;}
 .logo img{width:34px;height:34px;filter:drop-shadow(0 0 10px rgba(245,33,45,.5));}
 .logo{line-height:1.25;}
@@ -109,7 +110,7 @@ h1 .grad{background:var(--pulse);-webkit-background-clip:text;background-clip:te
 
 /* PHONE */
 .phone-stage{display:flex;justify-content:center;padding:40px 0 8px;position:relative;overflow:hidden;}
-.ring{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:min(370px,90vw);height:min(370px,90vw);border-radius:50%;border:2px solid transparent;background:conic-gradient(from 180deg,var(--brand),var(--ember),var(--amber),var(--cyan),var(--lime),var(--brand)) border-box;-webkit-mask:linear-gradient(#fff 0 0) padding-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;opacity:.3;animation:spin 14s linear infinite;}
+.ring{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:min(370px,90vw);height:min(370px,90vw);border-radius:50%;border:2px solid transparent;background:conic-gradient(from 180deg,var(--brand),var(--ember),var(--gold),var(--cyan),var(--lime),var(--brand)) border-box;-webkit-mask:linear-gradient(#fff 0 0) padding-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;opacity:.3;animation:spin 14s linear infinite;}
 @keyframes spin{to{transform:translate(-50%,-50%) rotate(360deg);}}
 /* PHONE = ОГЛЕДАЛО на реалния /app интерфейс (стилове 1:1 от app.html) */
 .phone{position:relative;width:min(308px,94vw);background:var(--bg);border:1px solid rgba(255,255,255,.12);border-radius:36px;padding:12px 0 0;box-shadow:0 30px 80px rgba(0,0,0,.6),0 0 60px rgba(245,33,45,.14);overflow:hidden;}
@@ -128,12 +129,6 @@ h1 .grad{background:var(--pulse);-webkit-background-clip:text;background-clip:te
 .ph-input{display:flex;gap:8px;padding:10px 12px 14px;border-top:1px solid rgba(255,255,255,.1);background:var(--surface);}
 .ph-input .ph-field{flex:1;background:var(--bg);border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:10px 12px;font-size:11.5px;color:var(--muted);}
 .ph-input .ph-send{width:38px;height:38px;border-radius:10px;background:var(--pulse);color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;box-shadow:0 4px 14px rgba(245,33,45,.4);flex-shrink:0;}
-.phone-old{position:relative;width:300px;background:#0E1220;border:1px solid rgba(255,255,255,.1);border-radius:36px;padding:14px 12px 18px;box-shadow:0 30px 80px rgba(0,0,0,.6),0 0 60px rgba(245,33,45,.14);}
-.phone .notch{width:90px;height:5px;background:rgba(255,255,255,.15);border-radius:3px;margin:0 auto 12px;}
-.chat{display:flex;flex-direction:column;gap:10px;font-size:13px;}
-.bub{padding:10px 14px;border-radius:16px;max-width:88%;}
-.bub.u{background:var(--pulse);color:#fff;align-self:flex-end;border-bottom-right-radius:4px;font-weight:600;}
-.bub.a{background:var(--surface2);align-self:flex-start;border-bottom-left-radius:4px;}
 .plan-card{background:var(--surface2);border:1px solid rgba(56,224,255,.25);border-radius:16px;padding:12px;width:100%;}
 .plan-card .pc-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
 .plan-card .pc-title{font-weight:800;font-size:12.5px;}
@@ -143,7 +138,7 @@ h1 .grad{background:var(--pulse);-webkit-background-clip:text;background-clip:te
 .typing{display:flex;gap:4px;align-self:flex-start;padding:10px 14px;background:var(--surface2);border-radius:16px;border-bottom-left-radius:4px;}
 .typing i{width:6px;height:6px;border-radius:50%;background:var(--brand);animation:tp 1.2s infinite;}
 .typing i:nth-child(2){animation-delay:.2s;background:var(--ember);}
-.typing i:nth-child(3){animation-delay:.4s;background:var(--amber);}
+.typing i:nth-child(3){animation-delay:.4s;background:var(--gold);}
 @keyframes tp{0%,100%{transform:translateY(0);opacity:.4;}50%{transform:translateY(-4px);opacity:1;}}
 
 /* SECTIONS */
@@ -268,15 +263,17 @@ footer a:hover{color:var(--text);}
 </defs></svg>
 
 <nav>
-  <a class="logo" href="/"><img src="/static/logo.png" alt="Apex Pulse PRO">
-    <span><span style="color:var(--brand);">APEX</span> PULSE PRO<br><span class="logo-slogan" data-key="slogan">Твоят връх. Твоят пулс.</span></span>
-  </a>
-  <div class="nav-right">
-    <div class="lang-toggle" id="lang-toggle">
-      <span data-lang="bg" class="active">BG</span>
-      <span data-lang="en">EN</span>
+  <div class="nav-inner">
+    <a class="logo" href="/"><img src="/static/logo.png" alt="Apex Pulse PRO">
+      <span><span style="color:var(--brand);">APEX</span> PULSE PRO<br><span class="logo-slogan" data-key="slogan">Твоят връх. Твоят пулс.</span></span>
+    </a>
+    <div class="nav-right">
+      <div class="lang-toggle" id="lang-toggle">
+        <span data-lang="bg" class="active">BG</span>
+        <span data-lang="en">EN</span>
+      </div>
+      <a href="/app" class="nav-cta" data-key="nav-cta" onclick="track('cta_click',{place:'nav'})">Започни</a>
     </div>
-    <a href="/app" class="nav-cta" data-key="nav-cta" onclick="track('cta_click',{place:'nav'})">Започни</a>
   </div>
 </nav>
 
