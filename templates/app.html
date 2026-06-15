@@ -118,9 +118,18 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 .msg-u{align-self:flex-end;background:var(--pulse);border:none;font-weight:600;border-bottom-right-radius:4px;color:var(--text);}
 .msg-a{align-self:flex-start;background:linear-gradient(135deg,rgba(10,10,20,0.95),rgba(20,20,32,0.95));border:1px solid var(--border);border-left:3px solid var(--red);border-bottom-left-radius:4px;color:#e8e4ee;}
 .msg-a.greeting{border-left-color:var(--gold);background:linear-gradient(135deg,rgba(255,177,60,0.05),rgba(10,10,20,0.93));}
-.msg-a.daily-limit-note{border-left-color:var(--gold);background:linear-gradient(135deg,rgba(255,177,60,0.07),rgba(10,10,20,0.95));max-width:100%;text-align:center;}
-.limit-plan-btn{margin-top:12px;background:linear-gradient(135deg,var(--red),#D81B26);color:#fff;border:none;font-family:inherit;font-size:14px;font-weight:600;padding:10px 22px;border-radius:8px;cursor:pointer;transition:all .2s;}
-.limit-plan-btn:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(245,33,45,0.4);}
+.msg-a.daily-limit-note{border-left-color:var(--gold);background:linear-gradient(135deg,rgba(255,177,60,0.06),rgba(10,10,20,0.97));max-width:100%;text-align:center;padding:24px 20px;}
+.limit-headline{font-family:'Unbounded';font-size:17px;letter-spacing:.5px;color:var(--text);margin:0 0 6px;}
+.limit-sub{font-size:14px;color:var(--muted);margin:0 0 18px;line-height:1.5;}
+.limit-features{list-style:none;padding:0;margin:0 0 22px;display:inline-block;text-align:left;}
+.limit-features li{font-size:13px;color:#cdd4e0;padding:4px 0;display:flex;align-items:baseline;gap:8px;}
+.limit-features li::before{content:'✦';color:var(--gold);font-size:10px;flex-shrink:0;}
+.limit-features li strong{color:#fff;}
+.limit-plan-btn{display:block;width:100%;max-width:320px;margin:0 auto 10px;background:linear-gradient(135deg,var(--red),#D81B26);color:#fff;border:none;font-family:'Unbounded';font-size:14px;letter-spacing:.5px;font-weight:700;padding:14px 22px;border-radius:10px;cursor:pointer;transition:all .2s;box-shadow:0 4px 20px rgba(245,33,45,0.3);}
+.limit-plan-btn:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(245,33,45,0.45);}
+.limit-plan-btn.secondary{background:transparent;border:1px solid rgba(255,255,255,0.2);color:var(--text);font-family:inherit;font-size:13px;font-weight:500;letter-spacing:.3px;box-shadow:none;}
+.limit-plan-btn.secondary:hover{border-color:var(--gold);color:var(--gold);transform:none;box-shadow:none;}
+.limit-wait{font-size:11px;color:rgba(139,147,167,0.55);margin-top:18px;letter-spacing:.3px;}
 .msg-a h1,.msg-a h2,.msg-a h3{font-family:'Unbounded';letter-spacing:1.5px;margin:14px 0 8px;color:var(--text);}
 .msg-a h1{font-size:22px;color:var(--red);}
 .msg-a h2{font-size:18px;color:var(--gold);}
@@ -1056,23 +1065,33 @@ function showDailyLimit(hoursLeft){
   const note=document.createElement('div');
   note.className='msg-a daily-limit-note';
   note.id='limit-offer-box';
-  const hrs = lang==='bg' ? `${hoursLeft} ч.` : `${hoursLeft}h`;
+  const hrs=lang==='bg'?`${hoursLeft} ч.`:`${hoursLeft}h`;
   if(lang==='bg'){
-    note.innerHTML=`<strong>Хареса ли ти как работи AI треньорът? 💪</strong><br><br>`+
-      `Ти използва всичките си безплатни съобщения за днес — точно когато стана интересно.<br><br>`+
-      `<strong>Продължи СЕГА без лимит:</strong> неограничени съобщения, AI памет за целите ти, PDF на всеки план.<br>`+
-      `<span style="color:var(--gold);font-weight:600;">CORE — €9.99 за 30 дни (€0.33/ден — по-малко от едно кафе)</span><br>`+
-      `<button class="limit-plan-btn" onclick="track('limit_upgrade_click',{});pay('core')">Продължи без лимит — €9.99 →</button><br>`+
-      `<span style="color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underline;" onclick="document.getElementById('paywall').style.display='flex'">Виж всички планове</span><br><br>`+
-      `<span style="color:var(--muted);font-size:12px;">Или се върни след около ${hrs} за нови безплатни съобщения.</span>`;
+    note.innerHTML=
+      `<p class="limit-headline">Влязъл си в ритъм. Не спирай сега.</p>`+
+      `<p class="limit-sub">Използва всичките си безплатни съобщения.<br>AI треньорът знае целта ти и е готов да продължи.</p>`+
+      `<ul class="limit-features">`+
+        `<li>Неограничени разговори с AI треньора</li>`+
+        `<li>AI помни плановете и целите ти <strong>30 дни</strong></li>`+
+        `<li>PDF на всеки план — вземи го на телефона</li>`+
+        `<li>Само <strong>€0.33/ден</strong> — по-малко от едно кафе</li>`+
+      `</ul>`+
+      `<button class="limit-plan-btn" onclick="track('limit_upgrade_click',{plan:'core'});pay('core')">🔱 Активирай CORE — €9.99 / 30 дни →</button>`+
+      `<button class="limit-plan-btn secondary" onclick="track('limit_upgrade_click',{plan:'all'});document.getElementById('paywall').style.display='flex'">Виж CORE vs PRO (до €14.99)</button>`+
+      `<p class="limit-wait">— или се върни след ~${hrs} —</p>`;
   }else{
-    note.innerHTML=`<strong>Enjoying your AI coach? 💪</strong><br><br>`+
-      `You've used all your free messages for today — right when it got interesting.<br><br>`+
-      `<strong>Continue NOW without limits:</strong> unlimited messages, AI memory for your goals, PDF for every plan.<br>`+
-      `<span style="color:var(--gold);font-weight:600;">CORE — €9.99 for 30 days (€0.33/day — less than a coffee)</span><br>`+
-      `<button class="limit-plan-btn" onclick="track('limit_upgrade_click',{});pay('core')">Continue unlimited — €9.99 →</button><br>`+
-      `<span style="color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underline;" onclick="document.getElementById('paywall').style.display='flex'">See all plans</span><br><br>`+
-      `<span style="color:var(--muted);font-size:12px;">Or come back in about ${hrs} for new free messages.</span>`;
+    note.innerHTML=
+      `<p class="limit-headline">You're in the zone. Don't stop now.</p>`+
+      `<p class="limit-sub">You've used all your free messages.<br>Your AI coach knows your goal and is ready to continue.</p>`+
+      `<ul class="limit-features">`+
+        `<li>Unlimited conversations with your AI coach</li>`+
+        `<li>AI remembers your plans &amp; goals for <strong>30 days</strong></li>`+
+        `<li>PDF download for every plan</li>`+
+        `<li>Just <strong>€0.33/day</strong> — less than a coffee</li>`+
+      `</ul>`+
+      `<button class="limit-plan-btn" onclick="track('limit_upgrade_click',{plan:'core'});pay('core')">🔱 Activate CORE — €9.99 / 30 days →</button>`+
+      `<button class="limit-plan-btn secondary" onclick="track('limit_upgrade_click',{plan:'all'});document.getElementById('paywall').style.display='flex'">See CORE vs PRO (up to €14.99)</button>`+
+      `<p class="limit-wait">— or come back in ~${hrs} —</p>`;
   }
   box.appendChild(note);
   box.scrollTop=box.scrollHeight;
@@ -1100,7 +1119,7 @@ function maybeShowLeadCapture(){
       : {t:'2 free messages left ⏳',d:"Don't lose your plan! Leave your email and get <strong>+5 bonus messages</strong> today + your plans by email.",ph:'your@email.com',btn:'Get +5 messages →',ok:'✅ Done! You have +5 bonus messages. Keep going!',err:'Invalid email. Try again.'};
     note.innerHTML=`<strong>${txt.t}</strong><br><br>${txt.d}<br><br>`+
       `<input type="email" id="lead-email" placeholder="${txt.ph}" style="width:100%;max-width:280px;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.2);background:rgba(0,0,0,0.4);color:#fff;font-family:inherit;font-size:14px;" />`+
-      `<button class="limit-plan-btn" style="margin-left:6px;" onclick="submitLead('${txt.ok.replace(/'/g,"\\'")}','${txt.err.replace(/'/g,"\\'")}')">${txt.btn}</button>`;
+      `<button class="limit-plan-btn" style="display:inline-block;width:auto;margin-left:6px;" onclick="submitLead('${txt.ok.replace(/'/g,"\\'")}','${txt.err.replace(/'/g,"\\'")}')">${txt.btn}</button>`;
     box.appendChild(note);
     box.scrollTop=box.scrollHeight;
   }catch(e){}
