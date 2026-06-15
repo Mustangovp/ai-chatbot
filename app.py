@@ -32,6 +32,9 @@ SECRET = os.getenv("APEX_SECRET", "")
 if not SECRET:
     raise RuntimeError("APEX_SECRET env var is not set — refusing to start without a signing secret")
 DEV_TOKEN = os.getenv("APEX_DEV_TOKEN", "")
+if not os.getenv("STRIPE_WEBHOOK_SECRET"):
+    print("WARNING: STRIPE_WEBHOOK_SECRET is not set — Stripe webhooks will be rejected. "
+          "Payment tokens will rely solely on the /poll-token Stripe API fallback.")
 
 # ═══════════════════════════════════════════════════════════
 # PRICING PLANS (in EUR cents)
@@ -343,14 +346,16 @@ def app_chat():
 def chat():
     try:
         data = request.json or {}
-        user_message = data.get("message", "")
-        history = data.get("history", [])
         token = data.get("token", "")
         # NOTE: plan is now derived from the SIGNED token, never from the frontend.
 
         is_elite, token_plan = verify_token(token) if token else (False, None)
         is_dev = bool(DEV_TOKEN) and token == DEV_TOKEN
         is_pro = is_elite and token_plan == "pro"
+
+        msg_limit = 4000 if is_elite else 1000
+        user_message = str(data.get("message", ""))[:msg_limit]
+        history = data.get("history", [])
 
         # ── SERVER-SIDE FREE LIMIT ──
         # localStorage limit is the soft wall; this is the real one.
@@ -461,7 +466,9 @@ def create_checkout_session():
             plan_key = 'core'
         
         plan = PLANS[plan_key]
-        host_url = "https://" + request.host
+        # APP_URL must be set in Railway (e.g. https://apexpulse.pro).
+        # Falling back to request.host is a last resort for local dev only.
+        host_url = os.getenv('APP_URL', 'https://' + request.host).rstrip('/')
         
         session = stripe.checkout.Session.create(
             payment_method_types=['card'],
@@ -618,7 +625,7 @@ def save_lead():
             return jsonify({'ok': False, 'error': 'rate_limit'}), 429
 
         data = request.json or {}
-        email = str(data.get('email', '')).strip()[:120]
+        email = str(data.get('email', '')).strip().replace('\r', '').replace('\n', '')[:120]
         lang = str(data.get('lang', 'bg'))[:5]
         plan_text = str(data.get('plan_text', ''))[:6000]
         if '@' not in email or '.' not in email.split('@')[-1] or len(email) < 6:
