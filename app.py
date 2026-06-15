@@ -489,12 +489,12 @@ def stripe_webhook():
 
     if event['type'] == 'checkout.session.completed':
         session = event['data']['object']
-        if session.get('payment_status') == 'paid':
-            paid_plan = (session.get('metadata') or {}).get('plan', 'core')
+        if session.payment_status == 'paid':
+            paid_plan = (session.metadata or {}).get('plan', 'core')
             expiry = int(time.time()) + (30 * 24 * 60 * 60)
             token = make_token(expiry, paid_plan)
-            _pending_tokens[session['id']] = token
-            print(f'[webhook] Token issued for session {session["id"][:20]}... plan={paid_plan}')
+            _pending_tokens[session.id] = token
+            print(f'[webhook] Token issued for session {session.id[:20]}... plan={paid_plan}')
     return jsonify({'ok': True})
 
 
@@ -516,10 +516,11 @@ def poll_token():
             paid_plan = (session.metadata or {}).get('plan', 'core')
             expiry = int(time.time()) + (30 * 24 * 60 * 60)
             token = make_token(expiry, paid_plan)
+            print(f'[poll-token] Fallback token issued for session {session_id[:20]}...')
             return jsonify({'ready': True, 'token': token})
     except Exception as e:
         print(f'[poll-token] Stripe error: {e}')
-    return jsonify({'ready': False})
+    return jsonify({'ready': False, 'session_id': session_id[:20]})
 
 
 @app.route('/success')
