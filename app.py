@@ -22,7 +22,9 @@ stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 # APEX_SECRET = signs tokens for paying Stripe customers (30 days)
 # APEX_DEV_TOKEN = your personal lifetime access token
 # ═══════════════════════════════════════════════════════════
-SECRET = os.getenv("APEX_SECRET", "change-this-in-railway-to-a-long-random-string")
+SECRET = os.getenv("APEX_SECRET", "")
+if not SECRET:
+    raise RuntimeError("APEX_SECRET env var is not set — refusing to start without a signing secret")
 DEV_TOKEN = os.getenv("APEX_DEV_TOKEN", "")
 
 # ═══════════════════════════════════════════════════════════
@@ -48,7 +50,11 @@ FREE_DAILY_LIMIT = 10
 LEAD_BONUS = 5
 FREE_WINDOW_SECONDS = 24 * 60 * 60
 _free_usage = {}      # ip -> {"count": int, "start": ts, "bonus": bool}
-_pending_tokens = {}  # stripe session_id -> signed token (set by webhook, cleared after poll)
+_pending_tokens = {}  # stripe session_id -> (signed_token, issued_at) pairs
+
+# Max age for an unpolled webhook token — prevents unbounded memory growth.
+_PENDING_TOKEN_TTL = 3600  # 1 hour; a user who never polls loses their automatic token
+                            # but can recover via issue_token.py or ?token= URL
 
 # ── HONEST live counter for the landing page ──
 # Counts REAL AI responses today (resets at UTC midnight + on redeploy).
@@ -493,23 +499,49 @@ def stripe_webhook():
             paid_plan = (session.metadata or {}).get('plan', 'core')
             expiry = int(time.time()) + (30 * 24 * 60 * 60)
             token = make_token(expiry, paid_plan)
-            _pending_tokens[session.id] = token
+            _pending_tokens[session.id] = (token, time.time())
             print(f'[webhook] Token issued for session {session.id[:20]}... plan={paid_plan}')
     return jsonify({'ok': True})
 
+
+_poll_rate = {}  # session_id -> [timestamps] — limit Stripe API calls per session
 
 @app.route('/poll-token')
 def poll_token():
     """Browser polls this after returning from Stripe until the webhook delivers the token.
     Falls back to direct Stripe API check if webhook hasn't arrived yet (network delays)."""
     session_id = request.args.get('session_id', '')
-    if not session_id:
+    # Only accept Stripe checkout session IDs (cs_live_... or cs_test_...)
+    if not session_id or not session_id.startswith('cs_'):
         return jsonify({'ready': False})
+
+    # Evict stale pending tokens to keep memory bounded
+    now = time.time()
+    stale = [k for k, (_, ts) in _pending_tokens.items() if now - ts > _PENDING_TOKEN_TTL]
+    for k in stale:
+        del _pending_tokens[k]
+
     # Primary path: webhook already stored the token
-    token = _pending_tokens.pop(session_id, None)
-    if token:
+    entry = _pending_tokens.pop(session_id, None)
+    if entry:
+        token, _ = entry
         return jsonify({'ready': True, 'token': token})
-    # Fallback: webhook may be slightly delayed — verify directly with Stripe
+
+    # Fallback: webhook may be slightly delayed — verify directly with Stripe.
+    # Rate-limit to 5 Stripe API calls per session_id to avoid hammering Stripe.
+    timestamps = _poll_rate.get(session_id, [])
+    timestamps = [t for t in timestamps if now - t < 60]
+    if len(timestamps) >= 5:
+        return jsonify({'ready': False})
+    timestamps.append(now)
+    _poll_rate[session_id] = timestamps
+    # Evict old entries from rate-limit tracker
+    if len(_poll_rate) > 2000:
+        cutoff = now - 120
+        for k in list(_poll_rate.keys()):
+            if not _poll_rate[k] or _poll_rate[k][-1] < cutoff:
+                del _poll_rate[k]
+
     try:
         session = stripe.checkout.Session.retrieve(session_id)
         if session.payment_status == 'paid':
@@ -520,7 +552,7 @@ def poll_token():
             return jsonify({'ready': True, 'token': token})
     except Exception as e:
         print(f'[poll-token] Stripe error: {e}')
-    return jsonify({'ready': False, 'session_id': session_id[:20]})
+    return jsonify({'ready': False})
 
 
 @app.route('/success')
@@ -541,7 +573,8 @@ def stats_endpoint():
 @app.route('/verify-token', methods=['POST'])
 def verify_token_endpoint():
     """Frontend asks: is this stored token still valid, and which plan does it carry?"""
-    token = request.json.get('token', '')
+    data = request.get_json(silent=True) or {}
+    token = str(data.get('token', ''))
     is_valid, plan = verify_token(token)
     is_dev = bool(DEV_TOKEN) and token == DEV_TOKEN
     return jsonify({'valid': is_valid, 'isDev': is_dev, 'plan': plan or 'free'})
@@ -647,14 +680,14 @@ _feedback_recent = {}
 @app.route('/feedback', methods=['POST'])
 def feedback_endpoint():
     try:
-        # Basic rate limiting by IP
-        ip = request.headers.get('X-Forwarded-For', request.remote_addr or 'unknown').split(',')[0].strip()
+        # Basic rate limiting by IP — use request.remote_addr (already set by ProxyFix)
+        ip = _client_ip()
         now = time.time()
         last = _feedback_recent.get(ip, 0)
         if now - last < 300:  # 5 minutes
             return jsonify({'ok': False, 'error': 'rate_limit'}), 429
         
-        data = request.json or {}
+        data = request.get_json(silent=True) or {}
         fb_type = str(data.get('type', 'unknown'))[:30]
         message = str(data.get('message', ''))[:1000]
         email = str(data.get('email', ''))[:100]
