@@ -189,7 +189,7 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 /* Animation fires when element enters rendering (display:none → display:flex) */
 #paywall,#disclaimer-modal,#legal-modal,#feedback-modal{animation:modal-backdrop-in .22s ease;}
 #paywall .pw-card,#disclaimer-modal .disc-card,#legal-modal .legal-card,#feedback-modal .fb-card{animation:modal-card-in .28s cubic-bezier(0.34,1.4,0.64,1);}
-@media(prefers-reduced-motion:reduce){#paywall,#disclaimer-modal,#legal-modal,#feedback-modal,#paywall .pw-card,#disclaimer-modal .disc-card,#legal-modal .legal-card,#feedback-modal .fb-card{animation:none;}}
+@media(prefers-reduced-motion:reduce){ #paywall,#disclaimer-modal,#legal-modal,#feedback-modal,#paywall .pw-card,#disclaimer-modal .disc-card,#legal-modal .legal-card,#feedback-modal .fb-card{animation:none;}}
 
 /* ── PAYWALL MODAL (only when sessions exhausted) ── */
 #paywall,#disclaimer-modal,#legal-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.97);z-index:1000;flex-direction:column;align-items:center;justify-content:flex-start;padding:22px;overflow-y:auto;-webkit-overflow-scrolling:touch;}
