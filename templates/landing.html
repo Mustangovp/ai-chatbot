@@ -78,6 +78,7 @@ nav{position:sticky;top:0;z-index:50;background:rgba(5,5,12,0.92);backdrop-filte
 .eyebrow{display:inline-flex;align-items:center;gap:14px;font-family:'Manrope';font-weight:800;font-size:11px;letter-spacing:3.5px;text-transform:uppercase;color:var(--gold);margin-bottom:28px;position:relative;z-index:2;opacity:0;animation:hero-fadeup .8s .15s cubic-bezier(.2,.7,.2,1) forwards;}
 .eyebrow::before,.eyebrow::after{content:'';width:34px;height:1px;background:linear-gradient(90deg,transparent,rgba(255,177,60,.55),transparent);}
 .eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--lime);box-shadow:0 0 10px rgba(182,255,60,.7);animation:blink 1.8s infinite;}
+@media(max-width:480px){.eyebrow{font-size:10px;letter-spacing:1.8px;gap:10px;}.eyebrow::before,.eyebrow::after{width:20px;}}
 @keyframes blink{0%,100%{opacity:1;}50%{opacity:.35;}}
 h1{font-family:'Unbounded';font-weight:900;font-size:clamp(40px,8.5vw,104px);line-height:.96;letter-spacing:-.035em;position:relative;z-index:2;margin:0 auto;max-width:920px;}
 h1 .h1-line{display:block;overflow:hidden;padding:0 .04em;}

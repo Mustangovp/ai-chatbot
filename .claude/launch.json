@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "apex-flask",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "set OPENAI_API_KEY=sk-stub && set APEX_SECRET=local-render-stub && py app.py"],
+      "port": 5000
+    }
+  ]
+}
