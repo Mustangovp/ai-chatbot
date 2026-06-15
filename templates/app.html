@@ -158,11 +158,17 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 .scroll-hint{font-size:10px;color:var(--muted);text-align:center;margin:4px 0 8px;letter-spacing:1px;opacity:.7;}
 
 /* ── TYPING INDICATOR ── */
-.typing{align-self:flex-start;display:flex;gap:5px;padding:14px 18px;background:rgba(10,10,20,0.7);border-radius:12px;border:1px solid var(--border);border-left:3px solid var(--red);}
-.typing .dot{width:7px;height:7px;border-radius:50%;background:var(--red);animation:bounce 1.4s infinite;}
-.typing .dot:nth-child(2){animation-delay:.2s;}
-.typing .dot:nth-child(3){animation-delay:.4s;}
-@keyframes bounce{0%,80%,100%{opacity:.25;transform:translateY(0);}40%{opacity:1;transform:translateY(-4px);}}
+.typing{align-self:flex-start;display:flex;align-items:center;gap:10px;padding:12px 16px;background:rgba(10,10,20,0.7);border-radius:12px;border:1px solid var(--border);border-left:3px solid var(--gold);}
+.typing-label{font-family:'Unbounded';font-weight:800;font-size:10px;letter-spacing:2.4px;color:var(--gold);text-transform:uppercase;}
+.typing .dot{width:6px;height:6px;border-radius:50%;background:var(--gold);animation:bounce 1.4s infinite;}
+.typing .dot:nth-child(3){animation-delay:.2s;}
+.typing .dot:nth-child(4){animation-delay:.4s;}
+@keyframes bounce{0%,80%,100%{opacity:.3;transform:translateY(0);}40%{opacity:1;transform:translateY(-4px);}}
+
+/* ── MESSAGE SLIDE-IN ── */
+@keyframes msg-in{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+.msg-u,.msg-a,.typing{animation:msg-in .28s cubic-bezier(.2,.7,.2,1);}
+@media(prefers-reduced-motion:reduce){.msg-u,.msg-a,.typing{animation:none;}.typing .dot{animation:none;opacity:.7;}}
 
 /* ── INPUT BAR ── */
 .input-wrap{position:sticky;bottom:0;background:linear-gradient(180deg,transparent,var(--bg) 25%);padding:14px 0 16px;}
@@ -472,7 +478,7 @@ const T={
     pw_headline:'Пълен достъп до Apex',
     pw_sub:'Неограничен AI треньор, който помни целите ти и създава персонални програми за теб — 30 дни пълен достъп.',
     copySuccess:'Планът е копиран! 🔥',pdfError:'Първо задай въпрос на AI!',
-    greeting:'**Здравей! 🔱 Аз съм твоят AI треньор.**\n\nЩе ти изградя персонален план за минути. Кажи ми малко за себе си:',
+    greeting:'**🔱 Влизаш в Apex.**\n\nАз съм треньорът ти от тук нататък. Ти даваш целта — аз пиша плана. Точен, реалистичен, твой.\n\nС какво започваме?',
     chips:[
       'Искам да отслабна',
       'Искам мускулна маса',
@@ -520,7 +526,7 @@ const T={
     pw_headline:'Full access to Apex',
     pw_sub:'An unlimited AI coach that remembers your goals and builds personalized programs for you — 30 days full access.',
     copySuccess:'Plan copied! 🔥',pdfError:'First ask the AI a question!',
-    greeting:'**Hey! 🔱 I\'m your AI coach.**\n\nI\'ll build a personalized plan in minutes. Tell me a bit about yourself:',
+    greeting:'**🔱 You\'re in Apex.**\n\nI\'m your coach from here on. You give me the goal — I write the plan. Precise, realistic, yours.\n\nWhere do we start?',
     chips:[
       'I want to lose weight',
       'I want muscle mass',
@@ -868,7 +874,8 @@ async function send(){
   // се получава дубликат и контекстът се избутва. Записваме го след изпращане.
 
   const typing=document.createElement('div');typing.className='typing';typing.id='typing';
-  typing.innerHTML='<div class="dot"></div><div class="dot"></div><div class="dot"></div>';
+  const typingLabel=lang==='bg'?'ПРЕСМЯТАМ':'CALIBRATING';
+  typing.innerHTML='<span class="typing-label">'+typingLabel+'</span><div class="dot"></div><div class="dot"></div><div class="dot"></div>';
   box.appendChild(typing);box.scrollTop=box.scrollHeight;
 
   const body={message:val};
