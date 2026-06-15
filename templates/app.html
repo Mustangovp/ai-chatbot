@@ -640,8 +640,39 @@ function updateUtilityLocks(){
   });
 }
 
+async function pollForToken(sessionId){
+  showGreeting();
+  toast(lang==='bg'?'Потвърждаваме плащането...':'Confirming payment...');
+  for(let i=0;i<20;i++){
+    await new Promise(r=>setTimeout(r,1500));
+    try{
+      const res=await fetch('/poll-token?session_id='+encodeURIComponent(sessionId));
+      const data=await res.json();
+      if(data.ready&&data.token){
+        localStorage.setItem('apexToken',data.token);
+        const vr=await fetch('/verify-token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:data.token})});
+        const vd=await vr.json();
+        if(vd.plan&&vd.plan!=='free')localStorage.setItem('apexPlan',vd.plan);
+        activateElite();
+        toast(lang==='bg'?'✅ Плащането е потвърдено!':'✅ Payment confirmed!');
+        return;
+      }
+    }catch(e){}
+  }
+  toast(lang==='bg'?'Провери имейла си за достъп.':'Check your email for access.');
+}
+
 async function checkAccess(){
   const params=new URLSearchParams(window.location.search);
+  // Webhook flow: return from Stripe with ?pending_session= → poll until token arrives
+  const pendingSession=params.get('pending_session');
+  if(pendingSession){
+    params.delete('pending_session');
+    const ns=params.toString();
+    window.history.replaceState({},'',window.location.pathname+(ns?'?'+ns:''));
+    await pollForToken(pendingSession);
+    return;
+  }
   const urlToken=params.get('token');
   if(urlToken){
     try{
@@ -649,10 +680,8 @@ async function checkAccess(){
       const data=await res.json();
       if(data.valid){
         localStorage.setItem('apexToken',urlToken);
-        // Plan now comes from the SIGNED token (server-verified) — not guessable client-side
         if(data.plan&&data.plan!=='free')localStorage.setItem('apexPlan',data.plan);
         activateElite();
-        // Keep ?goal=X in URL but strip ?token=X
         const cleanParams=new URLSearchParams(window.location.search);
         cleanParams.delete('token');
         const newSearch=cleanParams.toString();

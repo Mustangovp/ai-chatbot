@@ -8,7 +8,9 @@ import hashlib
 import time
 import base64
 
+from werkzeug.middleware.proxy_fix import ProxyFix
 app = Flask(__name__, static_folder='static', template_folder='templates')
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 CORS(app)
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -45,7 +47,8 @@ PLANS = {
 FREE_DAILY_LIMIT = 10
 LEAD_BONUS = 5
 FREE_WINDOW_SECONDS = 24 * 60 * 60
-_free_usage = {}   # ip -> {"count": int, "start": ts, "bonus": bool}
+_free_usage = {}      # ip -> {"count": int, "start": ts, "bonus": bool}
+_pending_tokens = {}  # stripe session_id -> signed token (set by webhook, cleared after poll)
 
 # ── HONEST live counter for the landing page ──
 # Counts REAL AI responses today (resets at UTC midnight + on redeploy).
@@ -66,7 +69,7 @@ def _get_plans_today():
     return base + n
 
 def _client_ip():
-    return request.headers.get('X-Forwarded-For', request.remote_addr or 'unknown').split(',')[0].strip()
+    return request.remote_addr or 'unknown'
 
 def _get_free_usage(ip):
     now = time.time()
@@ -457,21 +460,66 @@ def create_checkout_session():
 
 @app.route('/app/success')
 def payment_success():
-    """After Stripe payment, verify with Stripe API, then issue a signed token."""
+    """After Stripe payment, redirect to /app with pending_session so JS can poll for token.
+    Token is issued by the webhook (server-to-server), not here."""
     session_id = request.args.get('session_id')
     if not session_id:
         return redirect('/app?success=false')
+    return redirect(f'/app?pending_session={session_id}')
+
+
+@app.route('/webhook', methods=['POST'])
+def stripe_webhook():
+    """Stripe sends checkout.session.completed server-to-server with a signed payload.
+    This is the authoritative source of truth for payment — cannot be spoofed by clients."""
+    payload = request.get_data()
+    sig_header = request.headers.get('Stripe-Signature', '')
+    webhook_secret = os.getenv('STRIPE_WEBHOOK_SECRET', '')
+    if not webhook_secret:
+        print('[webhook] WARNING: STRIPE_WEBHOOK_SECRET not set — webhook disabled')
+        return jsonify({'error': 'webhook not configured'}), 500
+    try:
+        event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
+    except stripe.error.SignatureVerificationError:
+        print('[webhook] Invalid signature — possible forgery attempt')
+        return jsonify({'error': 'invalid signature'}), 400
+    except Exception as e:
+        print(f'[webhook] Bad payload: {e}')
+        return jsonify({'error': 'bad payload'}), 400
+
+    if event['type'] == 'checkout.session.completed':
+        session = event['data']['object']
+        if session.get('payment_status') == 'paid':
+            paid_plan = (session.get('metadata') or {}).get('plan', 'core')
+            expiry = int(time.time()) + (30 * 24 * 60 * 60)
+            token = make_token(expiry, paid_plan)
+            _pending_tokens[session['id']] = token
+            print(f'[webhook] Token issued for session {session["id"][:20]}... plan={paid_plan}')
+    return jsonify({'ok': True})
+
+
+@app.route('/poll-token')
+def poll_token():
+    """Browser polls this after returning from Stripe until the webhook delivers the token.
+    Falls back to direct Stripe API check if webhook hasn't arrived yet (network delays)."""
+    session_id = request.args.get('session_id', '')
+    if not session_id:
+        return jsonify({'ready': False})
+    # Primary path: webhook already stored the token
+    token = _pending_tokens.pop(session_id, None)
+    if token:
+        return jsonify({'ready': True, 'token': token})
+    # Fallback: webhook may be slightly delayed — verify directly with Stripe
     try:
         session = stripe.checkout.Session.retrieve(session_id)
         if session.payment_status == 'paid':
             paid_plan = (session.metadata or {}).get('plan', 'core')
             expiry = int(time.time()) + (30 * 24 * 60 * 60)
             token = make_token(expiry, paid_plan)
-            return redirect(f'/app?token={token}')
-        else:
-            return redirect('/app?success=false')
-    except Exception:
-        return redirect('/app?success=false')
+            return jsonify({'ready': True, 'token': token})
+    except Exception as e:
+        print(f'[poll-token] Stripe error: {e}')
+    return jsonify({'ready': False})
 
 
 @app.route('/success')
