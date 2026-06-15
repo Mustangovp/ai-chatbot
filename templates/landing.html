@@ -249,6 +249,11 @@ footer a:hover{color:var(--text);}
 .to-top.show{display:flex;}
 .to-top:active{transform:scale(.92);}
 
+/* SCROLL REVEAL */
+.reveal{opacity:0;transform:translateY(22px);transition:opacity .5s ease,transform .5s ease;}
+.reveal.in-view{opacity:1;transform:translateY(0);}
+@media(prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none;transition:none;}}
+
 /* AURORA EMBERS — дишаща жарава зад hero (GPU-friendly: само transform) */
 .aurora{position:absolute;inset:-120px;overflow:hidden;pointer-events:none;}
 .aurora i{position:absolute;border-radius:50%;filter:blur(90px);will-change:transform;}
@@ -806,6 +811,19 @@ function closeLegal(){
 document.querySelectorAll('img').forEach(im=>{im.addEventListener('error',()=>{im.style.display='none';});});
 
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeLegal();});
+
+/* ═══════════ SCROLL REVEAL ═══════════ */
+(function(){
+  if(!window.IntersectionObserver)return;
+  const obs=new IntersectionObserver((entries)=>{
+    entries.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in-view');obs.unobserve(e.target);}});
+  },{threshold:0.1,rootMargin:'0px 0px -40px 0px'});
+  document.querySelectorAll('.step,.goal,.plan,.faq-item').forEach((el,i)=>{
+    el.classList.add('reveal');
+    el.style.transitionDelay=(i%4)*0.07+'s';
+    obs.observe(el);
+  });
+})();
 </script>
 </body>
 </html>
