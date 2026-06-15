@@ -72,15 +72,24 @@ nav{position:sticky;top:0;z-index:50;background:rgba(5,5,12,0.92);backdrop-filte
 .nav-cta{background:var(--pulse);color:#fff;font-weight:800;font-size:13px;padding:10px 18px;border-radius:30px;text-decoration:none;box-shadow:0 4px 16px rgba(245,33,45,.3);white-space:nowrap;transition:transform .15s,box-shadow .15s;}
 .nav-cta:hover{transform:translateY(-1px);box-shadow:0 6px 22px rgba(245,33,45,.48);}
 
-/* HERO */
-.hero{padding:42px 0 26px;text-align:center;position:relative;}
-.hero::before{content:'';position:absolute;top:-130px;left:50%;transform:translateX(-50%);width:640px;height:420px;background:radial-gradient(ellipse,rgba(245,33,45,.15),transparent 65%);pointer-events:none;}
-.eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:var(--cyan);background:rgba(56,224,255,.08);border:1px solid rgba(56,224,255,.25);padding:6px 14px;border-radius:30px;margin-bottom:20px;position:relative;}
-.eyebrow .dot{width:7px;height:7px;border-radius:50%;background:var(--lime);animation:blink 1.6s infinite;}
-@keyframes blink{0%,100%{opacity:1;}50%{opacity:.3;}}
-h1{font-family:'Unbounded';font-weight:900;font-size:clamp(28px,6vw,54px);line-height:1.12;letter-spacing:-.5px;position:relative;}
-h1 .grad{background:var(--pulse);-webkit-background-clip:text;background-clip:text;color:transparent;}
-.hero .sub{color:var(--muted);font-size:clamp(15px,2.5vw,18px);max-width:560px;margin:16px auto 0;font-weight:500;position:relative;}
+/* HERO — editorial redesign */
+.hero{padding:72px 0 48px;text-align:center;position:relative;isolation:isolate;}
+.hero-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);background-size:56px 56px;mask-image:radial-gradient(ellipse at center,#000 30%,transparent 75%);-webkit-mask-image:radial-gradient(ellipse at center,#000 30%,transparent 75%);pointer-events:none;z-index:0;}
+.eyebrow{display:inline-flex;align-items:center;gap:14px;font-family:'Manrope';font-weight:800;font-size:11px;letter-spacing:3.5px;text-transform:uppercase;color:var(--gold);margin-bottom:28px;position:relative;z-index:2;opacity:0;animation:hero-fadeup .8s .15s cubic-bezier(.2,.7,.2,1) forwards;}
+.eyebrow::before,.eyebrow::after{content:'';width:34px;height:1px;background:linear-gradient(90deg,transparent,rgba(255,177,60,.55),transparent);}
+.eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--lime);box-shadow:0 0 10px rgba(182,255,60,.7);animation:blink 1.8s infinite;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:.35;}}
+h1{font-family:'Unbounded';font-weight:900;font-size:clamp(40px,8.5vw,104px);line-height:.96;letter-spacing:-.035em;position:relative;z-index:2;margin:0 auto;max-width:920px;}
+h1 .h1-line{display:block;overflow:hidden;padding:0 .04em;}
+h1 .h1-word{display:inline-block;transform:translateY(110%);opacity:0;animation:h1-rise .9s cubic-bezier(.2,.7,.2,1) forwards;}
+h1 .h1-line:nth-child(1) .h1-word{animation-delay:.25s;}
+h1 .h1-line:nth-child(2) .h1-word{animation-delay:.4s;}
+h1 .h1-line:nth-child(3) .h1-word{animation-delay:.55s;}
+@keyframes h1-rise{to{transform:translateY(0);opacity:1;}}
+h1 .grad{background:linear-gradient(90deg,#F5212D 0%,#FF6A3C 45%,#FFB13C 100%);background-size:200% auto;-webkit-background-clip:text;background-clip:text;color:transparent;animation:hero-shimmer 4.5s ease-in-out infinite;}
+@keyframes hero-shimmer{0%,100%{background-position:0% center;}50%{background-position:100% center;}}
+.hero .sub{color:#A0A6B8;font-size:clamp(16px,2vw,19px);max-width:580px;margin:32px auto 0;font-weight:500;line-height:1.55;position:relative;z-index:2;opacity:0;animation:hero-fadeup 1s 1.0s cubic-bezier(.2,.7,.2,1) forwards;}
+@keyframes hero-fadeup{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:translateY(0);}}
 
 /* INTERACTIVE GOAL LINE — mirrors what people type in Google */
 .goal-line{margin:26px auto 0;max-width:min(560px,100%);box-sizing:border-box;background:var(--surface);border:1px solid rgba(255,255,255,.12);border-radius:var(--radius);padding:20px 18px;position:relative;box-shadow:0 14px 50px rgba(0,0,0,.4);}
@@ -91,7 +100,7 @@ h1 .grad{background:var(--pulse);-webkit-background-clip:text;background-clip:te
 .goal-line .gl-btn:active{transform:scale(.98);}
 .goal-line .gl-alt{margin-top:12px;font-size:13px;color:var(--muted);}
 .goal-line .gl-alt a{color:var(--cyan);font-weight:700;text-decoration:none;}
-.micro{color:var(--muted);font-size:12.5px;margin-top:14px;position:relative;}
+.micro{color:#6B7185;font-size:11.5px;letter-spacing:1.8px;text-transform:uppercase;font-weight:700;margin-top:28px;position:relative;z-index:2;opacity:0;animation:hero-fadeup 1s 1.4s cubic-bezier(.2,.7,.2,1) forwards;}
 
 /* payment strip under hero */
 .paystrip{position:relative;display:flex;justify-content:center;align-items:center;gap:9px;flex-wrap:wrap;margin-top:18px;position:relative;}
@@ -99,16 +108,28 @@ h1 .grad{background:var(--pulse);-webkit-background-clip:text;background-clip:te
 .paystrip img{height:24px;width:auto;border-radius:4px;background:#fff;padding:2px 5px;}
 .paystrip img.dark{background:#000;}
 
-/* honest counter */
-.proof{display:none;align-items:center;gap:8px;background:var(--surface);border:1px solid rgba(255,255,255,.1);padding:8px 16px;border-radius:30px;font-size:13px;font-weight:700;margin-top:16px;position:relative;}
+/* honest counter — repositioned as floating pill in hero top-right */
+.proof{display:none;align-items:center;gap:8px;position:absolute;top:18px;right:24px;z-index:3;font-family:'Unbounded';font-weight:800;font-size:10.5px;letter-spacing:1.6px;color:#A0A6B8;text-transform:uppercase;background:rgba(18,23,36,.55);border:1px solid rgba(255,255,255,.08);padding:8px 14px;border-radius:30px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);}
 .proof.show{display:inline-flex;}
-.proof .p-num{color:var(--lime);font-family:'Unbounded';font-size:14px;}
+.proof::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--lime);box-shadow:0 0 8px rgba(182,255,60,.7);animation:blink 1.8s infinite;}
+.proof .p-num{color:var(--gold);font-size:12.5px;font-weight:900;letter-spacing:.5px;}
+@media(max-width:640px){.proof{position:static;margin:24px auto 0;display:none;}.proof.show{display:inline-flex;}}
 
-/* pulse line */
-.pulseline{width:min(520px,86%);height:54px;margin:22px auto 0;display:block;position:relative;}
-.pulseline path{fill:none;stroke:url(#pgrad);stroke-width:3;stroke-linecap:round;stroke-dasharray:1200;stroke-dashoffset:1200;animation:draw 2.4s ease forwards .3s;}
-@keyframes draw{to{stroke-dashoffset:0;}}
-@media (prefers-reduced-motion:reduce){.pulseline path{animation:none;stroke-dashoffset:0;}.eyebrow .dot{animation:none;}.ring{animation:none;}}
+/* marquee — kinetic goal categories */
+.marquee{position:relative;z-index:2;margin:44px auto 0;border-top:1px solid rgba(255,255,255,.07);border-bottom:1px solid rgba(255,255,255,.07);padding:18px 0;overflow:hidden;mask-image:linear-gradient(90deg,transparent,#000 10%,#000 90%,transparent);-webkit-mask-image:linear-gradient(90deg,transparent,#000 10%,#000 90%,transparent);opacity:0;animation:hero-fadeup 1s 1.6s cubic-bezier(.2,.7,.2,1) forwards;}
+.marquee-track{display:flex;gap:0;font-family:'Unbounded';font-weight:800;font-size:13px;letter-spacing:2px;color:#3A3F4F;text-transform:uppercase;white-space:nowrap;animation:marquee-slide 28s linear infinite;width:max-content;}
+.marquee-track span{display:inline-flex;align-items:center;padding:0 28px;}
+.marquee-track span::after{content:'●';color:var(--brand);font-size:9px;margin-left:28px;}
+@keyframes marquee-slide{from{transform:translateX(0);}to{transform:translateX(-50%);}}
+
+/* reduced motion — soft fade only, no transforms */
+@media (prefers-reduced-motion:reduce){
+  .eyebrow,.hero .sub,.micro,.marquee,h1 .h1-word{animation:hero-soft-fade .5s ease forwards !important;transform:none !important;opacity:1;}
+  .marquee-track,h1 .grad{animation:none !important;}
+  h1 .grad{background-position:0% center !important;}
+  .eyebrow .dot,.proof::before,.ring{animation:none !important;}
+}
+@keyframes hero-soft-fade{from{opacity:.5;}to{opacity:1;}}
 
 /* PHONE */
 .phone-stage{display:flex;justify-content:center;padding:40px 0 8px;position:relative;overflow:hidden;}
@@ -274,7 +295,6 @@ footer a:hover{color:var(--text);}
 <body>
 
 <svg width="0" height="0" aria-hidden="true"><defs>
-<linearGradient id="pgrad" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#F5212D"/><stop offset=".55" stop-color="#FF6A3C"/><stop offset="1" stop-color="#FFB13C"/></linearGradient>
 <linearGradient id="pgrad2" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#38E0FF"/><stop offset="1" stop-color="#F5212D"/></linearGradient>
 </defs></svg>
 
@@ -295,8 +315,10 @@ footer a:hover{color:var(--text);}
 
 <header class="hero wrap">
   <div class="aurora" aria-hidden="true"><i class="a1"></i><i class="a2"></i><i class="a3"></i></div>
+  <div class="hero-grid" aria-hidden="true"></div>
+  <div class="proof" id="proof"><span class="p-num" id="proof-num">0</span> <span data-key="proof-label">плана създадени днес</span></div>
   <div class="eyebrow"><span class="dot"></span> <span data-key="eyebrow">AI треньор · на български · 24/7</span></div>
-  <h1 data-key-html="h1">Твоята цел.<br><span class="grad">Твоят план.</span><br>60 секунди.</h1>
+  <h1 data-key-html="h1"><span class="h1-line"><span class="h1-word">Твоята цел.</span></span><span class="h1-line"><span class="h1-word grad">Твоят план.</span></span><span class="h1-line"><span class="h1-word">60 секунди.</span></span></h1>
   <p class="sub" data-key="sub">Личен AI треньор, който създава програма за хранене и движение точно за твоето тяло, ниво и ежедневие. Без зала, без срам, без чакане.</p>
 
   <!-- INTERACTIVE GOAL LINE: continues the sentence they typed in Google -->
@@ -334,11 +356,12 @@ footer a:hover{color:var(--text);}
     <img src="/static/payment-logos/stripe.svg" alt="Stripe">
   </div>
 
-  <div class="proof" id="proof"><span class="p-num" id="proof-num">0</span> <span data-key="proof-label">плана създадени днес</span></div>
-
-  <svg class="pulseline" viewBox="0 0 520 60" preserveAspectRatio="none" aria-hidden="true">
-    <path d="M0 30 H120 L150 8 L185 52 L215 18 L235 30 H300 L330 12 L360 48 L385 24 L400 30 H520"/>
-  </svg>
+  <div class="marquee" aria-hidden="true">
+    <div class="marquee-track">
+      <span data-key="mq-1">Отслабване</span><span data-key="mq-2">Мускули</span><span data-key="mq-3">Тонус</span><span data-key="mq-4">Хранене</span><span data-key="mq-5">Кардио</span><span data-key="mq-6">Сила</span><span data-key="mq-7">Енергия</span>
+      <span data-key="mq-1b">Отслабване</span><span data-key="mq-2b">Мускули</span><span data-key="mq-3b">Тонус</span><span data-key="mq-4b">Хранене</span><span data-key="mq-5b">Кардио</span><span data-key="mq-6b">Сила</span><span data-key="mq-7b">Енергия</span>
+    </div>
+  </div>
 </header>
 
 <div class="phone-stage">
@@ -506,7 +529,7 @@ const T={
   en:{
     'nav-cta':'Start free','slogan':'Your peak. Your pulse.',
     'eyebrow':'AI coach · instant · 24/7',
-    'h1':'Your goal.<br><span class="grad">Your plan.</span><br>60 seconds.',
+    'h1':'<span class="h1-line"><span class="h1-word">Your goal.</span></span><span class="h1-line"><span class="h1-word grad">Your plan.</span></span><span class="h1-line"><span class="h1-word">60 seconds.</span></span>',
     'sub':'A personal AI coach that builds a nutrition and movement program for YOUR body, level and daily life. No gym required, no judgement, no waiting.',
     'gl-want':'I want to lose','gl-for':'in',
     'gl-btn':'Get my plan — free →',
@@ -514,6 +537,8 @@ const T={
     'micro':'10 free messages every day · no card, no signup',
     'ps-label':'Secure payments via',
     'proof-label':'plans created today',
+    'mq-1':'Fat loss','mq-2':'Muscle','mq-3':'Tone','mq-4':'Nutrition','mq-5':'Cardio','mq-6':'Strength','mq-7':'Energy',
+    'mq-1b':'Fat loss','mq-2b':'Muscle','mq-3b':'Tone','mq-4b':'Nutrition','mq-5b':'Cardio','mq-6b':'Strength','mq-7b':'Energy',
     'ph-u':"I want to lose a few kilos — no gym, no miracle diets. Where do I start?",
     'ph-a':"That's exactly what I'm here for. I asked you 3 quick questions and here's your first week — realistic, no starving: 💪",
     'ph-day':'Day 1 · Your plan','ph-bal':'balanced ✓',
