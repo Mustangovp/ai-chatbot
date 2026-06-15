@@ -7,6 +7,7 @@ import hmac
 import hashlib
 import time
 import base64
+import threading
 
 from werkzeug.middleware.proxy_fix import ProxyFix
 app = Flask(__name__, static_folder='static', template_folder='templates')
@@ -265,6 +266,140 @@ def send_email(to_addr: str, subject: str, body: str, reply_to: str = "") -> boo
         if not resend_key:
             print('[email] WARNING: neither RESEND_API_KEY nor GMAIL credentials configured')
     return False
+
+
+# ═══════════════════════════════════════════════════════════
+# EMAIL FOLLOW-UP SEQUENCE
+# Triggered when a free user submits their email for bonus messages.
+# - T+24h: check-in + paid plan invite
+# - T+72h: APEX50 discount code (50% off)
+#
+# Runs in a daemon thread; state is in-memory (resets on redeploy).
+# Acceptable: the user already received the immediate welcome email.
+# Max 5 000 active entries — older ones are evicted automatically.
+# ═══════════════════════════════════════════════════════════
+_email_sequences = {}  # email -> {email, lang, enrolled_at, sent_24h, sent_72h}
+
+
+def _schedule_email_sequence(email: str, lang: str):
+    if email not in _email_sequences and len(_email_sequences) < 5000:
+        _email_sequences[email] = {
+            'email': email,
+            'lang': lang,
+            'enrolled_at': time.time(),
+            'sent_24h': False,
+            'sent_72h': False,
+        }
+
+
+def _send_seq_24h(seq: dict):
+    email, lang = seq['email'], seq['lang']
+    if lang == 'bg':
+        subject = 'Как вървят тренировките? 💪'
+        body = (
+            "Здравей!\n\n"
+            "Вчера поиска план от APEX PULSE PRO — надяваме се, че вече тренираш по него. 🏋️\n\n"
+            "Имаш ли въпроси? Нещо да коригираме в програмата?\n"
+            "Питай директно — AI треньорът чака.\n\n"
+            "https://apexpulse.pro/app\n\n"
+            "─────────────────────────────────────\n"
+            "Ако искаш AI треньор без никакви лимити, който помни целите ти 30 дни наред:\n\n"
+            "→ APEX CORE — €9.99 / 30 дни  (€0.33/ден, неограничени съобщения)\n"
+            "→ APEX PRO  — €14.99 / 30 дни (gpt-4o, по-детайлни програми)\n\n"
+            "https://apexpulse.pro/app\n"
+            "─────────────────────────────────────\n\n"
+            "Продължавай — резултатите идват с последователност. 🔥\n\n"
+            "APEX PULSE PRO\n"
+        )
+    else:
+        subject = 'How are the workouts going? 💪'
+        body = (
+            "Hey!\n\n"
+            "Yesterday you asked APEX PULSE PRO for a plan — hope you're already training with it! 🏋️\n\n"
+            "Any questions? Anything you'd like to adjust in the program?\n"
+            "Just ask — your AI coach is ready.\n\n"
+            "https://apexpulse.pro/app\n\n"
+            "─────────────────────────────────────\n"
+            "Want an AI coach with no limits that remembers your goals for 30 days straight:\n\n"
+            "→ APEX CORE — €9.99 / 30 days  (€0.33/day, unlimited messages)\n"
+            "→ APEX PRO  — €14.99 / 30 days (gpt-4o, more detailed programs)\n\n"
+            "https://apexpulse.pro/app\n"
+            "─────────────────────────────────────\n\n"
+            "Stay consistent — results follow dedication. 🔥\n\n"
+            "APEX PULSE PRO\n"
+        )
+    ok = send_email(email, subject, body)
+    print(f'[email-seq] 24h {"sent" if ok else "FAILED"} → {email[:30]}')
+
+
+def _send_seq_72h(seq: dict):
+    email, lang = seq['email'], seq['lang']
+    if lang == 'bg':
+        subject = 'Специална оферта — 50% отстъпка за теб 🎁'
+        body = (
+            "Здравей!\n\n"
+            "Преди 3 дни опита APEX PULSE PRO. Исках да те наградя с нещо специално:\n\n"
+            "╔══════════════════════════════════╗\n"
+            "║   50% ОТСТЪПКА — ПРОМО КОД:     ║\n"
+            "║                                  ║\n"
+            "║           APEX50                 ║\n"
+            "║                                  ║\n"
+            "╚══════════════════════════════════╝\n\n"
+            "Приложи при плащане и вземи 30 дни на половин цена:\n"
+            "→ APEX CORE: €5.00 (вместо €9.99)\n"
+            "→ APEX PRO:  €7.50 (вместо €14.99)\n\n"
+            "Активирай тук: https://apexpulse.pro/app\n\n"
+            "Тази оферта е само за теб и е времеограничена.\n\n"
+            "APEX PULSE PRO\n"
+        )
+    else:
+        subject = 'Special offer — 50% off just for you 🎁'
+        body = (
+            "Hey!\n\n"
+            "3 days ago you tried APEX PULSE PRO. I wanted to reward you:\n\n"
+            "╔══════════════════════════════════╗\n"
+            "║   50% OFF — PROMO CODE:          ║\n"
+            "║                                  ║\n"
+            "║           APEX50                 ║\n"
+            "║                                  ║\n"
+            "╚══════════════════════════════════╝\n\n"
+            "Apply at checkout for 30 days at half price:\n"
+            "→ APEX CORE: €5.00 (instead of €9.99)\n"
+            "→ APEX PRO:  €7.50 (instead of €14.99)\n\n"
+            "Activate here: https://apexpulse.pro/app\n\n"
+            "This offer is just for you and is time-limited.\n\n"
+            "APEX PULSE PRO\n"
+        )
+    ok = send_email(email, subject, body)
+    print(f'[email-seq] 72h {"sent" if ok else "FAILED"} → {email[:30]}')
+
+
+def _email_sequence_worker():
+    """Daemon thread: wakes every 10 min, sends due follow-ups, evicts finished entries."""
+    while True:
+        time.sleep(10 * 60)
+        now = time.time()
+        for email in list(_email_sequences.keys()):
+            seq = _email_sequences.get(email)
+            if not seq:
+                continue
+            elapsed = now - seq['enrolled_at']
+            if not seq['sent_24h'] and elapsed >= 24 * 3600:
+                try:
+                    _send_seq_24h(seq)
+                except Exception as exc:
+                    print(f'[email-seq] 24h error for {email[:30]}: {exc}')
+                seq['sent_24h'] = True
+            if not seq['sent_72h'] and elapsed >= 72 * 3600:
+                try:
+                    _send_seq_72h(seq)
+                except Exception as exc:
+                    print(f'[email-seq] 72h error for {email[:30]}: {exc}')
+                seq['sent_72h'] = True
+                del _email_sequences[email]  # sequence complete — free memory
+
+
+threading.Thread(target=_email_sequence_worker, daemon=True, name='email-seq').start()
 
 
 def make_token(expiry_timestamp: int, plan: str = "core") -> str:
@@ -689,6 +824,8 @@ Source: free-limit email capture (granted +{LEAD_BONUS} bonus messages)
 
         if not (notify_sent or mail_sent):
             print(f'[lead] No email provider worked. LOG:\n{body}')
+
+        _schedule_email_sequence(email, lang)
 
         return jsonify({'ok': True, 'bonus': LEAD_BONUS, 'mail_sent': mail_sent})
     except Exception as e:
