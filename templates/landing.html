@@ -450,7 +450,7 @@ footer a:hover{color:var(--text);}
         <li data-key="pr-c3">PDF на всеки план</li>
         <li data-key="pr-c4">BG / EN</li>
       </ul>
-      <a href="/app?plan=core" class="p-btn" data-key="pr-core-btn" onclick="track('checkout_intent',{plan:'core',place:'landing'})">Активирай CORE</a>
+      <a href="/app?plan=core" class="p-btn" data-key="pr-core-btn" onclick="goCheckout(this,'core');return false;">Активирай CORE</a>
     </div>
     <div class="plan">
       <div class="p-name">PRO</div>
@@ -462,7 +462,7 @@ footer a:hover{color:var(--text);}
         <li data-key="pr-p3">6× по-дълга памет</li>
         <li data-key="pr-p4">Детайлни програми до последния грам</li>
       </ul>
-      <a href="/app?plan=pro" class="p-btn" data-key="pr-pro-btn" onclick="track('checkout_intent',{plan:'pro',place:'landing'})">Към PRO</a>
+      <a href="/app?plan=pro" class="p-btn" data-key="pr-pro-btn" onclick="goCheckout(this,'pro');return false;">Към PRO</a>
     </div>
   </div>
 
@@ -626,6 +626,23 @@ function heroGo(){
   }
   track('hero_goal_click',{kg:kg,time:tmEl.value});
   window.location.href='/app?q='+encodeURIComponent(msg);
+}
+
+/* ═══════════ PAID PLAN → STRIPE CHECKOUT ═══════════
+   FREE button still goes straight to /app. CORE/PRO POST to
+   /create-checkout-session and redirect to the returned Stripe URL.
+   Falls back to /app?plan=X if the call fails so users aren't stranded. */
+async function goCheckout(btn,plan){
+  if(btn._busy)return;
+  btn._busy=true;
+  btn.style.opacity='.6';btn.style.pointerEvents='none';
+  track('checkout_intent',{plan:plan,place:'landing'});
+  try{
+    const res=await fetch('/create-checkout-session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plan:plan})});
+    const data=await res.json();
+    if(data&&data.url){window.location.href=data.url;return;}
+  }catch(e){}
+  window.location.href='/app?plan='+encodeURIComponent(plan);
 }
 
 /* ═══════════ HONEST COUNTER ═══════════ */
