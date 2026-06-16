@@ -457,9 +457,20 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 // ═══════════════════════════════════════════════════════════
 const SHOW_FOUNDING_PRICE = false;
 
-// Read language choice from landing page (saved in localStorage as 'apexLang')
-// Falls back to Bulgarian if nothing was chosen
-let lang=localStorage.getItem('apexLang')||'bg';
+// Read language choice from landing page (saved in localStorage as 'apexLang').
+// За deep-links директно към /app — налучкваме от браузъра при първо посещение.
+// EN ако основният език започва с "en"; иначе BG. Запазваме, за да не се сменя на reload.
+let lang='bg';
+try{
+  const saved=localStorage.getItem('apexLang');
+  if(saved==='bg'||saved==='en'){
+    lang=saved;
+  }else{
+    const nav=(navigator.language||(navigator.languages&&navigator.languages[0])||'').toLowerCase();
+    if(nav.startsWith('en'))lang='en';
+    localStorage.setItem('apexLang',lang);
+  }
+}catch(e){}
 const T={
   bg:{
     placeholder:'Опиши целта си...',
