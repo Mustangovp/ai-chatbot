@@ -356,23 +356,23 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
       <div class="pw-plans">
         <div class="pw-plan core">
           <div class="pw-plan-name">CORE</div>
-          <div class="pw-plan-price">€9.99<span class="small">/30д</span></div>
+          <div class="pw-plan-price">€9.99<span class="small" data-key="pw-per">/30д</span></div>
           <ul class="pw-plan-features">
-            <li>Неограничени планове</li>
-            <li>Помни целите ти</li>
-            <li>PDF + копиране</li>
+            <li data-key="pw-c1">Неограничени планове</li>
+            <li data-key="pw-c2">Помни целите ти</li>
+            <li data-key="pw-c3">PDF + копиране</li>
           </ul>
-          <button class="pw-plan-btn" onclick="confirmAndPay('core')">Активирай CORE →</button>
+          <button class="pw-plan-btn" data-key="pw-core-btn" onclick="confirmAndPay('core')">Активирай CORE →</button>
         </div>
         <div class="pw-plan pro">
           <div class="pw-plan-name">PRO</div>
-          <div class="pw-plan-price">€14.99<span class="small">/30д</span></div>
+          <div class="pw-plan-price">€14.99<span class="small" data-key="pw-per">/30д</span></div>
           <ul class="pw-plan-features">
-            <li><strong>Най-умният AI</strong></li>
-            <li><strong>Дълга памет</strong> (6× повече)</li>
-            <li>Детайлни програми</li>
+            <li data-key-html="pw-p1"><strong>Най-умният AI</strong></li>
+            <li data-key-html="pw-p2"><strong>Дълга памет</strong> (6× повече)</li>
+            <li data-key="pw-p3">Детайлни програми</li>
           </ul>
-          <button class="pw-plan-btn" onclick="confirmAndPay('pro')">Към PRO →</button>
+          <button class="pw-plan-btn" data-key="pw-pro-btn" onclick="confirmAndPay('pro')">Към PRO →</button>
         </div>
       </div>
       
@@ -493,6 +493,15 @@ const T={
     'disc-btn':'Разбрах →',
     pw_headline:'Пълен достъп до Apex',
     pw_sub:'Неограничен AI треньор, който помни целите ти и създава персонални програми за теб — 30 дни пълен достъп.',
+    'pw-per':'/30д',
+    'pw-c1':'Неограничени планове',
+    'pw-c2':'Помни целите ти',
+    'pw-c3':'PDF + копиране',
+    'pw-core-btn':'Активирай CORE →',
+    'pw-p1':'<strong>Най-умният AI</strong>',
+    'pw-p2':'<strong>Дълга памет</strong> (6× повече)',
+    'pw-p3':'Детайлни програми',
+    'pw-pro-btn':'Към PRO →',
     copySuccess:'Планът е копиран! 🔥',pdfError:'Първо задай въпрос на AI!',
     greeting:'**🔱 Влизаш в Apex.**\n\nАз съм треньорът ти от тук нататък. Ти даваш целта — аз пиша плана. Точен, реалистичен, твой.\n\nС какво започваме?',
     chips:[
@@ -541,6 +550,15 @@ const T={
     'disc-btn':'I understand →',
     pw_headline:'Full access to Apex',
     pw_sub:'An unlimited AI coach that remembers your goals and builds personalized programs for you — 30 days full access.',
+    'pw-per':'/30d',
+    'pw-c1':'Unlimited plans',
+    'pw-c2':'Remembers your goals',
+    'pw-c3':'PDF + copy',
+    'pw-core-btn':'Activate CORE →',
+    'pw-p1':'<strong>Smartest AI model</strong>',
+    'pw-p2':'<strong>Long memory</strong> (6× more)',
+    'pw-p3':'Detailed programs',
+    'pw-pro-btn':'Go PRO →',
     copySuccess:'Plan copied! 🔥',pdfError:'First ask the AI a question!',
     greeting:'**🔱 You\'re in Apex.**\n\nI\'m your coach from here on. You give me the goal — I write the plan. Precise, realistic, yours.\n\nWhere do we start?',
     chips:[
@@ -587,6 +605,7 @@ function applyStaticLang(){
   const d=T[lang];
   document.getElementById('user-in').placeholder=d.placeholder;
   document.querySelectorAll('[data-key]').forEach(el=>{const k=el.getAttribute('data-key');if(d[k])el.innerText=d[k];});
+  document.querySelectorAll('[data-key-html]').forEach(el=>{const k=el.getAttribute('data-key-html');if(d[k]!==undefined)el.innerHTML=d[k];});
   document.getElementById('pw-headline').innerText=d.pw_headline;
   document.getElementById('pw-subheadline').innerText=d.pw_sub;
   updateBadge();
