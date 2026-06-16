@@ -536,6 +536,9 @@ try{
     localStorage.setItem('apexLang',lang);
   }
 }catch(e){}
+// EN визитата минава през /en — дедикираният EN лендинг с премиум positioning.
+// replace() не оставя запис в history, така че Back не връща обратно на /.
+if(lang==='en'){location.replace('/en');}
 
 const T={
   en:{
