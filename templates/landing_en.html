@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Apex Pulse PRO — Your AI Coach. Your goal, your plan, in 60 seconds.</title>
+<meta name="description" content="Coach-grade nutrition and training plans, generated from your goal and your daily reality. No app. No gym contract. GDPR-aligned. Try free.">
+<meta property="og:title" content="Apex Pulse PRO — Your goal. Your plan. 60 seconds.">
+<meta property="og:description" content="Coach-grade plans for fat loss, muscle, and starting from zero. Built for serious results, available 24/7.">
+<meta property="og:image" content="https://apexpulse.pro/static/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://apexpulse.pro/static/og.png">
+<meta property="og:url" content="https://apexpulse.pro/en">
+<meta property="og:type" content="website">
+<link rel="icon" href="/static/logo.png">
+<link rel="canonical" href="https://apexpulse.pro/en">
+<link rel="alternate" hreflang="en" href="https://apexpulse.pro/en">
+<link rel="alternate" hreflang="bg" href="https://apexpulse.pro/">
+
+<!-- Google Consent Mode v2: analytics DENIED until the user accepts cookies -->
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('consent', 'default', {
+  'analytics_storage': 'denied',
+  'ad_storage': 'denied',
+  'ad_user_data': 'denied',
+  'ad_personalization': 'denied'
+});
+try{
+  if(localStorage.getItem('apexConsent')==='granted'){
+    gtag('consent','update',{'analytics_storage':'granted','ad_storage':'granted','ad_user_data':'granted','ad_personalization':'granted'});
+  }
+}catch(e){}
+// Mark this visitor as EN-preferred so /app inherits the choice.
+try{localStorage.setItem('apexLang','en');}catch(e){}
+gtag('js', new Date());
+gtag('config', 'G-B3WLGXE2XM');
+</script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-B3WLGXE2XM"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@700;900&family=Manrope:wght@400;500;700;800&display=swap" rel="stylesheet">
+
+<style>
+:root{
+  --bg:#0B0E14; --surface:#121724; --surface2:#1A2133;
+  --text:#F2F5FA; --muted:#8B93A7; --border:rgba(255,255,255,0.1);
+  --brand:#F5212D; --ember:#FF6A3C; --gold:#FFB13C;
+  --cyan:#38E0FF; --lime:#B6FF3C;
+  --pulse:linear-gradient(90deg,#F5212D,#FF6A3C);
+  --radius:20px;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;overflow-x:hidden;max-width:100vw;}
+body{background:var(--bg);color:var(--text);font-family:'Manrope',sans-serif;line-height:1.6;overflow-x:hidden;-webkit-font-smoothing:antialiased;}
+.wrap{max-width:1100px;margin:0 auto;padding:0 20px;}
+a{color:inherit;}
+img{max-width:100%;}
+
+/* NAV */
+nav{position:sticky;top:0;z-index:50;background:rgba(5,5,12,0.92);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid rgba(255,255,255,.07);}
+.nav-inner{display:flex;align-items:center;justify-content:space-between;max-width:1100px;margin:0 auto;padding:16px 20px;gap:10px;}
+.logo{display:flex;align-items:center;gap:10px;font-family:'Unbounded';font-weight:700;font-size:14px;letter-spacing:.5px;text-decoration:none;}
+.logo img{width:34px;height:34px;filter:drop-shadow(0 0 10px rgba(245,33,45,.5));}
+.logo{line-height:1.25;}
+.logo-slogan{font-family:'Manrope';font-size:9px;font-weight:700;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;}
+.nav-right{display:flex;align-items:center;gap:12px;}
+.nav-cta{background:var(--pulse);color:#fff;font-weight:800;font-size:13px;padding:10px 18px;border-radius:30px;text-decoration:none;box-shadow:0 4px 16px rgba(245,33,45,.3);white-space:nowrap;transition:transform .15s,box-shadow .15s;}
+.nav-cta:hover{transform:translateY(-1px);box-shadow:0 6px 22px rgba(245,33,45,.48);}
+
+/* HERO — editorial */
+.hero{padding:72px 0 48px;text-align:center;position:relative;isolation:isolate;}
+.hero-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);background-size:56px 56px;mask-image:radial-gradient(ellipse at center,#000 30%,transparent 75%);-webkit-mask-image:radial-gradient(ellipse at center,#000 30%,transparent 75%);pointer-events:none;z-index:0;}
+.eyebrow{display:inline-flex;align-items:center;gap:14px;font-family:'Manrope';font-weight:800;font-size:11px;letter-spacing:3.5px;text-transform:uppercase;color:var(--gold);margin-bottom:28px;position:relative;z-index:2;opacity:0;animation:hero-fadeup .8s .15s cubic-bezier(.2,.7,.2,1) forwards;}
+.eyebrow::before,.eyebrow::after{content:'';width:34px;height:1px;background:linear-gradient(90deg,transparent,rgba(255,177,60,.55),transparent);}
+.eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--lime);box-shadow:0 0 10px rgba(182,255,60,.7);animation:blink 1.8s infinite;}
+@media(max-width:480px){.eyebrow{font-size:10px;letter-spacing:1.8px;gap:10px;}.eyebrow::before,.eyebrow::after{width:20px;}}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:.35;}}
+h1{font-family:'Unbounded';font-weight:900;font-size:clamp(40px,8.5vw,104px);line-height:.96;letter-spacing:-.035em;position:relative;z-index:2;margin:0 auto;max-width:920px;}
+h1 .h1-line{display:block;overflow:hidden;padding:0 .04em;}
+h1 .h1-word{display:inline-block;transform:translateY(110%);opacity:0;animation:h1-rise .9s cubic-bezier(.2,.7,.2,1) forwards;}
+h1 .h1-line:nth-child(1) .h1-word{animation-delay:.25s;}
+h1 .h1-line:nth-child(2) .h1-word{animation-delay:.4s;}
+h1 .h1-line:nth-child(3) .h1-word{animation-delay:.55s;}
+@keyframes h1-rise{to{transform:translateY(0);opacity:1;}}
+h1 .grad{background:linear-gradient(90deg,#F5212D 0%,#FF6A3C 45%,#FFB13C 100%);background-size:200% auto;-webkit-background-clip:text;background-clip:text;color:transparent;animation:hero-shimmer 4.5s ease-in-out infinite;}
+@keyframes hero-shimmer{0%,100%{background-position:0% center;}50%{background-position:100% center;}}
+.hero .sub{color:#A0A6B8;font-size:clamp(16px,2vw,19px);max-width:580px;margin:32px auto 0;font-weight:500;line-height:1.55;position:relative;z-index:2;opacity:0;animation:hero-fadeup 1s 1.0s cubic-bezier(.2,.7,.2,1) forwards;}
+@keyframes hero-fadeup{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:translateY(0);}}
+
+/* INTERACTIVE GOAL LINE */
+.goal-line{margin:26px auto 0;max-width:min(560px,100%);box-sizing:border-box;background:var(--surface);border:1px solid rgba(255,255,255,.12);border-radius:var(--radius);padding:20px 18px;position:relative;box-shadow:0 14px 50px rgba(0,0,0,.4);}
+.goal-line .gl-text{font-size:clamp(16px,3.4vw,21px);font-weight:700;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;line-height:1.9;}
+.goal-line select{appearance:none;-webkit-appearance:none;background:var(--surface2);border:1.5px solid rgba(245,33,45,.5);color:var(--text);font-family:'Unbounded';font-weight:700;font-size:clamp(14px,3vw,17px);padding:7px 28px 7px 14px;border-radius:12px;cursor:pointer;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M0 0l5 6 5-6z' fill='%23F5212D'/></svg>");background-repeat:no-repeat;background-position:right 10px center;}
+.goal-line .gl-btn{display:block;width:100%;margin-top:16px;background:var(--pulse);color:#fff;border:none;font-family:'Manrope';font-weight:800;font-size:17px;padding:16px;border-radius:14px;cursor:pointer;box-shadow:0 8px 28px rgba(245,33,45,.38);transition:transform .15s,box-shadow .15s;}
+.goal-line .gl-btn:hover{transform:translateY(-1px);box-shadow:0 12px 34px rgba(245,33,45,.48);}
+.goal-line .gl-btn:active{transform:scale(.98);}
+.goal-line .gl-alt{margin-top:12px;font-size:13px;color:var(--muted);}
+.goal-line .gl-alt a{color:var(--cyan);font-weight:700;text-decoration:none;}
+.micro{color:#6B7185;font-size:11.5px;letter-spacing:1.8px;text-transform:uppercase;font-weight:700;margin-top:28px;position:relative;z-index:2;opacity:0;animation:hero-fadeup 1s 1.4s cubic-bezier(.2,.7,.2,1) forwards;}
+
+/* payment strip under hero */
+.paystrip{position:relative;display:flex;justify-content:center;align-items:center;gap:9px;flex-wrap:wrap;margin-top:18px;position:relative;}
+.paystrip .ps-label{width:100%;text-align:center;font-size:11.5px;color:var(--muted);font-weight:600;margin-bottom:2px;}
+.paystrip img{height:24px;width:auto;border-radius:4px;background:#fff;padding:2px 5px;}
+.paystrip img.dark{background:#000;}
+
+/* honest counter — floating pill */
+.proof{display:none;align-items:center;gap:8px;position:absolute;top:18px;right:24px;z-index:3;font-family:'Unbounded';font-weight:800;font-size:10.5px;letter-spacing:1.6px;color:#A0A6B8;text-transform:uppercase;background:rgba(18,23,36,.55);border:1px solid rgba(255,255,255,.08);padding:8px 14px;border-radius:30px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);}
+.proof.show{display:inline-flex;}
+.proof::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--lime);box-shadow:0 0 8px rgba(182,255,60,.7);animation:blink 1.8s infinite;}
+.proof .p-num{color:var(--gold);font-size:12.5px;font-weight:900;letter-spacing:.5px;}
+@media(max-width:640px){.proof{position:static;margin:24px auto 0;display:none;}.proof.show{display:inline-flex;}}
+
+/* marquee */
+.marquee{position:relative;z-index:2;margin:44px auto 0;border-top:1px solid rgba(255,255,255,.07);border-bottom:1px solid rgba(255,255,255,.07);padding:18px 0;overflow:hidden;mask-image:linear-gradient(90deg,transparent,#000 10%,#000 90%,transparent);-webkit-mask-image:linear-gradient(90deg,transparent,#000 10%,#000 90%,transparent);opacity:0;animation:hero-fadeup 1s 1.6s cubic-bezier(.2,.7,.2,1) forwards;}
+.marquee-track{display:flex;gap:0;font-family:'Unbounded';font-weight:800;font-size:13px;letter-spacing:2px;color:#3A3F4F;text-transform:uppercase;white-space:nowrap;animation:marquee-slide 28s linear infinite;width:max-content;}
+.marquee-track span{display:inline-flex;align-items:center;padding:0 28px;}
+.marquee-track span::after{content:'●';color:var(--brand);font-size:9px;margin-left:28px;}
+@keyframes marquee-slide{from{transform:translateX(0);}to{transform:translateX(-50%);}}
+
+/* reduced motion */
+@media (prefers-reduced-motion:reduce){
+  .eyebrow,.hero .sub,.micro,.marquee,h1 .h1-word{animation:hero-soft-fade .5s ease forwards !important;transform:none !important;opacity:1;}
+  .marquee-track,h1 .grad{animation:none !important;}
+  h1 .grad{background-position:0% center !important;}
+  .eyebrow .dot,.proof::before,.ring{animation:none !important;}
+}
+@keyframes hero-soft-fade{from{opacity:.5;}to{opacity:1;}}
+
+/* PHONE */
+.phone-stage{display:flex;justify-content:center;padding:40px 0 8px;position:relative;overflow:hidden;}
+.ring{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:min(370px,90vw);height:min(370px,90vw);border-radius:50%;border:2px solid transparent;background:conic-gradient(from 180deg,var(--brand),var(--ember),var(--gold),var(--cyan),var(--lime),var(--brand)) border-box;-webkit-mask:linear-gradient(#fff 0 0) padding-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;opacity:.3;animation:spin 14s linear infinite;}
+@keyframes spin{to{transform:translate(-50%,-50%) rotate(360deg);}}
+.phone{position:relative;width:min(308px,94vw);background:var(--bg);border:1px solid rgba(255,255,255,.12);border-radius:36px;padding:12px 0 0;box-shadow:0 30px 80px rgba(0,0,0,.6),0 0 60px rgba(245,33,45,.14);overflow:hidden;}
+.phone .notch{width:90px;height:5px;background:rgba(255,255,255,.15);border-radius:3px;margin:0 auto 10px;}
+.ph-nav{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.1);background:var(--surface);}
+.ph-brand{display:flex;align-items:center;gap:8px;}
+.ph-logo{width:26px;height:26px;border-radius:6px;background:url('/static/logo.png') center/cover no-repeat;box-shadow:0 0 12px rgba(245,33,45,.45);}
+.ph-title{font-family:'Unbounded';font-size:10.5px;letter-spacing:.5px;line-height:1.2;}
+.ph-title .ra{color:var(--brand);}
+.ph-sub{font-size:8px;color:var(--muted);font-weight:600;}
+.ph-badge{font-family:'Unbounded';font-size:8px;letter-spacing:1px;padding:4px 8px;border:1px solid rgba(255,255,255,.4);color:var(--text);border-radius:20px;background:rgba(255,255,255,.06);}
+.chat{display:flex;flex-direction:column;gap:10px;font-size:12.5px;padding:14px 12px;min-height:285px;}
+.bub{padding:10px 13px;border-radius:12px;max-width:88%;line-height:1.55;}
+.bub.u{background:var(--pulse);color:var(--text);align-self:flex-end;border-bottom-right-radius:4px;font-weight:600;}
+.bub.a{background:linear-gradient(135deg,rgba(18,23,36,.95),rgba(26,33,51,.95));border:1px solid rgba(255,255,255,.1);border-left:3px solid var(--brand);align-self:flex-start;border-bottom-left-radius:4px;color:#E5E9F2;}
+.ph-input{display:flex;gap:8px;padding:10px 12px 14px;border-top:1px solid rgba(255,255,255,.1);background:var(--surface);}
+.ph-input .ph-field{flex:1;background:var(--bg);border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:10px 12px;font-size:11.5px;color:var(--muted);}
+.ph-input .ph-send{width:38px;height:38px;border-radius:10px;background:var(--pulse);color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;box-shadow:0 4px 14px rgba(245,33,45,.4);flex-shrink:0;}
+.plan-card{background:var(--surface2);border:1px solid rgba(56,224,255,.25);border-radius:16px;padding:12px;width:100%;}
+.plan-card .pc-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+.plan-card .pc-title{font-weight:800;font-size:12.5px;}
+.plan-card .pc-kcal{font-size:11px;color:var(--lime);font-weight:700;background:rgba(182,255,60,.1);padding:3px 8px;border-radius:20px;}
+.plan-row{display:flex;justify-content:space-between;font-size:12px;padding:6px 0;border-top:1px solid rgba(255,255,255,.07);gap:8px;}
+.plan-row span:last-child{color:var(--muted);flex-shrink:0;}
+.typing{display:flex;gap:4px;align-self:flex-start;padding:10px 14px;background:var(--surface2);border-radius:16px;border-bottom-left-radius:4px;}
+.typing i{width:6px;height:6px;border-radius:50%;background:var(--brand);animation:tp 1.2s infinite;}
+.typing i:nth-child(2){animation-delay:.2s;background:var(--ember);}
+.typing i:nth-child(3){animation-delay:.4s;background:var(--gold);}
+@keyframes tp{0%,100%{transform:translateY(0);opacity:.4;}50%{transform:translateY(-4px);opacity:1;}}
+
+/* SECTIONS */
+section{padding:56px 0;}
+@media(max-width:640px){section{padding:36px 0;}}
+.sec-label{font-size:12px;font-weight:800;letter-spacing:2px;color:var(--cyan);text-transform:uppercase;margin-bottom:10px;}
+h2{font-family:'Unbounded';font-weight:700;font-size:clamp(21px,4vw,32px);line-height:1.2;margin-bottom:8px;}
+.sec-sub{color:var(--muted);font-size:15px;max-width:540px;}
+
+/* HOW IT WORKS */
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-top:30px;}
+.step{background:var(--surface);border:1px solid rgba(255,255,255,.1);border-radius:var(--radius);padding:22px;transition:transform .2s,border-color .2s,box-shadow .2s;}
+.step:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.2);box-shadow:0 10px 32px rgba(0,0,0,.35);}
+.step .s-num{font-family:'Unbounded';font-weight:900;font-size:30px;background:var(--pulse);-webkit-background-clip:text;background-clip:text;color:transparent;}
+.step h3{font-size:16px;font-weight:800;margin:10px 0 6px;}
+.step p{font-size:13.5px;color:var(--muted);}
+
+/* GOALS */
+.goals{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;margin-top:30px;}
+.goal{position:relative;border-radius:var(--radius);padding:24px 22px;text-decoration:none;color:#fff;overflow:hidden;border:1px solid rgba(255,255,255,.1);background:var(--surface);transition:transform .2s,box-shadow .2s,border-color .2s;display:block;}
+.goal:hover{transform:translateY(-3px);box-shadow:0 14px 40px rgba(0,0,0,.45);border-color:rgba(255,255,255,.2);}
+.goal:active{transform:scale(.98);}
+.goal::before{content:'';position:absolute;inset:0;opacity:.16;}
+.goal.burn::before{background:linear-gradient(135deg,#F5212D,#FF6A3C);}
+.goal.zero::before{background:linear-gradient(135deg,#38E0FF,#3C7BFF);}
+.goal.muscle::before{background:linear-gradient(135deg,#6B7CFF,#9D6BFF);}
+.goal.elite::before{background:linear-gradient(135deg,#FFB13C,#D4AF37);}
+.goal .g-ico{width:44px;height:44px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;margin-bottom:14px;position:relative;}
+.goal.burn .g-ico{background:rgba(245,33,45,.2);}
+.goal.zero .g-ico{background:rgba(56,224,255,.18);}
+.goal.muscle .g-ico{background:rgba(107,124,255,.2);}
+.goal.elite .g-ico{background:rgba(255,177,60,.2);}
+.goal h3{font-family:'Unbounded';font-weight:700;font-size:15.5px;margin-bottom:8px;position:relative;}
+.goal p{font-size:13.5px;color:var(--muted);position:relative;}
+.goal .go{margin-top:14px;font-weight:800;font-size:13px;position:relative;}
+.goal.burn .go{color:#FF6A3C;}
+.goal.zero .go{color:var(--cyan);}
+.goal.muscle .go{color:#8B9AFF;}
+.goal.elite .go{color:#FFB13C;}
+
+/* PRICING */
+.plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;margin-top:30px;align-items:start;}
+.plan{background:var(--surface);border:1px solid rgba(255,255,255,.1);border-radius:var(--radius);padding:28px 24px;}
+.plan.hot{border:2px solid transparent;background:linear-gradient(var(--surface),var(--surface)) padding-box,var(--pulse) border-box;position:relative;}
+.plan.hot .tag{position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:var(--pulse);font-size:11px;font-weight:800;letter-spacing:1px;padding:5px 16px;border-radius:20px;white-space:nowrap;}
+.plan .p-name{font-family:'Unbounded';font-weight:700;font-size:14px;letter-spacing:1px;}
+.plan .p-price{font-family:'Unbounded';font-weight:900;font-size:36px;margin:12px 0 2px;}
+.plan .p-price span{font-size:14px;color:var(--muted);font-weight:500;font-family:'Manrope';}
+.plan .p-day{font-size:12.5px;color:var(--lime);font-weight:700;margin-bottom:16px;}
+.plan ul{list-style:none;margin:0 0 22px;}
+.plan li{font-size:14px;padding:7px 0;color:#C9D0DF;display:flex;gap:9px;align-items:flex-start;}
+.plan li::before{content:'✓';color:var(--lime);font-weight:800;flex-shrink:0;}
+.plan li.off{color:var(--muted);opacity:.55;}
+.plan li.off::before{content:'—';}
+.p-btn{display:block;text-align:center;font-weight:800;font-size:15px;padding:14px;border-radius:14px;text-decoration:none;color:#fff;border:1px solid rgba(255,255,255,.2);cursor:pointer;background:none;width:100%;font-family:'Manrope';transition:transform .15s,border-color .15s,box-shadow .15s;}
+.p-btn:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.4);}
+.plan.hot .p-btn{background:var(--pulse);border:none;box-shadow:0 6px 24px rgba(245,33,45,.32);}
+.plan.hot .p-btn:hover{box-shadow:0 10px 30px rgba(245,33,45,.45);border:none;}
+
+/* TRUST BLOCK */
+.trustblock{margin-top:24px;background:var(--surface);border:1px solid rgba(255,255,255,.1);border-radius:var(--radius);padding:20px;text-align:center;}
+.trustblock .tb-logos{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
+.trustblock .tb-logos img{height:28px;width:auto;border-radius:5px;background:#fff;padding:3px 6px;}
+.trustblock .tb-logos img.dark{background:#000;}
+.trustblock .tb-row{font-size:13px;color:#C9D0DF;padding:3px 0;}
+.trustblock .tb-row b{color:var(--text);}
+
+/* FAQ */
+.faq-item{background:var(--surface);border:1px solid rgba(255,255,255,.1);border-radius:14px;margin-bottom:10px;overflow:hidden;}
+.faq-item summary{padding:16px 18px;font-weight:700;font-size:15px;cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:10px;transition:color .15s;}
+.faq-item summary:hover{color:var(--text);}
+.faq-item summary::after{content:'+';font-family:'Unbounded';color:var(--brand);font-size:18px;flex-shrink:0;transition:transform .3s ease;}
+.faq-item[open] summary::after{content:'−';}
+.faq-item .fa-body{padding:0 18px 16px;font-size:13.5px;color:var(--muted);}
+@keyframes faq-open{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:translateY(0);}}
+.faq-item[open] .fa-body{animation:faq-open .25s ease-out;}
+@media (prefers-reduced-motion:reduce){.faq-item[open] .fa-body{animation:none;}}
+
+/* divider */
+.divider{width:100%;height:40px;opacity:.45;}
+.divider path{fill:none;stroke:url(#pgrad2);stroke-width:2;}
+
+/* FOOTER */
+footer{padding:40px 0 80px;text-align:center;color:var(--muted);font-size:12.5px;border-top:1px solid rgba(255,255,255,.07);margin-top:30px;}
+footer a{color:var(--muted);text-decoration:none;}
+footer a:hover{color:var(--text);}
+.foot-links{display:flex;justify-content:center;gap:14px;flex-wrap:wrap;margin-top:12px;}
+
+/* COOKIE BAR */
+.cookiebar{position:fixed;bottom:12px;left:12px;right:12px;max-width:560px;margin:0 auto;background:var(--surface2);border:1px solid rgba(255,255,255,.15);border-radius:16px;padding:14px 16px;font-size:12.5px;color:#C9D0DF;display:none;gap:10px;align-items:center;z-index:999;box-shadow:0 10px 40px rgba(0,0,0,.55);flex-wrap:wrap;}
+.cookiebar.show{display:flex;}
+.cookiebar .cb-text{flex:1;min-width:180px;}
+.cookiebar button{border:none;color:#fff;font-weight:800;font-size:12px;padding:9px 16px;border-radius:10px;cursor:pointer;font-family:'Manrope';}
+.cookiebar .cb-accept{background:var(--pulse);}
+.cookiebar .cb-decline{background:none;border:1px solid rgba(255,255,255,.25);}
+
+/* LEGAL MODAL */
+#legal-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1000;overflow-y:auto;padding:24px 16px;}
+#legal-modal.active{display:block;}
+#legal-modal .lm-box{max-width:720px;margin:0 auto;background:var(--surface);border:1px solid rgba(255,255,255,.15);border-radius:var(--radius);padding:28px 24px;position:relative;}
+#legal-modal .lm-close{position:sticky;top:0;float:right;background:var(--surface2);border:1px solid rgba(255,255,255,.2);color:var(--text);width:34px;height:34px;border-radius:50%;font-size:16px;cursor:pointer;}
+#legal-content{font-size:13.5px;color:#C9D0DF;}
+#legal-content h2{font-size:20px;margin-bottom:12px;}
+#legal-content h3{font-size:15px;margin:16px 0 6px;color:var(--text);}
+#legal-content p,#legal-content li{margin-bottom:8px;}
+#legal-content ul{padding-left:18px;}
+
+/* SCROLL TO TOP */
+.to-top{position:fixed;bottom:74px;right:16px;width:46px;height:46px;border-radius:50%;background:var(--pulse);color:#fff;border:none;font-size:19px;cursor:pointer;z-index:998;box-shadow:0 6px 22px rgba(245,33,45,.4);display:none;align-items:center;justify-content:center;transition:transform .15s;}
+.to-top.show{display:flex;}
+.to-top:active{transform:scale(.92);}
+
+/* SCROLL REVEAL */
+.reveal{opacity:0;transform:translateY(22px);transition:opacity .5s ease,transform .5s ease;}
+.reveal.in-view{opacity:1;transform:translateY(0);}
+@media(prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none;transition:none;}}
+
+/* AURORA EMBERS */
+.aurora{position:absolute;inset:-120px;overflow:hidden;pointer-events:none;}
+.aurora i{position:absolute;border-radius:50%;filter:blur(90px);will-change:transform;}
+.aurora .a1{width:560px;height:560px;left:-160px;top:-80px;background:radial-gradient(circle,rgba(245,33,45,.16),transparent 65%);animation:drift1 26s ease-in-out infinite alternate;}
+.aurora .a2{width:520px;height:520px;right:-180px;top:60px;background:radial-gradient(circle,rgba(255,106,60,.12),transparent 65%);animation:drift2 34s ease-in-out infinite alternate;}
+.aurora .a3{width:680px;height:680px;left:50%;bottom:-260px;transform:translateX(-50%);background:radial-gradient(circle,rgba(122,14,20,.22),transparent 62%);animation:drift3 30s ease-in-out infinite alternate;}
+@keyframes drift1{from{transform:translate3d(0,0,0) scale(1);}to{transform:translate3d(90px,60px,0) scale(1.15);}}
+@keyframes drift2{from{transform:translate3d(0,0,0) scale(1.05);}to{transform:translate3d(-80px,90px,0) scale(.92);}}
+@keyframes drift3{from{transform:translate3d(-50%,0,0) scale(1);}to{transform:translate3d(-44%,-60px,0) scale(1.12);}}
+@media (prefers-reduced-motion:reduce){.aurora i{animation:none;}}
+@media (max-width:480px){.aurora i{filter:blur(70px);}}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" aria-hidden="true"><defs>
+<linearGradient id="pgrad2" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#38E0FF"/><stop offset="1" stop-color="#F5212D"/></linearGradient>
+</defs></svg>
+
+<nav>
+  <div class="nav-inner">
+    <a class="logo" href="/en"><img src="/static/logo.png" alt="Apex Pulse PRO">
+      <span><span style="color:var(--brand);">APEX</span> PULSE PRO<br><span class="logo-slogan">Your peak. Your pulse.</span></span>
+    </a>
+    <div class="nav-right">
+      <a href="/app" class="nav-cta" onclick="track('cta_click',{place:'nav'})">Get started</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero wrap">
+  <div class="aurora" aria-hidden="true"><i class="a1"></i><i class="a2"></i><i class="a3"></i></div>
+  <div class="hero-grid" aria-hidden="true"></div>
+  <div class="proof" id="proof"><span class="p-num" id="proof-num">0</span> plans built today</div>
+  <div class="eyebrow"><span class="dot"></span> Coach-grade · No app · Available 24/7</div>
+  <h1><span class="h1-line"><span class="h1-word">Your goal.</span></span><span class="h1-line"><span class="h1-word"><span class="grad">Your plan.</span></span></span><span class="h1-line"><span class="h1-word">60 seconds.</span></span></h1>
+  <p class="sub">Coach-grade nutrition and training plans, built from your goal, your body, and your daily reality. No app to install. No gym contract. No fluff.</p>
+
+  <!-- INTERACTIVE GOAL LINE -->
+  <div class="goal-line">
+    <div class="gl-text">
+      <span>I want to lose</span>
+      <select id="gl-kg">
+        <option value="3">3 kg</option>
+        <option value="5" selected>5 kg</option>
+        <option value="8">8 kg</option>
+        <option value="10">10 kg</option>
+        <option value="15">15 kg</option>
+        <option value="20">20+ kg</option>
+      </select>
+      <span>in</span>
+      <select id="gl-time">
+        <option value="2w">2 weeks</option>
+        <option value="1m" selected>1 month</option>
+        <option value="2m">2 months</option>
+        <option value="3m">3+ months</option>
+      </select>
+    </div>
+    <button class="gl-btn" onclick="heroGo()">Generate my plan →</button>
+    <div class="gl-alt">Different goal? <a href="#goals">Muscle, tone or starting from zero ↓</a></div>
+  </div>
+  <div class="micro">10 free plans every day · No credit card · GDPR-aligned</div>
+
+  <div class="paystrip">
+    <div class="ps-label">Secure payments via</div>
+    <img src="/static/payment-logos/visa.svg" alt="Visa">
+    <img src="/static/payment-logos/mastercard.svg" alt="Mastercard">
+    <img src="/static/payment-logos/applepay.svg" alt="Apple Pay" class="dark">
+    <img src="/static/payment-logos/googlepay.svg" alt="Google Pay">
+    <img src="/static/payment-logos/revolut.svg" alt="Revolut" class="dark">
+    <img src="/static/payment-logos/stripe.svg" alt="Stripe">
+  </div>
+
+  <div class="marquee" aria-hidden="true">
+    <div class="marquee-track">
+      <span>Fat loss</span><span>Muscle</span><span>Tone</span><span>Nutrition</span><span>Cardio</span><span>Strength</span><span>Energy</span>
+      <span>Fat loss</span><span>Muscle</span><span>Tone</span><span>Nutrition</span><span>Cardio</span><span>Strength</span><span>Energy</span>
+    </div>
+  </div>
+</header>
+
+<div class="phone-stage">
+  <div class="ring"></div>
+  <div class="phone" aria-hidden="true">
+    <div class="notch"></div>
+    <div class="ph-nav">
+      <div class="ph-brand">
+        <div class="ph-logo"></div>
+        <div><div class="ph-title"><span class="ra">APEX</span> PULSE PRO</div><div class="ph-sub">AI Fitness Coach</div></div>
+      </div>
+      <span class="ph-badge">● FREE</span>
+    </div>
+    <div class="chat">
+      <div class="bub u">I want to drop a few kilos — no gym, no crash diets. Where do I begin?</div>
+      <div class="bub a">Right where I work best. 💪 Three quick questions and here's your day one — realistic, sustainable, no starving:</div>
+      <div class="plan-card">
+        <div class="pc-head">
+          <div class="pc-title">Day 1 · Your plan</div>
+          <div class="pc-kcal">balanced ✓</div>
+        </div>
+        <div class="plan-row"><span>Breakfast: oats + apple</span><span>340</span></div>
+        <div class="plan-row"><span>Lunch: chicken + quinoa + salad</span><span>520</span></div>
+        <div class="plan-row"><span>Dinner: fish + vegetables</span><span>430</span></div>
+        <div class="plan-row"><span>Movement: 30 min brisk walk</span><span>🔥</span></div>
+      </div>
+      <div class="typing"><i></i><i></i><i></i></div>
+    </div>
+    <div class="ph-input">
+      <div class="ph-field">Describe your goal…</div>
+      <div class="ph-send">➤</div>
+    </div>
+  </div>
+</div>
+
+<section class="wrap" id="how">
+  <div class="sec-label">How it works</div>
+  <h2>Three steps. Zero fluff.</h2>
+  <div class="steps">
+    <div class="step"><div class="s-num">1</div><h3>State your goal</h3><p>Plain English. "Lose 5 kg", "build mass", "start from zero" — whatever you actually mean.</p></div>
+    <div class="step"><div class="s-num">2</div><h3>We ask back</h3><p>2–3 sharp questions about your body, level, and daily life. No questionnaire fatigue.</p></div>
+    <div class="step"><div class="s-num">3</div><h3>Get the plan</h3><p>Nutrition and training built for your week. Ask, adjust, iterate. It learns you.</p></div>
+  </div>
+</section>
+
+<section class="wrap" id="goals">
+  <div class="sec-label">Pick a goal</div>
+  <h2>Where do we start?</h2>
+  <p class="sec-sub">Tap a card. The AI coach asks what it needs and hands you a plan built around your week. That's it.</p>
+  <div class="goals">
+    <a class="goal burn" href="/app?goal=burn" onclick="track('goal_click',{goal:'burn'})"><div class="g-ico">🔥</div><h3>Lose weight</h3><p>Drop the kilos with a menu and movement that fit your week — not someone else's protocol.</p><div class="go">Generate my plan →</div></a>
+    <a class="goal zero" href="/app?goal=zero" onclick="track('goal_click',{goal:'zero'})"><div class="g-ico">⚡</div><h3>Start from zero</h3><p>Never trained before? We start where you are and build up. Step-by-step, no ego.</p><div class="go">Begin now →</div></a>
+    <a class="goal muscle" href="/app?goal=growth" onclick="track('goal_click',{goal:'growth'})"><div class="g-ico">💪</div><h3>Build muscle</h3><p>Strength and mass with progressive overload, precise macros, and recovery that actually works.</p><div class="go">Show me →</div></a>
+    <a class="goal elite" href="/app?goal=build" onclick="track('goal_click',{goal:'build'})"><div class="g-ico">🏆</div><h3>Elite mode</h3><p>Periodization, precision macros, performance metrics. For people who already train.</p><div class="go">I'm in →</div></a>
+  </div>
+</section>
+
+<svg class="divider" viewBox="0 0 1200 44" preserveAspectRatio="none" aria-hidden="true"><path d="M0 22 H400 L430 6 L465 38 L495 14 L515 22 H1200"/></svg>
+
+<section class="wrap" id="pricing">
+  <div class="sec-label">Premium access</div>
+  <h2>Pay once. Use it for 30 days.</h2>
+  <p class="sec-sub">No auto-renewal. No subscription games. When 30 days pass, you decide whether to renew.</p>
+  <div class="plans">
+    <div class="plan">
+      <div class="p-name">FREE</div>
+      <div class="p-price">€0</div>
+      <div class="p-day">forever</div>
+      <ul>
+        <li>10 messages per day</li>
+        <li>Nutrition &amp; training plans</li>
+        <li class="off">AI memory of your goals</li>
+        <li class="off">PDF export of plans</li>
+      </ul>
+      <a href="/app" class="p-btn" onclick="track('cta_click',{place:'plan_free'})">Try for free</a>
+    </div>
+    <div class="plan hot">
+      <div class="tag">MOST POPULAR</div>
+      <div class="p-name">CORE</div>
+      <div class="p-price">€9.99<span>/30 days</span></div>
+      <div class="p-day">€0.33 per day</div>
+      <ul>
+        <li><b>Unlimited</b> messages</li>
+        <li>AI remembers your goals &amp; progress</li>
+        <li>PDF export for every plan</li>
+        <li>EN / BG interface</li>
+      </ul>
+      <a href="/app?plan=core" class="p-btn" onclick="goCheckout(this,'core');return false;">Activate CORE</a>
+    </div>
+    <div class="plan">
+      <div class="p-name">PRO</div>
+      <div class="p-price">€14.99<span>/30 days</span></div>
+      <div class="p-day">€0.50 per day</div>
+      <ul>
+        <li>Everything in CORE</li>
+        <li><b>The most capable AI model</b></li>
+        <li>6× longer memory window</li>
+        <li>Programs detailed down to the gram</li>
+      </ul>
+      <a href="/app?plan=pro" class="p-btn" onclick="goCheckout(this,'pro');return false;">Go PRO</a>
+    </div>
+  </div>
+
+  <div class="trustblock">
+    <div class="tb-logos">
+      <img src="/static/payment-logos/visa.svg" alt="Visa">
+      <img src="/static/payment-logos/mastercard.svg" alt="Mastercard">
+      <img src="/static/payment-logos/applepay.svg" alt="Apple Pay" class="dark">
+      <img src="/static/payment-logos/googlepay.svg" alt="Google Pay">
+      <img src="/static/payment-logos/revolut.svg" alt="Revolut" class="dark">
+      <img src="/static/payment-logos/stripe.svg" alt="Stripe">
+      <img src="/static/payment-logos/amex.svg" alt="Amex">
+    </div>
+    <div class="tb-row">🔒 Payments handled entirely by <b>Stripe</b> — same processor as Spotify, Klarna, Booking.com</div>
+    <div class="tb-row">🏦 Your card data <b>never touches our servers</b></div>
+    <div class="tb-row">💶 <b>7-day money-back guarantee</b> — no questions, no email essays</div>
+    <div class="tb-row">🇪🇺 <b>GDPR-aligned</b> · Hosted in the EU · Full data export &amp; deletion on request</div>
+  </div>
+</section>
+
+<section class="wrap" id="faq">
+  <div class="sec-label">FAQ</div>
+  <h2>Straight answers.</h2>
+  <div style="margin-top:24px;">
+    <details class="faq-item"><summary>Is this just ChatGPT in a skin?</summary><div class="fa-body">No. Apex Pulse PRO runs custom system instructions tuned for fitness, nutrition, and progressive training. It asks clarifying questions, remembers your goals between sessions, and returns precise programs with macros, sets, reps, and progression rules — not generic essay answers.</div></details>
+    <details class="faq-item"><summary>What happens to my data?</summary><div class="fa-body">Conversations are processed by OpenAI under their privacy terms. We do not store your card data — Stripe handles all payments. Server logs are auto-deleted after 30 days. You retain full GDPR rights: request access, export, or deletion of your data at apexpulsepro@gmail.com.</div></details>
+    <details class="faq-item"><summary>Does it actually work?</summary><div class="fa-body">It works if you follow it. Plans are realistic and adapt to what you'll actually do — not idealized protocols you'll abandon by week two. Most people who stick with the program see meaningful change in the first 30 days. Results depend on your consistency, not on us.</div></details>
+    <details class="faq-item"><summary>Is this a subscription?</summary><div class="fa-body">No. One payment buys you 30 days. Nothing auto-renews. You don't need to remember to cancel. When the 30 days are up, you decide whether to renew — by paying again. That's the whole model.</div></details>
+    <details class="faq-item"><summary>Do I need a gym?</summary><div class="fa-body">No. Most plans default to bodyweight or minimal equipment (resistance bands, a single kettlebell). If you have gym access, tell the coach in your first message and the program adjusts to use it.</div></details>
+    <details class="faq-item"><summary>Does it replace a doctor or dietitian?</summary><div class="fa-body">No. The AI coach provides general training and nutrition guidance — it is not medical advice. If you have any health condition, are pregnant, nursing, or have a history of eating disorders, consult a qualified professional before starting any program.</div></details>
+  </div>
+</section>
+
+<footer class="wrap">
+  <img src="/static/logo.png" alt="" style="width:40px;opacity:.8;"><br><br>
+  APEX PULSE PRO · Built in the EU 🇪🇺 · GDPR-aligned
+  <div class="foot-links">
+    <a href="#" onclick="event.preventDefault();showLegal('terms')">Terms</a>
+    <a href="#" onclick="event.preventDefault();showLegal('privacy')">Privacy</a>
+    <a href="#" onclick="event.preventDefault();showLegal('refund')">Refunds</a>
+    <a href="#" onclick="event.preventDefault();showLegal('medical')">AI Disclaimer</a>
+    <a href="#" onclick="event.preventDefault();showCookieBar(true)">Cookies</a>
+    <a href="#" onclick="event.preventDefault();goBg()">Български →</a>
+  </div>
+</footer>
+
+<button class="to-top" id="to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">↑</button>
+
+<div class="cookiebar" id="cookiebar">
+  <span class="cb-text">We use cookies for analytics and to improve the service. Choose:</span>
+  <button class="cb-decline" onclick="setConsent(false)">Essential only</button>
+  <button class="cb-accept" onclick="setConsent(true)">Accept</button>
+</div>
+
+<div id="legal-modal" onclick="if(event.target===this)closeLegal()">
+  <div class="lm-box">
+    <button class="lm-close" onclick="closeLegal()">✕</button>
+    <div id="legal-content"></div>
+  </div>
+</div>
+
+<script>
+/* ═══════════ TRACKING ═══════════ */
+function track(name,params){try{gtag('event',name,params||{});}catch(e){}}
+
+/* ═══════════ HERO GOAL → CHAT ═══════════ */
+function heroGo(){
+  const kg=document.getElementById('gl-kg').value;
+  const tmEl=document.getElementById('gl-time');
+  const tmTxt=tmEl.options[tmEl.selectedIndex].text;
+  const msg=`I want to lose ${kg==='20'?'20+':kg} kg in ${tmTxt}. Give me a realistic nutrition and movement plan that fits everyday life.`;
+  track('hero_goal_click',{kg:kg,time:tmEl.value});
+  window.location.href='/app?q='+encodeURIComponent(msg);
+}
+
+/* ═══════════ PAID PLAN → STRIPE CHECKOUT ═══════════ */
+async function goCheckout(btn,plan){
+  if(btn._busy)return;
+  btn._busy=true;
+  btn.style.opacity='.6';btn.style.pointerEvents='none';
+  track('checkout_intent',{plan:plan,place:'landing_en'});
+  try{
+    const res=await fetch('/create-checkout-session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plan:plan})});
+    const data=await res.json();
+    if(data&&data.url){window.location.href=data.url;return;}
+  }catch(e){}
+  window.location.href='/app?plan='+encodeURIComponent(plan);
+}
+
+/* ═══════════ SWITCH TO BG ═══════════ */
+function goBg(){
+  try{localStorage.setItem('apexLang','bg');}catch(e){}
+  track('lang_switch',{to:'bg'});
+  window.location.href='/';
+}
+
+/* ═══════════ HONEST COUNTER ═══════════ */
+fetch('/stats').then(r=>r.json()).then(d=>{
+  if(d&&d.plans_today>=15){
+    const el=document.getElementById('proof-num');
+    const target=d.plans_today;let cur=0;
+    document.getElementById('proof').classList.add('show');
+    const step=Math.max(1,Math.floor(target/30));
+    const iv=setInterval(()=>{cur=Math.min(target,cur+step);el.textContent=cur;if(cur>=target)clearInterval(iv);},40);
+  }
+}).catch(()=>{});
+
+/* ═══════════ COOKIE CONSENT ═══════════ */
+function showCookieBar(force){
+  let saved=null;
+  try{saved=localStorage.getItem('apexConsent');}catch(e){}
+  if(force||!saved)document.getElementById('cookiebar').classList.add('show');
+}
+function setConsent(granted){
+  try{localStorage.setItem('apexConsent',granted?'granted':'denied');}catch(e){}
+  if(granted){
+    gtag('consent','update',{'analytics_storage':'granted','ad_storage':'granted','ad_user_data':'granted','ad_personalization':'granted'});
+  }
+  document.getElementById('cookiebar').classList.remove('show');
+}
+showCookieBar(false);
+
+/* ═══════════ LEGAL MODAL (EN only) ═══════════ */
+const LEGAL = {
+  terms: `<h2>Terms of Service</h2>
+    <p><strong>1. Service:</strong> APEX PULSE PRO provides AI-based fitness and nutrition recommendations for informational purposes only. The service does not replace professional medical consultation or a personal dietitian.</p>
+    <p><strong>2. Registration:</strong> No registration is required for the free version. Paid plans require an email for receipt issuance via Stripe.</p>
+    <p><strong>3. Payments:</strong> A one-time payment unlocks PRO features for 30 days. Payments are processed securely by Stripe (PCI-DSS Level 1). Apex Pulse PRO has no access to card or bank data.</p>
+    <p><strong>4. Access duration:</strong> Access is valid for 30 days from payment. After expiration, users may pay again for a new 30-day period. The service is not auto-renewing.</p>
+    <p><strong>5. Disclaimer:</strong> All plans and advice are for informational purposes only. Apex Pulse PRO, its creators and owners are not liable for any health problems, injuries, adverse reactions or other consequences from using the service. Always consult a doctor before starting any diet or training program.</p>
+    <p><strong>6. Right of withdrawal:</strong> Under Article 16(m) of EU Directive 2011/83/EU, for digital content not delivered on a tangible medium, the user waives the right of withdrawal upon commencement of content delivery with their explicit consent. By paying and beginning to use the service, the user provides this explicit consent.</p>
+    <p><strong>7. Age restrictions:</strong> The service is intended for adults (18+) in good health. Persons under 18 must not use the service without adult consent and supervision.</p>
+    <p><strong>8. Prohibited use:</strong> The user agrees not to use the service for illegal purposes, spam, malicious actions, or violation of third-party rights.</p>
+    <p><strong>9. Changes to terms:</strong> Apex Pulse PRO reserves the right to update these terms. Continued use after changes indicates acceptance of the updated version.</p>
+    <p><strong>10. Applicable law:</strong> These terms are governed by the laws of the Republic of Bulgaria (EU jurisdiction). All disputes shall be resolved by competent Bulgarian courts unless otherwise required by EU consumer-protection rules.</p>`,
+  privacy: `<h2>Privacy Policy</h2>
+    <p><strong>Data we collect:</strong> Apex Pulse PRO collects only what is needed to operate the service:</p>
+    <ul>
+      <li>Content of your questions to the AI (for processing by OpenAI)</li>
+      <li>Email address — only upon payment (provided to Stripe)</li>
+      <li>Anonymous analytics via Google Analytics (no individual identification)</li>
+      <li>Technical data such as IP address and browser type — standard server logs</li>
+    </ul>
+    <p><strong>What we do NOT collect:</strong></p>
+    <ul>
+      <li>Personal financial data — processed exclusively by Stripe</li>
+      <li>Card numbers, PINs, or CVV codes — we never see any of these</li>
+      <li>Sensitive personal data (national ID, passport, home address)</li>
+    </ul>
+    <p><strong>How we store data:</strong> All connections are SSL/TLS encrypted. LocalStorage in your browser remembers only your language choice, subscription status, and disclaimer acceptance — this data does not leave your device.</p>
+    <p><strong>Third-party processors:</strong></p>
+    <ul>
+      <li><strong>OpenAI</strong> — processes AI conversations (policy: openai.com/privacy)</li>
+      <li><strong>Stripe</strong> — processes payments (policy: stripe.com/privacy)</li>
+      <li><strong>Google Analytics</strong> — anonymous usage statistics</li>
+      <li><strong>Railway</strong> — application hosting (EU region)</li>
+    </ul>
+    <p><strong>Your rights under GDPR:</strong> You have the right to access, correct, delete, restrict processing of, and port your data. To exercise these rights, email apexpulsepro@gmail.com. We respond within 30 days.</p>
+    <p><strong>Retention:</strong> Payment data is stored by Stripe per their policies (typically 7 years for tax purposes). Server logs are auto-deleted after 30 days.</p>
+    <p><strong>Privacy contact:</strong> apexpulsepro@gmail.com</p>`,
+  medical: `<h2>AI Disclaimer &amp; Medical Notice</h2>
+    <p><strong>APEX PULSE PRO IS AN AI ASSISTANT — NOT A DOCTOR, DIETITIAN, OR PERSONAL TRAINER.</strong></p>
+    <p>All training and nutrition recommendations generated by the AI are for informational and educational purposes only. They do not constitute:</p>
+    <ul>
+      <li>Medical advice or diagnosis</li>
+      <li>Treatment of any medical condition</li>
+      <li>A replacement for consultation with a doctor, dietitian, or personal trainer</li>
+      <li>A guarantee of results or body transformation</li>
+    </ul>
+    <p><strong>Before starting any diet or training program:</strong></p>
+    <ul>
+      <li>Consult your doctor, especially if you have heart disease, high blood pressure, diabetes, asthma, or other chronic conditions</li>
+      <li>Do not follow the advice if you are pregnant, nursing, or under 18</li>
+      <li>Do not follow the advice if you have or had an eating disorder (anorexia, bulimia, BED)</li>
+      <li>If you take medication — check with a doctor for possible interactions</li>
+      <li>If pain, dizziness, nausea, shortness of breath, or discomfort occurs during training — stop immediately and seek medical help</li>
+    </ul>
+    <p><strong>AI limitations:</strong> The AI model may err, provide inaccurate information, or miss important nuances of your situation. Always verify critical information with a qualified professional.</p>
+    <h3>Emergencies</h3>
+    <p>In a medical emergency call <strong>112</strong> (EU number) or your local emergency line. The AI assistant is not a substitute for medical help.</p>
+    <p><strong>By using the service, you confirm understanding and acceptance of the above limitations.</strong></p>`,
+  refund: `<h2>Refund Policy</h2>
+    <p><strong>General rule:</strong> Apex Pulse PRO is digital content delivered immediately upon payment. Under Article 16(m) of EU Directive 2011/83/EU, <strong>the right of withdrawal is waived</strong> once digital content delivery begins with explicit consumer consent.</p>
+    <p>By paying, you explicitly agree that the service starts immediately and waive the right to a 14-day withdrawal period.</p>
+    <h3>Exceptions — when a refund is possible</h3>
+    <p>Apex Pulse PRO may refund payment in the following cases:</p>
+    <ul>
+      <li><strong>Technical issue on our side:</strong> The service is unavailable for more than 24 hours after your payment</li>
+      <li><strong>Duplicate payment:</strong> You were accidentally charged twice for the same period</li>
+      <li><strong>Wrong payment:</strong> You paid for the wrong plan due to a technical error on our site</li>
+      <li><strong>Misleading information:</strong> The service is materially different from what was described</li>
+    </ul>
+    <h3>How to request a refund</h3>
+    <p>Email <strong>apexpulsepro@gmail.com</strong> with:</p>
+    <ul>
+      <li>The email address used for payment</li>
+      <li>The payment date</li>
+      <li>The amount</li>
+      <li>The reason for the request</li>
+    </ul>
+    <p>You will receive a response within 5 business days. If approved, the refund is issued to the original card via Stripe within 5–10 business days.</p>
+    <h3>Chargeback notice</h3>
+    <p>Before initiating a chargeback with your bank, please contact us first. It saves time and stress for everyone involved.</p>`
+};
+
+function showLegal(type){
+  const content=LEGAL[type]||'';
+  document.getElementById('legal-content').innerHTML=content;
+  document.getElementById('legal-modal').classList.add('active');
+  document.body.style.overflow='hidden';
+}
+function closeLegal(){
+  document.getElementById('legal-modal').classList.remove('active');
+  document.body.style.overflow='';
+}
+
+/* scroll-to-top */
+(function(){
+  const b=document.getElementById('to-top');
+  window.addEventListener('scroll',()=>{b.classList.toggle('show',window.scrollY>600);},{passive:true});
+})();
+
+/* broken image → hide gracefully */
+document.querySelectorAll('img').forEach(im=>{im.addEventListener('error',()=>{im.style.display='none';});});
+
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeLegal();});
+
+/* ═══════════ SCROLL REVEAL ═══════════ */
+(function(){
+  if(!window.IntersectionObserver)return;
+  const obs=new IntersectionObserver((entries)=>{
+    entries.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in-view');obs.unobserve(e.target);}});
+  },{threshold:0.1,rootMargin:'0px 0px -40px 0px'});
+  document.querySelectorAll('.step,.goal,.plan,.faq-item').forEach((el,i)=>{
+    el.classList.add('reveal');
+    el.style.transitionDelay=(i%4)*0.07+'s';
+    obs.observe(el);
+  });
+})();
+</script>
+</body>
+</html>

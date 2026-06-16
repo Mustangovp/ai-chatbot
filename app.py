@@ -493,6 +493,12 @@ def landing():
     return render_template("landing.html")
 
 
+@app.route("/en")
+def landing_en():
+    """English-only landing tuned for Western European premium audience (DE/SE/NL)."""
+    return render_template("landing_en.html")
+
+
 @app.route("/app")
 def app_chat():
     """The AI chat interface — minimal, focused on AI conversation."""
