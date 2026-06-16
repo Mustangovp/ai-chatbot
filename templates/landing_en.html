@@ -304,7 +304,7 @@ footer a:hover{color:var(--text);}
       <span><span style="color:var(--brand);">APEX</span> PULSE PRO<br><span class="logo-slogan">Your peak. Your pulse.</span></span>
     </a>
     <div class="nav-right">
-      <a href="/app" class="nav-cta" onclick="track('cta_click',{place:'nav'})">Get started</a>
+      <a href="/app?lang=en" class="nav-cta" onclick="track('cta_click',{place:'nav'})">Get started</a>
     </div>
   </div>
 </nav>
@@ -408,10 +408,10 @@ footer a:hover{color:var(--text);}
   <h2>Where do we start?</h2>
   <p class="sec-sub">Tap a card. The AI coach asks what it needs and hands you a plan built around your week. That's it.</p>
   <div class="goals">
-    <a class="goal burn" href="/app?goal=burn" onclick="track('goal_click',{goal:'burn'})"><div class="g-ico">🔥</div><h3>Lose weight</h3><p>Drop the kilos with a menu and movement that fit your week — not someone else's protocol.</p><div class="go">Generate my plan →</div></a>
-    <a class="goal zero" href="/app?goal=zero" onclick="track('goal_click',{goal:'zero'})"><div class="g-ico">⚡</div><h3>Start from zero</h3><p>Never trained before? We start where you are and build up. Step-by-step, no ego.</p><div class="go">Begin now →</div></a>
-    <a class="goal muscle" href="/app?goal=growth" onclick="track('goal_click',{goal:'growth'})"><div class="g-ico">💪</div><h3>Build muscle</h3><p>Strength and mass with progressive overload, precise macros, and recovery that actually works.</p><div class="go">Show me →</div></a>
-    <a class="goal elite" href="/app?goal=build" onclick="track('goal_click',{goal:'build'})"><div class="g-ico">🏆</div><h3>Elite mode</h3><p>Periodization, precision macros, performance metrics. For people who already train.</p><div class="go">I'm in →</div></a>
+    <a class="goal burn" href="/app?lang=en&goal=burn" onclick="track('goal_click',{goal:'burn'})"><div class="g-ico">🔥</div><h3>Lose weight</h3><p>Drop the kilos with a menu and movement that fit your week — not someone else's protocol.</p><div class="go">Generate my plan →</div></a>
+    <a class="goal zero" href="/app?lang=en&goal=zero" onclick="track('goal_click',{goal:'zero'})"><div class="g-ico">⚡</div><h3>Start from zero</h3><p>Never trained before? We start where you are and build up. Step-by-step, no ego.</p><div class="go">Begin now →</div></a>
+    <a class="goal muscle" href="/app?lang=en&goal=growth" onclick="track('goal_click',{goal:'growth'})"><div class="g-ico">💪</div><h3>Build muscle</h3><p>Strength and mass with progressive overload, precise macros, and recovery that actually works.</p><div class="go">Show me →</div></a>
+    <a class="goal elite" href="/app?lang=en&goal=build" onclick="track('goal_click',{goal:'build'})"><div class="g-ico">🏆</div><h3>Elite mode</h3><p>Periodization, precision macros, performance metrics. For people who already train.</p><div class="go">I'm in →</div></a>
   </div>
 </section>
 
@@ -432,7 +432,7 @@ footer a:hover{color:var(--text);}
         <li class="off">AI memory of your goals</li>
         <li class="off">PDF export of plans</li>
       </ul>
-      <a href="/app" class="p-btn" onclick="track('cta_click',{place:'plan_free'})">Try for free</a>
+      <a href="/app?lang=en" class="p-btn" onclick="track('cta_click',{place:'plan_free'})">Try for free</a>
     </div>
     <div class="plan hot">
       <div class="tag">MOST POPULAR</div>
@@ -445,7 +445,7 @@ footer a:hover{color:var(--text);}
         <li>PDF export for every plan</li>
         <li>EN / BG interface</li>
       </ul>
-      <a href="/app?plan=core" class="p-btn" onclick="goCheckout(this,'core');return false;">Activate CORE</a>
+      <a href="/app?lang=en&plan=core" class="p-btn" onclick="goCheckout(this,'core');return false;">Activate CORE</a>
     </div>
     <div class="plan">
       <div class="p-name">PRO</div>
@@ -457,7 +457,7 @@ footer a:hover{color:var(--text);}
         <li>6× longer memory window</li>
         <li>Programs detailed down to the gram</li>
       </ul>
-      <a href="/app?plan=pro" class="p-btn" onclick="goCheckout(this,'pro');return false;">Go PRO</a>
+      <a href="/app?lang=en&plan=pro" class="p-btn" onclick="goCheckout(this,'pro');return false;">Go PRO</a>
     </div>
   </div>
 
@@ -530,7 +530,7 @@ function heroGo(){
   const tmTxt=tmEl.options[tmEl.selectedIndex].text;
   const msg=`I want to lose ${kg==='20'?'20+':kg} kg in ${tmTxt}. Give me a realistic nutrition and movement plan that fits everyday life.`;
   track('hero_goal_click',{kg:kg,time:tmEl.value});
-  window.location.href='/app?q='+encodeURIComponent(msg);
+  window.location.href='/app?lang=en&q='+encodeURIComponent(msg);
 }
 
 /* ═══════════ PAID PLAN → STRIPE CHECKOUT ═══════════ */
@@ -544,7 +544,7 @@ async function goCheckout(btn,plan){
     const data=await res.json();
     if(data&&data.url){window.location.href=data.url;return;}
   }catch(e){}
-  window.location.href='/app?plan='+encodeURIComponent(plan);
+  window.location.href='/app?lang=en&plan='+encodeURIComponent(plan);
 }
 
 /* ═══════════ SWITCH TO BG ═══════════ */

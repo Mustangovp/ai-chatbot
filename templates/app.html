@@ -460,6 +460,11 @@ const SHOW_FOUNDING_PRICE = false;
 // Read language choice from landing page (saved in localStorage as 'apexLang').
 // За deep-links директно към /app — налучкваме от браузъра при първо посещение.
 // EN ако основният език започва с "en"; иначе BG. Запазваме, за да не се сменя на reload.
+// URL ?lang=en|bg от /en (или ?lang=bg от /) wins over всичко — landing CTA-та го носят.
+try{
+  const urlLang=new URLSearchParams(location.search).get('lang');
+  if(urlLang==='en'||urlLang==='bg')localStorage.setItem('apexLang',urlLang);
+}catch(e){}
 let lang='bg';
 try{
   const saved=localStorage.getItem('apexLang');
