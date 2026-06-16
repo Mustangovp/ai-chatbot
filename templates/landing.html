@@ -524,7 +524,18 @@ footer a:hover{color:var(--text);}
 <script>
 /* ═══════════ LANGUAGE ═══════════ */
 let lang='bg';
-try{lang=localStorage.getItem('apexLang')||'bg';}catch(e){}
+try{
+  const saved=localStorage.getItem('apexLang');
+  if(saved==='bg'||saved==='en'){
+    lang=saved;
+  }else{
+    // Първо посещение — налучкваме от браузъра. EN ако основният език започва с "en".
+    // Запазваме в localStorage, за да наследи и /app същия избор.
+    const nav=(navigator.language||(navigator.languages&&navigator.languages[0])||'').toLowerCase();
+    if(nav.startsWith('en'))lang='en';
+    localStorage.setItem('apexLang',lang);
+  }
+}catch(e){}
 
 const T={
   en:{
