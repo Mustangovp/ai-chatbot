@@ -926,9 +926,12 @@ async function send(){
       if(btn)btn.disabled=false;
       inp.style.opacity='1';
       if(btn)btn.style.opacity='1';
-      // ВАЖНО: focus() на мобилен скролва до полето (най-долу) и „хвърля" четящия в края.
-      // Фокусираме само на широки екрани, където това е удобство, не пречка.
-      if(window.innerWidth>900)inp.focus();
+      // ВАЖНО: focus() скролва focused елемента в изгледа по подразбиране.
+      // Input-ът е sticky най-долу, така че след дълъг AI отговор focus() „хвърля"
+      // четящия в края. На мобилен изобщо не фокусираме (window.innerWidth<900).
+      // На десктоп — фокусираме с preventScroll:true, за да остане погледът там,
+      // където започна да чете отговора.
+      if(window.innerWidth>=900)inp.focus({preventScroll:true});
     }
   }
 }
