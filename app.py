@@ -436,14 +436,24 @@ def make_token(expiry_timestamp: int, plan: str = "core") -> str:
     return token
 
 
+# EU Directive 2023/2673 — tokens withdrawn under right-of-withdrawal are
+# added here so verify_token() rejects them even if the user kept a copy.
+# In-memory; resets on Railway redeploy. The withdrawal request email to
+# coach@apexpulse.pro IS the durable audit trail.
+_revoked_tokens = set()
+
+
 def verify_token(token: str):
     """Verify a token. Returns (is_valid, plan).
     - DEV_TOKEN → (True, 'pro')
     - v2 tokens (expiry.plan.sig) → plan comes from the signed payload
     - v1 legacy tokens (expiry.sig) → treated as 'core' (existing customers keep access)
+    - Tokens in _revoked_tokens (user invoked withdrawal) → (False, None)
     """
     if DEV_TOKEN and token == DEV_TOKEN:
         return True, "pro"
+    if token in _revoked_tokens:
+        return False, None
     try:
         padded = token + "=" * (-len(token) % 4)
         decoded = base64.urlsafe_b64decode(padded).decode()
@@ -772,12 +782,24 @@ def verify_token_endpoint():
 
 
 # ═══════════════════════════════════════════════════════════
-# EU Directive 2023/2673 — RIGHT OF WITHDRAWAL
-# One-time 30-day digital content. When the user invokes their right of
-# withdrawal we: refund the original Stripe charge, email the user a
-# confirmation (Resend), and notify admin so the access token can be
-# revoked server-side if we ever add a denylist.
+# EU Directive 2023/2673 — RIGHT OF WITHDRAWAL (waiver flow)
+# Apex sells one-time 30-day digital passes. Our Terms invoke the
+# directive's waiver: the right of withdrawal is lost once the digital
+# content is delivered. We honor a 24-hour goodwill window above what
+# the law strictly requires — full refund if invoked within 24h of
+# payment; after that, the waiver kicks in.
+#
+# Within 24h: revoke token, refund the original Stripe charge, email
+#             both the user (Resend) and admin.
+# After 24h:  keep token active until expiry, email the user
+#             acknowledging the request and explaining the waiver,
+#             notify admin for audit.
 # ═══════════════════════════════════════════════════════════
+COACH_INBOX = 'coach@apexpulse.pro'
+PLAN_AMOUNTS_EUR = {'core': '9.99', 'pro': '14.99'}
+WITHDRAW_WINDOW_HOURS = 24
+
+
 @app.route('/withdraw', methods=['POST'])
 def withdraw_endpoint():
     data = request.get_json(silent=True) or {}
@@ -789,73 +811,187 @@ def withdraw_endpoint():
     if not is_valid:
         return jsonify({'ok': False, 'error': 'invalid_token'}), 401
     if DEV_TOKEN and token == DEV_TOKEN:
-        # Dev / lifetime tokens have no Stripe charge to refund.
         return jsonify({'ok': False, 'error': 'dev_token_not_refundable'}), 400
-    if not session_id or not session_id.startswith('cs_'):
-        # We can still record the withdrawal request even without a session.
-        admin_addr = os.getenv('LEAD_NOTIFY_EMAIL', os.getenv('GMAIL_USER', 'apexpulsepro@gmail.com'))
-        send_email(admin_addr, '[Apex WITHDRAW] manual-refund needed (no session_id)',
-                   f"A paid user invoked withdrawal but no session_id was stored.\nplan={plan}\ntoken={token[:24]}...\nManual lookup required.")
-        return jsonify({'ok': False, 'error': 'missing_session', 'manual': True}), 400
 
-    refund_id = None
-    customer_email = ''
+    # Decode expiry from the token to compute hours_since_payment server-side.
     try:
-        session = stripe.checkout.Session.retrieve(session_id)
-        customer_email = (getattr(session, 'customer_details', None) or {}).get('email', '') if isinstance(getattr(session, 'customer_details', None), dict) else (session.customer_details.email if getattr(session, 'customer_details', None) else '')
-        pi = getattr(session, 'payment_intent', None)
-        if not pi:
-            raise RuntimeError('session has no payment_intent')
-        refund = stripe.Refund.create(payment_intent=pi)
-        refund_id = refund.id
-        print(f'[withdraw] Stripe refund {refund_id} issued for session {session_id[:24]}... plan={plan}')
-    except Exception as e:
-        print(f'[withdraw] Stripe error for session {session_id[:24]}...: {e}')
-        # Notify admin so the refund can be processed manually.
-        admin_addr = os.getenv('LEAD_NOTIFY_EMAIL', os.getenv('GMAIL_USER', 'apexpulsepro@gmail.com'))
-        send_email(admin_addr, '[Apex WITHDRAW] Stripe call FAILED — manual refund required',
-                   f"Withdrawal request received but Stripe refund failed.\nsession_id={session_id}\nplan={plan}\nerror={e}\nProcess the refund manually in Stripe dashboard.")
-        return jsonify({'ok': False, 'error': 'refund_failed', 'manual': True}), 502
+        padded = token + '=' * (-len(token) % 4)
+        decoded = base64.urlsafe_b64decode(padded).decode()
+        expiry_ts = int(decoded.split('.')[0])
+    except Exception:
+        return jsonify({'ok': False, 'error': 'invalid_token'}), 401
 
-    # Confirmation email to the user (Resend-backed via send_email)
+    now_ts = int(time.time())
+    payment_ts = expiry_ts - (30 * 24 * 60 * 60)
+    hours_since = (now_ts - payment_ts) / 3600.0
+    if hours_since < 0:
+        return jsonify({'ok': False, 'error': 'invalid_token'}), 401
+
+    # Try to recover the customer's email from the Stripe session (best-effort,
+    # used for both the within-window refund flow and the waiver acknowledgment).
+    customer_email = ''
+    if session_id and session_id.startswith('cs_'):
+        try:
+            session = stripe.checkout.Session.retrieve(session_id)
+            cd = getattr(session, 'customer_details', None)
+            if cd:
+                customer_email = (cd.email if hasattr(cd, 'email') else cd.get('email', '')) or ''
+        except Exception as e:
+            print(f'[withdraw] Stripe session retrieve failed for {session_id[:24]}...: {e}')
+
+    ip = request.headers.get('X-Forwarded-For', request.remote_addr or '?').split(',')[0].strip()
+    payment_date_str = time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime(payment_ts))
+    amount = PLAN_AMOUNTS_EUR.get(plan, '?')
+    admin_addr = os.getenv('LEAD_NOTIFY_EMAIL', os.getenv('GMAIL_USER', COACH_INBOX))
+
+    # ─────────── WITHIN 24-HOUR WINDOW → revoke + refund ───────────
+    if hours_since <= WITHDRAW_WINDOW_HOURS:
+        # Revoke immediately so the token stops working even if cached client-side.
+        _revoked_tokens.add(token)
+
+        refund_id = None
+        refund_error = None
+        if session_id and session_id.startswith('cs_'):
+            try:
+                session = stripe.checkout.Session.retrieve(session_id)
+                pi = getattr(session, 'payment_intent', None)
+                if not pi:
+                    raise RuntimeError('session has no payment_intent')
+                refund = stripe.Refund.create(payment_intent=pi)
+                refund_id = refund.id
+                print(f'[withdraw] Refund {refund_id} for session {session_id[:24]}... ({hours_since:.1f}h)')
+            except Exception as e:
+                refund_error = str(e)
+                print(f'[withdraw] Stripe refund failed: {e}')
+        else:
+            refund_error = 'no session_id stored'
+
+        # Confirmation to the user (best-effort if we have an email)
+        if customer_email and '@' in customer_email:
+            if user_lang == 'en':
+                subject = 'Subscription cancelled — refund on the way'
+                user_body = (
+                    "Hi,\n\n"
+                    "We have received your cancellation request and processed your refund.\n\n"
+                    f"Plan: APEX PULSE {plan.upper()}\n"
+                    f"Amount: EUR {amount}\n"
+                    f"Payment date: {payment_date_str}\n"
+                    f"Hours since payment: {hours_since:.1f}\n\n"
+                    "Your access has been revoked.\n"
+                    "Your refund has been issued and will appear on your original payment\n"
+                    "method within 5-10 business days (Stripe typical timing).\n\n"
+                    "If you have questions, reply to this email.\n\n"
+                    "APEX PULSE PRO\n"
+                )
+            else:
+                subject = 'Абонаментът е отказан — възстановяване на сумата'
+                user_body = (
+                    "Здравей,\n\n"
+                    "Получихме твоето искане за отказ и обработихме възстановяването.\n\n"
+                    f"План: APEX PULSE {plan.upper()}\n"
+                    f"Сума: EUR {amount}\n"
+                    f"Дата на плащане: {payment_date_str}\n"
+                    f"Часове от плащането: {hours_since:.1f}\n\n"
+                    "Достъпът ти е прекратен.\n"
+                    "Сумата е възстановена и ще се появи на оригиналния начин на плащане\n"
+                    "в рамките на 5-10 работни дни (обичайни срокове на Stripe).\n\n"
+                    "Ако имаш въпроси, отговори на този имейл.\n\n"
+                    "APEX PULSE PRO\n"
+                )
+            send_email(customer_email, subject, user_body)
+
+        # Admin audit + manual-handle fallback if Stripe failed
+        admin_subject = (
+            f'[Apex CANCEL] refund {refund_id} — within {WITHDRAW_WINDOW_HOURS}h'
+            if refund_id else
+            f'[Apex CANCEL] manual refund required — Stripe failed'
+        )
+        admin_body = (
+            "Cancellation within 24-hour window.\n\n"
+            f"Plan:              APEX PULSE {plan.upper()}\n"
+            f"Amount:            EUR {amount}\n"
+            f"Payment date:      {payment_date_str}\n"
+            f"Hours since payment: {hours_since:.1f}\n"
+            f"Stripe session_id: {session_id or '(not stored)'}\n"
+            f"Refund ID:         {refund_id or '(FAILED — process manually)'}\n"
+            f"Refund error:      {refund_error or '(none)'}\n"
+            f"Customer email:    {customer_email or '(unknown)'}\n"
+            f"User IP:           {ip}\n"
+            f"Token (revoked):   {token[:24]}...\n"
+            f"User language:     {user_lang}\n"
+        )
+        send_email(admin_addr, admin_subject, admin_body,
+                   reply_to=customer_email if customer_email else '')
+
+        return jsonify({'ok': True, 'refunded': bool(refund_id), 'access_revoked': True,
+                        'hours_since_payment': round(hours_since, 1)})
+
+    # ─────────── AFTER 24-HOUR WINDOW → waiver, no refund ───────────
+    # Token stays active until natural expiry. We honor the user's notice
+    # by recording it and emailing both parties, but do not refund (per
+    # Terms §4 — right of withdrawal waived for delivered digital content).
     if customer_email and '@' in customer_email:
         if user_lang == 'en':
-            subject = 'Withdrawal confirmed — refund on the way'
-            body = (
+            subject = 'Cancellation request received — APEX PULSE PRO'
+            user_body = (
                 "Hi,\n\n"
-                "We've received your withdrawal request under EU Directive 2023/2673\n"
-                "(right of withdrawal for digital content).\n\n"
+                "We have received your cancellation request. Thank you for letting us know.\n\n"
                 f"Plan: APEX PULSE {plan.upper()}\n"
-                f"Refund ID: {refund_id}\n\n"
-                "Your refund has been issued and will appear on your original payment method\n"
-                "within 5-10 business days (Stripe typical timing).\n\n"
-                "Your access has been revoked on this device.\n\n"
-                "If you have questions, just reply to this email.\n\n"
+                f"Payment date: {payment_date_str}\n"
+                f"Hours since payment: {hours_since:.1f}\n\n"
+                "About your refund:\n"
+                "Apex Pulse Pro is digital content delivered immediately on payment.\n"
+                "Under our Terms (§4) and EU Directive 2023/2673, the right of withdrawal\n"
+                "is waived for digital content once delivery has begun, beyond a 24-hour\n"
+                "goodwill window we offer as standard. Your request is outside that window,\n"
+                "so we are unable to issue a refund.\n\n"
+                "Your access will continue until the natural end of your 30-day pass — you\n"
+                "do not need to do anything else. We will not auto-renew (Apex is a one-time\n"
+                "purchase, never a recurring subscription).\n\n"
+                "If you believe this was processed in error, reply to this email and we\n"
+                "will review it.\n\n"
                 "APEX PULSE PRO\n"
             )
         else:
-            subject = 'Договорът е отказан — възстановяване на сумата'
-            body = (
+            subject = 'Заявката за отказ е получена — APEX PULSE PRO'
+            user_body = (
                 "Здравей,\n\n"
-                "Получихме твоето искане за отказ от договора съгласно\n"
-                "Директива (ЕС) 2023/2673 (право на отказ от цифрово съдържание).\n\n"
+                "Получихме твоето искане за отказ. Благодарим, че ни уведоми.\n\n"
                 f"План: APEX PULSE {plan.upper()}\n"
-                f"Идентификатор на възстановяването: {refund_id}\n\n"
-                "Сумата е възстановена на оригиналния начин на плащане и\n"
-                "ще се появи в извлечението ти в рамките на 5-10 работни дни\n"
-                "(обичайни срокове на Stripe).\n\n"
-                "Достъпът ти на това устройство е прекратен.\n\n"
-                "Ако имаш въпроси, отговори на този имейл.\n\n"
+                f"Дата на плащане: {payment_date_str}\n"
+                f"Часове от плащането: {hours_since:.1f}\n\n"
+                "Относно възстановяването:\n"
+                "Apex Pulse Pro е цифрово съдържание, доставено веднага при плащане.\n"
+                "Съгласно нашите Условия (§4) и Директива (ЕС) 2023/2673, правото на\n"
+                "отказ отпада за цифрово съдържание след началото на доставката, извън\n"
+                "24-часовия гратисен прозорец, който предлагаме като стандарт. Заявката\n"
+                "ти е извън този прозорец, така че не можем да възстановим сумата.\n\n"
+                "Достъпът ти продължава до естествения край на 30-дневния период —\n"
+                "няма нужда да правиш нищо повече. Няма автоматично подновяване\n"
+                "(Apex е еднократна покупка, не повтарящ се абонамент).\n\n"
+                "Ако смяташ, че това е грешка, отговори на този имейл и ще проверим.\n\n"
                 "APEX PULSE PRO\n"
             )
-        send_email(customer_email, subject, body)
+        send_email(customer_email, subject, user_body)
 
-    # Admin notification (audit trail)
-    admin_addr = os.getenv('LEAD_NOTIFY_EMAIL', os.getenv('GMAIL_USER', 'apexpulsepro@gmail.com'))
-    send_email(admin_addr, f'[Apex WITHDRAW] refund {refund_id} issued',
-               f"User invoked right of withdrawal.\nsession_id={session_id}\nplan={plan}\nrefund_id={refund_id}\ncustomer_email={customer_email or '(unknown)'}\n")
+    admin_body = (
+        "Cancellation request OUTSIDE 24-hour window — waiver applies, no refund.\n\n"
+        f"Plan:              APEX PULSE {plan.upper()}\n"
+        f"Amount NOT refunded: EUR {amount}\n"
+        f"Payment date:      {payment_date_str}\n"
+        f"Hours since payment: {hours_since:.1f}\n"
+        f"Stripe session_id: {session_id or '(not stored)'}\n"
+        f"Customer email:    {customer_email or '(unknown)'}\n"
+        f"User IP:           {ip}\n"
+        f"Token (KEPT ACTIVE until natural expiry): {token[:24]}...\n"
+        f"User language:     {user_lang}\n\n"
+        "Per Terms §4 + EU 2023/2673 waiver. No action required unless user disputes.\n"
+    )
+    send_email(admin_addr, '[Apex CANCEL] waiver applied — no refund',
+               admin_body, reply_to=customer_email if customer_email else '')
 
-    return jsonify({'ok': True, 'refund_id': refund_id})
+    return jsonify({'ok': True, 'refunded': False, 'access_revoked': False,
+                    'waiver_applied': True, 'hours_since_payment': round(hours_since, 1)})
 
 
 # ═══════════════════════════════════════════════════════════

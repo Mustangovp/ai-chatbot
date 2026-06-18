@@ -305,9 +305,9 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
         <span class="fb-icon">💬</span>
         <span class="fb-btn-text" data-key="fb-btn">Мнение</span>
       </button>
-      <button class="fb-btn" id="withdrawBtn" style="display:none;" onclick="openWithdraw()" title="EU Directive 2023/2673">
+      <button class="fb-btn" id="withdrawBtn" style="display:none;" onclick="openWithdraw()" title="Cancel subscription">
         <span class="fb-icon">↩</span>
-        <span class="fb-btn-text" data-key="wd-btn">Откажи договор</span>
+        <span class="fb-btn-text" data-key="wd-btn">Откажи абонамента</span>
       </button>
       <button class="lang-btn" id="langBtn" onclick="toggleLang()">EN</button>
     </div>
@@ -451,11 +451,11 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
   </div>
 </div>
 
-<!-- WITHDRAW / RIGHT-OF-WITHDRAWAL MODAL (EU Directive 2023/2673) -->
+<!-- CANCEL SUBSCRIPTION MODAL (24-hour refund window + waiver after) -->
 <div id="withdraw-modal" onclick="if(event.target===this)closeWithdraw()">
   <div class="legal-card">
-    <h2 data-key="wd-title">Право на отказ</h2>
-    <p data-key="wd-body">Съгласно Директива (ЕС) 2023/2673 имаш право да се откажеш от договора за цифрово съдържание в 14-дневен срок. След потвърждение ще възстановим сумата на оригиналния начин на плащане (5–10 работни дни) и достъпът ти на това устройство ще бъде прекратен веднага. Ще получиш потвърждение на имейла, използван при плащането.</p>
+    <h2 data-key="wd-title">Отказ на абонамента</h2>
+    <p data-key="wd-body">В рамките на 24 часа от плащането възстановяваме пълната сума и прекратяваме достъпа веднага. След това достъпът ти продължава до естествения край на 30-дневния период съгласно Условията. Във всички случаи ще получиш потвърждение на имейла, използван при плащането.</p>
     <div class="wd-actions">
       <button class="wd-cancel" onclick="closeWithdraw()" data-key="wd-cancel">Назад</button>
       <button class="wd-confirm" id="wdConfirmBtn" onclick="confirmWithdraw()" data-key="wd-confirm">Потвърди отказа →</button>
@@ -525,9 +525,9 @@ const T={
     'pw-p2':'<strong>Дълга памет</strong> (6× повече)',
     'pw-p3':'Детайлни програми',
     'pw-pro-btn':'Към PRO →',
-    'wd-btn':'Откажи договор',
-    'wd-title':'Право на отказ',
-    'wd-body':'Съгласно Директива (ЕС) 2023/2673 имаш право да се откажеш от договора за цифрово съдържание в 14-дневен срок. След потвърждение ще възстановим сумата на оригиналния начин на плащане (5–10 работни дни) и достъпът ти на това устройство ще бъде прекратен веднага. Ще получиш потвърждение на имейла, използван при плащането.',
+    'wd-btn':'Откажи абонамента',
+    'wd-title':'Отказ на абонамента',
+    'wd-body':'В рамките на 24 часа от плащането възстановяваме пълната сума и прекратяваме достъпа веднага. След това достъпът ти продължава до естествения край на 30-дневния период съгласно Условията. Във всички случаи ще получиш потвърждение на имейла, използван при плащането.',
     'wd-cancel':'Назад',
     'wd-confirm':'Потвърди отказа →',
     copySuccess:'Планът е копиран! 🔥',pdfError:'Първо задай въпрос на AI!',
@@ -587,11 +587,11 @@ const T={
     'pw-p2':'<strong>Long memory</strong> (6× more)',
     'pw-p3':'Detailed programs',
     'pw-pro-btn':'Go PRO →',
-    'wd-btn':'Withdraw contract',
-    'wd-title':'Right of withdrawal',
-    'wd-body':'Under EU Directive 2023/2673 you have the right to withdraw from this digital-content contract within 14 days. On confirmation, we will refund the amount to the original payment method (5–10 business days) and your access on this device will be revoked immediately. You will receive a confirmation at the email used at checkout.',
+    'wd-btn':'Cancel subscription',
+    'wd-title':'Cancel subscription',
+    'wd-body':'If you cancel within 24 hours of payment, we issue a full refund and revoke access immediately. After that, your access continues until the natural end of your 30-day pass under our Terms — there is no auto-renewal. Either way, you will receive a confirmation at the email used at checkout.',
     'wd-cancel':'Back',
-    'wd-confirm':'Confirm withdrawal →',
+    'wd-confirm':'Confirm cancellation →',
     copySuccess:'Plan copied! 🔥',pdfError:'First ask the AI a question!',
     greeting:'**🔱 You\'re in Apex.**\n\nI\'m your coach from here on. You give me the goal — I write the plan. Precise, realistic, yours.\n\nWhere do we start?',
     chips:[
@@ -691,7 +691,9 @@ function activateElite(){
   localStorage.removeItem('apexPaywallShown');
   updatePlanBadge();
   updateUtilityLocks();
-  // EU Directive 2023/2673: surface the withdrawal button only to paid users.
+  // EU Directive 2023/2673 + Terms §4: any paid user can request cancellation.
+  // The server decides whether the 24-hour goodwill window applies (refund)
+  // or the digital-content waiver applies (acknowledgment only).
   const wd=document.getElementById('withdrawBtn');
   if(wd)wd.style.display='flex';
 }
@@ -711,7 +713,7 @@ async function confirmWithdraw(){
   const btn=document.getElementById('wdConfirmBtn');
   const token=localStorage.getItem('apexToken')||'';
   const sessionId=localStorage.getItem('apexSessionId')||'';
-  if(!token){toast(lang==='bg'?'Няма активен договор.':'No active contract.');closeWithdraw();return;}
+  if(!token){toast(lang==='bg'?'Няма активен абонамент.':'No active subscription.');closeWithdraw();return;}
   if(btn){
     if(btn.disabled)return;
     btn.disabled=true;
@@ -721,26 +723,31 @@ async function confirmWithdraw(){
     const res=await fetch('/withdraw',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token,session_id:sessionId,lang})});
     const data=await res.json();
     if(data.ok){
-      try{
-        localStorage.removeItem('apexToken');
-        localStorage.removeItem('apexSessionId');
-        localStorage.removeItem('apexPlan');
-      }catch(e){}
       closeWithdraw();
-      toast(lang==='bg'?'✅ Договорът е отказан. Проверявай имейла.':'✅ Contract withdrawn. Check your email.');
-      setTimeout(()=>{window.location.href='/';},1800);
+      if(data.refunded){
+        // Within 24h: token was revoked + Stripe refund issued.
+        try{
+          localStorage.removeItem('apexToken');
+          localStorage.removeItem('apexSessionId');
+          localStorage.removeItem('apexPlan');
+        }catch(e){}
+        toast(lang==='bg'?'✅ Възстановяването е стартирано. Проверявай имейла.':'✅ Refund initiated. Check your email.');
+        setTimeout(()=>{window.location.href='/';},1800);
+      }else if(data.waiver_applied){
+        // After 24h: waiver applies, no refund. Token stays active until expiry.
+        toast(lang==='bg'
+          ? 'Заявката е получена. Достъпът ти продължава до края на периода — провери имейла.'
+          : 'Request received. Your access continues until the end of the period — check your email.');
+      }else{
+        toast(lang==='bg'?'Заявката е обработена. Проверявай имейла.':'Request processed. Check your email.');
+      }
       return;
     }
-    if(data.manual){
-      closeWithdraw();
-      toast(lang==='bg'?'Заявката е получена. Ще обработим ръчно в рамките на 24ч.':'Request received. We will process it manually within 24h.');
-      return;
-    }
-    toast(lang==='bg'?'Грешка при отказа. Опитай отново или пиши на apexpulsepro@gmail.com.':'Withdrawal error. Try again or email apexpulsepro@gmail.com.');
+    toast(lang==='bg'?'Грешка при отказа. Опитай отново или пиши на apexpulsepro@gmail.com.':'Cancellation error. Try again or email apexpulsepro@gmail.com.');
   }catch(e){
     toast(lang==='bg'?'Мрежова грешка. Опитай отново.':'Network error. Try again.');
   }finally{
-    if(btn){btn.disabled=false;btn.textContent=(T[lang]&&T[lang]['wd-confirm'])||'Confirm withdrawal →';}
+    if(btn){btn.disabled=false;btn.textContent=(T[lang]&&T[lang]['wd-confirm'])||'Confirm cancellation →';}
   }
 }
 
