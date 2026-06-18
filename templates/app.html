@@ -86,9 +86,9 @@ body{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;}
    text label stays on mobile so it never collapses to just an arrow. */
 .cancel-sub-btn{background:rgba(245,33,45,0.10);border:1px solid rgba(245,33,45,0.45);color:#ff8a5c;font-family:inherit;font-weight:700;font-size:13px;padding:6px 13px;border-radius:6px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px;white-space:nowrap;}
 .cancel-sub-btn:hover{border-color:var(--red);color:#fff;background:rgba(245,33,45,0.22);}
-.cancel-sub-btn .cs-icon{font-size:14px;}
+.cancel-sub-btn .cs-icon{font-size:15px;line-height:1;}
 .cancel-sub-btn .cs-text{display:inline;}
-@media(max-width:480px){.cancel-sub-btn{font-size:12px;padding:6px 10px;}}
+@media(max-width:480px){.cancel-sub-btn{padding:6px 10px;}.cancel-sub-btn .cs-text{display:none;}}
 
 /* Feedback modal */
 #feedback-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.97);z-index:1000;align-items:center;justify-content:center;padding:22px;}
@@ -314,7 +314,7 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
         <span class="fb-btn-text" data-key="fb-btn">Мнение</span>
       </button>
       <button class="cancel-sub-btn" id="withdrawBtn" style="display:none;" onclick="openWithdraw()" title="Cancel subscription">
-        <span class="cs-icon">↩</span>
+        <span class="cs-icon">✕</span>
         <span class="cs-text" data-key="wd-btn">Откажи абонамента</span>
       </button>
       <button class="lang-btn" id="langBtn" onclick="toggleLang()">EN</button>
