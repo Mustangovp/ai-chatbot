@@ -102,8 +102,8 @@ h1 .grad{background:linear-gradient(90deg,#F5212D 0%,#FF6A3C 45%,#FFB13C 100%);b
 .goal-line .gl-alt{margin-top:12px;font-size:13px;color:var(--muted);}
 .goal-line .gl-alt a{color:var(--cyan);font-weight:700;text-decoration:none;}
 .micro{color:#6B7185;font-size:11.5px;letter-spacing:1.8px;text-transform:uppercase;font-weight:700;margin-top:28px;position:relative;z-index:2;opacity:0;animation:hero-fadeup 1s 1.4s cubic-bezier(.2,.7,.2,1) forwards;}
-.ph-badge{display:flex;justify-content:center;margin:22px auto 0;position:relative;z-index:2;opacity:0;animation:hero-fadeup 1s 1.5s cubic-bezier(.2,.7,.2,1) forwards;}
-.ph-badge img{transition:transform .2s,filter .2s;}
+.ph-badge{display:flex;justify-content:center;align-items:center;gap:14px;flex-wrap:wrap;margin:22px auto 0;position:relative;z-index:2;opacity:0;animation:hero-fadeup 1s 1.5s cubic-bezier(.2,.7,.2,1) forwards;}
+.ph-badge img{height:54px;width:auto;transition:transform .2s,filter .2s;}
 .ph-badge a:hover img{transform:translateY(-1px);filter:drop-shadow(0 6px 18px rgba(245,33,45,.25));}
 
 /* payment strip under hero */
@@ -353,6 +353,9 @@ footer a:hover{color:var(--text);}
   <div class="ph-badge">
     <a href="https://www.producthunt.com/posts/apex-pulse-pro" target="_blank" rel="noopener" onclick="track('ph_badge_click',{place:'hero'})">
       <img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=apex-pulse-pro&theme=dark" alt="Apex Pulse Pro on Product Hunt" width="250" height="54" loading="lazy" />
+    </a>
+    <a href="https://www.shipit.buzz/products/apex-pulse-pro?ref=badge" target="_blank" rel="noopener noreferrer" onclick="track('shipit_badge_click',{place:'hero'})">
+      <img src="https://www.shipit.buzz/api/products/apex-pulse-pro/badge?theme=dark" alt="Featured on Shipit" loading="lazy" />
     </a>
   </div>
 
