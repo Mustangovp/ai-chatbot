@@ -785,19 +785,19 @@ def verify_token_endpoint():
 # EU Directive 2023/2673 — RIGHT OF WITHDRAWAL (waiver flow)
 # Apex sells one-time 30-day digital passes. Our Terms invoke the
 # directive's waiver: the right of withdrawal is lost once the digital
-# content is delivered. We honor a 24-hour goodwill window above what
-# the law strictly requires — full refund if invoked within 24h of
-# payment; after that, the waiver kicks in.
+# content is delivered. We offer a 7-day money-back guarantee — full
+# refund, no questions asked, if invoked within 7 days of payment;
+# after that, the waiver kicks in.
 #
-# Within 24h: revoke token, refund the original Stripe charge, email
-#             both the user (Resend) and admin.
-# After 24h:  keep token active until expiry, email the user
+# Within 7 days: revoke token, refund the original Stripe charge, email
+#                both the user (Resend) and admin.
+# After 7 days:  keep token active until expiry, email the user
 #             acknowledging the request and explaining the waiver,
 #             notify admin for audit.
 # ═══════════════════════════════════════════════════════════
 COACH_INBOX = 'coach@apexpulse.pro'
 PLAN_AMOUNTS_EUR = {'core': '9.99', 'pro': '14.99'}
-WITHDRAW_WINDOW_HOURS = 24
+WITHDRAW_WINDOW_HOURS = 168  # 7 days
 
 
 @app.route('/withdraw', methods=['POST'])
@@ -844,7 +844,7 @@ def withdraw_endpoint():
     amount = PLAN_AMOUNTS_EUR.get(plan, '?')
     admin_addr = os.getenv('LEAD_NOTIFY_EMAIL', os.getenv('GMAIL_USER', COACH_INBOX))
 
-    # ─────────── WITHIN 24-HOUR WINDOW → revoke + refund ───────────
+    # ─────────── WITHIN 7-DAY WINDOW → revoke + refund ───────────
     if hours_since <= WITHDRAW_WINDOW_HOURS:
         # Revoke immediately so the token stops working even if cached client-side.
         _revoked_tokens.add(token)
@@ -902,12 +902,12 @@ def withdraw_endpoint():
 
         # Admin audit + manual-handle fallback if Stripe failed
         admin_subject = (
-            f'[Apex CANCEL] refund {refund_id} — within {WITHDRAW_WINDOW_HOURS}h'
+            f'[Apex CANCEL] refund {refund_id} — within 7-day window'
             if refund_id else
             f'[Apex CANCEL] manual refund required — Stripe failed'
         )
         admin_body = (
-            "Cancellation within 24-hour window.\n\n"
+            "Cancellation within 7-day money-back guarantee window.\n\n"
             f"Plan:              APEX PULSE {plan.upper()}\n"
             f"Amount:            EUR {amount}\n"
             f"Payment date:      {payment_date_str}\n"
@@ -926,7 +926,7 @@ def withdraw_endpoint():
         return jsonify({'ok': True, 'refunded': bool(refund_id), 'access_revoked': True,
                         'hours_since_payment': round(hours_since, 1)})
 
-    # ─────────── AFTER 24-HOUR WINDOW → waiver, no refund ───────────
+    # ─────────── AFTER 7-DAY WINDOW → waiver, no refund ───────────
     # Token stays active until natural expiry. We honor the user's notice
     # by recording it and emailing both parties, but do not refund (per
     # Terms §4 — right of withdrawal waived for delivered digital content).
@@ -941,10 +941,8 @@ def withdraw_endpoint():
                 f"Hours since payment: {hours_since:.1f}\n\n"
                 "About your refund:\n"
                 "Apex Pulse Pro is digital content delivered immediately on payment.\n"
-                "Under our Terms (§4) and EU Directive 2023/2673, the right of withdrawal\n"
-                "is waived for digital content once delivery has begun, beyond a 24-hour\n"
-                "goodwill window we offer as standard. Your request is outside that window,\n"
-                "so we are unable to issue a refund.\n\n"
+                "Our 7-day money-back guarantee covers the first 7 days from payment.\n"
+                "Your request is outside that window, so we are unable to issue a refund.\n\n"
                 "Your access will continue until the natural end of your 30-day pass — you\n"
                 "do not need to do anything else. We will not auto-renew (Apex is a one-time\n"
                 "purchase, never a recurring subscription).\n\n"
@@ -962,10 +960,8 @@ def withdraw_endpoint():
                 f"Часове от плащането: {hours_since:.1f}\n\n"
                 "Относно възстановяването:\n"
                 "Apex Pulse Pro е цифрово съдържание, доставено веднага при плащане.\n"
-                "Съгласно нашите Условия (§4) и Директива (ЕС) 2023/2673, правото на\n"
-                "отказ отпада за цифрово съдържание след началото на доставката, извън\n"
-                "24-часовия гратисен прозорец, който предлагаме като стандарт. Заявката\n"
-                "ти е извън този прозорец, така че не можем да възстановим сумата.\n\n"
+                "Нашата гаранция за връщане на парите покрива първите 7 дни от плащането.\n"
+                "Заявката ти е извън този прозорец, така че не можем да възстановим сумата.\n\n"
                 "Достъпът ти продължава до естествения край на 30-дневния период —\n"
                 "няма нужда да правиш нищо повече. Няма автоматично подновяване\n"
                 "(Apex е еднократна покупка, не повтарящ се абонамент).\n\n"
@@ -975,7 +971,7 @@ def withdraw_endpoint():
         send_email(customer_email, subject, user_body)
 
     admin_body = (
-        "Cancellation request OUTSIDE 24-hour window — waiver applies, no refund.\n\n"
+        "Cancellation request OUTSIDE 7-day window — waiver applies, no refund.\n\n"
         f"Plan:              APEX PULSE {plan.upper()}\n"
         f"Amount NOT refunded: EUR {amount}\n"
         f"Payment date:      {payment_date_str}\n"

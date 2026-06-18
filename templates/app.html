@@ -459,11 +459,11 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
   </div>
 </div>
 
-<!-- CANCEL SUBSCRIPTION MODAL (24-hour refund window + waiver after) -->
+<!-- CANCEL SUBSCRIPTION MODAL (7-day money-back guarantee) -->
 <div id="withdraw-modal" onclick="if(event.target===this)closeWithdraw()">
   <div class="legal-card">
     <h2 data-key="wd-title">Отказ на абонамента</h2>
-    <p data-key="wd-body">В рамките на 24 часа от плащането възстановяваме пълната сума и прекратяваме достъпа веднага. След това достъпът ти продължава до естествения край на 30-дневния период съгласно Условията. Във всички случаи ще получиш потвърждение на имейла, използван при плащането.</p>
+    <p data-key="wd-body">В рамките на 7 дни от плащането възстановяваме пълната сума без въпроси и прекратяваме достъпа веднага. След това достъпът ти продължава до естествения край на 30-дневния период съгласно Условията. Apex е еднократна покупка — без автоматично подновяване.</p>
     <div class="wd-actions">
       <button class="wd-cancel" onclick="closeWithdraw()" data-key="wd-cancel">Назад</button>
       <button class="wd-confirm" id="wdConfirmBtn" onclick="confirmWithdraw()" data-key="wd-confirm">Потвърди отказа →</button>
@@ -535,7 +535,7 @@ const T={
     'pw-pro-btn':'Към PRO →',
     'wd-btn':'Откажи абонамента',
     'wd-title':'Отказ на абонамента',
-    'wd-body':'В рамките на 24 часа от плащането възстановяваме пълната сума и прекратяваме достъпа веднага. След това достъпът ти продължава до естествения край на 30-дневния период съгласно Условията. Във всички случаи ще получиш потвърждение на имейла, използван при плащането.',
+    'wd-body':'В рамките на 7 дни от плащането възстановяваме пълната сума без въпроси и прекратяваме достъпа веднага. След това достъпът ти продължава до естествения край на 30-дневния период съгласно Условията. Apex е еднократна покупка — без автоматично подновяване.',
     'wd-cancel':'Назад',
     'wd-confirm':'Потвърди отказа →',
     copySuccess:'Планът е копиран! 🔥',pdfError:'Първо задай въпрос на AI!',
@@ -597,7 +597,7 @@ const T={
     'pw-pro-btn':'Go PRO →',
     'wd-btn':'Cancel subscription',
     'wd-title':'Cancel subscription',
-    'wd-body':'If you cancel within 24 hours of payment, we issue a full refund and revoke access immediately. After that, your access continues until the natural end of your 30-day pass under our Terms — there is no auto-renewal. Either way, you will receive a confirmation at the email used at checkout.',
+    'wd-body':'7-day money-back guarantee, no questions asked. Cancel within 7 days of payment and we issue a full refund and revoke access immediately. After 7 days, your access continues until the natural end of your 30-day pass — no auto-renewal, ever.',
     'wd-cancel':'Back',
     'wd-confirm':'Confirm cancellation →',
     copySuccess:'Plan copied! 🔥',pdfError:'First ask the AI a question!',
@@ -700,7 +700,7 @@ function activateElite(){
   updatePlanBadge();
   updateUtilityLocks();
   // EU Directive 2023/2673 + Terms §4: any paid user can request cancellation.
-  // The server decides whether the 24-hour goodwill window applies (refund)
+  // The server decides whether the 7-day money-back window applies (refund)
   // or the digital-content waiver applies (acknowledgment only).
   const wd=document.getElementById('withdrawBtn');
   if(wd)wd.style.display='flex';
@@ -733,7 +733,7 @@ async function confirmWithdraw(){
     if(data.ok){
       closeWithdraw();
       if(data.refunded){
-        // Within 24h: token was revoked + Stripe refund issued.
+        // Within 7 days: token was revoked + Stripe refund issued.
         try{
           localStorage.removeItem('apexToken');
           localStorage.removeItem('apexSessionId');
@@ -742,7 +742,7 @@ async function confirmWithdraw(){
         toast(lang==='bg'?'✅ Възстановяването е стартирано. Проверявай имейла.':'✅ Refund initiated. Check your email.');
         setTimeout(()=>{window.location.href='/';},1800);
       }else if(data.waiver_applied){
-        // After 24h: waiver applies, no refund. Token stays active until expiry.
+        // After 7 days: waiver applies, no refund. Token stays active until expiry.
         toast(lang==='bg'
           ? 'Заявката е получена. Достъпът ти продължава до края на периода — провери имейла.'
           : 'Request received. Your access continues until the end of the period — check your email.');
