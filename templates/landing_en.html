@@ -223,6 +223,11 @@ h2{font-family:'Unbounded';font-weight:700;font-size:clamp(21px,4vw,32px);line-h
 .p-btn:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.4);}
 .plan.hot .p-btn{background:var(--pulse);border:none;box-shadow:0 6px 24px rgba(245,33,45,.32);}
 .plan.hot .p-btn:hover{box-shadow:0 10px 30px rgba(245,33,45,.45);border:none;}
+/* EU consumer-rights: cancellation / withdrawal policy — visible to every visitor */
+.cancel-policy-wrap{text-align:center;margin-top:24px;}
+.cancel-policy-btn{display:inline-flex;align-items:center;gap:9px;background:var(--surface2);border:1px solid rgba(255,255,255,.2);color:var(--text);font-family:'Manrope';font-weight:700;font-size:13.5px;padding:12px 22px;border-radius:30px;cursor:pointer;transition:border-color .2s,color .2s,transform .15s;}
+.cancel-policy-btn:hover{border-color:var(--gold);color:var(--gold);transform:translateY(-1px);}
+.cancel-policy-note{margin-top:8px;font-size:11.5px;color:var(--muted);}
 
 /* TRUST BLOCK */
 .trustblock{margin-top:24px;background:var(--surface);border:1px solid rgba(255,255,255,.1);border-radius:var(--radius);padding:20px;text-align:center;}
@@ -471,6 +476,11 @@ footer a:hover{color:var(--text);}
       </ul>
       <a href="/app?lang=en&plan=pro" class="p-btn" onclick="goCheckout(this,'pro');return false;">Go PRO</a>
     </div>
+  </div>
+
+  <div class="cancel-policy-wrap">
+    <button class="cancel-policy-btn" onclick="track('cancel_policy_view',{place:'pricing'});showLegal('refund')">↩ Cancel subscription &amp; refund policy</button>
+    <div class="cancel-policy-note">Your right to cancel and request a refund — EU consumer rights, explained.</div>
   </div>
 
   <div class="trustblock">
