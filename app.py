@@ -772,6 +772,93 @@ def verify_token_endpoint():
 
 
 # ═══════════════════════════════════════════════════════════
+# EU Directive 2023/2673 — RIGHT OF WITHDRAWAL
+# One-time 30-day digital content. When the user invokes their right of
+# withdrawal we: refund the original Stripe charge, email the user a
+# confirmation (Resend), and notify admin so the access token can be
+# revoked server-side if we ever add a denylist.
+# ═══════════════════════════════════════════════════════════
+@app.route('/withdraw', methods=['POST'])
+def withdraw_endpoint():
+    data = request.get_json(silent=True) or {}
+    token = str(data.get('token', ''))[:512]
+    session_id = str(data.get('session_id', ''))[:200]
+    user_lang = str(data.get('lang', 'bg'))[:5]
+
+    is_valid, plan = verify_token(token)
+    if not is_valid:
+        return jsonify({'ok': False, 'error': 'invalid_token'}), 401
+    if DEV_TOKEN and token == DEV_TOKEN:
+        # Dev / lifetime tokens have no Stripe charge to refund.
+        return jsonify({'ok': False, 'error': 'dev_token_not_refundable'}), 400
+    if not session_id or not session_id.startswith('cs_'):
+        # We can still record the withdrawal request even without a session.
+        admin_addr = os.getenv('LEAD_NOTIFY_EMAIL', os.getenv('GMAIL_USER', 'apexpulsepro@gmail.com'))
+        send_email(admin_addr, '[Apex WITHDRAW] manual-refund needed (no session_id)',
+                   f"A paid user invoked withdrawal but no session_id was stored.\nplan={plan}\ntoken={token[:24]}...\nManual lookup required.")
+        return jsonify({'ok': False, 'error': 'missing_session', 'manual': True}), 400
+
+    refund_id = None
+    customer_email = ''
+    try:
+        session = stripe.checkout.Session.retrieve(session_id)
+        customer_email = (getattr(session, 'customer_details', None) or {}).get('email', '') if isinstance(getattr(session, 'customer_details', None), dict) else (session.customer_details.email if getattr(session, 'customer_details', None) else '')
+        pi = getattr(session, 'payment_intent', None)
+        if not pi:
+            raise RuntimeError('session has no payment_intent')
+        refund = stripe.Refund.create(payment_intent=pi)
+        refund_id = refund.id
+        print(f'[withdraw] Stripe refund {refund_id} issued for session {session_id[:24]}... plan={plan}')
+    except Exception as e:
+        print(f'[withdraw] Stripe error for session {session_id[:24]}...: {e}')
+        # Notify admin so the refund can be processed manually.
+        admin_addr = os.getenv('LEAD_NOTIFY_EMAIL', os.getenv('GMAIL_USER', 'apexpulsepro@gmail.com'))
+        send_email(admin_addr, '[Apex WITHDRAW] Stripe call FAILED — manual refund required',
+                   f"Withdrawal request received but Stripe refund failed.\nsession_id={session_id}\nplan={plan}\nerror={e}\nProcess the refund manually in Stripe dashboard.")
+        return jsonify({'ok': False, 'error': 'refund_failed', 'manual': True}), 502
+
+    # Confirmation email to the user (Resend-backed via send_email)
+    if customer_email and '@' in customer_email:
+        if user_lang == 'en':
+            subject = 'Withdrawal confirmed — refund on the way'
+            body = (
+                "Hi,\n\n"
+                "We've received your withdrawal request under EU Directive 2023/2673\n"
+                "(right of withdrawal for digital content).\n\n"
+                f"Plan: APEX PULSE {plan.upper()}\n"
+                f"Refund ID: {refund_id}\n\n"
+                "Your refund has been issued and will appear on your original payment method\n"
+                "within 5-10 business days (Stripe typical timing).\n\n"
+                "Your access has been revoked on this device.\n\n"
+                "If you have questions, just reply to this email.\n\n"
+                "APEX PULSE PRO\n"
+            )
+        else:
+            subject = 'Договорът е отказан — възстановяване на сумата'
+            body = (
+                "Здравей,\n\n"
+                "Получихме твоето искане за отказ от договора съгласно\n"
+                "Директива (ЕС) 2023/2673 (право на отказ от цифрово съдържание).\n\n"
+                f"План: APEX PULSE {plan.upper()}\n"
+                f"Идентификатор на възстановяването: {refund_id}\n\n"
+                "Сумата е възстановена на оригиналния начин на плащане и\n"
+                "ще се появи в извлечението ти в рамките на 5-10 работни дни\n"
+                "(обичайни срокове на Stripe).\n\n"
+                "Достъпът ти на това устройство е прекратен.\n\n"
+                "Ако имаш въпроси, отговори на този имейл.\n\n"
+                "APEX PULSE PRO\n"
+            )
+        send_email(customer_email, subject, body)
+
+    # Admin notification (audit trail)
+    admin_addr = os.getenv('LEAD_NOTIFY_EMAIL', os.getenv('GMAIL_USER', 'apexpulsepro@gmail.com'))
+    send_email(admin_addr, f'[Apex WITHDRAW] refund {refund_id} issued',
+               f"User invoked right of withdrawal.\nsession_id={session_id}\nplan={plan}\nrefund_id={refund_id}\ncustomer_email={customer_email or '(unknown)'}\n")
+
+    return jsonify({'ok': True, 'refund_id': refund_id})
+
+
+# ═══════════════════════════════════════════════════════════
 # LEAD CAPTURE — the single biggest funnel leak fix.
 # Free user leaves email near the limit → gets +5 bonus messages
 # AND we get a contactable lead for follow-up offers.

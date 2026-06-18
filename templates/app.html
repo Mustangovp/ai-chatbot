@@ -193,13 +193,20 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 @keyframes modal-backdrop-in{from{opacity:0;}to{opacity:1;}}
 @keyframes modal-card-in{from{opacity:0;transform:translateY(-14px) scale(0.97);}to{opacity:1;transform:translateY(0) scale(1);}}
 /* Animation fires when element enters rendering (display:none → display:flex) */
-#paywall,#disclaimer-modal,#legal-modal,#feedback-modal{animation:modal-backdrop-in .22s ease;}
-#paywall .pw-card,#disclaimer-modal .disc-card,#legal-modal .legal-card,#feedback-modal .fb-card{animation:modal-card-in .28s cubic-bezier(0.34,1.4,0.64,1);}
-@media(prefers-reduced-motion:reduce){ #paywall,#disclaimer-modal,#legal-modal,#feedback-modal,#paywall .pw-card,#disclaimer-modal .disc-card,#legal-modal .legal-card,#feedback-modal .fb-card{animation:none;}}
+#paywall,#disclaimer-modal,#legal-modal,#feedback-modal,#withdraw-modal{animation:modal-backdrop-in .22s ease;}
+#paywall .pw-card,#disclaimer-modal .disc-card,#legal-modal .legal-card,#feedback-modal .fb-card,#withdraw-modal .legal-card{animation:modal-card-in .28s cubic-bezier(0.34,1.4,0.64,1);}
+@media(prefers-reduced-motion:reduce){ #paywall,#disclaimer-modal,#legal-modal,#feedback-modal,#withdraw-modal,#paywall .pw-card,#disclaimer-modal .disc-card,#legal-modal .legal-card,#feedback-modal .fb-card,#withdraw-modal .legal-card{animation:none;}}
 
 /* ── PAYWALL MODAL (only when sessions exhausted) ── */
-#paywall,#disclaimer-modal,#legal-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.97);z-index:1000;flex-direction:column;align-items:center;justify-content:flex-start;padding:22px;overflow-y:auto;-webkit-overflow-scrolling:touch;}
-#paywall>*,#disclaimer-modal>*,#legal-modal>*{margin-top:auto;margin-bottom:auto;}
+#paywall,#disclaimer-modal,#legal-modal,#withdraw-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.97);z-index:1000;flex-direction:column;align-items:center;justify-content:flex-start;padding:22px;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+#paywall>*,#disclaimer-modal>*,#legal-modal>*,#withdraw-modal>*{margin-top:auto;margin-bottom:auto;}
+#withdraw-modal .legal-card{border-color:rgba(245,33,45,0.4);}
+#withdraw-modal .wd-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px;}
+#withdraw-modal .wd-confirm{flex:1;background:linear-gradient(135deg,var(--red),#ad141e);color:#fff;border:none;font-family:inherit;font-weight:700;font-size:14px;padding:14px 18px;border-radius:10px;cursor:pointer;transition:transform .15s,box-shadow .15s;}
+#withdraw-modal .wd-confirm:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(245,33,45,.4);}
+#withdraw-modal .wd-confirm:disabled{opacity:.55;cursor:wait;}
+#withdraw-modal .wd-cancel{flex:1;background:transparent;color:var(--text);border:1px solid var(--border);font-family:inherit;font-weight:600;font-size:14px;padding:14px 18px;border-radius:10px;cursor:pointer;}
+#withdraw-modal .wd-cancel:hover{border-color:var(--gold);color:var(--gold);}
 .pw-card{max-width:min(520px,calc(100vw - 24px));width:100%;box-sizing:border-box;background:linear-gradient(180deg,var(--surface2),var(--surface));border:1.5px solid rgba(255,177,60,0.4);border-radius:18px;padding:36px 28px;text-align:center;position:relative;box-shadow:0 0 80px rgba(255,177,60,0.12);}
 .pw-crown{font-size:42px;margin-bottom:14px;}
 .pw-title{font-family:'Unbounded';font-size:20px;letter-spacing:.5px;color:var(--gold);margin:0 0 6px;}
@@ -297,6 +304,10 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
       <button class="fb-btn" onclick="openFeedback()" title="Изпрати мнение/препоръка">
         <span class="fb-icon">💬</span>
         <span class="fb-btn-text" data-key="fb-btn">Мнение</span>
+      </button>
+      <button class="fb-btn" id="withdrawBtn" style="display:none;" onclick="openWithdraw()" title="EU Directive 2023/2673">
+        <span class="fb-icon">↩</span>
+        <span class="fb-btn-text" data-key="wd-btn">Откажи договор</span>
       </button>
       <button class="lang-btn" id="langBtn" onclick="toggleLang()">EN</button>
     </div>
@@ -440,6 +451,18 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
   </div>
 </div>
 
+<!-- WITHDRAW / RIGHT-OF-WITHDRAWAL MODAL (EU Directive 2023/2673) -->
+<div id="withdraw-modal" onclick="if(event.target===this)closeWithdraw()">
+  <div class="legal-card">
+    <h2 data-key="wd-title">Право на отказ</h2>
+    <p data-key="wd-body">Съгласно Директива (ЕС) 2023/2673 имаш право да се откажеш от договора за цифрово съдържание в 14-дневен срок. След потвърждение ще възстановим сумата на оригиналния начин на плащане (5–10 работни дни) и достъпът ти на това устройство ще бъде прекратен веднага. Ще получиш потвърждение на имейла, използван при плащането.</p>
+    <div class="wd-actions">
+      <button class="wd-cancel" onclick="closeWithdraw()" data-key="wd-cancel">Назад</button>
+      <button class="wd-confirm" id="wdConfirmBtn" onclick="confirmWithdraw()" data-key="wd-confirm">Потвърди отказа →</button>
+    </div>
+  </div>
+</div>
+
 <!-- MINI FOOTER -->
 <footer class="footer-mini">
   <div class="footer-mini-row">
@@ -502,6 +525,11 @@ const T={
     'pw-p2':'<strong>Дълга памет</strong> (6× повече)',
     'pw-p3':'Детайлни програми',
     'pw-pro-btn':'Към PRO →',
+    'wd-btn':'Откажи договор',
+    'wd-title':'Право на отказ',
+    'wd-body':'Съгласно Директива (ЕС) 2023/2673 имаш право да се откажеш от договора за цифрово съдържание в 14-дневен срок. След потвърждение ще възстановим сумата на оригиналния начин на плащане (5–10 работни дни) и достъпът ти на това устройство ще бъде прекратен веднага. Ще получиш потвърждение на имейла, използван при плащането.',
+    'wd-cancel':'Назад',
+    'wd-confirm':'Потвърди отказа →',
     copySuccess:'Планът е копиран! 🔥',pdfError:'Първо задай въпрос на AI!',
     greeting:'**🔱 Влизаш в Apex.**\n\nАз съм треньорът ти от тук нататък. Ти даваш целта — аз пиша плана. Точен, реалистичен, твой.\n\nС какво започваме?',
     chips:[
@@ -559,6 +587,11 @@ const T={
     'pw-p2':'<strong>Long memory</strong> (6× more)',
     'pw-p3':'Detailed programs',
     'pw-pro-btn':'Go PRO →',
+    'wd-btn':'Withdraw contract',
+    'wd-title':'Right of withdrawal',
+    'wd-body':'Under EU Directive 2023/2673 you have the right to withdraw from this digital-content contract within 14 days. On confirmation, we will refund the amount to the original payment method (5–10 business days) and your access on this device will be revoked immediately. You will receive a confirmation at the email used at checkout.',
+    'wd-cancel':'Back',
+    'wd-confirm':'Confirm withdrawal →',
     copySuccess:'Plan copied! 🔥',pdfError:'First ask the AI a question!',
     greeting:'**🔱 You\'re in Apex.**\n\nI\'m your coach from here on. You give me the goal — I write the plan. Precise, realistic, yours.\n\nWhere do we start?',
     chips:[
@@ -658,6 +691,57 @@ function activateElite(){
   localStorage.removeItem('apexPaywallShown');
   updatePlanBadge();
   updateUtilityLocks();
+  // EU Directive 2023/2673: surface the withdrawal button only to paid users.
+  const wd=document.getElementById('withdrawBtn');
+  if(wd)wd.style.display='flex';
+}
+
+/* ═══════════ EU WITHDRAWAL (Directive 2023/2673) ═══════════
+   Paid users can invoke the right of withdrawal at any time.
+   The /withdraw endpoint refunds via Stripe and emails confirmation. */
+function openWithdraw(){
+  const m=document.getElementById('withdraw-modal');
+  if(m)m.style.display='flex';
+}
+function closeWithdraw(){
+  const m=document.getElementById('withdraw-modal');
+  if(m)m.style.display='none';
+}
+async function confirmWithdraw(){
+  const btn=document.getElementById('wdConfirmBtn');
+  const token=localStorage.getItem('apexToken')||'';
+  const sessionId=localStorage.getItem('apexSessionId')||'';
+  if(!token){toast(lang==='bg'?'Няма активен договор.':'No active contract.');closeWithdraw();return;}
+  if(btn){
+    if(btn.disabled)return;
+    btn.disabled=true;
+    btn.textContent=lang==='bg'?'Обработваме...':'Processing...';
+  }
+  try{
+    const res=await fetch('/withdraw',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token,session_id:sessionId,lang})});
+    const data=await res.json();
+    if(data.ok){
+      try{
+        localStorage.removeItem('apexToken');
+        localStorage.removeItem('apexSessionId');
+        localStorage.removeItem('apexPlan');
+      }catch(e){}
+      closeWithdraw();
+      toast(lang==='bg'?'✅ Договорът е отказан. Проверявай имейла.':'✅ Contract withdrawn. Check your email.');
+      setTimeout(()=>{window.location.href='/';},1800);
+      return;
+    }
+    if(data.manual){
+      closeWithdraw();
+      toast(lang==='bg'?'Заявката е получена. Ще обработим ръчно в рамките на 24ч.':'Request received. We will process it manually within 24h.');
+      return;
+    }
+    toast(lang==='bg'?'Грешка при отказа. Опитай отново или пиши на apexpulsepro@gmail.com.':'Withdrawal error. Try again or email apexpulsepro@gmail.com.');
+  }catch(e){
+    toast(lang==='bg'?'Мрежова грешка. Опитай отново.':'Network error. Try again.');
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent=(T[lang]&&T[lang]['wd-confirm'])||'Confirm withdrawal →';}
+  }
 }
 
 // Shows the right badge text and color based on the user's plan
@@ -710,6 +794,10 @@ async function pollForToken(sessionId){
       const data=await res.json();
       if(data.ready&&data.token){
         localStorage.setItem('apexToken',data.token);
+        // EU Directive 2023/2673: persist the session_id so /withdraw can find
+        // the original charge and issue a refund if the user invokes their
+        // right of withdrawal.
+        try{localStorage.setItem('apexSessionId',sessionId);}catch(e){}
         const vr=await fetch('/verify-token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:data.token})});
         const vd=await vr.json();
         if(vd.plan&&vd.plan!=='free')localStorage.setItem('apexPlan',vd.plan);
