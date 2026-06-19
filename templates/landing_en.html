@@ -23,6 +23,13 @@
 <script>
 window.dataLayer = window.dataLayer || [];
 function gtag(){dataLayer.push(arguments);}
+// Owner mode: suppress GA4 so owner visits don't pollute analytics.
+try{
+  if(document.cookie.indexOf('apexOwner=true')!==-1||localStorage.getItem('apexOwner')==='true'){
+    window['ga-disable-G-B3WLGXE2XM']=true;
+    window.gtag=function(){};
+  }
+}catch(e){}
 gtag('consent', 'default', {
   'analytics_storage': 'denied',
   'ad_storage': 'denied',

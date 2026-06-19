@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template, redirect, Response, stream_with_context
+from flask import Flask, request, jsonify, render_template, redirect, Response, stream_with_context, make_response
 from flask_cors import CORS
 from openai import OpenAI
 import stripe
@@ -769,6 +769,20 @@ def legacy_success_redirect():
 def stats_endpoint():
     """Honest live counter for the landing page (real AI responses today)."""
     return jsonify({'plans_today': _get_plans_today()})
+
+
+@app.route('/owner-mode')
+def owner_mode():
+    """Sets a long-lived cookie that suppresses GA4 tracking on this device.
+    Visit /owner-mode to activate, /owner-mode?off=1 to deactivate."""
+    turning_off = request.args.get('off') == '1'
+    next_url = request.args.get('next', '/')
+    resp = make_response(redirect(next_url))
+    if turning_off:
+        resp.delete_cookie('apexOwner')
+    else:
+        resp.set_cookie('apexOwner', 'true', max_age=365 * 24 * 3600, samesite='Lax')
+    return resp
 
 
 @app.route('/verify-token', methods=['POST'])
