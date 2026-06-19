@@ -66,12 +66,11 @@ body{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;}
 .nav-title .ra{color:var(--red);}
 .nav-sub{font-size:9px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;margin-top:-3px;}
 .nav-right{display:flex;align-items:center;gap:14px;}
-.nav-badge{font-family:'Unbounded';font-size:13px;letter-spacing:2px;padding:6px 12px;border:1px solid var(--muted);color:var(--text);border-radius:20px;background:rgba(255,255,255,0.05);}
-.nav-badge.elite{border-color:var(--gold);color:var(--gold);background:rgba(255,177,60,0.12);}
-/* Plan-specific badge colors: FREE=white, CORE=green, PRO=red */
-.nav-badge.plan-free{border-color:rgba(255,255,255,0.4);color:#f2eeea;background:rgba(255,255,255,0.06);}
-.nav-badge.plan-core{border-color:#B6FF3C;color:#B6FF3C;background:rgba(57,255,20,0.10);}
-.nav-badge.plan-pro{border-color:#F5212D;color:#F5212D;background:rgba(245,33,45,0.12);}
+/* Plan badge — lives inside greeting message, not nav */
+.greeting-badge{display:inline-flex;align-items:center;gap:5px;font-family:'Unbounded';font-size:9px;letter-spacing:1.8px;padding:4px 11px;border-radius:20px;margin-bottom:12px;text-transform:uppercase;}
+.greeting-badge.plan-free,.greeting-badge.elite{border:1px solid rgba(255,255,255,0.18);color:var(--muted);background:rgba(255,255,255,0.04);}
+.greeting-badge.plan-core{border:1px solid rgba(182,255,60,0.45);color:var(--lime);background:rgba(182,255,60,0.07);}
+.greeting-badge.plan-pro{border:1px solid rgba(245,33,45,0.45);color:#ff8a5c;background:rgba(245,33,45,0.08);}
 .lang-btn{background:transparent;border:1px solid var(--border);color:var(--text);font-family:'Unbounded';font-size:12px;letter-spacing:2px;padding:6px 12px;border-radius:6px;cursor:pointer;transition:all .2s;}
 .lang-btn:hover{border-color:var(--red);color:var(--red);}
 
@@ -113,7 +112,6 @@ body{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;}
   .nav-title{font-size:11px;letter-spacing:.3px;}
   .nav-sub{font-size:8px;}
   .nav-logo{width:34px;height:34px;}
-  .nav-badge{font-size:11px;padding:4px 10px;}
   .lang-btn{font-size:11px;padding:4px 9px;}
 }
 
@@ -254,7 +252,7 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 /* Payment trust signals inside paywall - real SVG logos */
 .pw-pay-methods{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;align-items:center;margin:14px 0 10px;padding:8px;background:rgba(255,255,255,0.03);border-radius:8px;}
 .pw-pay-logo{height:24px;width:auto;border-radius:4px;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.2));}
-@media(max-width:480px){.nav-badge{font-size:11px;padding:4px 8px;letter-spacing:.5px;}.pw-card{padding:26px 16px;}
+@media(max-width:480px){.pw-card{padding:26px 16px;}
   .pw-pay-logo{height:20px;}
 }
 .pw-trust{font-size:10.5px;color:#9a96a8;line-height:1.5;margin:6px 0 14px;text-align:center;padding:8px;}
@@ -308,7 +306,6 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
       </div>
     </a>
     <div class="nav-right">
-      <span class="nav-badge plan-free" id="badge">● FREE</span>
       <button class="fb-btn" onclick="openFeedback()" title="Изпрати мнение/препоръка">
         <span class="fb-icon">💬</span>
         <span class="fb-btn-text" data-key="fb-btn">Мнение</span>
@@ -656,13 +653,20 @@ let count=parseInt(localStorage.getItem('apexCount')||'0',10);
 const box=document.getElementById('chat-box');
 
 function showGreeting(){
-  // Clear chat
   box.innerHTML='';
   const d=T[lang];
   const greeting=document.createElement('div');
   greeting.className='msg-a greeting';
-  greeting.innerHTML=marked.parse(d.greeting);
-  // Add quick chips
+  // Plan badge — sits at top of greeting, replaced by updatePlanBadge()
+  const badgeEl=document.createElement('div');
+  badgeEl.id='badge';
+  badgeEl.className='greeting-badge';
+  greeting.appendChild(badgeEl);
+  // Greeting text
+  const textWrap=document.createElement('div');
+  textWrap.innerHTML=marked.parse(d.greeting);
+  greeting.appendChild(textWrap);
+  // Quick chips
   const chips=document.createElement('div');chips.className='quick-chips';
   d.chips.forEach(chip=>{
     const b=document.createElement('button');b.className='quick-chip';b.textContent=chip;
@@ -671,6 +675,7 @@ function showGreeting(){
   });
   greeting.appendChild(chips);
   box.appendChild(greeting);
+  updatePlanBadge();
 }
 
 function confirmAndPay(plan){
