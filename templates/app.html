@@ -883,11 +883,13 @@ function submitProfile(){
   };
   localStorage.setItem('apexProfile',JSON.stringify(profile));
   document.getElementById('profile-modal').classList.remove('active');
+  if(window._pendingWorkout){const exs=window._pendingWorkout;window._pendingWorkout=null;startWorkout(exs,true);return;}
   toast(lang==='bg'?'Профилът е запазен ✓':'Profile saved ✓');
 }
 function skipProfile(){
   localStorage.setItem('apexProfile','{}');
   document.getElementById('profile-modal').classList.remove('active');
+  if(window._pendingWorkout){const exs=window._pendingWorkout;window._pendingWorkout=null;startWorkout(exs,true);}
 }
 
 /* ══════════════════════════════════════════════════
@@ -979,7 +981,16 @@ let _wo=null,_woTimer=null,_woHrStream=null;
 
 function _woSave(){try{if(_wo)localStorage.setItem('apexWo',JSON.stringify(_wo));}catch(e){}}
 
-function startWorkout(exercises){
+function startWorkout(exercises,_bypass){
+  if(!_bypass){
+    let pf=null;try{pf=JSON.parse(localStorage.getItem('apexProfile'));}catch(e){}
+    const hasProfile=pf&&typeof pf==='object'&&(pf.gender||pf.age||pf.weight);
+    if(!hasProfile){
+      window._pendingWorkout=exercises;
+      document.getElementById('profile-modal').classList.add('active');
+      return;
+    }
+  }
   _wo={exs:exercises.map(e=>({...e})),ei:0,si:0,phase:'ex'};
   _woSave();
   document.getElementById('workout-overlay').classList.add('active');
@@ -1120,7 +1131,7 @@ function _woRenderHr(b){
   b.innerHTML=`
     <div class="wo-hr">
       <div class="wo-hr-title">❤️ Измерване на пулса</div>
-      <div class="wo-hr-instr">Постави пръста си плътно върху задната камера и задръж неподвижно 15 секунди.</div>
+      <div class="wo-hr-instr">Задната камера на телефона — постави показалеца плътно върху лещата и задръж неподвижно 15 секунди.</div>
       <video id="wo-hr-video" autoplay muted playsinline></video>
       <canvas id="wo-hr-cv" style="display:none" width="4" height="4"></canvas>
       <div class="wo-hr-count" id="wo-hc">15</div>
@@ -1133,7 +1144,15 @@ function _woRenderHr(b){
 
 async function _woRunHr(){
   try{
-    const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:4,height:4}});
+    // Enumerate cameras; prefer rear (environment) when multiple exist
+    let constraints={video:{facingMode:'environment',width:4,height:4}};
+    try{
+      const devs=await navigator.mediaDevices.enumerateDevices();
+      const cams=devs.filter(d=>d.kind==='videoinput');
+      if(cams.length===1)constraints={video:{deviceId:cams[0].deviceId,width:4,height:4}};
+    }catch(e){}
+
+    const stream=await navigator.mediaDevices.getUserMedia(constraints);
     _woHrStream=stream;
     const vid=document.getElementById('wo-hr-video');
     if(!vid){_woStopHr();return;}
@@ -1165,8 +1184,33 @@ async function _woRunHr(){
     },1000/FPS);
   }catch(err){
     const out=document.getElementById('wo-hr-out');
-    if(out)out.innerHTML='<div style="color:var(--muted);font-size:13px;text-align:center;margin-top:14px">Камерата не е достъпна на това устройство.</div>';
+    if(out)_woShowHrFallback(out);
   }
+}
+
+function _woShowHrFallback(out){
+  out.innerHTML=`
+    <div style="font-size:12px;color:#ff8a5c;text-align:center;margin-bottom:10px;line-height:1.6">
+      Камерата не е достъпна.<br>
+      <span style="color:rgba(139,147,167,.7)">Ако ползваш <strong style="color:var(--text)">Brave</strong> — разреши камерата от
+      Settings → Site &amp; Shields Settings → Camera или използвай Chrome.</span>
+    </div>
+    <div style="font-size:13px;color:var(--muted);text-align:center;line-height:1.65;margin-bottom:14px">
+      <strong style="color:var(--text)">Ръчен метод:</strong> Постави 2 пръста на китката за 15 секунди и преброй ударите. Умножи по 4.
+    </div>
+    <input id="wo-manual-bpm" type="number" min="40" max="220" placeholder="напр. 84"
+      style="width:130px;text-align:center;font-family:'Unbounded';font-size:22px;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px;display:block;margin:0 auto 14px;-moz-appearance:textfield;appearance:textfield;">
+    <button class="wo-done-btn" style="margin-top:0" onclick="_woManualBpm()">Потвърди пулса</button>`;
+}
+
+function _woManualBpm(){
+  const val=parseInt(document.getElementById('wo-manual-bpm')?.value);
+  if(!val||val<40||val>220){toast('Въведи валиден пулс (40–220 уд/мин)');return;}
+  let pf={};try{pf=JSON.parse(localStorage.getItem('apexProfile')||'{}');}catch(e){}
+  const maxHr=220-(parseInt(pf.age)||30);
+  const hc=document.getElementById('wo-hc');if(hc)hc.style.display='none';
+  const hb=document.getElementById('wo-hb');if(hb)hb.closest('.wo-timer-bar-wrap').style.display='none';
+  _woShowHr(val,maxHr);
 }
 
 function _woCalcBpm(samples,fps){
@@ -1878,12 +1922,41 @@ async function pay(plan){
   }catch(e){toast(T[lang].payError);}
 }
 
+// Map of lower-case abbreviated headers → display name
+const _TH_MAP={'б':'Протеин','б(г)':'Протеин','белтъчини':'Протеин','белтъчини(г)':'Протеин',
+  'въгл.':'Въглехидрати','въгл.(г)':'Въглехидрати','въгл(г)':'Въглехидрати','в(г)':'Въглехидрати',
+  'въглехидрати(г)':'Въглехидрати',
+  'м(г)':'Мазнини','мазнини(г)':'Мазнини'};
+const _MACRO_RE=/протеин|въглехидрати|мазнини/i;
+
+function _fixTableHeaders(t){
+  const ths=t.querySelectorAll('thead tr:first-child th');
+  if(!ths.length)return;
+  const macroIdxs=[];
+  ths.forEach((th,i)=>{
+    const key=th.textContent.trim().toLowerCase().replace(/\s+/g,'');
+    if(_TH_MAP[key]){th.textContent=_TH_MAP[key];}
+    if(_MACRO_RE.test(th.textContent))macroIdxs.push(i);
+  });
+  if(!macroIdxs.length)return;
+  const thead=t.querySelector('thead');
+  if(!thead||thead.querySelector('tr.th-units'))return;
+  const sub=document.createElement('tr');sub.className='th-units';
+  ths.forEach((_,i)=>{
+    const td=document.createElement('th');
+    td.style.cssText='font-size:10px;font-weight:400;color:rgba(139,147,167,.45);letter-spacing:.5px;padding:0 8px 5px;';
+    td.textContent=macroIdxs.includes(i)?'(грамове)':'';
+    sub.appendChild(td);
+  });
+  thead.appendChild(sub);
+}
+
 function decorateTables(div){
   div.querySelectorAll('table').forEach(t=>{
     if(t.parentElement&&t.parentElement.classList.contains('table-wrap'))return;
     const wrap=document.createElement('div');wrap.className='table-wrap';
     t.parentNode.insertBefore(wrap,t);wrap.appendChild(t);
-    // Тоталите говорят с бранд гласа
+    _fixTableHeaders(t);
     t.querySelectorAll('tr').forEach(r=>{
       const c=r.cells&&r.cells[0]?r.cells[0].textContent.trim().toLowerCase():'';
       if(/^(общо|итого|total)/.test(c))r.classList.add('row-total');
