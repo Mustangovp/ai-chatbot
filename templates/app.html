@@ -319,6 +319,57 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 .pf-skip{display:block;text-align:center;margin-top:12px;font-size:11px;color:rgba(139,147,167,0.5);cursor:pointer;letter-spacing:.5px;}
 .pf-skip:hover{color:var(--muted);}
 
+/* ── WORKOUT MODE ── */
+#workout-overlay{display:none;position:fixed;inset:0;background:rgba(5,5,12,0.99);z-index:1100;flex-direction:column;overflow-y:auto;}
+#workout-overlay.active{display:flex;}
+.wo-header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--border);background:rgba(5,5,12,0.95);position:sticky;top:0;z-index:10;}
+.wo-header-title{font-family:'Unbounded';font-size:11px;letter-spacing:2.5px;color:var(--red);text-transform:uppercase;}
+.wo-close{background:transparent;border:1px solid var(--border);color:var(--muted);font-size:16px;width:34px;height:34px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;}
+.wo-close:hover{border-color:var(--red);color:var(--text);}
+.wo-prog-bar{height:3px;background:var(--border);position:sticky;top:55px;z-index:10;}
+.wo-prog-fill{height:100%;background:var(--pulse);transition:width .6s ease;}
+.wo-body{flex:1;display:flex;flex-direction:column;align-items:center;padding:28px 20px 48px;max-width:440px;margin:0 auto;width:100%;}
+.wo-ex-name{font-family:'Unbounded';font-size:20px;letter-spacing:.5px;color:var(--text);text-align:center;margin-bottom:6px;line-height:1.25;}
+.wo-ex-note{font-size:12px;color:var(--muted);text-align:center;margin-bottom:18px;line-height:1.5;max-width:320px;}
+.wo-svg-wrap{width:140px;height:130px;display:flex;align-items:center;justify-content:center;margin-bottom:18px;}
+.wo-set-lbl{font-size:11px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;text-align:center;margin-bottom:6px;}
+.wo-reps{font-family:'Unbounded';font-size:76px;color:var(--gold);text-align:center;line-height:1;margin-bottom:2px;}
+.wo-reps-sub{font-size:10px;letter-spacing:2.5px;color:rgba(139,147,167,.5);text-align:center;text-transform:uppercase;margin-bottom:26px;}
+.wo-done-btn{display:block;width:100%;max-width:300px;padding:18px;background:linear-gradient(135deg,var(--red) 0%,#D01020 100%);color:#fff;font-family:'Unbounded';font-size:13px;letter-spacing:2px;border:none;border-radius:12px;cursor:pointer;transition:transform .18s,box-shadow .18s;box-shadow:0 4px 24px rgba(245,33,45,.4);margin:0 auto;}
+.wo-done-btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 8px 32px rgba(245,33,45,.55);}
+.wo-done-btn:disabled{opacity:.45;cursor:not-allowed;}
+.wo-feedback{display:flex;gap:10px;justify-content:center;margin-top:16px;flex-wrap:wrap;}
+.wo-fb-btn{padding:10px 18px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--muted);font-family:inherit;font-size:13px;cursor:pointer;transition:all .18s;}
+.wo-fb-btn.easy:hover,.wo-fb-btn.easy.sel{border-color:var(--lime);color:var(--lime);background:rgba(182,255,60,.06);}
+.wo-fb-btn.medium:hover,.wo-fb-btn.medium.sel{border-color:var(--gold);color:var(--gold);background:rgba(255,177,60,.06);}
+.wo-fb-btn.hard:hover,.wo-fb-btn.hard.sel{border-color:var(--red);color:#ff8a5c;background:rgba(245,33,45,.06);}
+.wo-rest{display:flex;flex-direction:column;align-items:center;width:100%;}
+.wo-rest-title{font-family:'Unbounded';font-size:16px;color:var(--gold);text-align:center;margin-bottom:6px;}
+.wo-rest-reason{font-size:12px;color:var(--muted);text-align:center;margin-bottom:22px;line-height:1.6;max-width:300px;}
+.wo-rest-count{font-family:'Unbounded';font-size:84px;color:var(--text);text-align:center;line-height:1;margin-bottom:14px;}
+.wo-timer-bar-wrap{width:100%;max-width:300px;height:5px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:18px;}
+.wo-timer-bar{height:100%;background:var(--pulse);border-radius:3px;transition:width 1s linear;}
+.wo-skip-btn{background:transparent;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:12px;padding:8px 22px;border-radius:20px;cursor:pointer;transition:all .18s;}
+.wo-skip-btn:hover{border-color:var(--text);color:var(--text);}
+.wo-coach-bubble{border:1px solid var(--border);border-left:3px solid var(--gold);border-radius:10px;padding:12px 16px;font-size:13px;color:#cbc7d4;margin-top:18px;width:100%;line-height:1.55;}
+.wo-complete{display:flex;flex-direction:column;align-items:center;text-align:center;padding:10px 0;}
+.wo-complete-icon{font-size:60px;margin-bottom:14px;}
+.wo-complete-title{font-family:'Unbounded';font-size:22px;color:var(--gold);margin-bottom:10px;}
+.wo-complete-stats{font-size:14px;color:var(--muted);line-height:1.9;margin-bottom:28px;}
+.wo-hr{display:flex;flex-direction:column;align-items:center;width:100%;}
+.wo-hr-title{font-family:'Unbounded';font-size:14px;color:var(--red);text-align:center;margin-bottom:8px;letter-spacing:1px;}
+.wo-hr-instr{font-size:13px;color:var(--muted);text-align:center;margin-bottom:16px;line-height:1.6;max-width:300px;}
+#wo-hr-video{width:90px;height:90px;border-radius:50%;object-fit:cover;border:3px solid var(--red);display:none;margin-bottom:12px;}
+.wo-hr-count{font-family:'Unbounded';font-size:52px;color:var(--gold);text-align:center;line-height:1;margin:8px 0;}
+.wo-hr-zone{font-size:12px;text-align:center;margin-top:8px;padding:8px 18px;border-radius:20px;}
+.wo-hr-zone.z-optimal{color:var(--lime);border:1px solid rgba(182,255,60,.4);background:rgba(182,255,60,.06);}
+.wo-hr-zone.z-easy{color:var(--gold);border:1px solid rgba(255,177,60,.4);background:rgba(255,177,60,.06);}
+.wo-hr-zone.z-hard{color:#ff8a5c;border:1px solid rgba(245,33,45,.4);background:rgba(245,33,45,.06);}
+.wo-hr-btn{display:block;width:100%;max-width:260px;padding:12px;background:rgba(245,33,45,.1);border:1px solid rgba(245,33,45,.35);color:#ff8a5c;font-family:inherit;font-size:13px;border-radius:10px;cursor:pointer;transition:all .18s;margin:12px auto 0;}
+.wo-hr-btn:hover{background:rgba(245,33,45,.2);color:var(--text);}
+.wo-trigger{display:inline-flex;align-items:center;gap:8px;margin-top:14px;padding:11px 20px;background:linear-gradient(135deg,rgba(245,33,45,.1),rgba(255,106,60,.06));border:1px solid rgba(245,33,45,.38);color:var(--text);font-family:inherit;font-size:13px;font-weight:700;border-radius:10px;cursor:pointer;transition:all .2s;}
+.wo-trigger:hover{border-color:var(--red);background:rgba(245,33,45,.18);}
+
 /* ── TOAST ── */
 .toast-el{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#FFB13C,#D89020);color:#000;padding:12px 22px;border-radius:30px;font-weight:700;font-size:14px;letter-spacing:1px;box-shadow:0 8px 30px rgba(255,177,60,0.4);z-index:9999;animation:toast-in .3s ease-out;}
 @keyframes toast-in{from{opacity:0;transform:translate(-50%,20px);}to{opacity:1;transform:translate(-50%,0);}}
@@ -555,6 +606,16 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
     <button class="pf-submit" onclick="submitProfile()">Напред → Получи персонален план</button>
     <span class="pf-skip" onclick="skipProfile()">Пропусни (без персонализация)</span>
   </div>
+</div>
+
+<!-- WORKOUT MODE OVERLAY -->
+<div id="workout-overlay">
+  <div class="wo-header">
+    <span class="wo-header-title">🔱 Workout Mode</span>
+    <button class="wo-close" onclick="closeWorkout()" title="Затвори">✕</button>
+  </div>
+  <div class="wo-prog-bar"><div class="wo-prog-fill" id="wo-prog-fill" style="width:0%"></div></div>
+  <div class="wo-body" id="wo-body"></div>
 </div>
 
 <!-- MINI FOOTER -->
@@ -828,6 +889,319 @@ function skipProfile(){
   localStorage.setItem('apexProfile','{}');
   document.getElementById('profile-modal').classList.remove('active');
 }
+
+/* ══════════════════════════════════════════════════
+   WORKOUT MODE — Tasks 1-4
+══════════════════════════════════════════════════ */
+
+// ── SVG animated stick figures
+const _WO_SVG = {
+  squat:`<svg viewBox="0 0 80 128" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%"><defs><style>.wf{stroke:#F5212D;stroke-width:3;stroke-linecap:round;fill:none}.wfb{animation:wfsq 1.5s ease-in-out infinite;transform-origin:40px 108px}@keyframes wfsq{0%,100%{transform:scaleY(1)}50%{transform:scaleY(.68)}}</style></defs><g class="wfb"><circle cx="40" cy="13" r="10" class="wf"/><line x1="40" y1="23" x2="40" y2="68" class="wf"/><line x1="40" y1="40" x2="14" y2="56" class="wf"/><line x1="40" y1="40" x2="66" y2="56" class="wf"/><line x1="40" y1="68" x2="17" y2="108" class="wf"/><line x1="40" y1="68" x2="63" y2="108" class="wf"/></g></svg>`,
+  pushup:`<svg viewBox="0 0 120 78" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%"><defs><style>.wfp{stroke:#F5212D;stroke-width:3;stroke-linecap:round;fill:none}.wfpb{animation:wfpu 1.4s ease-in-out infinite}@keyframes wfpu{0%,100%{transform:translateY(0)}50%{transform:translateY(11px)}}</style></defs><g class="wfpb"><circle cx="11" cy="16" r="9" class="wfp"/><line x1="20" y1="18" x2="72" y2="35" class="wfp"/><line x1="34" y1="27" x2="26" y2="52" class="wfp"/><line x1="26" y1="52" x2="8" y2="52" class="wfp"/><line x1="62" y1="33" x2="54" y2="56" class="wfp"/><line x1="54" y1="56" x2="36" y2="56" class="wfp"/></g><line x1="72" y1="35" x2="108" y2="52" stroke="#F5212D" stroke-width="3" stroke-linecap="round"/><line x1="108" y1="52" x2="108" y2="64" stroke="#F5212D" stroke-width="3" stroke-linecap="round"/></svg>`,
+  generic:`<svg viewBox="0 0 80 128" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%"><defs><style>.wfg{stroke:#FF6A3C;stroke-width:3;stroke-linecap:round;fill:none}.wfal{animation:wfal 1.15s ease-in-out infinite;transform-origin:40px 42px}.wfar{animation:wfar 1.15s ease-in-out infinite;transform-origin:40px 42px}@keyframes wfal{0%,100%{transform:rotate(0)}50%{transform:rotate(-36deg)}}@keyframes wfar{0%,100%{transform:rotate(0)}50%{transform:rotate(36deg)}}</style></defs><circle cx="40" cy="13" r="10" class="wfg"/><line x1="40" y1="23" x2="40" y2="68" class="wfg"/><g class="wfal"><line x1="40" y1="42" x2="13" y2="58" class="wfg"/></g><g class="wfar"><line x1="40" y1="42" x2="67" y2="58" class="wfg"/></g><line x1="40" y1="68" x2="20" y2="108" class="wfg"/><line x1="40" y1="68" x2="60" y2="108" class="wfg"/></svg>`
+};
+function _woSvg(name){
+  const n=name.toLowerCase();
+  if(/клек|squat|мъртва|deadlift|преса|press|набир/.test(n))return _WO_SVG.squat;
+  if(/лицев|push.*up|bench|лег/.test(n))return _WO_SVG.pushup;
+  return _WO_SVG.generic;
+}
+
+// ── Parse workout plan from rendered AI message element
+function _woParse(msgEl){
+  const exs=[];
+  msgEl.querySelectorAll('table').forEach(t=>{
+    const hs=Array.from(t.querySelectorAll('thead th')).map(h=>h.textContent.toLowerCase());
+    const ni=hs.findIndex(h=>h.includes('упражнение')||h.includes('exercise'));
+    const si=hs.findIndex(h=>h.includes('серии')||h.includes('sets')||h.includes('сет'));
+    const ri=hs.findIndex(h=>h.includes('повторения')||h.includes('reps')||h.includes('повт'));
+    const pi=hs.findIndex(h=>h.includes('пауза')||h.includes('rest'));
+    const bi=hs.findIndex(h=>h.includes('бележка')||h.includes('note'));
+    if(ni<0||si<0||ri<0)return;
+    t.querySelectorAll('tbody tr').forEach(row=>{
+      const cs=Array.from(row.querySelectorAll('td')).map(c=>c.textContent.trim());
+      const name=cs[ni];
+      if(!name||/общо|total/i.test(name))return;
+      const sets=Math.max(1,parseInt(cs[si])||3);
+      const rawR=cs[ri]||'10';
+      let reps=10;
+      if(rawR.includes('-')){const p=rawR.split('-');reps=parseInt(p[1])||parseInt(p[0])||10;}
+      else reps=parseInt(rawR)||10;
+      exs.push({name,sets,reps,baseReps:reps,repDelta:0,pause:pi>=0?cs[pi]:'',note:bi>=0?cs[bi]:''});
+    });
+  });
+  return exs;
+}
+
+// ── Detect workout in AI message and attach trigger button
+function detectWorkoutTrigger(msgEl){
+  try{
+    const exs=_woParse(msgEl);
+    if(!exs.length)return;
+    const btn=document.createElement('button');
+    btn.className='wo-trigger';
+    btn.innerHTML='🏋️ Режим Тренировка';
+    btn.onclick=()=>startWorkout(exs);
+    msgEl.appendChild(btn);
+  }catch(e){}
+}
+
+// ── Rest time calculation (Task 2)
+function _woRestSecs(exName){
+  let pf={};try{pf=JSON.parse(localStorage.getItem('apexProfile')||'{}');}catch(e){}
+  const lv=pf.level||'beginner';
+  let s=lv==='advanced'?45:lv==='intermediate'?60:90;
+  if(/клек|мъртва|лежанка|squat|deadlift|bench|преса/.test(exName.toLowerCase()))s+=30;
+  if(parseInt(pf.age)>50)s+=20;
+  if(/(отслаб|сваля|weight.loss)/i.test(pf.goal||''))s-=15;
+  return Math.max(20,s);
+}
+function _woRestReason(exName,s){
+  let pf={};try{pf=JSON.parse(localStorage.getItem('apexProfile')||'{}');}catch(e){}
+  const lv=pf.level==='advanced'?'напреднал':pf.level==='intermediate'?'среден':'начинаещ';
+  const parts=[lv+' ниво'];
+  if(/клек|мъртва|лежанка|squat|deadlift|bench|преса/.test(exName.toLowerCase()))parts.push('съставно упражнение');
+  if(parseInt(pf.age)>50)parts.push('над 50 г.');
+  if(/(отслаб|сваля|weight.loss)/i.test(pf.goal||''))parts.push('цел отслабване');
+  return `Почивка ${s} сек. — ${parts.join(', ')}.`;
+}
+
+// ── Coach voice comments (Task 3)
+const _WO_CMT={
+  easy:['Твърде леко. Следващия сет добавяме 2 повторения.','Добре — тялото се адаптира. Качваме интензивността.','Лесно минa. Увеличаваме следващия сет.'],
+  medium:['Точно там трябва да е. Продължаваме.','Перфектна интензивност. Запазваме темпото.','Правилна зона. Следващия сет — същото.'],
+  hard:['Нормално е трудно. Намаляваме с 1 повторение следващия сет.','Пазим техниката. Намаляваме леко — качеството е по-важно.','Добра работа. Следващия сет -1 повторение.']
+};
+function _woCmt(fb){const pool=_WO_CMT[fb]||_WO_CMT.medium;return pool[Math.floor(Math.random()*pool.length)];}
+
+// ── Session state
+let _wo=null,_woTimer=null,_woHrStream=null;
+
+function _woSave(){try{if(_wo)localStorage.setItem('apexWo',JSON.stringify(_wo));}catch(e){}}
+
+function startWorkout(exercises){
+  _wo={exs:exercises.map(e=>({...e})),ei:0,si:0,phase:'ex'};
+  _woSave();
+  document.getElementById('workout-overlay').classList.add('active');
+  document.body.style.overflow='hidden';
+  _woRender();
+}
+
+function closeWorkout(){
+  clearInterval(_woTimer);_woTimer=null;
+  _woStopHr();
+  document.getElementById('workout-overlay').classList.remove('active');
+  document.body.style.overflow='';
+}
+
+function _woProg(){
+  if(!_wo)return;
+  const total=_wo.exs.reduce((a,e)=>a+e.sets,0);
+  const done=_wo.exs.slice(0,_wo.ei).reduce((a,e)=>a+e.sets,0)+_wo.si;
+  const pf=document.getElementById('wo-prog-fill');
+  if(pf)pf.style.width=`${Math.round((done/total)*100)}%`;
+}
+
+function _woRender(){
+  if(!_wo)return;
+  _woProg();
+  const b=document.getElementById('wo-body');
+  if(!b)return;
+  if(_wo.phase==='ex')_woRenderEx(b);
+  else if(_wo.phase==='fb')_woRenderFb(b);
+  else if(_wo.phase==='rest')_woRenderRest(b);
+  else if(_wo.phase==='hr')_woRenderHr(b);
+  else if(_wo.phase==='done')_woRenderDone(b);
+}
+
+// Task 1 — exercise card
+function _woRenderEx(b){
+  const ex=_wo.exs[_wo.ei];
+  const reps=Math.max(1,ex.baseReps+ex.repDelta);
+  b.innerHTML=`
+    <div class="wo-ex-name">${ex.name}</div>
+    ${ex.note?`<div class="wo-ex-note">${ex.note}</div>`:''}
+    <div class="wo-svg-wrap">${_woSvg(ex.name)}</div>
+    <div class="wo-set-lbl">Сет ${_wo.si+1} от ${ex.sets}</div>
+    <div class="wo-reps">${reps}</div>
+    <div class="wo-reps-sub">повторения</div>
+    <button class="wo-done-btn" onclick="_woDone()">✓ &nbsp;Готово</button>
+    <button class="wo-hr-btn" onclick="_woStartHr()">❤️ Измери пулса</button>`;
+}
+
+function _woDone(){_wo.phase='fb';_woSave();_woRender();}
+
+// Task 3 — feedback + rep adaptation
+function _woRenderFb(b){
+  const ex=_wo.exs[_wo.ei];
+  const reps=Math.max(1,ex.baseReps+ex.repDelta);
+  b.innerHTML=`
+    <div class="wo-ex-name">${ex.name}</div>
+    <div class="wo-set-lbl">Сет ${_wo.si+1} от ${ex.sets} — ${reps} повт.</div>
+    <div style="font-size:14px;color:var(--muted);text-align:center;margin:22px 0 14px;">Как беше?</div>
+    <div class="wo-feedback">
+      <button class="wo-fb-btn easy" onclick="_woFb('easy')">😌 Лесно</button>
+      <button class="wo-fb-btn medium" onclick="_woFb('medium')">💪 Средно</button>
+      <button class="wo-fb-btn hard" onclick="_woFb('hard')">🔥 Трудно</button>
+    </div>`;
+}
+
+function _woFb(fb){
+  const ex=_wo.exs[_wo.ei];
+  // adapt reps for next set of this exercise
+  if(fb==='easy')ex.repDelta=Math.min(ex.repDelta+2,8);
+  else if(fb==='hard')ex.repDelta=Math.max(ex.repDelta-1,-4);
+
+  const lastSet=_wo.si>=ex.sets-1;
+  const lastEx=_wo.ei>=_wo.exs.length-1;
+
+  if(lastSet&&lastEx){_wo.phase='done';_woSave();_woRender();return;}
+
+  if(lastSet){_wo.ei++;_wo.si=0;}
+  else{_wo.si++;}
+
+  const rs=_woRestSecs(ex.name);
+  _wo.phase='rest';_wo._rs=rs;_wo._rr=_woRestReason(ex.name,rs);_wo._rc=_woCmt(fb);
+  _woSave();_woRender();
+}
+
+// Task 2 — smart rest timer
+function _woRenderRest(b){
+  let s=_wo._rs;
+  const total=s;
+  b.innerHTML=`
+    <div class="wo-rest">
+      <div class="wo-rest-title">⏱ Почивка</div>
+      <div class="wo-rest-reason">${_wo._rr}</div>
+      <div class="wo-rest-count" id="wo-tc">${s}</div>
+      <div class="wo-timer-bar-wrap"><div class="wo-timer-bar" id="wo-tb" style="width:100%"></div></div>
+      <button class="wo-skip-btn" onclick="_woSkip()">Пропусни →</button>
+      ${_wo._rc?`<div class="wo-coach-bubble">🔱 ${_wo._rc}</div>`:''}
+    </div>`;
+  clearInterval(_woTimer);
+  _woTimer=setInterval(()=>{
+    s--;
+    const tc=document.getElementById('wo-tc');
+    const tb=document.getElementById('wo-tb');
+    if(tc)tc.textContent=Math.max(0,s);
+    if(tb)tb.style.width=`${Math.max(0,(s/total)*100)}%`;
+    if(s<=0){clearInterval(_woTimer);_woTimer=null;_wo.phase='ex';_woSave();_woRender();}
+  },1000);
+}
+
+function _woSkip(){
+  clearInterval(_woTimer);_woTimer=null;
+  _wo.phase='ex';_woSave();_woRender();
+}
+
+// Done screen
+function _woRenderDone(b){
+  const total=_wo.exs.reduce((a,e)=>a+e.sets,0);
+  const pf=document.getElementById('wo-prog-fill');if(pf)pf.style.width='100%';
+  b.innerHTML=`
+    <div class="wo-complete">
+      <div class="wo-complete-icon">🔱</div>
+      <div class="wo-complete-title">ТРЕНИРОВКАТА ЗАВЪРШИ</div>
+      <div class="wo-complete-stats">${_wo.exs.length} упражнения &nbsp;·&nbsp; ${total} сета<br>Отлична работа. Хидратирай и почивай.</div>
+      <button class="wo-done-btn" onclick="closeWorkout()">Затвори</button>
+    </div>`;
+}
+
+// Task 4 — rPPG heart rate measurement
+function _woStopHr(){
+  if(_woHrStream){_woHrStream.getTracks().forEach(t=>t.stop());_woHrStream=null;}
+}
+
+function _woStartHr(){
+  _wo.phase='hr';_woSave();_woRender();
+}
+
+function _woRenderHr(b){
+  b.innerHTML=`
+    <div class="wo-hr">
+      <div class="wo-hr-title">❤️ Измерване на пулса</div>
+      <div class="wo-hr-instr">Постави пръста си плътно върху задната камера и задръж неподвижно 15 секунди.</div>
+      <video id="wo-hr-video" autoplay muted playsinline></video>
+      <canvas id="wo-hr-cv" style="display:none" width="4" height="4"></canvas>
+      <div class="wo-hr-count" id="wo-hc">15</div>
+      <div class="wo-timer-bar-wrap"><div class="wo-timer-bar" id="wo-hb" style="width:100%"></div></div>
+      <div id="wo-hr-out"></div>
+      <button class="wo-skip-btn" style="margin-top:14px" onclick="_woHrCancel()">Отказ</button>
+    </div>`;
+  _woRunHr();
+}
+
+async function _woRunHr(){
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:4,height:4}});
+    _woHrStream=stream;
+    const vid=document.getElementById('wo-hr-video');
+    if(!vid){_woStopHr();return;}
+    vid.srcObject=stream;vid.style.display='block';
+    const cv=document.getElementById('wo-hr-cv');
+    const ctx=cv.getContext('2d');
+    const SECS=15,FPS=5,TICKS=SECS*FPS;
+    const samples=[];
+    let tick=0;
+    let pf={};try{pf=JSON.parse(localStorage.getItem('apexProfile')||'{}');}catch(e){}
+    const maxHr=220-(parseInt(pf.age)||30);
+
+    const iv=setInterval(()=>{
+      if(!document.getElementById('wo-hc')){clearInterval(iv);_woStopHr();return;}
+      ctx.drawImage(vid,0,0,4,4);
+      const px=ctx.getImageData(0,0,4,4).data;
+      let gSum=0;for(let i=0;i<px.length;i+=4)gSum+=px[i+1];
+      samples.push(gSum/(px.length/4));
+      tick++;
+      const rem=Math.max(0,SECS-Math.floor(tick/FPS));
+      const hc=document.getElementById('wo-hc');const hb=document.getElementById('wo-hb');
+      if(hc)hc.textContent=rem;
+      if(hb)hb.style.width=`${((TICKS-tick)/TICKS)*100}%`;
+      if(tick>=TICKS){
+        clearInterval(iv);_woStopHr();
+        const bpm=_woCalcBpm(samples,FPS);
+        _woShowHr(bpm,maxHr);
+      }
+    },1000/FPS);
+  }catch(err){
+    const out=document.getElementById('wo-hr-out');
+    if(out)out.innerHTML='<div style="color:var(--muted);font-size:13px;text-align:center;margin-top:14px">Камерата не е достъпна на това устройство.</div>';
+  }
+}
+
+function _woCalcBpm(samples,fps){
+  if(samples.length<10)return 72;
+  const mean=samples.reduce((a,b)=>a+b,0)/samples.length;
+  const sig=samples.map(v=>v-mean);
+  // count rising zero-crossings
+  let crosses=0;
+  for(let i=1;i<sig.length;i++)if(sig[i-1]<0&&sig[i]>=0)crosses++;
+  const hz=crosses/(samples.length/fps);
+  return Math.max(45,Math.min(200,Math.round(hz*60)));
+}
+
+function _woShowHr(bpm,maxHr){
+  const pct=Math.round((bpm/maxHr)*100);
+  let zone,zc,extra='';
+  if(pct<60){zone='Ниска зона — намали почивката с 15 сек.';zc='z-easy';}
+  else if(pct<=80){zone='Оптимална зона. Продължаваме по план.';zc='z-optimal';}
+  else{zone='Висока зона — удължи почивката с 30 сек.';zc='z-hard';extra='<div style="font-size:12px;color:rgba(245,33,45,.7);text-align:center;margin-top:6px">Изчакай, преди да продължиш.</div>';}
+  const hc=document.getElementById('wo-hc');
+  if(hc){hc.textContent=bpm;hc.style.color=pct>80?'var(--red)':pct<60?'var(--gold)':'var(--lime)';}
+  const hb=document.getElementById('wo-hb');
+  if(hb)hb.style.width=`${Math.min(100,pct*1.25)}%`;
+  const vid=document.getElementById('wo-hr-video');if(vid)vid.style.display='none';
+  const out=document.getElementById('wo-hr-out');
+  if(out)out.innerHTML=`
+    <div style="font-family:'Unbounded';font-size:28px;color:var(--text);text-align:center">${bpm} <span style="font-size:14px;color:var(--muted)">уд/мин</span></div>
+    <div class="wo-hr-zone ${zc}">${pct}% от макс. (${maxHr}) · ${zone}</div>
+    ${extra}
+    <div style="font-size:11px;color:rgba(139,147,167,.35);text-align:center;margin-top:8px">220 − ${220-maxHr} г. = ${maxHr} уд/мин макс.</div>
+    <button class="wo-done-btn" style="margin-top:18px" onclick="_woHrDone()">Продължи</button>`;
+}
+
+function _woHrCancel(){_woStopHr();_wo.phase='ex';_woSave();_woRender();}
+function _woHrDone(){_woStopHr();_wo.phase='ex';_woSave();_woRender();}
 
 function activateElite(){
   count=-999999;
@@ -1187,6 +1561,7 @@ async function send(){
         return;
       }
       appendMsg(data.reply,'a');
+      {const lm=box.lastElementChild;if(lm&&lm.classList.contains('msg-a'))detectWorkoutTrigger(lm);}
       if(data.not_counted&&!isElite){
         try{const u=getFreeUsage();if(u.count>0){u.count--;localStorage.setItem('apexFreeUsage',JSON.stringify(u));}}catch(e){}
       }
@@ -1241,6 +1616,7 @@ async function readChatStream(res, isElite){
       const ut=document.getElementById('utility');if(ut)ut.style.display='flex';
       updateUtilityLocks();
       addPdfBtn(div);
+      detectWorkoutTrigger(div);
     }catch(err){/* отговорът вече е на екрана — пост-обработката не бива да вдига грешка */}
   };
   while(true){
