@@ -294,6 +294,31 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 .legal-card ul{padding-left:22px;}
 .legal-card li{font-size:13px;color:#cbc7d4;line-height:1.6;margin-bottom:4px;}
 
+/* ── PROFILE SETUP MODAL ── */
+#profile-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.97);z-index:1000;align-items:center;justify-content:center;padding:16px;overflow-y:auto;}
+#profile-modal.active{display:flex;}
+.pf-card{max-width:480px;width:100%;background:linear-gradient(180deg,var(--surface2),var(--surface));border:1.5px solid rgba(245,33,45,0.3);border-radius:18px;padding:28px 22px;color:var(--text);animation:modal-card-in .28s cubic-bezier(0.34,1.4,0.64,1);}
+.pf-icon{font-size:36px;text-align:center;margin-bottom:8px;}
+.pf-title{font-family:'Unbounded';font-size:18px;letter-spacing:1px;color:var(--red);text-align:center;margin:0 0 4px;}
+.pf-sub{font-size:12px;color:var(--muted);text-align:center;margin-bottom:20px;letter-spacing:.5px;}
+.pf-label{font-size:11px;letter-spacing:1.2px;color:var(--muted);text-transform:uppercase;margin:14px 0 6px;display:block;}
+.pf-label span{color:rgba(139,147,167,0.5);font-size:10px;letter-spacing:.5px;text-transform:none;}
+.pf-toggle{display:flex;gap:6px;flex-wrap:wrap;}
+.pf-opt{background:var(--surface);border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:12px;padding:7px 14px;border-radius:20px;cursor:pointer;transition:all .18s;white-space:nowrap;}
+.pf-opt.active{border-color:var(--red);color:var(--text);background:rgba(245,33,45,0.12);}
+.pf-nums{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:6px 0;}
+.pf-num{display:flex;flex-direction:column;gap:4px;}
+.pf-num input{background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:inherit;font-size:16px;font-weight:700;padding:10px 8px;text-align:center;outline:none;transition:border-color .2s;width:100%;}
+.pf-num input:focus{border-color:var(--red);}
+.pf-num label{font-size:10px;letter-spacing:1px;color:var(--muted);text-align:center;text-transform:uppercase;}
+.pf-text{background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:inherit;font-size:13px;padding:10px 12px;outline:none;width:100%;transition:border-color .2s;}
+.pf-text:focus{border-color:var(--gold);}
+.pf-text::placeholder{color:rgba(139,147,167,0.5);}
+.pf-submit{display:block;width:100%;padding:14px;background:linear-gradient(135deg,var(--red),#D81B26);color:#fff;font-family:'Unbounded';font-size:13px;letter-spacing:1px;border:none;border-radius:10px;cursor:pointer;margin-top:20px;transition:all .2s;box-shadow:0 4px 20px rgba(245,33,45,0.3);}
+.pf-submit:hover{transform:translateY(-1px);box-shadow:0 8px 28px rgba(245,33,45,0.45);}
+.pf-skip{display:block;text-align:center;margin-top:12px;font-size:11px;color:rgba(139,147,167,0.5);cursor:pointer;letter-spacing:.5px;}
+.pf-skip:hover{color:var(--muted);}
+
 /* ── TOAST ── */
 .toast-el{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#FFB13C,#D89020);color:#000;padding:12px 22px;border-radius:30px;font-weight:700;font-size:14px;letter-spacing:1px;box-shadow:0 8px 30px rgba(255,177,60,0.4);z-index:9999;animation:toast-in .3s ease-out;}
 @keyframes toast-in{from{opacity:0;transform:translate(-50%,20px);}to{opacity:1;transform:translate(-50%,0);}}
@@ -478,6 +503,57 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
       <button class="wd-cancel" onclick="closeWithdraw()" data-key="wd-cancel">Назад</button>
       <button class="wd-confirm" id="wdConfirmBtn" onclick="confirmWithdraw()" data-key="wd-confirm">Потвърди отказа →</button>
     </div>
+  </div>
+</div>
+
+<!-- PROFILE SETUP MODAL -->
+<div id="profile-modal">
+  <div class="pf-card">
+    <div class="pf-icon">🎯</div>
+    <h2 class="pf-title">ТВОЯТ ПРОФИЛ</h2>
+    <p class="pf-sub">60 секунди → персонализиран план точно за теб</p>
+
+    <span class="pf-label">Пол</span>
+    <div class="pf-toggle" id="pf-gender">
+      <button class="pf-opt active" data-val="m" onclick="pfSelect('pf-gender',this)">Мъж</button>
+      <button class="pf-opt" data-val="f" onclick="pfSelect('pf-gender',this)">Жена</button>
+    </div>
+
+    <span class="pf-label">Основни данни</span>
+    <div class="pf-nums">
+      <div class="pf-num">
+        <input type="number" id="pf-age" min="14" max="80" placeholder="25">
+        <label>Възраст (г.)</label>
+      </div>
+      <div class="pf-num">
+        <input type="number" id="pf-weight" min="40" max="250" placeholder="75">
+        <label>Тегло (кг)</label>
+      </div>
+      <div class="pf-num">
+        <input type="number" id="pf-height" min="140" max="220" placeholder="175">
+        <label>Височина (см)</label>
+      </div>
+    </div>
+
+    <span class="pf-label">Ниво</span>
+    <div class="pf-toggle" id="pf-level">
+      <button class="pf-opt active" data-val="beginner" onclick="pfSelect('pf-level',this)">Начинаещ</button>
+      <button class="pf-opt" data-val="intermediate" onclick="pfSelect('pf-level',this)">Среден</button>
+      <button class="pf-opt" data-val="advanced" onclick="pfSelect('pf-level',this)">Напреднал</button>
+    </div>
+
+    <span class="pf-label">Оборудване</span>
+    <div class="pf-toggle" id="pf-equip">
+      <button class="pf-opt active" data-val="gym" onclick="pfSelect('pf-equip',this)">Зала</button>
+      <button class="pf-opt" data-val="home" onclick="pfSelect('pf-equip',this)">Вкъщи</button>
+      <button class="pf-opt" data-val="none" onclick="pfSelect('pf-equip',this)">Без оборудване</button>
+    </div>
+
+    <span class="pf-label">Наранявания / Ограничения <span>(незадължително)</span></span>
+    <input type="text" id="pf-injuries" class="pf-text" placeholder="напр. болки в коляното, проблеми с гърба...">
+
+    <button class="pf-submit" onclick="submitProfile()">Напред → Получи персонален план</button>
+    <span class="pf-skip" onclick="skipProfile()">Пропусни (без персонализация)</span>
   </div>
 </div>
 
@@ -708,7 +784,49 @@ function acceptDisclaimer(){
   if(window._pendingPlan){
     const p=window._pendingPlan;window._pendingPlan=null;
     pay(p);
+  } else {
+    maybeShowProfile();
   }
+}
+
+/* ═══════════ PROFILE SETUP ═══════════ */
+function pfSelect(groupId, btn){
+  document.querySelectorAll('#'+groupId+' .pf-opt').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+}
+function pfGetVal(groupId){
+  const a=document.querySelector('#'+groupId+' .pf-opt.active');
+  return a?a.dataset.val:'';
+}
+function maybeShowProfile(){
+  if(!localStorage.getItem('apexProfile')){
+    document.getElementById('profile-modal').classList.add('active');
+  }
+}
+function submitProfile(){
+  const age=document.getElementById('pf-age').value.trim();
+  const weight=document.getElementById('pf-weight').value.trim();
+  const height=document.getElementById('pf-height').value.trim();
+  if(!age||!weight||!height){
+    toast(lang==='bg'?'Попълни възраст, тегло и височина':'Fill in age, weight and height');
+    return;
+  }
+  const profile={
+    gender:pfGetVal('pf-gender'),
+    age:parseInt(age),
+    weight:parseFloat(weight),
+    height:parseFloat(height),
+    level:pfGetVal('pf-level'),
+    equipment:pfGetVal('pf-equip'),
+    injuries:document.getElementById('pf-injuries').value.trim()
+  };
+  localStorage.setItem('apexProfile',JSON.stringify(profile));
+  document.getElementById('profile-modal').classList.remove('active');
+  toast(lang==='bg'?'Профилът е запазен ✓':'Profile saved ✓');
+}
+function skipProfile(){
+  localStorage.setItem('apexProfile','{}');
+  document.getElementById('profile-modal').classList.remove('active');
 }
 
 function activateElite(){
@@ -985,6 +1103,10 @@ window.onload=async()=>{
   
   // No goal — show greeting + 4 chips
   showGreeting();
+  // Show profile setup once if disclaimer already accepted and profile not yet set
+  if(localStorage.getItem('apexDisclaimerAccepted')==='true'){
+    maybeShowProfile();
+  }
 };
 
 async function send(){
@@ -1035,6 +1157,10 @@ async function send(){
   box.appendChild(typing);box.scrollTop=box.scrollHeight;
 
   const body={message:val};
+  try{
+    const pRaw=localStorage.getItem('apexProfile');
+    if(pRaw){const p=JSON.parse(pRaw);if(p&&Object.keys(p).length)body.profile=p;}
+  }catch(e){}
   if(isElite&&token){
     body.token=token;
     body.history=getChatHistory();   // чете предишния разговор (БЕЗ текущия въпрос)
