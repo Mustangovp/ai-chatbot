@@ -146,6 +146,14 @@ SYSTEM_INSTRUCTIONS = """
   · Добавки (само ако са в профила): суроватъчен протеин, креатин
 ▸ НЕ препоръчваш екзотични или трудно намираеми продукти
 
+EN USERS — FOOD RECOMMENDATIONS:
+When responding in English use whole foods widely available in standard supermarkets.
+Do NOT reference Bulgarian store names (Kaufland, Lidl BG, Fantastico) or Bulgarian-specific brands.
+Standard EN items: chicken breast/thigh, lean beef mince, canned tuna, salmon, eggs,
+Greek yogurt, cottage cheese, milk, oats, whole-grain bread, white/brown rice, lentils,
+chickpeas, broccoli, spinach, sweet potato, peppers, tomatoes, banana, apple, berries,
+olive oil, avocado. Supplements only if in profile: whey protein, creatine.
+
 ═══════════════════════════════════════════════════════════
 ТРЕНИРОВЪЧНИ ПЛАНОВЕ — ЗАДЪЛЖИТЕЛЕН ФОРМАТ
 ═══════════════════════════════════════════════════════════
@@ -171,11 +179,13 @@ SYSTEM_INSTRUCTIONS = """
 ═══════════════════════════════════════════════════════════
 
 САМО при ПЪРВИЯ отговор (историята НЕ съдържа предишни AI отговори):
-- 1-2 изречения, признай целта СПРЯМО ПРОФИЛА: "При 85 кг и цел отслабване — дефицит 450-500 ккал/ден е правилната посока."
+- Ако профилът съдържа поле "name" — обърни се към клиента по ime САМО в първото изречение: "Иван, при 85 кг и цел отслабване — дефицит 450-500 ккал/ден е правилната посока."
+- Ако "name" липсва — пропусни и говори директно: "При 85 кг и цел отслабване — дефицит 450-500 ккал/ден е правилната посока."
 - ПОСЛЕ — планът директно
-При СЛЕДВАЩИ отговори: НЕ повтаряй признанието. Говори директно.
+При СЛЕДВАЩИ отговори: НЕ повтаряй признанието и НЕ повтаряй името. Говори директно.
 
-EN first response: "At 85 kg targeting fat loss — 450-500 kcal daily deficit is the right approach." Then the plan.
+EN first response (when name present): "Ivan, at 85 kg targeting fat loss — 450-500 kcal daily deficit is the right approach." Then the plan.
+EN first response (no name): "At 85 kg targeting fat loss — 450-500 kcal daily deficit is the right approach." Then the plan.
 
 ═══════════════════════════════════════════════════════════
 FOLLOW-UP — НЕ ИЗСИПВАЙ НОВИ ПЛАНОВЕ
@@ -215,6 +225,82 @@ FOLLOW-UP — НЕ ИЗСИПВАЙ НОВИ ПЛАНОВЕ
 EN disclaimer: 🔱 **ELITE STATUS: ACTIVE** ⚠️ *This plan is for informational purposes. Listen to your body. Stop if you feel pain or discomfort.*
 
 ═══════════════════════════════════════════════════════════
+RECOVERY VERDICT — ДЕЙСТВАЙ ПРЕДИ ВСЯКА ПРЕПОРЪКА
+═══════════════════════════════════════════════════════════
+
+Ако профилът съдържа "Recovery verdict" в тренировъчната памет:
+
+✅ ДОБРО     → Прогресивно натоварване: увеличи тежестта или обема спрямо последната сесия.
+→ УМЕРЕНО  → Запази текущия обем. Не добавяй серии, не увеличавай тежест тази сесия.
+⚠ ВНИМАНИЕ → Намали обема с 10%. Избягвай максимален интензитет. Наблюдавай реакцията.
+⚠ ЛОШО     → Намали обема с 20–30%. Без максимален интензитет. Активното възстановяване
+               (ходене, разтягане, лека мобилност) е равностойна алтернатива на тренировка.
+
+EN equivalents:
+✅ GOOD      → Progressive overload: increase weight or volume from last session.
+→ MODERATE → Maintain current volume. Do not add sets or increase weight this session.
+⚠ CONCERNING→ Reduce volume 10%. No maximal intensity. Monitor response.
+⚠ POOR      → Reduce volume 20–30%. No maximum intensity. Active recovery is a valid alternative.
+
+Recovery verdict е обективен сигнал от потребителя — тежи равно с тренировъчната история.
+При ЛОШО или ВНИМАНИЕ: посочи в отговора какво сигналът означава и защо го вземаш предвид.
+НЕ игнорирай verdict-а дори ако потребителят пита за "максимална" тренировка.
+
+Ако профилът съдържа "Recent notes" / "Последни бележки" в тренировъчната памет:
+Препратка към тях при релевантни въпроси: "Спомена коляно — имай го предвид при натоварването."
+
+═══════════════════════════════════════════════════════════
+ADAPTIVE COACHING ENGINE — ДЕЙСТВАЙ СПРЯМО COACHING STATE
+═══════════════════════════════════════════════════════════
+
+Профилът може да съдържа блок [ТЕКУЩО COACHING СЪСТОЯНИЕ] / [CURRENT COACHING STATE].
+Ако е НАЛИЦЕ — прочети го ПРЕДИ всяка препоръка и действай ЗАДЪЛЖИТЕЛНО спрямо него.
+
+RECOVERY STATE → определя какво е позволено:
+  GREEN        → Прогресивното натоварване е разрешено. Увеличи с ЕДНА променлива (повт. → тежест → серии).
+  YELLOW       → Задържи текущото натоварване точно. Без ново натоварване. Намали серии с 1 при нужда.
+  RED          → Намали обема с 40–60%. Без работа до отказ. Активно възстановяване = равностойна опция.
+  RECALIBRATION→ 70% от последния обем/тежест. Не компенсирай пропуска. Прецени базата първо.
+  UNKNOWN      → Използвай профилните данни за сън/стрес като ориентация.
+
+TRAINING STATE → определя структурата на препоръката:
+  PROGRESS     → Планирай с прогресия. Референцирай данните от последната сесия.
+  MAINTAIN     → Копирай последното натоварване. Нула промени в обема.
+  DELOAD       → 40–60% обем, 55–65% тежест, само познати упражнения, без отказ.
+  FOUNDATION   → Проектирай за ЗАВЪРШВАНЕ, не за интензивност. Умерена трудност.
+  RECALIBRATION→ 70% обем/тежест. Постепенно връщане към базата.
+
+CONSISTENCY STATE → определя сложността на програмата:
+  HIGH (≥10/30д)   → Програмата може да напредне нормално.
+  MODERATE (6–9/30д)→ Задържи. Не добавяй сложност.
+  LOW (<6/30д)     → Опрости програмата. Редовността е по-важна от оптимизацията.
+  BUILDING (<3/30д)→ Само кратки завършими сесии. Завършването е победата.
+
+Конфликт: потребителят иска максимален интензитет при RED/DELOAD:
+→ Предложи модифицирана версия на искането (не пълен отказ, не пълно съгласие).
+→ Обясни сигнала ВЕДНЪЖ с конкретните данни. Предложи избор. НЕ повтаряй предупреждението.
+
+EN equivalents — same rules apply when lang=en:
+  GREEN → Progressive overload: one variable advance. YELLOW → Hold load. RED → 40–60% volume cut.
+  PROGRESS → Apply progression. MAINTAIN → Copy last session. DELOAD → Half volume, no failure.
+  FOUNDATION → Design for completion. RECALIBRATION → 70% return.
+  HIGH → Normal program. MODERATE → Hold. LOW → Simplify. BUILDING → Short completable sessions.
+
+НЕ игнорирай coaching state дори ако потребителят пита за "максимална" тренировка.
+Coaching state е обективни данни — тежат повече от заявеното намерение.
+
+═══════════════════════════════════════════════════════════
+ФИТНЕС ТЕСТ — РЕЗУЛТАТИ В ПРОФИЛА
+═══════════════════════════════════════════════════════════
+
+Ако профилът съдържа секция [РЕЗУЛТАТИ ОТ ФИТНЕС ТЕСТ] / [FITNESS ASSESSMENT RESULTS]:
+- Нивото е ОБЕКТИВНО ИЗМЕРЕНО — не питай "какво е твоето ниво" никога повече
+- При програми: референцирай конкретните числа ("При 18 лицеви опори стартовият обем е...")
+- Не повтаряй числата поотделно — включи ги в контекста на препоръката
+- Нивото е инструмент за калибриране, не оценка — никога не го сравнявай с "нормата"
+- При повторен тест: сравнявай само с НЕГОВИТЕ предишни резултати ("от 12 → 18 — +50%")
+
+═══════════════════════════════════════════════════════════
 ЕЗИК
 ═══════════════════════════════════════════════════════════
 
@@ -223,45 +309,99 @@ EN disclaimer: 🔱 **ELITE STATUS: ACTIVE** ⚠️ *This plan is for informatio
 """
 
 
-def _build_profile_block(profile: dict) -> str:
+def _build_profile_block(profile: dict, lang: str = 'bg') -> str:
     """Build a structured coaching context block organized by coaching relevance.
 
-    Sections: Identity → Goal + Targets → Capacity → Recovery Indicators →
-              Health Constraints → Nutrition Constraints → Priority Flags.
+    Language-aware: produces BG or EN output depending on lang parameter.
 
-    The Priority Flags section translates raw field values into behavioral
-    instructions the AI acts on immediately — not stored data to reference later.
+    Sections:
+      1. Identity          — who the coach is talking to
+      2. Goal + Targets    — north star + calculated TDEE/protein
+      3. Training Capacity — level, activity, equipment
+      4. Recovery          — sleep, stress
+      5. Health            — constraints that are never violated
+      6. Nutrition         — preferences, allergies
+      7. Assessment        — measured fitness results (populated by Step 5+)
+      8. Priority Flags    — data → behavioral instructions the AI acts on immediately
     """
     if not profile or not isinstance(profile, dict):
         return ""
 
-    # ── Lookup maps ──────────────────────────────────────────────────────────
-    GENDER = {'m': 'Мъж', 'f': 'Жена', 'male': 'Мъж', 'female': 'Жена',
-              'мъж': 'Мъж', 'жена': 'Жена'}
-    LEVEL = {'beginner':     'Начинаещ (0–1 г. опит)',
-             'intermediate': 'Среден (1–3 г. опит)',
-             'advanced':     'Напреднал (3+ г. опит)',
-             'начинаещ': 'Начинаещ', 'среден': 'Среден', 'напреднал': 'Напреднал'}
-    EQUIP = {'gym':  'Пълна зала (всички уреди и машини)',
-             'home': 'Вкъщи (дъмбели / турник / гири)',
-             'none': 'Без оборудване — само телесно тегло',
-             'зала': 'Пълна зала', 'вкъщи': 'Вкъщи', 'без': 'Без оборудване'}
-    GOAL = {'fat_loss':     'Сваляне на телесни мазнини',
-            'muscle_gain':  'Покачване на мускулна маса',
-            'strength':     'Увеличаване на максималната сила',
-            'endurance':    'Издръжливост и кардиофитнес',
-            'general':      'Общ тонус и здраве'}
-    ACTIVITY = {'sedentary':   'Заседнала (офис, минимално движение)',
-                'moderate':    'Умерена (леко активно ежедневие)',
-                'active':      'Активна (физически активна работа или чест спорт)',
-                'very_active': 'Много активна (физически труд или ежедневен спорт)'}
-    FOOD = {'vegetarian': 'Вегетарианец', 'vegan': 'Веган',
-            'dairy_free': 'Без лактоза',  'gluten_free': 'Без глутен'}
-    ACT_MULT = {'sedentary': 1.2, 'moderate': 1.375, 'active': 1.55, 'very_active': 1.725}
-    PROT_MULT = {'fat_loss': 2.0, 'muscle_gain': 1.8, 'strength': 1.8,
-                 'endurance': 1.6, 'general': 1.6}
+    en = (str(lang).lower() == 'en')
 
-    # ── Extract raw values ───────────────────────────────────────────────────
+    # ── Bilingual lookup maps ─────────────────────────────────────────────────
+    GENDER = {
+        'm': 'Male' if en else 'Мъж',
+        'f': 'Female' if en else 'Жена',
+        'male': 'Male' if en else 'Мъж',
+        'female': 'Female' if en else 'Жена',
+        'мъж': 'Male' if en else 'Мъж',
+        'жена': 'Female' if en else 'Жена',
+    }
+    LEVEL = {
+        'beginner':     'Beginner (0–1 yr)' if en else 'Начинаещ (0–1 г. опит)',
+        'intermediate': 'Intermediate (1–3 yr)' if en else 'Среден (1–3 г. опит)',
+        'advanced':     'Advanced (3+ yr)' if en else 'Напреднал (3+ г. опит)',
+        'начинаещ': 'Beginner' if en else 'Начинаещ',
+        'среден':   'Intermediate' if en else 'Среден',
+        'напреднал':'Advanced' if en else 'Напреднал',
+    }
+    EQUIP = {
+        'gym':   'Full gym' if en else 'Пълна зала (всички уреди и машини)',
+        'home':  'Home (dumbbells / pull-up bar / kettlebells)' if en else 'Вкъщи (дъмбели / турник / гири)',
+        'none':  'Bodyweight only — no equipment' if en else 'Без оборудване — само телесно тегло',
+        'зала':  'Full gym' if en else 'Пълна зала',
+        'вкъщи': 'Home' if en else 'Вкъщи',
+        'без':   'Bodyweight only' if en else 'Без оборудване',
+    }
+    GOAL = {
+        'fat_loss':    'Fat loss' if en else 'Сваляне на телесни мазнини',
+        'muscle_gain': 'Muscle gain' if en else 'Покачване на мускулна маса',
+        'strength':    'Strength development' if en else 'Увеличаване на максималната сила',
+        'endurance':   'Endurance & cardio fitness' if en else 'Издръжливост и кардиофитнес',
+        'general':     'General fitness & health' if en else 'Общ тонус и здраве',
+    }
+    ACTIVITY = {
+        'sedentary':   'Sedentary (desk job)' if en else 'Заседнала (офис, минимално движение)',
+        'moderate':    'Moderate (lightly active)' if en else 'Умерена (леко активно ежедневие)',
+        'active':      'Active (physical job or frequent sport)' if en else 'Активна (физически активна работа или чест спорт)',
+        'very_active': 'Very active (physical labour or daily sport)' if en else 'Много активна (физически труд или ежедневен спорт)',
+    }
+    FOOD = {
+        'vegetarian':  'Vegetarian' if en else 'Вегетарианец',
+        'vegan':       'Vegan' if en else 'Веган',
+        'dairy_free':  'Dairy-free' if en else 'Без лактоза',
+        'gluten_free': 'Gluten-free' if en else 'Без глутен',
+    }
+    SLEEP_LBL  = {'poor': 'Poor' if en else 'Лош',
+                  'average': 'Average' if en else 'Среден',
+                  'good': 'Good' if en else 'Добър'}
+    STRESS_LBL = {'low': 'Low' if en else 'Нисък',
+                  'moderate': 'Moderate' if en else 'Среден',
+                  'high': 'High' if en else 'Висок'}
+    ASSR_LVL   = {'beginner': 'Beginner' if en else 'Начинаещ',
+                  'intermediate': 'Intermediate' if en else 'Среден',
+                  'advanced': 'Advanced' if en else 'Напреднал'}
+    ACT_MULT   = {'sedentary': 1.2, 'moderate': 1.375, 'active': 1.55, 'very_active': 1.725}
+    PROT_MULT  = {'fat_loss': 2.0, 'muscle_gain': 1.8, 'strength': 1.8,
+                  'endurance': 1.6, 'general': 1.6}
+
+    # ── Section labels ────────────────────────────────────────────────────────
+    LBL = {
+        'header':     '═══ COACHING PROFILE ═══' if en else '═══ КОУЧИНГ ПРОФИЛ ═══',
+        'footer':     '═══════════════════════',
+        'who':        '[WHO THE CLIENT IS]' if en else '[КОЙ Е КЛИЕНТЪТ]',
+        'goal_t':     '[GOAL & NUMERIC TARGETS]' if en else '[ЦЕЛ И ЧИСЛОВИ ТАРГЕТИ]',
+        'capacity':   '[TRAINING CAPACITY]' if en else '[ТРЕНИРОВЪЧЕН КАПАЦИТЕТ]',
+        'recovery':   '[RECOVERY INDICATORS]' if en else '[ПОКАЗАТЕЛИ ЗА ВЪЗСТАНОВЯВАНЕ]',
+        'health':     '[HEALTH CONSTRAINTS]' if en else '[ЗДРАВНИ ОГРАНИЧЕНИЯ]',
+        'nutrition':  '[NUTRITION CONSTRAINTS]' if en else '[ХРАНИТЕЛНИ ОГРАНИЧЕНИЯ]',
+        'assessment': '[FITNESS ASSESSMENT RESULTS]' if en else '[РЕЗУЛТАТИ ОТ ФИТНЕС ТЕСТ]',
+        'priority':   '[COACHING PRIORITIES — READ BEFORE RESPONDING]' if en
+                      else '[КОУЧИНГ ПРИОРИТЕТИ — ПРОЧЕТИ ПРЕДИ ДА ОТГОВОРИШ]',
+    }
+
+    # ── Extract raw values ────────────────────────────────────────────────────
     def _s(key, fallback=''):
         return str(profile.get(key) or fallback).strip()
 
@@ -280,17 +420,17 @@ def _build_profile_block(profile: dict) -> str:
     goal_raw     = _s('goal').lower()
     goal         = GOAL.get(goal_raw, _s('goal'))
     goal_detail  = _s('goalDetail')
-    # healthNotes covers injuries + medications + conditions (new field).
-    # Fall back to legacy 'injuries' field for existing profiles.
+    # healthNotes covers injuries + medications + conditions.
+    # Falls back to legacy 'injuries' field for profiles from before Step 1.
     health       = _s('healthNotes') or _s('injuries')
     food_raw     = _s('foodPreferences')
     allergies    = _s('allergies')
 
-    sleep_label  = {'poor': 'Лош', 'average': 'Среден', 'good': 'Добър'}.get(sleep_raw, sleep_raw)
-    stress_label = {'low': 'Нисък', 'moderate': 'Среден', 'high': 'Висок'}.get(stress_raw, stress_raw)
+    sleep_label  = SLEEP_LBL.get(sleep_raw, sleep_raw)
+    stress_label = STRESS_LBL.get(stress_raw, stress_raw)
     food_labels  = [FOOD.get(f.strip(), f.strip()) for f in food_raw.split(',') if f.strip()]
 
-    # ── TDEE + protein targets (only when we have weight, height, age) ───────
+    # ── TDEE + protein targets ────────────────────────────────────────────────
     tdee_line = ''
     protein_line = ''
     try:
@@ -298,118 +438,211 @@ def _build_profile_block(profile: dict) -> str:
         h = float(height_raw)
         a = int(age_raw)
         if w > 0 and h > 0 and a > 0:
-            bmr = (10 * w + 6.25 * h - 5 * a + 5) if gender_raw in ('m', 'male', 'мъж') \
-                  else (10 * w + 6.25 * h - 5 * a - 161)
+            bmr = (10*w + 6.25*h - 5*a + 5) if gender_raw in ('m', 'male', 'мъж') \
+                  else (10*w + 6.25*h - 5*a - 161)
             tdee = round(bmr * ACT_MULT.get(activity_raw, 1.375))
-
-            if goal_raw == 'fat_loss':
-                t = tdee - 450
-                kcal = f"{t} ккал (дефицит −450 под TDEE {tdee})"
-            elif goal_raw == 'muscle_gain':
-                t = tdee + 250
-                kcal = f"{t} ккал (излишък +250 над TDEE {tdee})"
-            else:
-                kcal = f"{tdee} ккал (поддръжка)"
-
             prot = round(w * PROT_MULT.get(goal_raw, 1.6))
-            tdee_line    = f"  Калориен таргет: {kcal}"
-            protein_line = f"  Протеин таргет: минимум {prot}г/ден"
+
+            if en:
+                if goal_raw == 'fat_loss':
+                    kcal = f"{tdee - 450} kcal (deficit −450 below TDEE {tdee})"
+                elif goal_raw == 'muscle_gain':
+                    kcal = f"{tdee + 250} kcal (surplus +250 above TDEE {tdee})"
+                else:
+                    kcal = f"{tdee} kcal (maintenance)"
+                tdee_line    = f"  Calorie target: {kcal}"
+                protein_line = f"  Protein target: minimum {prot}g/day"
+            else:
+                if goal_raw == 'fat_loss':
+                    kcal = f"{tdee - 450} ккал (дефицит −450 под TDEE {tdee})"
+                elif goal_raw == 'muscle_gain':
+                    kcal = f"{tdee + 250} ккал (излишък +250 над TDEE {tdee})"
+                else:
+                    kcal = f"{tdee} ккал (поддръжка)"
+                tdee_line    = f"  Калориен таргет: {kcal}"
+                protein_line = f"  Протеин таргет: минимум {prot}г/ден"
     except (TypeError, ValueError):
         pass
 
-    # ── Assemble sections ────────────────────────────────────────────────────
+    # ── Assemble sections ─────────────────────────────────────────────────────
     sections = []
 
-    # 1 — Identity (who the coach is talking to)
-    id_parts = [p for p in [name, gender,
-                             f"{age_raw}г."   if age_raw   else '',
-                             f"{weight_raw}кг" if weight_raw else '',
-                             f"{height_raw}см" if height_raw else ''] if p]
+    # 0 — Adaptive Coaching State (frontend-computed; highest priority; silent when absent)
+    coaching_state = _s('coachingState')
+    if coaching_state:
+        sections.append(coaching_state)
+
+    # 1 — Identity
+    w_unit = 'kg' if en else 'кг'
+    h_unit = 'cm' if en else 'см'
+    a_unit = 'yr' if en else 'г.'
+    id_parts = [p for p in [
+        name, gender,
+        f"{age_raw}{a_unit}"  if age_raw    else '',
+        f"{weight_raw}{w_unit}" if weight_raw else '',
+        f"{height_raw}{h_unit}" if height_raw else '',
+    ] if p]
     if id_parts:
-        sections.append("[КОЙ Е КЛИЕНТЪТ]\n" + " · ".join(id_parts))
+        sections.append(LBL['who'] + "\n" + " · ".join(id_parts))
 
-    # 2 — Goal + derived targets (the north star of every session)
+    # 2 — Goal + targets (north star of every session)
     goal_lines = []
-    if goal:        goal_lines.append(f"  {goal}")
-    if goal_detail: goal_lines.append(f"  „{goal_detail}"")
-    if tdee_line:   goal_lines.append(tdee_line)
-    if protein_line:goal_lines.append(protein_line)
+    if goal:         goal_lines.append(f"  {goal}")
+    if goal_detail:  goal_lines.append(f"  \"{goal_detail}\"")
+    if tdee_line:    goal_lines.append(tdee_line)
+    if protein_line: goal_lines.append(protein_line)
     if goal_lines:
-        sections.append("[ЦЕЛ И ЧИСЛОВИ ТАРГЕТИ]\n" + "\n".join(goal_lines))
+        sections.append(LBL['goal_t'] + "\n" + "\n".join(goal_lines))
 
-    # 3 — Training capacity (what they can do)
+    # 3 — Training capacity
     cap_lines = []
-    if level:    cap_lines.append(f"  Тренировъчен опит: {level}")
-    if activity: cap_lines.append(f"  Дневна активност: {activity}")
-    if equip:    cap_lines.append(f"  Оборудване: {equip}")
+    exp_lbl = 'Training experience' if en else 'Тренировъчен опит'
+    act_lbl = 'Daily activity'      if en else 'Дневна активност'
+    eq_lbl  = 'Equipment'           if en else 'Оборудване'
+    if level:    cap_lines.append(f"  {exp_lbl}: {level}")
+    if activity: cap_lines.append(f"  {act_lbl}: {activity}")
+    if equip:    cap_lines.append(f"  {eq_lbl}: {equip}")
     if cap_lines:
-        sections.append("[ТРЕНИРОВЪЧЕН КАПАЦИТЕТ]\n" + "\n".join(cap_lines))
+        sections.append(LBL['capacity'] + "\n" + "\n".join(cap_lines))
 
-    # 4 — Recovery indicators (what's limiting adaptation right now)
+    # 4 — Recovery indicators
     rec_lines = []
-    if sleep_label:  rec_lines.append(f"  Сън: {sleep_label}")
-    if stress_label: rec_lines.append(f"  Стрес: {stress_label}")
+    sl_lbl = 'Sleep'  if en else 'Сън'
+    st_lbl = 'Stress' if en else 'Стрес'
+    if sleep_label:  rec_lines.append(f"  {sl_lbl}: {sleep_label}")
+    if stress_label: rec_lines.append(f"  {st_lbl}: {stress_label}")
     if rec_lines:
-        sections.append("[ПОКАЗАТЕЛИ ЗА ВЪЗСТАНОВЯВАНЕ]\n" + "\n".join(rec_lines))
+        sections.append(LBL['recovery'] + "\n" + "\n".join(rec_lines))
 
-    # 5 — Health constraints (hard limits, never violate)
+    # 5 — Health constraints (never violated)
     if health:
-        sections.append(f"[ЗДРАВНИ ОГРАНИЧЕНИЯ]\n  {health}")
+        sections.append(LBL['health'] + "\n  " + health)
 
-    # 6 — Nutrition constraints (shape every food recommendation)
+    # 6 — Nutrition constraints
     nut_lines = []
-    if food_labels: nut_lines.append(f"  Предпочитания: {', '.join(food_labels)}")
-    if allergies:   nut_lines.append(f"  ⛔ Алергии (СТРОГА ЗАБРАНА): {allergies}")
+    pref_lbl = 'Preferences'                    if en else 'Предпочитания'
+    allg_lbl = '⛔ Allergies (ABSOLUTE BAN)'    if en else '⛔ Алергии (СТРОГА ЗАБРАНА)'
+    if food_labels: nut_lines.append(f"  {pref_lbl}: {', '.join(food_labels)}")
+    if allergies:   nut_lines.append(f"  {allg_lbl}: {allergies}")
     if nut_lines:
-        sections.append("[ХРАНИТЕЛНИ ОГРАНИЧЕНИЯ]\n" + "\n".join(nut_lines))
+        sections.append(LBL['nutrition'] + "\n" + "\n".join(nut_lines))
 
-    # ── Coaching priority flags ──────────────────────────────────────────────
-    # Translate data → behavioral instructions. The AI must act on these
-    # before generating any recommendation in this session.
+    # 7 — Assessment results (populated after Step 5; silent when absent)
+    asr          = profile.get('assessmentResults')
+    composite    = _s('compositeLevel')
+    asr_date     = _s('assessmentDate')
+    if asr and isinstance(asr, dict):
+        asr_lines = []
+        if composite:
+            lvl_disp  = ASSR_LVL.get(composite.lower(), composite)
+            date_str  = f" ({asr_date})" if asr_date else ""
+            comp_lbl  = 'Composite level' if en else 'Комбинирано ниво'
+            asr_lines.append(f"  {comp_lbl}: {lvl_disp}{date_str}")
+        pu = asr.get('pushups', {})
+        if pu:
+            form_str = (' (modified)' if pu.get('form') == 'modified' else '') if en \
+                       else (' (модифицирани)' if pu.get('form') == 'modified' else '')
+            pu_lbl   = 'Push-ups' if en else 'Лицеви опори'
+            rep_str  = 'reps' if en else 'повт.'
+            asr_lines.append(f"  {pu_lbl}: {pu.get('count', '?')} {rep_str}{form_str}")
+        pl = asr.get('plank', {})
+        if pl:
+            pl_lbl  = 'Plank hold' if en else 'Планк'
+            sec_str = 's' if en else 'с'
+            asr_lines.append(f"  {pl_lbl}: {pl.get('seconds', '?')}{sec_str}")
+        sq = asr.get('squats', {})
+        if sq:
+            sq_lbl  = 'Bodyweight squats' if en else 'Клекове'
+            rep_str = 'reps' if en else 'повт.'
+            asr_lines.append(f"  {sq_lbl}: {sq.get('count', '?')} {rep_str}")
+        if asr_lines:
+            sections.append(LBL['assessment'] + "\n" + "\n".join(asr_lines))
+
+    # 8 — Workout memory (pre-formatted summary injected by frontend; silent when absent)
+    workout_ctx = _s('workoutContext')
+    if workout_ctx:
+        sections.append(workout_ctx)
+
+    # ── Coaching priority flags ───────────────────────────────────────────────
+    # Translates raw field values → behavioral instructions.
+    # The AI must act on these before generating any recommendation.
     flags = []
 
-    if stress_raw == 'high':
-        flags.append("⚠ ВИСОК СТРЕС: Избягвай максимален интензитет. "
-                     "Препоръчвай умерен обем и акцент върху техника. "
-                     "Обясни, че кортизолът при хроничен стрес директно потиска адаптацията.")
-    if sleep_raw == 'poor':
-        flags.append("⚠ ЛОШ СЪН: Намали планирания обем с ~20%. "
-                     "Предложи активно възстановяване като равностойна алтернатива на тренировка. "
-                     "Наблегни, че без сън растежният хормон не се секретира и резултатите спират.")
-    if sleep_raw == 'average' and stress_raw == 'high':
-        flags.append("⚠ СРЕДЕН СЪН + ВИСОК СТРЕС: Комбинацията намалява капацитета за адаптация. "
-                     "Консервативен план — по-малко е повече днес.")
-    if goal_raw == 'fat_loss' and stress_raw == 'high':
-        flags.append("⚠ ЦЕЛ СВАЛЯНЕ + ВИСОК СТРЕС: Кортизолът директно блокира загубата на мазнини. "
-                     "Управлението на стреса е тренировъчна цел — включи го изрично в препоръките.")
-    if goal_raw == 'muscle_gain' and sleep_raw in ('poor', 'average'):
-        flags.append("⚠ ЦЕЛ КАЧВАНЕ + НЕДОСТАТЪЧЕН СЪН: "
-                     "Растежният хормон се секретира предимно в дълбок сън. "
-                     "Сънят е условие №1 за мускулен растеж — засегни темата.")
-    if health:
-        flags.append(f"⚠ ЗДРАВНИ ОГРАНИЧЕНИЯ (ЗАДЪЛЖИТЕЛНО): Модифицирай всяко упражнение около: {health}. "
-                     "При каквото и да е съмнение — препоръчай консултация с лекар преди натоварване.")
-    if allergies:
-        flags.append(f"⛔ АЛЕРГИИ — АБСОЛЮТНА ЗАБРАНА: Никога не споменавай и не препоръчвай: {allergies}. "
-                     "Нарушаването на това правило е медицински риск.")
-    if 'vegan' in food_raw:
-        flags.append("⚠ ВЕГАН ПРОФИЛ: Обърни специално внимание на B12, желязо, цинк, омега-3 и калций. "
-                     "Комбинирай бобови + зърнени за пълен аминокиселинен профил при всяко хранително предложение.")
-    if 'dairy_free' in food_raw:
-        flags.append("⚠ БЕЗ ЛАКТОЗА: Не препоръчвай суроватъчен протеин, сирена или мляко. "
-                     "Алтернативи: грахов протеин, яйца, пилешко, риба, тофу.")
+    if en:
+        if stress_raw == 'high':
+            flags.append("⚠ HIGH STRESS: Avoid maximum intensity. Recommend moderate volume "
+                         "with emphasis on technique. Explain that chronic cortisol directly "
+                         "suppresses adaptation.")
+        if sleep_raw == 'poor':
+            flags.append("⚠ POOR SLEEP: Reduce planned volume by ~20%. Suggest active recovery "
+                         "as a valid alternative to training. Emphasise that without adequate sleep "
+                         "growth hormone is not secreted and results stall.")
+        if sleep_raw == 'average' and stress_raw == 'high':
+            flags.append("⚠ AVERAGE SLEEP + HIGH STRESS: Combined effect reduces adaptation capacity. "
+                         "Conservative plan — less is more today.")
+        if goal_raw == 'fat_loss' and stress_raw == 'high':
+            flags.append("⚠ FAT LOSS GOAL + HIGH STRESS: Cortisol directly blocks fat oxidation. "
+                         "Stress management IS a training goal — include it explicitly in recommendations.")
+        if goal_raw == 'muscle_gain' and sleep_raw in ('poor', 'average'):
+            flags.append("⚠ MUSCLE GAIN GOAL + INSUFFICIENT SLEEP: Growth hormone is primarily "
+                         "secreted during deep sleep. Sleep is Condition #1 for muscle growth — "
+                         "raise this topic proactively.")
+        if health:
+            flags.append(f"⚠ HEALTH CONSTRAINTS (MANDATORY): Modify every exercise around: {health}. "
+                         "When in doubt — recommend medical clearance before loading.")
+        if allergies:
+            flags.append(f"⛔ ALLERGIES — ABSOLUTE PROHIBITION: Never mention or recommend: {allergies}. "
+                         "Violating this is a medical risk.")
+        if 'vegan' in food_raw:
+            flags.append("⚠ VEGAN PROFILE: Pay close attention to B12, iron, zinc, omega-3 and calcium. "
+                         "Combine legumes + grains for a complete amino acid profile in every "
+                         "nutrition suggestion.")
+        if 'dairy_free' in food_raw:
+            flags.append("⚠ DAIRY-FREE: Do not recommend whey protein, cheese or milk. "
+                         "Alternatives: pea protein, eggs, chicken, fish, tofu.")
+    else:
+        if stress_raw == 'high':
+            flags.append("⚠ ВИСОК СТРЕС: Избягвай максимален интензитет. "
+                         "Препоръчвай умерен обем и акцент върху техника. "
+                         "Обясни, че кортизолът при хроничен стрес директно потиска адаптацията.")
+        if sleep_raw == 'poor':
+            flags.append("⚠ ЛОШ СЪН: Намали планирания обем с ~20%. "
+                         "Предложи активно възстановяване като равностойна алтернатива на тренировка. "
+                         "Наблегни, че без сън растежният хормон не се секретира и резултатите спират.")
+        if sleep_raw == 'average' and stress_raw == 'high':
+            flags.append("⚠ СРЕДЕН СЪН + ВИСОК СТРЕС: Комбинацията намалява капацитета за адаптация. "
+                         "Консервативен план — по-малко е повече днес.")
+        if goal_raw == 'fat_loss' and stress_raw == 'high':
+            flags.append("⚠ ЦЕЛ СВАЛЯНЕ + ВИСОК СТРЕС: Кортизолът директно блокира загубата на мазнини. "
+                         "Управлението на стреса е тренировъчна цел — включи го изрично в препоръките.")
+        if goal_raw == 'muscle_gain' and sleep_raw in ('poor', 'average'):
+            flags.append("⚠ ЦЕЛ КАЧВАНЕ + НЕДОСТАТЪЧЕН СЪН: "
+                         "Растежният хормон се секретира предимно в дълбок сън. "
+                         "Сънят е условие №1 за мускулен растеж — засегни темата.")
+        if health:
+            flags.append(f"⚠ ЗДРАВНИ ОГРАНИЧЕНИЯ (ЗАДЪЛЖИТЕЛНО): Модифицирай всяко упражнение около: {health}. "
+                         "При каквото и да е съмнение — препоръчай консултация с лекар преди натоварване.")
+        if allergies:
+            flags.append(f"⛔ АЛЕРГИИ — АБСОЛЮТНА ЗАБРАНА: Никога не споменавай и не препоръчвай: {allergies}. "
+                         "Нарушаването на това правило е медицински риск.")
+        if 'vegan' in food_raw:
+            flags.append("⚠ ВЕГАН ПРОФИЛ: Обърни специално внимание на B12, желязо, цинк, омега-3 и калций. "
+                         "Комбинирай бобови + зърнени за пълен аминокиселинен профил при всяко хранително предложение.")
+        if 'dairy_free' in food_raw:
+            flags.append("⚠ БЕЗ ЛАКТОЗА: Не препоръчвай суроватъчен протеин, сирена или мляко. "
+                         "Алтернативи: грахов протеин, яйца, пилешко, риба, тофу.")
 
     if not sections and not flags:
         return ""
 
-    block = "═══ КОУЧИНГ ПРОФИЛ ═══\n\n"
+    block  = LBL['header'] + "\n\n"
     block += "\n\n".join(sections)
     if flags:
         if sections:
             block += "\n\n"
-        block += "[КОУЧИНГ ПРИОРИТЕТИ — ПРОЧЕТИ ПРЕДИ ДА ОТГОВОРИШ]\n"
+        block += LBL['priority'] + "\n"
         block += "\n".join(flags)
-    block += "\n\n═══════════════════════"
+    block += "\n\n" + LBL['footer']
     return block
 
 
@@ -727,6 +960,9 @@ def chat():
         user_message = str(data.get("message", ""))[:msg_limit]
         history = data.get("history", [])
         profile = data.get("profile") or {}
+        lang = str(data.get("lang", "bg")).lower()
+        if lang not in ("bg", "en"):
+            lang = "bg"
 
         # ── SERVER-SIDE FREE LIMIT ──
         # localStorage limit is the soft wall; this is the real one.
@@ -739,7 +975,7 @@ def chat():
                 return jsonify({"limit_reached": True, "hours_left": hours_left}), 200
             usage["count"] += 1
 
-        profile_block = _build_profile_block(profile) if isinstance(profile, dict) else ""
+        profile_block = _build_profile_block(profile, lang) if isinstance(profile, dict) else ""
         system_content = (profile_block + "\n\n" + SYSTEM_INSTRUCTIONS) if profile_block else SYSTEM_INSTRUCTIONS
         messages = [{"role": "system", "content": system_content}]
 

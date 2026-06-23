@@ -5,7 +5,7 @@
 
 > **Purpose:** This file eliminates repeated codebase analysis at the start of each session.
 > Read this first. Update this last.
-> Last updated: June 2026 — Apex 1.5 Steps 1–3 complete
+> Last updated: June 2026 — Apex 1.5 Steps 1–4 + Workout Memory + Recovery Feedback Loop complete
 
 ---
 
@@ -66,14 +66,19 @@ model = "gpt-4o" if is_pro else "gpt-4o-mini"
 max_tokens = 4000 if is_pro else 1500
 ```
 
-**System prompt rules (SYSTEM_INSTRUCTIONS, lines 105–223 of app.py):**
+**System prompt rules (SYSTEM_INSTRUCTIONS, app.py):**
 - Bulgarian-first coaching persona
 - Metric system only
 - Full column names in tables: Протеин / Въглехидрати / Мазнини
 - Explain WHY for every recommendation
 - Direct coaching voice — no filler ("Excellent question!")
-- Bulgarian local brands only (Kaufland / Lidl / Fantastico)
+- Bulgarian local brands (Kaufland / Lidl / Fantastico) for BG; generic supermarket items for EN
+- Name greeting: use profile `name` in first message only, never repeated
+- Assessment results in profile → do not re-ask level, reference measured numbers
 - End every response with: `🔱 **ELITE STATUS: ACTIVE**`
+
+**`lang` flow (Step 4):**
+`localStorage.apexLang` → `lang` JS var → `/chat` request body → extracted in `/chat` route → passed to `_build_profile_block(profile, lang)` → bilingual section headers + coaching flags
 
 ### Frontend (`templates/app.html`)
 
@@ -90,11 +95,14 @@ Key JS objects / functions:
 ├── _woRenderFb(b)      → RPE feedback screen (easy/medium/hard)
 ├── _woRenderRest(b)    → smart rest timer with countdown bar
 ├── _woRenderHr(b)      → rPPG heart rate measurement
-├── _woRenderDone(b)    → completion screen
-├── _woFb(fb)           → processes RPE feedback, adapts repDelta, routes to rest
+├── _woRenderDone(b)    → completion screen — calls _woLogSave(), shows duration, BG/EN
+├── _woFb(fb)           → records actual reps + RPE to _wo.exLog/_wo.fbLog, adapts repDelta
+├── _woDetectType(exs)  → detects upper/lower/full/core/mixed from exercise names (BG+EN regex)
+├── _woLogSave()        → saves completed workout to localStorage.apexWorkoutLog (cap 20)
+├── _woGetSummary(lang) → generates bilingual coaching summary from last 30 days + last 3 sessions
 ├── _woRestSecs(name)   → calculates rest time from profile + exercise type
 ├── _woCalcBpm(samples) → zero-crossing BPM from rPPG green channel
-├── send()              → main chat function (SSE streaming)
+├── send()              → main chat function — injects _woGetSummary() into profile.workoutContext
 ├── readChatStream()    → reads SSE stream, renders markdown live
 ├── getChatHistory()    → reads localStorage apexHistory (last 30)
 ├── saveToHistory()     → writes to localStorage apexHistory
@@ -115,6 +123,7 @@ Key JS objects / functions:
 | `apexPlan` | "core" or "pro" |
 | `apexSessionId` | Stripe session ID (for /withdraw) |
 | `apexProfile` | JSON profile object (14 fields: name, gender, age, weight, height, activityLevel, level, sleepQuality, stressLevel, healthNotes, goal, goalDetail, equipment, foodPreferences, allergies) |
+| `apexWorkoutLog` | Array of completed workout objects (capped at 20). Schema: `{ts, date, dur, type, diff, exs:[{n, s, r:[]}]}` |
 | `apexHistory` | Last 30 messages (paid users) |
 | `apexFreeUsage` | `{count, windowStart}` — daily limit tracking |
 | `apexFreeMemory` | Last 6 messages (free users) |
@@ -173,12 +182,13 @@ All use CSS `d:path()` morphing for limb paths + SMIL `<animate>` for joint circ
 - [x] Error handling with user-visible message
 - [x] Stream disconnect recovery (partial response preserved)
 
-### Profile System (Steps 1–3 ✅)
+### Profile System (Steps 1–4 ✅)
 - [x] 3-step onboarding modal: 14 fields across Basics / Situation / Goal panes
 - [x] Per-step localStorage persistence (partial abandonment preserves data)
 - [x] `_pfPopulate()` — pre-fills all fields on re-open (Edit Profile flow)
-- [x] `_build_profile_block()` — structured 6-section coaching context with TDEE + protein targets
-- [x] Priority coaching flags (stress/sleep/health → behavioral AI directives)
+- [x] `_build_profile_block(profile, lang)` — bilingual (BG/EN) 7-section coaching context with TDEE + protein targets
+- [x] Priority coaching flags (stress/sleep/health → behavioral AI directives in user's language)
+- [x] Assessment results section in profile block (reads `assessmentResults`, `compositeLevel`, `assessmentDate` — silent when absent, ready for Step 5)
 - [x] Profile gate on Workout Mode (requires at least weight field)
 - [x] `maybeShowProfile()` — appears once after disclaimer accepted
 - [x] **Goal Bar** — persistent strip below nav showing: Primary Goal / Current Weight / Coaching Focus
@@ -186,6 +196,9 @@ All use CSS `d:path()` morphing for limb paths + SMIL `<animate>` for joint circ
 - [x] `updateGoalBar()` — called on load, language switch, profile save, profile skip
 - [x] Coaching focus derived from sleep+stress state (recovery-first logic per COACHING_ENGINE §2)
 - [x] 4 future DOM slots pre-wired (Progress %, Apex Score, Recovery, Weight trend) — hidden, awaiting later steps
+- [x] **`lang` sent to backend** — `/chat` body includes `lang` from `localStorage.apexLang`; backend extracts and validates it; profile block language-aware
+- [x] Name greeting instruction — AI uses `name` from profile in the first message only
+- [x] Assessment awareness instruction — AI references measured results, never re-asks level
 
 ### Workout Mode
 - [x] AI table parsing → `🏋️ Режим Тренировка` button
@@ -218,20 +231,20 @@ All use CSS `d:path()` morphing for limb paths + SMIL `<animate>` for joint circ
 
 ## PARTIALLY IMPLEMENTED FEATURES ⚠️
 
-### Profile System (14/18 fields — UI + backend complete as of Steps 1–2)
-**What works:** 3-step onboarding collects 14 fields. `_build_profile_block()` in app.py now produces a structured coaching context with 6 sections + dynamic priority flags. TDEE and protein targets are calculated server-side from weight/height/age/activity/goal. Fully backward compatible with old 7-field profiles.
-**What's missing:** name field (collected but not a profile requirement for APEX_VISION's 18); body fat % (dropped from Step 1 to keep mobile-friendly — add in future pass); formal assessment (Step 5).
-**AI receives per session:** Identity · Goal + numeric targets · Training capacity · Recovery indicators · Health constraints · Nutrition constraints · Priority behavioral flags.
+### Profile System (14/18 fields — UI + backend complete as of Steps 1–4)
+**What works:** 3-step onboarding collects 14 fields. `_build_profile_block(profile, lang)` produces a bilingual 7-section coaching context with dynamic priority flags. TDEE and protein targets calculated server-side. Assessment results section pre-wired (reads from profile; silent until Step 5 populates it). `lang` is sent in every `/chat` request body so profile block language matches user's UI language.
+**What's missing:** body fat % (dropped from Step 1 to keep mobile-friendly); formal assessment (Step 5).
+**AI receives per session:** Identity · Goal + numeric targets · Training capacity · Recovery indicators · Health constraints · Nutrition constraints · Assessment results (when present) · Priority behavioral flags — all in the user's language.
 
 ### Memory System (client-side only)
-**What works:** Conversation history (30 paid / 6 free messages) reaches backend and AI uses it contextually.
-**What's missing:** Server-side storage. Device change, browser clear, or incognito wipes everything. No structured history of weight, workouts, nutrition, HR, sleep. No long-term memory.
-**Impact:** Apex cannot remember anything across devices or after localStorage is cleared. The "adaptive coach" vision is impossible without server-side storage.
+**What works:** Conversation history (30 paid / 6 free messages) reaches backend and AI uses it contextually. Workout log (`apexWorkoutLog`) stores last 20 completed sessions. `_woGetSummary()` generates bilingual coaching summary (last 3 workouts + 30-day metrics) and sends it to every `/chat` request as `profile.workoutContext`. AI receives: last 3 sessions with exercise/set/rep data + consistency%, avg difficulty, volume trend, days since last workout.
+**What's missing:** Server-side storage. Device change, browser clear, or incognito wipes everything. No weight history, nutrition log, HR trends.
+**Impact:** Apex can now reference recent workouts in context. Cannot remember across devices or after localStorage clear.
 
-### Progress Intelligence (session only)
-**What works:** RPE → `repDelta` adapts reps live within the current workout session.
-**What's missing:** After `closeWorkout()`, all data is discarded. No workout log. No performance trends. No accumulated data the AI can reference.
-**Impact:** The AI cannot say "last week you struggled with lunges" because it never recorded that.
+### Progress Intelligence (cross-session localStorage)
+**What works:** RPE → `repDelta` adapts reps live within the current workout session. Completed sessions are now saved to `apexWorkoutLog`. `_woFb()` records actual reps per set (with `repDelta` applied) and RPE into `_wo.exLog` / `_wo.fbLog`. `_woLogSave()` computes session difficulty (mode of RPE feedback), workout type (regex detection), and duration before persisting.
+**What's missing:** Cross-device sync. After localStorage clear, all history is lost. Weight/strength progression tracking. No deload detection.
+**Impact:** The AI can now say "last week you struggled with lunges" — the session is in context. Cannot detect multi-week trends without server-side storage.
 
 ### Heart Rate (isolated measurement)
 **What works:** Single post-set rPPG measurement + zone classification + rest advice.
@@ -345,9 +358,9 @@ The "done" screen shows total exercises and sets but discards all session data (
 
 Listed in order of impact and dependency.
 
-### 1–3. ✅ Profile onboarding + coaching context + Goal Bar (commits 512af73, 0a5616d, e395c80)
-3-step modal collects 14 fields. `_build_profile_block()` produces structured 6-section coaching context with dynamic priority flags and calculated TDEE/protein targets. AI receives coaching instructions, not raw form data. Goal Bar always visible in UI with North Star context and Edit Profile access.
-**Next: Step 4** — Fitness assessment flow (push-up / plank / squat tests → auto-set level).
+### 1–4. ✅ Profile onboarding + coaching context + Goal Bar + System Prompt Upgrade (commits 512af73, 0a5616d, e395c80, Step 4)
+3-step modal collects 14 fields. `_build_profile_block(profile, lang)` produces bilingual 7-section coaching context with dynamic priority flags and calculated TDEE/protein targets. `lang` sent in every `/chat` request body so AI receives profile block in user's language. Assessment results slot pre-wired. Name greeting instruction added. AI receives coaching instructions, not raw form data. Goal Bar always visible in UI.
+**Next: Workout Memory System** — log completed sessions to localStorage, surface last 3 to AI context.
 
 ### 2. Persist Workout Data to Backend (foundational for everything adaptive)
 After `_woRenderDone()`, POST the completed session to a new `/log-workout` endpoint: exercises, sets, reps (with repDelta applied), HR readings, session RPE, timestamp.
@@ -400,6 +413,10 @@ The AI will be able to reference previous workouts in responses. Users will have
 | June 2026 | Initial document created. Gap analysis complete. All 5 exercise animations committed. COACHING_ENGINE.md, APEX_VISION.md, IMPLEMENTATION_PLAN.md in repo. |
 | June 2026 | **Apex 1.5 Step 1** — Profile modal redesigned as 3-step onboarding. New CSS (progress dots, nav row, back button). HTML restructured into 3 panes (Basics / Situation / Goal). JS rewritten with `openProfile()`, `pfNext()`, `pfBack()`, `pfSkipStep()`, `_pfPopulate()`, per-step save functions. 14 fields now visible in UI (up from 7). Commit 512af73. |
 | June 2026 | **Apex 1.5 Step 2** — `_build_profile_block()` in app.py rewritten. 6-section coaching context: Identity · Goal+Targets · Capacity · Recovery · Health · Nutrition. Dynamic priority flags translate field values into behavioral AI instructions. TDEE + protein targets calculated from weight/height/age/activity/goal. Backward compatible with legacy 7-field profiles. Commit 0a5616d. |
+| June 2026 | **Apex 1.5 Step 3** — Persistent Goal Bar added below nav. 3 active columns: Primary Goal · Current Weight + direction · Coaching Focus (from sleep/stress/goal hierarchy). Edit Profile button opens pre-populated 3-step onboarding. 4 future DOM slots pre-wired (hidden). `updateGoalBar()` called on load, save, skip, language switch. Commit e395c80. |
+| June 2026 | **Apex 1.5 Step 4** — System Prompt Context Upgrade. `_build_profile_block()` made bilingual: BG/EN section headers, value labels, coaching flags. `lang` now sent in `/chat` request body (`body.lang = lang`). Backend extracts + validates `lang`, passes to `_build_profile_block(profile, lang)`. Assessment results section (section 7) pre-wired — reads `assessmentResults`, `compositeLevel`, `assessmentDate` from profile; silent when absent. SYSTEM_INSTRUCTIONS: name greeting rule added (first message only), EN food recommendation section added (no Bulgarian store references), fitness assessment awareness section added. |
+| June 2026 | **Workout Memory System** — `localStorage.apexWorkoutLog` schema: `{ts, date, dur, type, diff, exs:[{n,s,r:[]}]}`, capped at 20 sessions. `_woFb()` extended to record actual reps + RPE per set into `_wo.exLog`/`_wo.fbLog`. `_woLogSave()` runs at workout completion (guarded by `_wo._logged` flag to prevent double-save), computes session difficulty (mode of RPE), workout type via `_woDetectType()` regex (upper/lower/full/core/mixed, BG+EN), duration in minutes. `_woGetSummary(lang)` generates bilingual token-efficient coaching context: last 3 workouts (date · type · duration · difficulty · top 3 exercises with actual reps) + 30-day summary (total, weekly frequency, consistency %, avg difficulty, volume trend ↑↓→ per body area, days since last session). Summary injected ephemerally into `profile.workoutContext` in `send()`. Backend `_build_profile_block()` adds it as section 8. Done screen now shows duration + BG/EN text + "saved to log" confirmation. |
+| June 2026 | **Recovery Feedback Loop** — Post-workout check-in screen (`phase='recovery'`) added to state machine after `phase='done'`. Collects: overall session difficulty (4-option: Easy/Moderate/Hard/Very Hard), energy after training (1–10 tap scale), motivation (1–10 tap scale), optional text note (max 200 chars). `_woSaveRecovery()` appends `rec:{feel,energy,motivation,note}` to the last log entry. `_woGetSummary()` extended: when ≥2 sessions have `rec` data, appends recovery signals block — avg perceived difficulty, avg energy ↑↓→, avg motivation ↑↓→, Recovery Verdict (GOOD/MODERATE/CONCERNING/POOR with coaching instruction). Recent notes (last 2 non-empty) included verbatim. SYSTEM_INSTRUCTIONS: RECOVERY VERDICT section added — maps each verdict level to volume/intensity directive. AI instructed to never ignore verdict even when user requests max intensity. |
 
 ---
 

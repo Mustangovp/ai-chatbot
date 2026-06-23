@@ -380,7 +380,29 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 .wo-complete{display:flex;flex-direction:column;align-items:center;text-align:center;padding:10px 0;}
 .wo-complete-icon{font-size:60px;margin-bottom:14px;}
 .wo-complete-title{font-family:'Unbounded';font-size:22px;color:var(--gold);margin-bottom:10px;}
-.wo-complete-stats{font-size:14px;color:var(--muted);line-height:1.9;margin-bottom:28px;}
+.wo-complete-stats{font-size:14px;color:var(--muted);line-height:1.9;margin-bottom:22px;}
+/* ── RECOVERY CHECK-IN ── */
+.wo-recovery{display:flex;flex-direction:column;width:100%;padding:4px 0 10px;}
+.wo-rec-title{font-family:'Unbounded';font-size:11px;letter-spacing:2px;color:var(--gold);text-align:center;margin-bottom:20px;}
+.wo-rec-section{margin-bottom:20px;}
+.wo-rec-lbl{font-size:9px;letter-spacing:1.8px;color:rgba(139,147,167,0.5);text-transform:uppercase;margin-bottom:8px;text-align:center;}
+.wo-rec-diff{display:grid;grid-template-columns:1fr 1fr;gap:7px;}
+.wo-rec-diff-btn{padding:9px 6px;border:1px solid rgba(255,255,255,0.07);background:transparent;color:var(--muted);font-size:11px;border-radius:7px;cursor:pointer;transition:all .15s;font-family:inherit;}
+.wo-rec-diff-btn.sel{border-color:var(--red);color:var(--text);background:rgba(245,33,45,0.1);}
+.wo-rec-scale{display:flex;gap:4px;justify-content:center;}
+.wo-rec-scale-btn{flex:1;height:30px;border-radius:5px;border:1px solid rgba(255,255,255,0.07);background:transparent;color:var(--muted);font-size:11px;cursor:pointer;transition:all .13s;min-width:0;}
+.wo-rec-scale-btn[data-v="1"],.wo-rec-scale-btn[data-v="2"],.wo-rec-scale-btn[data-v="3"]{border-color:rgba(245,33,45,0.25);}
+.wo-rec-scale-btn[data-v="1"].sel,.wo-rec-scale-btn[data-v="2"].sel,.wo-rec-scale-btn[data-v="3"].sel{background:rgba(245,33,45,0.35);border-color:var(--red);color:#fff;}
+.wo-rec-scale-btn[data-v="4"],.wo-rec-scale-btn[data-v="5"],.wo-rec-scale-btn[data-v="6"],.wo-rec-scale-btn[data-v="7"]{border-color:rgba(255,180,0,0.2);}
+.wo-rec-scale-btn[data-v="4"].sel,.wo-rec-scale-btn[data-v="5"].sel,.wo-rec-scale-btn[data-v="6"].sel,.wo-rec-scale-btn[data-v="7"].sel{background:rgba(255,180,0,0.3);border-color:rgba(255,180,0,0.8);color:#fff;}
+.wo-rec-scale-btn[data-v="8"],.wo-rec-scale-btn[data-v="9"],.wo-rec-scale-btn[data-v="10"]{border-color:rgba(0,200,100,0.2);}
+.wo-rec-scale-btn[data-v="8"].sel,.wo-rec-scale-btn[data-v="9"].sel,.wo-rec-scale-btn[data-v="10"].sel{background:rgba(0,200,100,0.3);border-color:rgba(0,200,100,0.8);color:#fff;}
+.wo-rec-note{width:100%;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:7px;color:var(--text);font-size:12px;padding:8px 10px;resize:none;height:52px;font-family:inherit;box-sizing:border-box;}
+.wo-rec-note::placeholder{color:rgba(139,147,167,0.35);}
+.wo-rec-save{width:100%;padding:13px;background:var(--red);color:#fff;border:none;border-radius:8px;font-family:'Unbounded';font-size:11px;letter-spacing:1px;cursor:pointer;margin-top:4px;transition:opacity .2s;}
+.wo-rec-save:hover{opacity:.88;}
+.wo-rec-skip{display:block;text-align:center;font-size:10px;color:rgba(139,147,167,0.4);margin-top:12px;cursor:pointer;letter-spacing:.5px;}
+.wo-rec-skip:hover{color:var(--muted);}
 .wo-hr{display:flex;flex-direction:column;align-items:center;width:100%;}
 .wo-hr-title{font-family:'Unbounded';font-size:14px;color:var(--red);text-align:center;margin-bottom:8px;letter-spacing:1px;}
 .wo-hr-instr{font-size:13px;color:var(--muted);text-align:center;margin-bottom:16px;line-height:1.6;max-width:300px;}
@@ -1220,6 +1242,380 @@ let _wo=null,_woTimer=null,_woHrStream=null;
 
 function _woSave(){try{if(_wo)localStorage.setItem('apexWo',JSON.stringify(_wo));}catch(e){}}
 
+// ── WORKOUT MEMORY SYSTEM ─────────────────────────────────────────────────────
+
+function _woDetectType(exs){
+  const U=/лицев|push.?up|bench|curl|row|press|shoulder|pull|набир|тяга|дипс|dip|бицеп|трицеп|lat/i;
+  const L=/клек|squat|lunge|изпад|deadlift|мъртва|крак|leg|глут|бедр|калф|calf|hip/i;
+  const C=/планк|plank|crunch|кранч|коремни|sit.?up|ab\b/i;
+  let u=0,l=0,c=0;
+  exs.forEach(ex=>{if(U.test(ex.name))u++;else if(L.test(ex.name))l++;else if(C.test(ex.name))c++;});
+  const tot=exs.length||1;
+  if(u/tot>=0.6)return'upper';
+  if(l/tot>=0.6)return'lower';
+  if(c/tot>=0.6)return'core';
+  if(u>0&&l>0)return'full';
+  return'mixed';
+}
+
+function _woLogSave(){
+  if(!_wo||_wo._logged)return;
+  _wo._logged=true;_woSave();
+  try{
+    const dur=_wo.startTs?Math.round((Date.now()-_wo.startTs)/60000):0;
+    const fbLog=_wo.fbLog||[];
+    let diff='medium';
+    if(fbLog.length>0){
+      const cnt={easy:0,medium:0,hard:0};
+      fbLog.forEach(f=>{cnt[f]=(cnt[f]||0)+1;});
+      diff=Object.entries(cnt).sort((a,b)=>b[1]-a[1])[0][0];
+    }
+    const exLog=_wo.exLog||[];
+    const exs=_wo.exs.map((ex,i)=>{
+      const le=exLog[i]||{};
+      return{n:ex.name,s:ex.sets,r:le.r&&le.r.length?le.r:[Math.max(1,ex.baseReps+ex.repDelta)]};
+    });
+    const entry={
+      ts:Math.floor(Date.now()/1000),
+      date:new Date().toISOString().slice(0,10),
+      dur:Math.max(1,dur),
+      type:_woDetectType(_wo.exs),
+      diff,exs
+    };
+    let log=[];
+    try{log=JSON.parse(localStorage.getItem('apexWorkoutLog')||'[]');}catch(e){}
+    if(!Array.isArray(log))log=[];
+    log.push(entry);
+    if(log.length>20)log=log.slice(-20);
+    localStorage.setItem('apexWorkoutLog',JSON.stringify(log));
+  }catch(e){}
+}
+
+function _woGetSummary(l){
+  let log=[];
+  try{log=JSON.parse(localStorage.getItem('apexWorkoutLog')||'[]');}catch(e){}
+  if(!Array.isArray(log)||!log.length)return'';
+  const en=l==='en';
+  const now=Math.floor(Date.now()/1000);
+  const DAY=86400;
+  const last30=log.filter(w=>now-w.ts<=30*DAY);
+  if(!last30.length)return'';
+  const recent3=log.slice(-3).reverse();
+  const total=last30.length;
+
+  // difficulty average
+  const D={easy:1,medium:2,hard:3};
+  const avgD=last30.reduce((s,w)=>s+(D[w.diff]||2),0)/total;
+  const avgDLbl=en?(avgD<1.5?'Easy':avgD<2.5?'Moderate':'Hard')
+                  :(avgD<1.5?'Лесно':avgD<2.5?'Умерено':'Тежко');
+
+  // weekly frequency + consistency vs 3×/week baseline
+  const span=total>1?Math.max(1,Math.ceil((last30[total-1].ts-last30[0].ts)/(7*DAY))):1;
+  const freq=(total/span).toFixed(1);
+  const consistency=Math.min(100,Math.round((total/(span*3))*100));
+
+  // volume trend — compare first vs second half by type ratio
+  function vTrend(type){
+    if(total<4)return'→';
+    const h=Math.floor(total/2);
+    const rO=last30.slice(0,h).filter(w=>w.type===type).length/(h||1);
+    const rN=last30.slice(h).filter(w=>w.type===type).length/((total-h)||1);
+    return rN>rO+0.1?'↑':rN<rO-0.1?'↓':'→';
+  }
+
+  // days since last workout
+  const ds=Math.floor((now-log[log.length-1].ts)/DAY);
+  const dsStr=en?(ds===0?'today':ds===1?'yesterday':`${ds} days ago`)
+                :(ds===0?'днес':ds===1?'вчера':`преди ${ds} дни`);
+
+  // labels
+  const TL={upper:en?'Upper':'Горна',lower:en?'Lower':'Долна',full:en?'Full body':'Цяло тяло',
+            core:en?'Core':'Корем',mixed:en?'Mixed':'Смесена'};
+  const DL={easy:en?'Easy':'Лесно',medium:en?'Moderate':'Умерено',hard:en?'Hard':'Тежко'};
+  const BGM=['яну','фев','мар','апр','май','юни','юли','авг','сеп','окт','ное','дек'];
+
+  function fDate(ts){
+    const d=new Date(ts*1000);
+    return en?d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})
+             :`${d.getDate()} ${BGM[d.getMonth()]}`;
+  }
+  function fExs(exs){
+    return exs.slice(0,3).map(ex=>{
+      const nm=ex.n.split(/\s+/).slice(0,2).join(' ');
+      const rStr=ex.r&&ex.r.length>1?ex.r.join('/'):(ex.r&&ex.r[0])||'?';
+      return`${nm} ${ex.s}×${rStr}`;
+    }).join(' · ');
+  }
+
+  const r3=recent3.map(w=>{
+    const dur=w.dur?` · ${w.dur}${en?'min':'мин'}`:'';
+    return`  ${fDate(w.ts)} · ${TL[w.type]||w.type}${dur} · ${DL[w.diff]||w.diff} · ${fExs(w.exs)}`;
+  });
+
+  const hdr=en?'[WORKOUT MEMORY]':'[ТРЕНИРОВЪЧНА ПАМЕТ]';
+  const r3H=en?'Last 3 sessions:':'Последни 3 тренировки:';
+  const sH=en?'Training summary (last 30 days):':'Обобщение (последни 30 дни):';
+  const wLbl=en?'Workouts':'Тренировки';
+  const cLbl=en?'Consistency':'Редовност';
+  const dLbl=en?'Avg difficulty':'Ср. трудност';
+  const vLbl=en?'Volume trend':'Обем тренд';
+  const lLbl=en?'Last session':'Последна тренировка';
+  const uL=en?'Upper':'Горна';const loL=en?'Lower':'Долна';const cL=en?'Core':'Корем';
+
+  // ── Recovery signals block (appended when ≥2 sessions have rec data) ────────
+  const recW=last30.filter(w=>w.rec);
+  const recLines=[];
+  if(recW.length>=2){
+    // difficulty
+    const feelMap={easy:1,moderate:2,hard:3,very_hard:4};
+    const feelW=recW.filter(w=>w.rec.feel);
+    let feelLbl='';
+    if(feelW.length>=2){
+      const avgFeel=feelW.reduce((s,w)=>s+(feelMap[w.rec.feel]||2),0)/feelW.length;
+      feelLbl=en?(avgFeel<1.5?'Easy':avgFeel<2.5?'Moderate':avgFeel<3.5?'Hard':'Very Hard')
+                :(avgFeel<1.5?'Лесно':avgFeel<2.5?'Умерено':avgFeel<3.5?'Тежко':'Много Тежко');
+    }
+    // energy
+    const eW=recW.filter(w=>w.rec.energy);
+    let eTrend='→',avgE=0;
+    if(eW.length>=2){
+      avgE=eW.reduce((s,w)=>s+w.rec.energy,0)/eW.length;
+      const eh=Math.floor(eW.length/2);
+      const eOld=eW.slice(0,eh).reduce((s,w)=>s+w.rec.energy,0)/(eh||1);
+      const eNew=eW.slice(eh).reduce((s,w)=>s+w.rec.energy,0)/((eW.length-eh)||1);
+      eTrend=eNew>eOld+0.5?'↑':eNew<eOld-0.5?'↓':'→';
+    }
+    // motivation
+    const mW=recW.filter(w=>w.rec.motivation);
+    let mTrend='→',avgM=0;
+    if(mW.length>=2){
+      avgM=mW.reduce((s,w)=>s+w.rec.motivation,0)/mW.length;
+      const mh=Math.floor(mW.length/2);
+      const mOld=mW.slice(0,mh).reduce((s,w)=>s+w.rec.motivation,0)/(mh||1);
+      const mNew=mW.slice(mh).reduce((s,w)=>s+w.rec.motivation,0)/((mW.length-mh)||1);
+      mTrend=mNew>mOld+0.5?'↑':mNew<mOld-0.5?'↓':'→';
+    }
+    // verdict
+    let verdict,verdictNote;
+    if(eW.length>=2&&(avgE<5||(eTrend==='↓'&&avgE<6))){
+      verdict=en?'⚠ POOR':'⚠ ЛОШО';
+      verdictNote=en?'Reduce volume 20–30%. No max intensity. Active recovery is a valid alternative.'
+                    :'Намали обема с 20–30%. Без максимален интензитет. Активно възстановяване е равностойна опция.';
+    }else if(eW.length>=2&&(avgE<6.5&&(eTrend==='↓'||mTrend==='↓'))){
+      verdict=en?'⚠ CONCERNING':'⚠ ВНИМАНИЕ';
+      verdictNote=en?'Reduce volume 10%. Monitor next 2 sessions before increasing load.'
+                    :'Намали обема с 10%. Наблюдавай следващите 2 сесии преди да увеличиш натоварването.';
+    }else if(eW.length>=2&&avgE>=7.5&&mTrend!=='↓'){
+      verdict=en?'✅ GOOD':'✅ ДОБРО';
+      verdictNote=en?'Progressive overload is appropriate.':'Прогресивно натоварване е подходящо.';
+    }else if(eW.length>=2){
+      verdict=en?'→ MODERATE':'→ УМЕРЕНО';
+      verdictNote=en?'Maintain current volume. Do not increase load this session.'
+                    :'Запази текущия обем. Не увеличавай натоварването тази сесия.';
+    }
+    // recent notes (last 2 non-empty)
+    const notes=last30.filter(w=>w.rec&&w.rec.note).slice(-2).map(w=>`"${w.rec.note}"`);
+
+    const recHdr=en?'Recovery signals (last 30 days):':'Сигнали за възстановяване (последни 30 дни):';
+    recLines.push('',recHdr);
+    if(feelLbl)recLines.push(`  ${en?'Avg perceived difficulty':'Ср. субективна трудност'}: ${feelLbl}`);
+    if(eW.length>=2)recLines.push(`  ${en?'Avg energy after training':'Ср. енергия след тренировка'}: ${avgE.toFixed(1)}/10 ${eTrend}`);
+    if(mW.length>=2)recLines.push(`  ${en?'Avg motivation':'Ср. мотивация'}: ${avgM.toFixed(1)}/10 ${mTrend}`);
+    if(verdict)recLines.push(`  ${en?'Recovery verdict':'Вердикт за възстановяване'}: ${verdict} — ${verdictNote}`);
+    if(notes.length)recLines.push(`  ${en?'Recent notes':'Последни бележки'}: ${notes.join(' · ')}`);
+  }
+
+  return[
+    hdr,r3H,...r3,'',sH,
+    `  ${wLbl}: ${total} ${en?'completed':'проведени'} · ${freq}${en?'/week avg':'/седм. ср.'}`,
+    `  ${cLbl}: ${consistency}% ${en?'vs 3×/week baseline':'спрямо 3×/седм. базова линия'}`,
+    `  ${dLbl}: ${avgDLbl}`,
+    `  ${vLbl}: ${uL} ${vTrend('upper')} · ${loL} ${vTrend('lower')} · ${cL} ${vTrend('core')}`,
+    `  ${lLbl}: ${dsStr}`,
+    ...recLines,
+  ].join('\n');
+}
+
+// ── Adaptive Coaching Engine — state computation ──────────────────────────
+// Reads apexWorkoutLog (raw) + apexProfile (sleep/stress flags).
+// Returns a compact coaching-state block injected as profile.coachingState.
+// The backend places this as the first section so the AI reads it first.
+function _woComputeStates(lang){
+  const en=lang==='en';
+  let log=[],profile={};
+  try{log=JSON.parse(localStorage.getItem('apexWorkoutLog')||'[]');}catch(e){}
+  try{profile=JSON.parse(localStorage.getItem('apexProfile')||'{}');}catch(e){}
+
+  const sleepRaw=(profile.sleepQuality||'').toLowerCase();
+  const stressRaw=(profile.stressLevel||'').toLowerCase();
+  const now=Math.floor(Date.now()/1000);
+  const DAY=86400;
+  const last30=log.filter(s=>now-s.ts<=30*DAY);
+  const lastSession=log.length?log[log.length-1]:null;
+  const daysSince=lastSession?Math.floor((now-lastSession.ts)/DAY):null;
+  const recSessions=log.filter(s=>s.rec);
+
+  // ── RECOVERY STATE ──────────────────────────────────────────────────────
+  let recoveryState='UNKNOWN',recoveryDetail='';
+
+  if(recSessions.length>=1){
+    const recent=recSessions.slice(-4);
+    const eW=recent.filter(s=>s.rec.energy);
+    const avgE=eW.length?eW.reduce((s,w)=>s+w.rec.energy,0)/eW.length:0;
+    let eTrend='→';
+    if(eW.length>=2){
+      const h=Math.floor(eW.length/2);
+      const eOld=eW.slice(0,h).reduce((s,w)=>s+w.rec.energy,0)/(h||1);
+      const eNew=eW.slice(h).reduce((s,w)=>s+w.rec.energy,0)/((eW.length-h)||1);
+      eTrend=eNew>eOld+0.5?'↑':eNew<eOld-0.5?'↓':'→';
+    }
+    const mW=recent.filter(s=>s.rec.motivation);
+    const avgM=mW.length?mW.reduce((s,w)=>s+w.rec.motivation,0)/mW.length:0;
+    let mTrend='→';
+    if(mW.length>=2){
+      const h=Math.floor(mW.length/2);
+      const mOld=mW.slice(0,h).reduce((s,w)=>s+w.rec.motivation,0)/(h||1);
+      const mNew=mW.slice(h).reduce((s,w)=>s+w.rec.motivation,0)/((mW.length-h)||1);
+      mTrend=mNew>mOld+0.5?'↑':mNew<mOld-0.5?'↓':'→';
+    }
+    const vhCount=recent.filter(s=>s.rec.feel==='very_hard').length;
+    const painRe=/болка|pain|наранен|injur|коляно|knee|рамо|shoulder|дискомфорт|discomfort/i;
+    const hasPain=recent.some(s=>s.rec.note&&painRe.test(s.rec.note));
+
+    if(hasPain){
+      recoveryState='RED';
+      recoveryDetail=en?'Pain signal in notes':'Болков сигнал в бележки';
+    }else if(eW.length>=2&&avgE<5.0){
+      recoveryState='RED';
+      recoveryDetail=(en?'Energy ':'Енергия ')+avgE.toFixed(1)+'/10';
+    }else if(eW.length>=2&&avgE<6.0&&eTrend==='↓'){
+      recoveryState='RED';
+      recoveryDetail=(en?'Energy ':'Енергия ')+avgE.toFixed(1)+'/10 ↓';
+    }else if(vhCount>=2){
+      recoveryState='RED';
+      recoveryDetail=(en?`${vhCount}× Very Hard`:`${vhCount}× Много тежко`);
+    }else if(mW.length>=2&&avgM<4.5){
+      recoveryState='RED';
+      recoveryDetail=(en?'Motivation ':'Мотивация ')+avgM.toFixed(1)+'/10';
+    }else if(eW.length>=2&&(avgE<7.0||eTrend==='↓')){
+      recoveryState='YELLOW';
+      recoveryDetail=(en?'Energy ':'Енергия ')+avgE.toFixed(1)+'/10 '+eTrend;
+    }else if(mW.length>=2&&(avgM<6.5||mTrend==='↓')){
+      recoveryState='YELLOW';
+      recoveryDetail=(en?'Motivation ':'Мотивация ')+avgM.toFixed(1)+'/10 '+mTrend;
+    }else if(eW.length>=2){
+      recoveryState='GREEN';
+      recoveryDetail=(en?'Energy ':'Енергия ')+avgE.toFixed(1)+'/10 '+eTrend+(mW.length>=2?' · '+(en?'Motivation ':'Мотивация ')+avgM.toFixed(1)+'/10 '+mTrend:'');
+    }else{
+      // single session
+      const e=recent[0].rec.energy||0,m=recent[0].rec.motivation||0;
+      recoveryState=e<5||m<4.5?'RED':e<7||m<6.5?'YELLOW':'GREEN';
+      recoveryDetail=(en?'Energy ':'Енергия ')+e+'/10 (1 session)';
+    }
+    // Profile flags can only downgrade, never upgrade
+    if((stressRaw==='high'&&sleepRaw==='poor')&&recoveryState==='GREEN'){
+      recoveryState='YELLOW';
+      recoveryDetail=en?'High stress + poor sleep (profile)':'Висок стрес + лош сън (профил)';
+    }else if((stressRaw==='high'||sleepRaw==='poor')&&recoveryState==='GREEN'){
+      recoveryState='YELLOW';
+      recoveryDetail=(stressRaw==='high'?(en?'High stress':'Висок стрес'):(en?'Poor sleep':'Лош сън'))+(en?' (profile)':' (профил)');
+    }
+  }else{
+    // No rec data — profile flags only
+    if(stressRaw==='high'&&sleepRaw==='poor'){
+      recoveryState='YELLOW';
+      recoveryDetail=en?'High stress + poor sleep (profile)':'Висок стрес + лош сън (профил)';
+    }else if(stressRaw==='high'||sleepRaw==='poor'){
+      recoveryState='YELLOW';
+      recoveryDetail=en?'Profile flags':'Профилни данни';
+    }
+  }
+
+  // Gap overrides
+  if(daysSince!==null&&daysSince>=14){
+    recoveryState='RECALIBRATION';
+    recoveryDetail=(en?`${daysSince} days since last session`:`${daysSince} дни от последната тренировка`);
+  }else if(daysSince!==null&&daysSince>=7&&recoveryState==='GREEN'){
+    recoveryState='YELLOW';
+    recoveryDetail=(en?`${daysSince} days since last session`:`${daysSince} дни от последната тренировка`);
+  }
+
+  // ── CONSISTENCY STATE ───────────────────────────────────────────────────
+  const sc=last30.length;
+  let consistencyState,consistencyDetail;
+  if(sc>=10){
+    consistencyState='HIGH';
+    consistencyDetail=(en?`${sc} sessions/30d`:`${sc} тренировки/30д`);
+  }else if(sc>=6){
+    consistencyState='MODERATE';
+    consistencyDetail=(en?`${sc} sessions/30d`:`${sc} тренировки/30д`);
+  }else if(sc>=3){
+    consistencyState='LOW';
+    consistencyDetail=(en?`${sc} sessions/30d`:`${sc} тренировки/30д`);
+  }else{
+    consistencyState='BUILDING';
+    consistencyDetail=(en?`${sc} sessions/30d`:`${sc} тренировки/30д`);
+  }
+
+  // ── TRAINING STATE ──────────────────────────────────────────────────────
+  let trainingState,primaryAction;
+  if(recoveryState==='RED'){
+    trainingState='DELOAD';
+    primaryAction=en
+      ?'Reduce volume 40–60%. No failure work. Active recovery (walk, mobility) is a valid alternative.'
+      :'Намали обема с 40–60%. Без работа до отказ. Активното възстановяване (ходене, мобилност) е равностойна алтернатива.';
+  }else if(recoveryState==='RECALIBRATION'){
+    trainingState='RECALIBRATION';
+    primaryAction=en
+      ?'Return at 70% of last session load. Assess baseline before progressing. Do not compensate for the gap.'
+      :'Върни се на 70% от последното натоварване. Прецени базата преди да прогресираш. Не компенсирай пропуска.';
+  }else if(recoveryState==='YELLOW'){
+    trainingState='MAINTAIN';
+    primaryAction=en
+      ?'Hold current load. No progressive overload. Reduce sets by 1 if last session was Hard.'
+      :'Задържи текущото натоварване. Без прогресивно натоварване. Намали серии с 1 ако последната сесия е Тежка.';
+  }else if(consistencyState==='BUILDING'||consistencyState==='LOW'){
+    trainingState='FOUNDATION';
+    primaryAction=en
+      ?'Design for session completion, not intensity. Moderate difficulty. Build the pattern before the load.'
+      :'Проектирай за завършване на тренировката, не за интензивност. Умерена трудност. Изгради навика преди натоварването.';
+  }else if(recoveryState==='GREEN'&&(consistencyState==='MODERATE'||consistencyState==='HIGH')){
+    trainingState='PROGRESS';
+    primaryAction=en
+      ?'Progressive overload authorized. Advance one variable from last session: reps first, then weight, then sets.'
+      :'Прогресивното натоварване е разрешено. Напредни с една променлива: първо повторения, после тежест, после серии.';
+  }else{
+    trainingState='MAINTAIN';
+    primaryAction=en
+      ?'Hold current program. Monitor recovery for 2 more sessions before advancing.'
+      :'Задържи текущата програма. Наблюдавай възстановяването за още 2 сесии преди да напреднеш.';
+  }
+
+  // ── FORMAT BLOCK ────────────────────────────────────────────────────────
+  const hdr=en
+    ?'[CURRENT COACHING STATE — CHECK BEFORE EVERY RESPONSE]'
+    :'[ТЕКУЩО COACHING СЪСТОЯНИЕ — ПРОВЕРИ ПРЕДИ ВСЕКИ ОТГОВОР]';
+  const rLbl=en?'Recovery':'Възстановяване';
+  const cLbl=en?'Consistency':'Редовност';
+  const tLbl=en?'Training State':'Тренировъчно Състояние';
+  const aLbl=en?'Primary Action':'Основно Действие';
+  const dsLine=daysSince!==null
+    ?(en?`Days since last session: ${daysSince}`:`Дни от последната тренировка: ${daysSince}`)
+    :'';
+
+  const lines=[
+    hdr,
+    rLbl+': '+recoveryState+(recoveryDetail?' ('+recoveryDetail+')':''),
+    cLbl+': '+consistencyState+' · '+consistencyDetail,
+    tLbl+': '+trainingState,
+    dsLine,
+    '',
+    aLbl+':',
+    primaryAction,
+  ].filter(l=>l!==undefined);
+  return lines.join('\n');
+}
+
 function startWorkout(exercises,_bypass){
   if(!_bypass){
     let pf=null;try{pf=JSON.parse(localStorage.getItem('apexProfile'));}catch(e){}
@@ -1230,7 +1626,7 @@ function startWorkout(exercises,_bypass){
       return;
     }
   }
-  _wo={exs:exercises.map(e=>({...e})),ei:0,si:0,phase:'ex'};
+  _wo={exs:exercises.map(e=>({...e})),ei:0,si:0,phase:'ex',startTs:Date.now(),fbLog:[],exLog:[]};
   _woSave();
   document.getElementById('workout-overlay').classList.add('active');
   document.body.style.overflow='hidden';
@@ -1262,6 +1658,7 @@ function _woRender(){
   else if(_wo.phase==='rest')_woRenderRest(b);
   else if(_wo.phase==='hr')_woRenderHr(b);
   else if(_wo.phase==='done')_woRenderDone(b);
+  else if(_wo.phase==='recovery')_woRenderRecovery(b);
 }
 
 // Task 1 — exercise card
@@ -1298,6 +1695,13 @@ function _woRenderFb(b){
 
 function _woFb(fb){
   const ex=_wo.exs[_wo.ei];
+  // record actual reps and feedback for this set before adapting
+  const actualReps=Math.max(1,ex.baseReps+ex.repDelta);
+  if(!_wo.exLog)_wo.exLog=[];
+  if(!_wo.exLog[_wo.ei])_wo.exLog[_wo.ei]={n:ex.name,r:[]};
+  _wo.exLog[_wo.ei].r.push(actualReps);
+  if(!_wo.fbLog)_wo.fbLog=[];
+  _wo.fbLog.push(fb);
   // adapt reps for next set of this exercise
   if(fb==='easy')ex.repDelta=Math.min(ex.repDelta+2,8);
   else if(fb==='hard')ex.repDelta=Math.max(ex.repDelta-1,-4);
@@ -1346,15 +1750,99 @@ function _woSkip(){
 
 // Done screen
 function _woRenderDone(b){
+  _woLogSave();
   const total=_wo.exs.reduce((a,e)=>a+e.sets,0);
+  const dur=_wo.startTs?Math.round((Date.now()-_wo.startTs)/60000):0;
   const pf=document.getElementById('wo-prog-fill');if(pf)pf.style.width='100%';
+  const en=lang==='en';
+  const durTxt=dur>0?` &nbsp;·&nbsp; ${dur} ${en?'min':'мин'}`:'';
+  const statsTxt=en
+    ?`${_wo.exs.length} exercises &nbsp;·&nbsp; ${total} sets${durTxt}<br>Saved to training log.`
+    :`${_wo.exs.length} упражнения &nbsp;·&nbsp; ${total} сета${durTxt}<br>Записана в тренировъчния дневник.`;
   b.innerHTML=`
     <div class="wo-complete">
       <div class="wo-complete-icon">🔱</div>
-      <div class="wo-complete-title">ТРЕНИРОВКАТА ЗАВЪРШИ</div>
-      <div class="wo-complete-stats">${_wo.exs.length} упражнения &nbsp;·&nbsp; ${total} сета<br>Отлична работа. Хидратирай и почивай.</div>
-      <button class="wo-done-btn" onclick="closeWorkout()">Затвори</button>
+      <div class="wo-complete-title">${en?'WORKOUT COMPLETE':'ТРЕНИРОВКАТА ЗАВЪРШИ'}</div>
+      <div class="wo-complete-stats">${statsTxt}</div>
+      <button class="wo-done-btn" onclick="_wo.phase='recovery';_woSave();_woRender()">${en?'How did you feel? →':'Как се чувстваш? →'}</button>
+      <span class="wo-rec-skip" onclick="closeWorkout()">${en?'Skip check-in':'Пропусни оценката'}</span>
     </div>`;
+}
+
+// ── RECOVERY CHECK-IN ─────────────────────────────────────────────────────────
+
+let _recState={feel:null,energy:0,motivation:0,note:''};
+
+function _woRenderRecovery(b){
+  _recState={feel:null,energy:0,motivation:0,note:''};
+  const en=lang==='en';
+  const diffOpts=[
+    {val:'easy',    lbl:en?'😌 Easy'       :'😌 Лесно'},
+    {val:'moderate',lbl:en?'💪 Moderate'   :'💪 Умерено'},
+    {val:'hard',    lbl:en?'🔥 Hard'       :'🔥 Тежко'},
+    {val:'very_hard',lbl:en?'💀 Very Hard' :'💀 Много тежко'},
+  ];
+  const scale=(field,id)=>[1,2,3,4,5,6,7,8,9,10]
+    .map(v=>`<button class="wo-rec-scale-btn" data-v="${v}" onclick="_woRecScale('${field}',${v})">${v}</button>`)
+    .join('');
+  b.innerHTML=`
+    <div class="wo-recovery">
+      <div class="wo-rec-title">${en?'RECOVERY CHECK-IN':'ОЦЕНКА НА СЕСИЯТА'}</div>
+      <div class="wo-rec-section">
+        <div class="wo-rec-lbl">${en?'Overall difficulty':'Обща трудност'}</div>
+        <div class="wo-rec-diff">
+          ${diffOpts.map(o=>`<button class="wo-rec-diff-btn" data-feel="${o.val}" onclick="_woRecDiff('${o.val}')">${o.lbl}</button>`).join('')}
+        </div>
+      </div>
+      <div class="wo-rec-section">
+        <div class="wo-rec-lbl">${en?'Energy after training':'Енергия след тренировката'} &nbsp;(1–10)</div>
+        <div class="wo-rec-scale" id="wo-rec-energy">${scale('energy','wo-rec-energy')}</div>
+      </div>
+      <div class="wo-rec-section">
+        <div class="wo-rec-lbl">${en?'Motivation':'Мотивация'} &nbsp;(1–10)</div>
+        <div class="wo-rec-scale" id="wo-rec-motiv">${scale('motivation','wo-rec-motiv')}</div>
+      </div>
+      <div class="wo-rec-section">
+        <div class="wo-rec-lbl">${en?'Anything worth mentioning? (optional)':'Нещо важно? (по желание)'}</div>
+        <textarea class="wo-rec-note" maxlength="200"
+          placeholder="${en?'e.g. knee clicked, poor sleep last night…':'напр. коляното щракна, слабо спах…'}"
+          oninput="_recState.note=this.value"></textarea>
+      </div>
+      <button class="wo-rec-save" onclick="_woSaveRecovery()">${en?'Save & close':'Запази и затвори'}</button>
+      <span class="wo-rec-skip" onclick="closeWorkout()">${en?'Close without saving':'Затвори без запазване'}</span>
+    </div>`;
+}
+
+function _woRecDiff(val){
+  _recState.feel=val;
+  document.querySelectorAll('.wo-rec-diff-btn')
+    .forEach(b=>b.classList.toggle('sel',b.dataset.feel===val));
+}
+
+function _woRecScale(field,val){
+  _recState[field]=val;
+  const id=field==='energy'?'wo-rec-energy':'wo-rec-motiv';
+  document.querySelectorAll(`#${id} .wo-rec-scale-btn`)
+    .forEach(b=>b.classList.toggle('sel',+b.dataset.v===val));
+}
+
+function _woSaveRecovery(){
+  try{
+    if(_recState.feel||_recState.energy||_recState.motivation){
+      let log=[];
+      try{log=JSON.parse(localStorage.getItem('apexWorkoutLog')||'[]');}catch(e){}
+      if(Array.isArray(log)&&log.length){
+        const rec={};
+        if(_recState.feel)rec.feel=_recState.feel;
+        if(_recState.energy)rec.energy=_recState.energy;
+        if(_recState.motivation)rec.motivation=_recState.motivation;
+        if(_recState.note.trim())rec.note=_recState.note.trim();
+        log[log.length-1].rec=rec;
+        localStorage.setItem('apexWorkoutLog',JSON.stringify(log));
+      }
+    }
+  }catch(e){}
+  closeWorkout();
 }
 
 // Task 4 — rPPG heart rate measurement
@@ -1865,10 +2353,15 @@ async function send(){
   typing.innerHTML='<span class="typing-label">'+typingLabel+'</span><div class="dot"></div><div class="dot"></div><div class="dot"></div>';
   box.appendChild(typing);box.scrollTop=box.scrollHeight;
 
-  const body={message:val};
+  const body={message:val,lang:lang};
   try{
     const pRaw=localStorage.getItem('apexProfile');
-    if(pRaw){const p=JSON.parse(pRaw);if(p&&Object.keys(p).length)body.profile=p;}
+    const p=pRaw?JSON.parse(pRaw):{};
+    const wCtx=_woGetSummary(lang);
+    if(wCtx)p.workoutContext=wCtx;
+    const csCtx=_woComputeStates(lang);
+    if(csCtx)p.coachingState=csCtx;
+    if(p&&Object.keys(p).length)body.profile=p;
   }catch(e){}
   if(isElite&&token){
     body.token=token;
