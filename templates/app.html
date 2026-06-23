@@ -1654,7 +1654,6 @@ function startWorkout(exercises,_bypass){
 
 function closeWorkout(){
   clearInterval(_woTimer);_woTimer=null;
-  _woStopHr();
   document.getElementById('workout-overlay').classList.remove('active');
   document.body.style.overflow='';
 }
@@ -1910,8 +1909,8 @@ const out=document.getElementById('wo-hr-out');
     <button class="wo-done-btn" style="margin-top:18px" onclick="_woHrDone()">Продължи</button>`;
 }
 
-function _woHrCancel(){_woStopHr();_wo.phase='ex';_woSave();_woRender();}
-function _woHrDone(){_woStopHr();_wo.phase='ex';_woSave();_woRender();}
+function _woHrCancel(){_wo.phase='ex';_woSave();_woRender();}
+function _woHrDone(){_wo.phase='ex';_woSave();_woRender();}
 
 function activateElite(){
   count=-999999;
