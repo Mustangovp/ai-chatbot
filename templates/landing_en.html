@@ -41,8 +41,10 @@ try{
     gtag('consent','update',{'analytics_storage':'granted','ad_storage':'granted','ad_user_data':'granted','ad_personalization':'granted'});
   }
 }catch(e){}
-// Mark this visitor as EN-preferred so /app inherits the choice.
-try{localStorage.setItem('apexLang','en');}catch(e){}
+// Mark as EN-preferred only when no language preference is already saved.
+// Writing unconditionally here caused BG users who opened a shared /en link
+// to have their BG preference overwritten, trapping them in English permanently.
+try{if(!localStorage.getItem('apexLang'))localStorage.setItem('apexLang','en');}catch(e){}
 gtag('js', new Date());
 gtag('config', 'G-B3WLGXE2XM');
 </script>

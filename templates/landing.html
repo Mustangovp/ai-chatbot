@@ -319,7 +319,7 @@ footer a:hover{color:var(--text);}
         <span data-lang="bg" class="active">BG</span>
         <span data-lang="en">EN</span>
       </div>
-      <a href="/app" class="nav-cta" data-key="nav-cta" onclick="track('cta_click',{place:'nav'})">Започни</a>
+      <a href="/app?lang=bg" class="nav-cta" data-key="nav-cta" onclick="track('cta_click',{place:'nav'})">Започни</a>
     </div>
   </div>
 </nav>
@@ -432,10 +432,10 @@ footer a:hover{color:var(--text);}
   <h2 data-key="goals-title">Откъде започваме?</h2>
   <p class="sec-sub" data-key="goals-sub">Натискаш една карта — AI треньорът пита каквото му трябва и ти дава план. Толкова.</p>
   <div class="goals">
-    <a class="goal burn" href="/app?goal=burn" onclick="track('goal_click',{goal:'burn'})"><div class="g-ico">🔥</div><h3 data-key="g1-t">Отслабване</h3><p data-key="g1-p">Сваляш килограми с реалистично меню и движение, което се вписва в деня ти.</p><div class="go" data-key="g1-go">Дай ми плана →</div></a>
-    <a class="goal zero" href="/app?goal=zero" onclick="track('goal_click',{goal:'zero'})"><div class="g-ico">⚡</div><h3 data-key="g2-t">От нулата</h3><p data-key="g2-p">Никога не си тренирал(а)? План стъпка по стъпка, без излагане и без болка.</p><div class="go" data-key="g2-go">Започвам →</div></a>
-    <a class="goal muscle" href="/app?goal=growth" onclick="track('goal_click',{goal:'growth'})"><div class="g-ico">💪</div><h3 data-key="g3-t">Мускули</h3><p data-key="g3-p">Сила и маса с прогресивно натоварване и хранене с точни макроси.</p><div class="go" data-key="g3-go">Покажи ми →</div></a>
-    <a class="goal elite" href="/app?goal=build" onclick="track('goal_click',{goal:'build'})"><div class="g-ico">🏆</div><h3 data-key="g4-t">Elite режим</h3><p data-key="g4-p">За напреднали: прецизни макроси, периодизация, максимални резултати.</p><div class="go" data-key="g4-go">Влизам →</div></a>
+    <a class="goal burn" href="/app?lang=bg&goal=burn" onclick="track('goal_click',{goal:'burn'})"><div class="g-ico">🔥</div><h3 data-key="g1-t">Отслабване</h3><p data-key="g1-p">Сваляш килограми с реалистично меню и движение, което се вписва в деня ти.</p><div class="go" data-key="g1-go">Дай ми плана →</div></a>
+    <a class="goal zero" href="/app?lang=bg&goal=zero" onclick="track('goal_click',{goal:'zero'})"><div class="g-ico">⚡</div><h3 data-key="g2-t">От нулата</h3><p data-key="g2-p">Никога не си тренирал(а)? План стъпка по стъпка, без излагане и без болка.</p><div class="go" data-key="g2-go">Започвам →</div></a>
+    <a class="goal muscle" href="/app?lang=bg&goal=growth" onclick="track('goal_click',{goal:'growth'})"><div class="g-ico">💪</div><h3 data-key="g3-t">Мускули</h3><p data-key="g3-p">Сила и маса с прогресивно натоварване и хранене с точни макроси.</p><div class="go" data-key="g3-go">Покажи ми →</div></a>
+    <a class="goal elite" href="/app?lang=bg&goal=build" onclick="track('goal_click',{goal:'build'})"><div class="g-ico">🏆</div><h3 data-key="g4-t">Elite режим</h3><p data-key="g4-p">За напреднали: прецизни макроси, периодизация, максимални резултати.</p><div class="go" data-key="g4-go">Влизам →</div></a>
   </div>
 </section>
 
@@ -456,7 +456,7 @@ footer a:hover{color:var(--text);}
         <li class="off" data-key="pr-f3">AI памет за целите ти</li>
         <li class="off" data-key="pr-f4">PDF на плановете</li>
       </ul>
-      <a href="/app" class="p-btn" data-key="pr-free-btn" onclick="track('cta_click',{place:'plan_free'})">Пробвай безплатно</a>
+      <a href="/app?lang=bg" class="p-btn" data-key="pr-free-btn" onclick="track('cta_click',{place:'plan_free'})">Пробвай безплатно</a>
     </div>
     <div class="plan hot">
       <div class="tag" data-key="pr-tag">НАЙ-ИЗБИРАН</div>
@@ -469,7 +469,7 @@ footer a:hover{color:var(--text);}
         <li data-key="pr-c3">PDF на всеки план</li>
         <li data-key="pr-c4">BG / EN</li>
       </ul>
-      <a href="/app?plan=core" class="p-btn" data-key="pr-core-btn" onclick="goCheckout(this,'core');return false;">Активирай CORE</a>
+      <a href="/app?lang=bg&plan=core" class="p-btn" data-key="pr-core-btn" onclick="goCheckout(this,'core');return false;">Активирай CORE</a>
     </div>
     <div class="plan">
       <div class="p-name">PRO</div>
@@ -481,7 +481,7 @@ footer a:hover{color:var(--text);}
         <li data-key="pr-p3">6× по-дълга памет</li>
         <li data-key="pr-p4">Детайлни програми до последния грам</li>
       </ul>
-      <a href="/app?plan=pro" class="p-btn" data-key="pr-pro-btn" onclick="goCheckout(this,'pro');return false;">Към PRO</a>
+      <a href="/app?lang=bg&plan=pro" class="p-btn" data-key="pr-pro-btn" onclick="goCheckout(this,'pro');return false;">Към PRO</a>
     </div>
   </div>
 
@@ -545,18 +545,23 @@ footer a:hover{color:var(--text);}
 let lang='bg';
 try{
   const saved=localStorage.getItem('apexLang');
-  if(saved==='bg'||saved==='en'){
-    lang=saved;
+  const nav=(navigator.language||(navigator.languages&&navigator.languages[0])||'').toLowerCase();
+  if(saved==='bg'){
+    lang='bg';
+  }else if(saved==='en'){
+    // Saved EN is respected — unless the browser is clearly Bulgarian.
+    // A BG browser + saved 'en' means prior contamination (e.g. opened a shared /en link).
+    // Silently recover: reset to BG and do not redirect.
+    if(nav.startsWith('bg')){lang='bg';localStorage.setItem('apexLang','bg');}
+    else{lang='en';}
   }else{
-    // Първо посещение — налучкваме от браузъра. EN ако основният език започва с "en".
-    // Запазваме в localStorage, за да наследи и /app същия избор.
-    const nav=(navigator.language||(navigator.languages&&navigator.languages[0])||'').toLowerCase();
+    // No saved preference: detect from browser language.
     if(nav.startsWith('en'))lang='en';
     localStorage.setItem('apexLang',lang);
   }
 }catch(e){}
-// EN визитата минава през /en — дедикираният EN лендинг с премиум positioning.
-// replace() не оставя запис в history, така че Back не връща обратно на /.
+// EN visitors go through /en — dedicated EN landing with premium positioning.
+// replace() leaves no history entry so Back does not loop back to /.
 if(lang==='en'){location.replace('/en');}
 
 const T={
@@ -658,7 +663,7 @@ function heroGo(){
     msg=`Искам да сваля ${kg==='20'?'20+':kg} кг за ${tmTxt}. Дай ми реалистичен план за хранене и движение, който се вписва в ежедневието ми.`;
   }
   track('hero_goal_click',{kg:kg,time:tmEl.value});
-  window.location.href='/app?q='+encodeURIComponent(msg);
+  window.location.href='/app?lang=bg&q='+encodeURIComponent(msg);
 }
 
 /* ═══════════ PAID PLAN → STRIPE CHECKOUT ═══════════
@@ -675,7 +680,7 @@ async function goCheckout(btn,plan){
     const data=await res.json();
     if(data&&data.url){window.location.href=data.url;return;}
   }catch(e){}
-  window.location.href='/app?plan='+encodeURIComponent(plan);
+  window.location.href='/app?lang=bg&plan='+encodeURIComponent(plan);
 }
 
 /* ═══════════ HONEST COUNTER ═══════════ */

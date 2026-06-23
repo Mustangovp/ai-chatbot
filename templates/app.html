@@ -320,6 +320,8 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 .pf-toggle{display:flex;gap:6px;flex-wrap:wrap;}
 .pf-opt{background:var(--surface);border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:12px;padding:7px 14px;border-radius:20px;cursor:pointer;transition:all .18s;white-space:nowrap;}
 .pf-opt.active{border-color:var(--red);color:var(--text);background:rgba(245,33,45,0.12);}
+.pf-opt-none{width:100%;text-align:left;}
+.pf-opt-none.active{border-color:rgba(182,255,60,0.45);color:rgba(182,255,60,0.9);background:rgba(182,255,60,0.07);}
 .pf-nums{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:6px 0;}
 .pf-num{display:flex;flex-direction:column;gap:4px;}
 .pf-num input{background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:inherit;font-size:16px;font-weight:700;padding:10px 8px;text-align:center;outline:none;transition:border-color .2s;width:100%;}
@@ -759,12 +761,15 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
         <button class="pf-opt" data-val="none" onclick="pfSelect('pf-equip',this)">Без оборудване</button>
       </div>
 
-      <span class="pf-label">Хранителни предпочитания <span>(избери всички, които важат)</span></span>
+      <span class="pf-label">Хранителни предпочитания <span>(ограничения и диети)</span></span>
       <div class="pf-toggle" id="pf-food">
+        <button class="pf-opt pf-opt-none active" data-val="none" onclick="pfToggleOpt(this)">✓ Нямам хранителни ограничения</button>
         <button class="pf-opt" data-val="vegetarian" onclick="pfToggleOpt(this)">Вегетарианец</button>
         <button class="pf-opt" data-val="vegan" onclick="pfToggleOpt(this)">Веган</button>
         <button class="pf-opt" data-val="dairy_free" onclick="pfToggleOpt(this)">Без лактоза</button>
         <button class="pf-opt" data-val="gluten_free" onclick="pfToggleOpt(this)">Без глутен</button>
+        <button class="pf-opt" data-val="keto" onclick="pfToggleOpt(this)">Кето</button>
+        <button class="pf-opt" data-val="pescatarian" onclick="pfToggleOpt(this)">Пескетарианец</button>
       </div>
 
       <span class="pf-label">Алергии <span>(незадължително)</span></span>
@@ -1030,13 +1035,25 @@ function pfSelect(groupId,btn){
   document.querySelectorAll('#'+groupId+' .pf-opt').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
 }
-function pfToggleOpt(btn){btn.classList.toggle('active');}
+function pfToggleOpt(btn){
+  const group=btn.closest('.pf-toggle');
+  const noneBtn=group.querySelector('[data-val="none"]');
+  if(btn.dataset.val==='none'){
+    group.querySelectorAll('.pf-opt').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+  }else{
+    if(noneBtn)noneBtn.classList.remove('active');
+    btn.classList.toggle('active');
+    const anyActive=Array.from(group.querySelectorAll('.pf-opt:not([data-val="none"])')).some(b=>b.classList.contains('active'));
+    if(!anyActive&&noneBtn)noneBtn.classList.add('active');
+  }
+}
 function pfGetVal(groupId){
   const a=document.querySelector('#'+groupId+' .pf-opt.active');
   return a?a.dataset.val:'';
 }
 function pfGetMulti(groupId){
-  return Array.from(document.querySelectorAll('#'+groupId+' .pf-opt.active')).map(b=>b.dataset.val).join(',');
+  return Array.from(document.querySelectorAll('#'+groupId+' .pf-opt.active')).map(b=>b.dataset.val).filter(v=>v!=='none').join(',');
 }
 function _pfLoad(){try{return JSON.parse(localStorage.getItem('apexProfile')||'{}');}catch(e){return {};}}
 function _pfSave(p){localStorage.setItem('apexProfile',JSON.stringify(p));}
@@ -1113,7 +1130,10 @@ function _pfPopulate(){
   sel('pf-sleep',p.sleepQuality||'average');sel('pf-stress',p.stressLevel||'moderate');
   sv('pf-health',p.healthNotes);
   sel('pf-goal',p.goal||'general');sv('pf-goal-detail',p.goalDetail);
-  sel('pf-equip',p.equipment||'gym');multi('pf-food',p.foodPreferences);
+  sel('pf-equip',p.equipment||'gym');
+  const _fc=(p.foodPreferences||'').split(',').filter(v=>v&&v!=='none');
+  if(_fc.length){multi('pf-food',p.foodPreferences);}
+  else{document.querySelectorAll('#pf-food .pf-opt').forEach(b=>b.classList.remove('active'));const _nb=document.querySelector('#pf-food [data-val="none"]');if(_nb)_nb.classList.add('active');}
   sv('pf-allergies',p.allergies);
 }
 
@@ -1238,7 +1258,7 @@ const _WO_CMT={
 function _woCmt(fb){const pool=_WO_CMT[fb]||_WO_CMT.medium;return pool[Math.floor(Math.random()*pool.length)];}
 
 // ── Session state
-let _wo=null,_woTimer=null,_woHrStream=null;
+let _wo=null,_woTimer=null;
 
 function _woSave(){try{if(_wo)localStorage.setItem('apexWo',JSON.stringify(_wo));}catch(e){}}
 
@@ -1673,7 +1693,7 @@ function _woRenderEx(b){
     <div class="wo-reps">${reps}</div>
     <div class="wo-reps-sub">повторения</div>
     <button class="wo-done-btn" onclick="_woDone()">✓ &nbsp;Готово</button>
-    <button class="wo-hr-btn" onclick="_woStartHr()">❤️ Измери пулса</button>`;
+    <button class="wo-hr-btn" onclick="_woStartHr()">📏 Пулс ръчно</button>`;
 }
 
 function _woDone(){_wo.phase='fb';_woSave();_woRender();}
@@ -1845,11 +1865,7 @@ function _woSaveRecovery(){
   closeWorkout();
 }
 
-// Task 4 — rPPG heart rate measurement
-function _woStopHr(){
-  if(_woHrStream){_woHrStream.getTracks().forEach(t=>t.stop());_woHrStream=null;}
-}
-
+// Task 4 — manual heart rate measurement (camera rPPG removed: unreliable algorithm)
 function _woStartHr(){
   _wo.phase='hr';_woSave();_woRender();
 }
@@ -1857,77 +1873,14 @@ function _woStartHr(){
 function _woRenderHr(b){
   b.innerHTML=`
     <div class="wo-hr">
-      <div class="wo-hr-title">❤️ Измерване на пулса</div>
-      <div class="wo-hr-instr">Задната камера на телефона — постави показалеца плътно върху лещата и задръж неподвижно 15 секунди.</div>
-      <video id="wo-hr-video" autoplay muted playsinline></video>
-      <canvas id="wo-hr-cv" style="display:none" width="4" height="4"></canvas>
-      <div class="wo-hr-count" id="wo-hc">15</div>
-      <div class="wo-timer-bar-wrap"><div class="wo-timer-bar" id="wo-hb" style="width:100%"></div></div>
+      <div class="wo-hr-title">📏 Измерване на пулса</div>
+      <div class="wo-hr-instr">Постави 2 пръста на китката или врата за 15 секунди и преброй ударите. Умножи по 4.</div>
+      <input id="wo-manual-bpm" type="number" min="40" max="220" placeholder="напр. 84"
+        style="width:130px;text-align:center;font-family:'Unbounded';font-size:28px;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:12px;display:block;margin:24px auto 16px;-moz-appearance:textfield;appearance:textfield;">
+      <button class="wo-done-btn" style="margin-top:0" onclick="_woManualBpm()">Потвърди пулса</button>
       <div id="wo-hr-out"></div>
-      <button class="wo-skip-btn" style="margin-top:14px" onclick="_woHrCancel()">Отказ</button>
+      <button class="wo-skip-btn" style="margin-top:14px" onclick="_woHrCancel()">Пропусни</button>
     </div>`;
-  _woRunHr();
-}
-
-async function _woRunHr(){
-  try{
-    // Enumerate cameras; prefer rear (environment) when multiple exist
-    let constraints={video:{facingMode:'environment',width:4,height:4}};
-    try{
-      const devs=await navigator.mediaDevices.enumerateDevices();
-      const cams=devs.filter(d=>d.kind==='videoinput');
-      if(cams.length===1)constraints={video:{deviceId:cams[0].deviceId,width:4,height:4}};
-    }catch(e){}
-
-    const stream=await navigator.mediaDevices.getUserMedia(constraints);
-    _woHrStream=stream;
-    const vid=document.getElementById('wo-hr-video');
-    if(!vid){_woStopHr();return;}
-    vid.srcObject=stream;vid.style.display='block';
-    const cv=document.getElementById('wo-hr-cv');
-    const ctx=cv.getContext('2d');
-    const SECS=15,FPS=5,TICKS=SECS*FPS;
-    const samples=[];
-    let tick=0;
-    let pf={};try{pf=JSON.parse(localStorage.getItem('apexProfile')||'{}');}catch(e){}
-    const maxHr=220-(parseInt(pf.age)||30);
-
-    const iv=setInterval(()=>{
-      if(!document.getElementById('wo-hc')){clearInterval(iv);_woStopHr();return;}
-      ctx.drawImage(vid,0,0,4,4);
-      const px=ctx.getImageData(0,0,4,4).data;
-      let gSum=0;for(let i=0;i<px.length;i+=4)gSum+=px[i+1];
-      samples.push(gSum/(px.length/4));
-      tick++;
-      const rem=Math.max(0,SECS-Math.floor(tick/FPS));
-      const hc=document.getElementById('wo-hc');const hb=document.getElementById('wo-hb');
-      if(hc)hc.textContent=rem;
-      if(hb)hb.style.width=`${((TICKS-tick)/TICKS)*100}%`;
-      if(tick>=TICKS){
-        clearInterval(iv);_woStopHr();
-        const bpm=_woCalcBpm(samples,FPS);
-        _woShowHr(bpm,maxHr);
-      }
-    },1000/FPS);
-  }catch(err){
-    const out=document.getElementById('wo-hr-out');
-    if(out)_woShowHrFallback(out);
-  }
-}
-
-function _woShowHrFallback(out){
-  out.innerHTML=`
-    <div style="font-size:12px;color:#ff8a5c;text-align:center;margin-bottom:10px;line-height:1.6">
-      Камерата не е достъпна.<br>
-      <span style="color:rgba(139,147,167,.7)">Ако ползваш <strong style="color:var(--text)">Brave</strong> — разреши камерата от
-      Settings → Site &amp; Shields Settings → Camera или използвай Chrome.</span>
-    </div>
-    <div style="font-size:13px;color:var(--muted);text-align:center;line-height:1.65;margin-bottom:14px">
-      <strong style="color:var(--text)">Ръчен метод:</strong> Постави 2 пръста на китката за 15 секунди и преброй ударите. Умножи по 4.
-    </div>
-    <input id="wo-manual-bpm" type="number" min="40" max="220" placeholder="напр. 84"
-      style="width:130px;text-align:center;font-family:'Unbounded';font-size:22px;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:10px;display:block;margin:0 auto 14px;-moz-appearance:textfield;appearance:textfield;">
-    <button class="wo-done-btn" style="margin-top:0" onclick="_woManualBpm()">Потвърди пулса</button>`;
 }
 
 function _woManualBpm(){
@@ -1935,21 +1888,9 @@ function _woManualBpm(){
   if(!val||val<40||val>220){toast('Въведи валиден пулс (40–220 уд/мин)');return;}
   let pf={};try{pf=JSON.parse(localStorage.getItem('apexProfile')||'{}');}catch(e){}
   const maxHr=220-(parseInt(pf.age)||30);
-  const hc=document.getElementById('wo-hc');if(hc)hc.style.display='none';
-  const hb=document.getElementById('wo-hb');if(hb)hb.closest('.wo-timer-bar-wrap').style.display='none';
   _woShowHr(val,maxHr);
 }
 
-function _woCalcBpm(samples,fps){
-  if(samples.length<10)return 72;
-  const mean=samples.reduce((a,b)=>a+b,0)/samples.length;
-  const sig=samples.map(v=>v-mean);
-  // count rising zero-crossings
-  let crosses=0;
-  for(let i=1;i<sig.length;i++)if(sig[i-1]<0&&sig[i]>=0)crosses++;
-  const hz=crosses/(samples.length/fps);
-  return Math.max(45,Math.min(200,Math.round(hz*60)));
-}
 
 function _woShowHr(bpm,maxHr){
   const pct=Math.round((bpm/maxHr)*100);
