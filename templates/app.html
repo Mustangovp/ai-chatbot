@@ -208,6 +208,20 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 .pdf-msg-btn{display:inline-flex;align-items:center;gap:5px;margin-top:12px;padding:5px 13px;background:transparent;border:1px solid rgba(255,255,255,0.1);color:var(--muted);font-family:inherit;font-size:12px;letter-spacing:.4px;border-radius:6px;cursor:pointer;transition:all .2s;}
 .pdf-msg-btn:hover{border-color:var(--red);color:var(--text);}
 
+/* ── GOAL BAR (Step 3 — North Star) ── */
+#goal-bar{display:none;background:rgba(10,11,18,0.97);border-bottom:1px solid rgba(245,33,45,0.1);}
+.goal-bar-inner{max-width:920px;margin:0 auto;display:flex;align-items:stretch;padding:0 16px;min-height:48px;}
+.gb-col{flex:1;padding:6px 14px;border-right:1px solid rgba(255,255,255,0.05);min-width:0;display:flex;flex-direction:column;justify-content:center;}
+.gb-col:first-child{padding-left:0;}
+.gb-col.gb-hide{display:none;}
+.gb-label{font-size:8px;letter-spacing:1.8px;color:rgba(139,147,167,0.45);text-transform:uppercase;margin-bottom:2px;white-space:nowrap;}
+.gb-value{font-family:'Unbounded';font-size:11px;letter-spacing:.3px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.gb-sub{font-size:10px;color:rgba(139,147,167,0.55);margin-top:1px;white-space:nowrap;}
+.gb-edit-wrap{flex-shrink:0;display:flex;align-items:center;padding-left:12px;}
+.gb-edit-btn{background:transparent;border:1px solid rgba(255,255,255,0.07);color:rgba(139,147,167,0.5);font-size:10px;padding:4px 10px;border-radius:5px;cursor:pointer;transition:all .2s;font-family:inherit;letter-spacing:.5px;white-space:nowrap;}
+.gb-edit-btn:hover{border-color:var(--red);color:var(--text);}
+@media(max-width:580px){.gb-col.gb-mob-hide{display:none;}.gb-col{padding:6px 8px;}}
+
 /* ── MODAL ANIMATIONS ── */
 @keyframes modal-backdrop-in{from{opacity:0;}to{opacity:1;}}
 @keyframes modal-card-in{from{opacity:0;transform:translateY(-14px) scale(0.97);}to{opacity:1;transform:translateY(0) scale(1);}}
@@ -418,6 +432,42 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
     </div>
   </div>
 </nav>
+
+<!-- PERSISTENT GOAL BAR — North Star coaching context (Step 3) -->
+<div id="goal-bar">
+  <div class="goal-bar-inner">
+    <div class="gb-col" id="gb-goal-col">
+      <div class="gb-label" id="gb-goal-lbl">ЦЕЛ</div>
+      <div class="gb-value" id="gb-goal-val">—</div>
+      <div class="gb-sub" id="gb-goal-sub"></div>
+    </div>
+    <div class="gb-col gb-mob-hide" id="gb-weight-col">
+      <div class="gb-label" id="gb-weight-lbl">СЕГА</div>
+      <div class="gb-value" id="gb-weight-val">—</div>
+      <div class="gb-sub" id="gb-weight-sub"></div>
+    </div>
+    <div class="gb-col" id="gb-focus-col">
+      <div class="gb-label" id="gb-focus-lbl">КОУЧИНГ ФОКУС</div>
+      <div class="gb-value" id="gb-focus-val">—</div>
+    </div>
+    <!-- Future slots — activated by later Apex 1.5 steps -->
+    <div class="gb-col gb-hide" id="gb-progress-col">
+      <div class="gb-label">ПРОГРЕС</div>
+      <div class="gb-value" id="gb-progress-val">—</div>
+    </div>
+    <div class="gb-col gb-hide" id="gb-score-col">
+      <div class="gb-label">APEX SCORE</div>
+      <div class="gb-value" id="gb-score-val">—</div>
+    </div>
+    <div class="gb-col gb-hide" id="gb-recovery-col">
+      <div class="gb-label">RECOVERY</div>
+      <div class="gb-value" id="gb-recovery-val">—</div>
+    </div>
+    <div class="gb-edit-wrap">
+      <button class="gb-edit-btn" onclick="openProfile()">✎ <span id="gb-edit-lbl">Редактирай</span></button>
+    </div>
+  </div>
+</div>
 
 <main>
   <div id="chat-box"></div>
@@ -897,6 +947,7 @@ function applyStaticLang(){
   document.getElementById('pw-headline').innerText=d.pw_headline;
   document.getElementById('pw-subheadline').innerText=d.pw_sub;
   updateBadge();
+  updateGoalBar();
 }
 
 let count=parseInt(localStorage.getItem('apexCount')||'0',10);
@@ -1063,12 +1114,14 @@ function maybeShowProfile(){
 function submitProfile(){
   _pfSaveStep3();
   document.getElementById('profile-modal').classList.remove('active');
+  updateGoalBar();
   if(window._pendingWorkout){const exs=window._pendingWorkout;window._pendingWorkout=null;startWorkout(exs,true);return;}
   toast(lang==='bg'?'Профилът е запазен ✓':'Profile saved ✓');
 }
 function skipProfile(){
   localStorage.setItem('apexProfile','{}');
   document.getElementById('profile-modal').classList.remove('active');
+  updateGoalBar();
   if(window._pendingWorkout){const exs=window._pendingWorkout;window._pendingWorkout=null;startWorkout(exs,true);}
 }
 
@@ -1617,6 +1670,57 @@ function configurePaywall(){
   }
 }
 
+/* ═══════════ GOAL BAR — North Star coaching context (Step 3) ═══════════ */
+const _GB_GOALS={
+  fat_loss:   {bg:'Сваляне на мазнини', en:'Lose Fat',      dir:'↓'},
+  muscle_gain:{bg:'Покачване на мускули',en:'Build Muscle',  dir:'↑'},
+  strength:   {bg:'Сила',              en:'Strength',        dir:'↑'},
+  endurance:  {bg:'Издръжливост',      en:'Endurance',       dir:'→'},
+  general:    {bg:'Общ тонус',         en:'General Fitness', dir:'→'},
+};
+const _GB_FOCUS={
+  fat_loss:   {bg:'Дефицит + Постоянство',   en:'Deficit + Consistency'},
+  muscle_gain:{bg:'Прогресивно натоварване', en:'Progressive Overload'},
+  strength:   {bg:'Техника + Интензитет',    en:'Technique + Intensity'},
+  endurance:  {bg:'Кардио + Обем',           en:'Cardio + Volume'},
+  general:    {bg:'Постоянство + Основи',    en:'Consistency + Foundation'},
+};
+function _gbCoachFocus(p){
+  const sl=(p.sleepQuality||'').toLowerCase();
+  const st=(p.stressLevel||'').toLowerCase();
+  const bg=lang==='bg';
+  // Recovery priority overrides training focus (COACHING_ENGINE.md §2)
+  if(st==='high'&&sl==='poor') return bg?'Възстановяване 🔴':'Recovery First 🔴';
+  if(st==='high')              return bg?'Намали стреса 🟡':'Manage Stress 🟡';
+  if(sl==='poor')              return bg?'Подобри съня 🟡':'Fix Sleep First 🟡';
+  const f=_GB_FOCUS[p.goal||'general']||_GB_FOCUS.general;
+  return f[bg?'bg':'en'];
+}
+function updateGoalBar(){
+  const bar=document.getElementById('goal-bar');
+  if(!bar)return;
+  const p=_pfLoad();
+  if(!p.weight){bar.style.display='none';return;}
+  bar.style.display='block';
+  const bg=lang==='bg';
+  const gd=_GB_GOALS[p.goal]||null;
+  // Goal column
+  document.getElementById('gb-goal-lbl').textContent=bg?'ЦЕЛ':'GOAL';
+  document.getElementById('gb-goal-val').textContent=gd?gd[bg?'bg':'en']:'—';
+  const det=p.goalDetail||'';
+  document.getElementById('gb-goal-sub').textContent=det.length>32?det.slice(0,32)+'…':det;
+  // Weight column
+  document.getElementById('gb-weight-lbl').textContent=bg?'СЕГА':'NOW';
+  document.getElementById('gb-weight-val').textContent=p.weight+' кг';
+  document.getElementById('gb-weight-sub').textContent=(bg?'Посока ':'Target ')+(gd?gd.dir:'→');
+  // Focus column
+  document.getElementById('gb-focus-lbl').textContent=bg?'КОУЧИНГ ФОКУС':'COACHING FOCUS';
+  document.getElementById('gb-focus-val').textContent=_gbCoachFocus(p);
+  // Edit label
+  const el=document.getElementById('gb-edit-lbl');
+  if(el)el.textContent=bg?'Редактирай':'Edit Profile';
+}
+
 window.onload=async()=>{
   configurePaywall();
   await checkAccess();
@@ -1707,6 +1811,7 @@ window.onload=async()=>{
   
   // No goal — show greeting + 4 chips
   showGreeting();
+  updateGoalBar();
   // Show profile setup once if disclaimer already accepted and profile not yet set
   if(localStorage.getItem('apexDisclaimerAccepted')==='true'){
     maybeShowProfile();
