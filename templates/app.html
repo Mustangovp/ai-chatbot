@@ -297,7 +297,7 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 /* ── PROFILE SETUP MODAL ── */
 #profile-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.97);z-index:1000;align-items:center;justify-content:center;padding:16px;overflow-y:auto;}
 #profile-modal.active{display:flex;}
-.pf-card{max-width:480px;width:100%;background:linear-gradient(180deg,var(--surface2),var(--surface));border:1.5px solid rgba(245,33,45,0.3);border-radius:18px;padding:28px 22px;color:var(--text);animation:modal-card-in .28s cubic-bezier(0.34,1.4,0.64,1);}
+.pf-card{max-width:480px;width:100%;background:linear-gradient(180deg,var(--surface2),var(--surface));border:1.5px solid rgba(245,33,45,0.3);border-radius:18px;padding:28px 22px;color:var(--text);animation:modal-card-in .28s cubic-bezier(0.34,1.4,0.64,1);overflow-y:auto;max-height:90dvh;}
 .pf-icon{font-size:36px;text-align:center;margin-bottom:8px;}
 .pf-title{font-family:'Unbounded';font-size:18px;letter-spacing:1px;color:var(--red);text-align:center;margin:0 0 4px;}
 .pf-sub{font-size:12px;color:var(--muted);text-align:center;margin-bottom:20px;letter-spacing:.5px;}
@@ -318,6 +318,17 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 .pf-submit:hover{transform:translateY(-1px);box-shadow:0 8px 28px rgba(245,33,45,0.45);}
 .pf-skip{display:block;text-align:center;margin-top:12px;font-size:11px;color:rgba(139,147,167,0.5);cursor:pointer;letter-spacing:.5px;}
 .pf-skip:hover{color:var(--muted);}
+.pf-opt-note{font-size:11px;color:rgba(182,255,60,0.65);text-align:center;margin-bottom:16px;letter-spacing:.3px;}
+.pf-progress{display:flex;flex-direction:column;align-items:center;gap:7px;margin-bottom:20px;}
+.pf-step-dots{display:flex;gap:8px;align-items:center;}
+.pf-dot{width:8px;height:8px;border-radius:50%;background:var(--border);transition:all .35s;}
+.pf-dot.active{background:var(--red);width:28px;border-radius:4px;}
+.pf-dot.done{background:rgba(245,33,45,0.4);}
+.pf-step-label{font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;}
+.pf-nav-row{display:grid;grid-template-columns:1fr 2fr;gap:10px;margin-top:16px;}
+.pf-nav-row .pf-submit{margin-top:0;}
+.pf-back-btn{background:transparent;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:12px;padding:12px;border-radius:10px;cursor:pointer;transition:all .2s;letter-spacing:.5px;}
+.pf-back-btn:hover{border-color:var(--muted);color:var(--text);}
 
 /* ── WORKOUT MODE ── */
 #workout-overlay{display:none;position:fixed;inset:0;background:rgba(5,5,12,0.99);z-index:1100;flex-direction:column;overflow-y:auto;}
@@ -560,51 +571,140 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 <!-- PROFILE SETUP MODAL -->
 <div id="profile-modal">
   <div class="pf-card">
-    <div class="pf-icon">🎯</div>
-    <h2 class="pf-title">ТВОЯТ ПРОФИЛ</h2>
-    <p class="pf-sub">60 секунди → персонализиран план точно за теб</p>
 
-    <span class="pf-label">Пол</span>
-    <div class="pf-toggle" id="pf-gender">
-      <button class="pf-opt active" data-val="m" onclick="pfSelect('pf-gender',this)">Мъж</button>
-      <button class="pf-opt" data-val="f" onclick="pfSelect('pf-gender',this)">Жена</button>
-    </div>
-
-    <span class="pf-label">Основни данни</span>
-    <div class="pf-nums">
-      <div class="pf-num">
-        <input type="number" id="pf-age" min="14" max="80" placeholder="25">
-        <label>Възраст (г.)</label>
+    <!-- Step progress indicator -->
+    <div class="pf-progress">
+      <div class="pf-step-dots">
+        <div class="pf-dot active" id="pf-dot-1"></div>
+        <div class="pf-dot" id="pf-dot-2"></div>
+        <div class="pf-dot" id="pf-dot-3"></div>
       </div>
-      <div class="pf-num">
-        <input type="number" id="pf-weight" min="40" max="250" placeholder="75">
-        <label>Тегло (кг)</label>
+      <div class="pf-step-label" id="pf-step-label">Стъпка 1 от 3</div>
+    </div>
+
+    <!-- ── STEP A: Basics (required) ── -->
+    <div id="pf-pane-1">
+      <div class="pf-icon">🎯</div>
+      <h2 class="pf-title">ТВОЯТ ПРОФИЛ</h2>
+      <p class="pf-sub">Отнема 60 секунди. Подобрява всяка препоръка.</p>
+
+      <span class="pf-label">Как да те наричаме? <span>(незадължително)</span></span>
+      <input type="text" id="pf-name" class="pf-text" placeholder="Твоето име">
+
+      <span class="pf-label">Пол</span>
+      <div class="pf-toggle" id="pf-gender">
+        <button class="pf-opt active" data-val="m" onclick="pfSelect('pf-gender',this)">Мъж</button>
+        <button class="pf-opt" data-val="f" onclick="pfSelect('pf-gender',this)">Жена</button>
       </div>
-      <div class="pf-num">
-        <input type="number" id="pf-height" min="140" max="220" placeholder="175">
-        <label>Височина (см)</label>
+
+      <span class="pf-label">Основни данни <span>(задължително)</span></span>
+      <div class="pf-nums">
+        <div class="pf-num">
+          <input type="number" id="pf-age" min="14" max="80" placeholder="25">
+          <label>Възраст (г.)</label>
+        </div>
+        <div class="pf-num">
+          <input type="number" id="pf-weight" min="40" max="250" placeholder="75">
+          <label>Тегло (кг)</label>
+        </div>
+        <div class="pf-num">
+          <input type="number" id="pf-height" min="140" max="220" placeholder="175">
+          <label>Височина (см)</label>
+        </div>
       </div>
+
+      <button class="pf-submit" onclick="pfNext()">Напред →</button>
+      <span class="pf-skip" onclick="skipProfile()">Пропусни (без персонализация)</span>
     </div>
 
-    <span class="pf-label">Ниво</span>
-    <div class="pf-toggle" id="pf-level">
-      <button class="pf-opt active" data-val="beginner" onclick="pfSelect('pf-level',this)">Начинаещ</button>
-      <button class="pf-opt" data-val="intermediate" onclick="pfSelect('pf-level',this)">Среден</button>
-      <button class="pf-opt" data-val="advanced" onclick="pfSelect('pf-level',this)">Напреднал</button>
+    <!-- ── STEP B: Situation (optional) ── -->
+    <div id="pf-pane-2" style="display:none">
+      <div class="pf-icon">🏃</div>
+      <h2 class="pf-title">ТВОЯТА СИТУАЦИЯ</h2>
+      <p class="pf-sub pf-opt-note">Незадължително · Персонализира възстановяването</p>
+
+      <span class="pf-label">Дневна активност</span>
+      <div class="pf-toggle" id="pf-activity">
+        <button class="pf-opt" data-val="sedentary" onclick="pfSelect('pf-activity',this)">Заседнала</button>
+        <button class="pf-opt active" data-val="moderate" onclick="pfSelect('pf-activity',this)">Умерена</button>
+        <button class="pf-opt" data-val="active" onclick="pfSelect('pf-activity',this)">Активна</button>
+        <button class="pf-opt" data-val="very_active" onclick="pfSelect('pf-activity',this)">Много активна</button>
+      </div>
+
+      <span class="pf-label">Ниво на опит</span>
+      <div class="pf-toggle" id="pf-level">
+        <button class="pf-opt active" data-val="beginner" onclick="pfSelect('pf-level',this)">Начинаещ</button>
+        <button class="pf-opt" data-val="intermediate" onclick="pfSelect('pf-level',this)">Среден</button>
+        <button class="pf-opt" data-val="advanced" onclick="pfSelect('pf-level',this)">Напреднал</button>
+      </div>
+
+      <span class="pf-label">Сън <span>(последните 2 седмици)</span></span>
+      <div class="pf-toggle" id="pf-sleep">
+        <button class="pf-opt" data-val="poor" onclick="pfSelect('pf-sleep',this)">Лош</button>
+        <button class="pf-opt active" data-val="average" onclick="pfSelect('pf-sleep',this)">Среден</button>
+        <button class="pf-opt" data-val="good" onclick="pfSelect('pf-sleep',this)">Добър</button>
+      </div>
+
+      <span class="pf-label">Стрес <span>(текущо)</span></span>
+      <div class="pf-toggle" id="pf-stress">
+        <button class="pf-opt" data-val="low" onclick="pfSelect('pf-stress',this)">Нисък</button>
+        <button class="pf-opt active" data-val="moderate" onclick="pfSelect('pf-stress',this)">Среден</button>
+        <button class="pf-opt" data-val="high" onclick="pfSelect('pf-stress',this)">Висок</button>
+      </div>
+
+      <span class="pf-label">Здравни бележки <span>(наранявания, медикаменти, заболявания)</span></span>
+      <input type="text" id="pf-health" class="pf-text" placeholder="напр. болки в коляното, метформин...">
+
+      <div class="pf-nav-row">
+        <button class="pf-back-btn" onclick="pfBack()">← Назад</button>
+        <button class="pf-submit" onclick="pfNext()">Напред →</button>
+      </div>
+      <span class="pf-skip" onclick="pfSkipStep()">Пропусни тази стъпка</span>
     </div>
 
-    <span class="pf-label">Оборудване</span>
-    <div class="pf-toggle" id="pf-equip">
-      <button class="pf-opt active" data-val="gym" onclick="pfSelect('pf-equip',this)">Зала</button>
-      <button class="pf-opt" data-val="home" onclick="pfSelect('pf-equip',this)">Вкъщи</button>
-      <button class="pf-opt" data-val="none" onclick="pfSelect('pf-equip',this)">Без оборудване</button>
+    <!-- ── STEP C: Goal (optional) ── -->
+    <div id="pf-pane-3" style="display:none">
+      <div class="pf-icon">🏆</div>
+      <h2 class="pf-title">ТВОЯТА ЦЕЛ</h2>
+      <p class="pf-sub pf-opt-note">Незадължително · Позволява фокусиран план</p>
+
+      <span class="pf-label">Основна цел</span>
+      <div class="pf-toggle" id="pf-goal">
+        <button class="pf-opt" data-val="fat_loss" onclick="pfSelect('pf-goal',this)">Сваляне</button>
+        <button class="pf-opt" data-val="muscle_gain" onclick="pfSelect('pf-goal',this)">Качване</button>
+        <button class="pf-opt" data-val="strength" onclick="pfSelect('pf-goal',this)">Сила</button>
+        <button class="pf-opt" data-val="endurance" onclick="pfSelect('pf-goal',this)">Издръжливост</button>
+        <button class="pf-opt active" data-val="general" onclick="pfSelect('pf-goal',this)">Общ тонус</button>
+      </div>
+
+      <span class="pf-label">Уточни целта <span>(незадължително)</span></span>
+      <input type="text" id="pf-goal-detail" class="pf-text" placeholder="напр. искам да свалям 8кг за 4 месеца">
+
+      <span class="pf-label">Оборудване</span>
+      <div class="pf-toggle" id="pf-equip">
+        <button class="pf-opt active" data-val="gym" onclick="pfSelect('pf-equip',this)">Зала</button>
+        <button class="pf-opt" data-val="home" onclick="pfSelect('pf-equip',this)">Вкъщи</button>
+        <button class="pf-opt" data-val="none" onclick="pfSelect('pf-equip',this)">Без оборудване</button>
+      </div>
+
+      <span class="pf-label">Хранителни предпочитания <span>(избери всички, които важат)</span></span>
+      <div class="pf-toggle" id="pf-food">
+        <button class="pf-opt" data-val="vegetarian" onclick="pfToggleOpt(this)">Вегетарианец</button>
+        <button class="pf-opt" data-val="vegan" onclick="pfToggleOpt(this)">Веган</button>
+        <button class="pf-opt" data-val="dairy_free" onclick="pfToggleOpt(this)">Без лактоза</button>
+        <button class="pf-opt" data-val="gluten_free" onclick="pfToggleOpt(this)">Без глутен</button>
+      </div>
+
+      <span class="pf-label">Алергии <span>(незадължително)</span></span>
+      <input type="text" id="pf-allergies" class="pf-text" placeholder="напр. ядки, черупчести...">
+
+      <div class="pf-nav-row">
+        <button class="pf-back-btn" onclick="pfBack()">← Назад</button>
+        <button class="pf-submit" onclick="submitProfile()">Запази профила ✓</button>
+      </div>
+      <span class="pf-skip" onclick="submitProfile()">Пропусни и продължи</span>
     </div>
 
-    <span class="pf-label">Наранявания / Ограничения <span>(незадължително)</span></span>
-    <input type="text" id="pf-injuries" class="pf-text" placeholder="напр. болки в коляното, проблеми с гърба...">
-
-    <button class="pf-submit" onclick="submitProfile()">Напред → Получи персонален план</button>
-    <span class="pf-skip" onclick="skipProfile()">Пропусни (без персонализация)</span>
   </div>
 </div>
 
@@ -850,38 +950,118 @@ function acceptDisclaimer(){
   }
 }
 
-/* ═══════════ PROFILE SETUP ═══════════ */
-function pfSelect(groupId, btn){
+/* ═══════════ PROFILE SETUP — multi-step ═══════════ */
+let _pfStep=1;
+
+function pfSelect(groupId,btn){
   document.querySelectorAll('#'+groupId+' .pf-opt').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
 }
+function pfToggleOpt(btn){btn.classList.toggle('active');}
 function pfGetVal(groupId){
   const a=document.querySelector('#'+groupId+' .pf-opt.active');
   return a?a.dataset.val:'';
 }
-function maybeShowProfile(){
-  if(!localStorage.getItem('apexProfile')){
-    document.getElementById('profile-modal').classList.add('active');
+function pfGetMulti(groupId){
+  return Array.from(document.querySelectorAll('#'+groupId+' .pf-opt.active')).map(b=>b.dataset.val).join(',');
+}
+function _pfLoad(){try{return JSON.parse(localStorage.getItem('apexProfile')||'{}');}catch(e){return {};}}
+function _pfSave(p){localStorage.setItem('apexProfile',JSON.stringify(p));}
+
+function _pfGoStep(n){
+  document.getElementById('pf-pane-'+_pfStep).style.display='none';
+  _pfStep=n;
+  document.getElementById('pf-pane-'+n).style.display='block';
+  [1,2,3].forEach(i=>{
+    const d=document.getElementById('pf-dot-'+i);
+    if(d)d.className='pf-dot'+(i<n?' done':i===n?' active':'');
+  });
+  const lbl=document.getElementById('pf-step-label');
+  if(lbl)lbl.textContent=lang==='bg'?`Стъпка ${n} от 3`:`Step ${n} of 3`;
+  const card=document.querySelector('.pf-card');if(card)card.scrollTop=0;
+}
+
+function _pfSaveStep1(){
+  const p=_pfLoad();
+  p.name=(document.getElementById('pf-name').value||'').trim();
+  p.gender=pfGetVal('pf-gender');
+  p.age=parseInt(document.getElementById('pf-age').value)||null;
+  p.weight=parseFloat(document.getElementById('pf-weight').value)||null;
+  p.height=parseFloat(document.getElementById('pf-height').value)||null;
+  _pfSave(p);
+}
+function _pfSaveStep2(){
+  const p=_pfLoad();
+  p.activityLevel=pfGetVal('pf-activity');
+  p.level=pfGetVal('pf-level');
+  p.sleepQuality=pfGetVal('pf-sleep');
+  p.stressLevel=pfGetVal('pf-stress');
+  p.healthNotes=(document.getElementById('pf-health').value||'').trim();
+  _pfSave(p);
+}
+function _pfSaveStep3(){
+  const p=_pfLoad();
+  p.goal=pfGetVal('pf-goal');
+  p.goalDetail=(document.getElementById('pf-goal-detail').value||'').trim();
+  p.equipment=pfGetVal('pf-equip');
+  p.foodPreferences=pfGetMulti('pf-food');
+  p.allergies=(document.getElementById('pf-allergies').value||'').trim();
+  _pfSave(p);
+}
+
+function pfNext(){
+  if(_pfStep===1){
+    const age=document.getElementById('pf-age').value.trim();
+    const weight=document.getElementById('pf-weight').value.trim();
+    const height=document.getElementById('pf-height').value.trim();
+    if(!age||!weight||!height){
+      toast(lang==='bg'?'Попълни възраст, тегло и височина':'Fill in age, weight and height');
+      return;
+    }
+    _pfSaveStep1();_pfGoStep(2);
+  }else if(_pfStep===2){
+    _pfSaveStep2();_pfGoStep(3);
   }
 }
+function pfBack(){
+  if(_pfStep===2){_pfSaveStep2();_pfGoStep(1);}
+  else if(_pfStep===3){_pfSaveStep3();_pfGoStep(2);}
+}
+function pfSkipStep(){_pfGoStep(_pfStep+1);}
+
+function _pfPopulate(){
+  const p=_pfLoad();
+  const sv=(id,v)=>{const el=document.getElementById(id);if(el&&v!=null)el.value=v;};
+  const sel=(gid,v)=>{if(!v)return;document.querySelectorAll('#'+gid+' .pf-opt').forEach(b=>b.classList.toggle('active',b.dataset.val===v));};
+  const multi=(gid,csv)=>{if(!csv)return;const vs=csv.split(',');document.querySelectorAll('#'+gid+' .pf-opt').forEach(b=>b.classList.toggle('active',vs.includes(b.dataset.val)));};
+  sv('pf-name',p.name);sel('pf-gender',p.gender||'m');
+  sv('pf-age',p.age);sv('pf-weight',p.weight);sv('pf-height',p.height);
+  sel('pf-activity',p.activityLevel||'moderate');sel('pf-level',p.level||'beginner');
+  sel('pf-sleep',p.sleepQuality||'average');sel('pf-stress',p.stressLevel||'moderate');
+  sv('pf-health',p.healthNotes);
+  sel('pf-goal',p.goal||'general');sv('pf-goal-detail',p.goalDetail);
+  sel('pf-equip',p.equipment||'gym');multi('pf-food',p.foodPreferences);
+  sv('pf-allergies',p.allergies);
+}
+
+function openProfile(){
+  _pfStep=1;
+  document.getElementById('pf-pane-1').style.display='block';
+  document.getElementById('pf-pane-2').style.display='none';
+  document.getElementById('pf-pane-3').style.display='none';
+  [1,2,3].forEach(i=>{const d=document.getElementById('pf-dot-'+i);if(d)d.className='pf-dot'+(i===1?' active':'');});
+  const lbl=document.getElementById('pf-step-label');
+  if(lbl)lbl.textContent=lang==='bg'?'Стъпка 1 от 3':'Step 1 of 3';
+  _pfPopulate();
+  document.getElementById('profile-modal').classList.add('active');
+}
+
+function maybeShowProfile(){
+  if(!localStorage.getItem('apexProfile'))openProfile();
+}
+
 function submitProfile(){
-  const age=document.getElementById('pf-age').value.trim();
-  const weight=document.getElementById('pf-weight').value.trim();
-  const height=document.getElementById('pf-height').value.trim();
-  if(!age||!weight||!height){
-    toast(lang==='bg'?'Попълни възраст, тегло и височина':'Fill in age, weight and height');
-    return;
-  }
-  const profile={
-    gender:pfGetVal('pf-gender'),
-    age:parseInt(age),
-    weight:parseFloat(weight),
-    height:parseFloat(height),
-    level:pfGetVal('pf-level'),
-    equipment:pfGetVal('pf-equip'),
-    injuries:document.getElementById('pf-injuries').value.trim()
-  };
-  localStorage.setItem('apexProfile',JSON.stringify(profile));
+  _pfSaveStep3();
   document.getElementById('profile-modal').classList.remove('active');
   if(window._pendingWorkout){const exs=window._pendingWorkout;window._pendingWorkout=null;startWorkout(exs,true);return;}
   toast(lang==='bg'?'Профилът е запазен ✓':'Profile saved ✓');
@@ -993,7 +1173,7 @@ function startWorkout(exercises,_bypass){
     const hasProfile=pf&&typeof pf==='object'&&(pf.gender||pf.age||pf.weight);
     if(!hasProfile){
       window._pendingWorkout=exercises;
-      document.getElementById('profile-modal').classList.add('active');
+      openProfile();
       return;
     }
   }
