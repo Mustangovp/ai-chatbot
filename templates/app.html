@@ -982,20 +982,44 @@ const box=document.getElementById('chat-box');
 function showGreeting(){
   box.innerHTML='';
   const d=T[lang];
+  const p=_pfLoad();
+  const goal=p&&p.goal;
+  const name=p&&p.name?p.name:'';
+  const en=lang==='en';
+
+  // Goal labels used in returning-user greeting
+  const GOAL_LBL={
+    bg:{fat_loss:'сваляне на мазнини',muscle_gain:'мускулна маса',strength:'сила',endurance:'издръжливост',general:'общ тонус'},
+    en:{fat_loss:'fat loss',muscle_gain:'muscle gain',strength:'strength',endurance:'endurance',general:'general fitness'}
+  };
+  const GOAL_CHIPS={
+    bg:['Дай ми тренировка за днес','Дай ми хранителен план','Как напредвам?','Имам въпрос'],
+    en:['Give me a workout for today','Give me a nutrition plan',"How am I progressing?",'I have a question']
+  };
+
+  let greetText, chipList;
+  if(goal){
+    const lbl=(GOAL_LBL[lang]||GOAL_LBL.bg)[goal]||goal;
+    const prefix=name?`${name}, `:'';
+    greetText=en
+      ?`**🔱 ${prefix}Apex is ready.**\n\nGoal on file: **${lbl}**. What are we working on today?`
+      :`**🔱 ${prefix}Apex е готов.**\n\nЦел: **${lbl}**. Как помагам днес?`;
+    chipList=GOAL_CHIPS[lang]||GOAL_CHIPS.bg;
+  }else{
+    greetText=d.greeting;
+    chipList=d.chips;
+  }
+
   const greeting=document.createElement('div');
   greeting.className='msg-a greeting';
-  // Plan badge — sits at top of greeting, replaced by updatePlanBadge()
   const badgeEl=document.createElement('div');
-  badgeEl.id='badge';
-  badgeEl.className='greeting-badge';
+  badgeEl.id='badge';badgeEl.className='greeting-badge';
   greeting.appendChild(badgeEl);
-  // Greeting text
   const textWrap=document.createElement('div');
-  textWrap.innerHTML=marked.parse(d.greeting);
+  textWrap.innerHTML=marked.parse(greetText);
   greeting.appendChild(textWrap);
-  // Quick chips
   const chips=document.createElement('div');chips.className='quick-chips';
-  d.chips.forEach(chip=>{
+  chipList.forEach(chip=>{
     const b=document.createElement('button');b.className='quick-chip';b.textContent=chip;
     b.onclick=()=>{document.getElementById('user-in').value=chip;send();};
     chips.appendChild(b);
@@ -1003,6 +1027,35 @@ function showGreeting(){
   greeting.appendChild(chips);
   box.appendChild(greeting);
   updatePlanBadge();
+}
+
+// Auto-send a personalized first message immediately after profile submission.
+// The goal is already known — don't ask "where do we start?", act.
+function _pfAutoStart(){
+  const p=_pfLoad();
+  if(!p||!p.goal)return;
+  const en=lang==='en';
+  const MSGS={
+    bg:{
+      fat_loss:'Готов съм да започна. Направи ми план за тази седмица — хранителен режим и тренировки за сваляне на мазнини.',
+      muscle_gain:'Готов съм да започна. Направи ми план за тази седмица — тренировки и хранителен режим за покачване на мускулна маса.',
+      strength:'Готов съм да започна. Направи ми тренировъчен план за сила за тази седмица.',
+      endurance:'Готов съм да започна. Направи ми план за издръжливост и кардио за тази седмица.',
+      general:'Готов съм да започна. Направи ми обща фитнес програма за тази седмица.',
+    },
+    en:{
+      fat_loss:'I am ready to start. Build me a plan for this week — nutrition and training for fat loss.',
+      muscle_gain:'I am ready to start. Build me a plan for this week — training and nutrition for muscle gain.',
+      strength:'I am ready to start. Build me a strength training plan for this week.',
+      endurance:'I am ready to start. Build me an endurance and cardio plan for this week.',
+      general:'I am ready to start. Build me a general fitness plan for this week.',
+    }
+  };
+  const l=en?'en':'bg';
+  let msg=(MSGS[l][p.goal])||(en?'I am ready to start. Build me a plan for this week.':'Готов съм да започна. Направи ми план за тази седмица.');
+  if(p.goalDetail&&p.goalDetail.trim())msg+=' '+p.goalDetail.trim();
+  const inp=document.getElementById('user-in');
+  if(inp){inp.value=msg;send();}
 }
 
 function confirmAndPay(plan){
@@ -1157,7 +1210,8 @@ function submitProfile(){
   document.getElementById('profile-modal').classList.remove('active');
   updateGoalBar();
   if(window._pendingWorkout){const exs=window._pendingWorkout;window._pendingWorkout=null;startWorkout(exs,true);return;}
-  toast(lang==='bg'?'Профилът е запазен ✓':'Profile saved ✓');
+  showGreeting();
+  _pfAutoStart();
 }
 function skipProfile(){
   localStorage.setItem('apexProfile','{}');
@@ -1177,16 +1231,16 @@ const _WO_SVG = {
   lunge:`<svg viewBox="0 0 160 130" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%"><defs><style>#ln-tr{fill:rgba(245,33,45,.12);stroke:rgba(245,33,45,.28);stroke-width:.8;animation:ln-tr 2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes ln-tr{0%,100%{d:path('M66,27 L94,27 L87,67 L73,67 Z')}50%{d:path('M66,47 L94,47 L87,87 L73,87 Z')}}#ln-sh{stroke:#F5212D;stroke-linecap:round;fill:none;stroke-width:5;animation:ln-sh 2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes ln-sh{0%,100%{d:path('M66,27 L94,27')}50%{d:path('M66,47 L94,47')}}#ln-sp{stroke:#F5212D;stroke-linecap:round;fill:none;stroke-width:3.5;animation:ln-sp 2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes ln-sp{0%,100%{d:path('M80,22 L80,67')}50%{d:path('M80,42 L80,87')}}#ln-hp{stroke:#F5212D;stroke-linecap:round;fill:none;stroke-width:5;animation:ln-hp 2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes ln-hp{0%,100%{d:path('M73,67 L87,67')}50%{d:path('M73,87 L87,87')}}#ln-la{stroke:#F5212D;stroke-linecap:round;stroke-linejoin:round;fill:none;stroke-width:4;animation:ln-la 2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes ln-la{0%,100%{d:path('M66,27 L60,52 L56,68')}50%{d:path('M66,47 L60,72 L56,88')}}#ln-ra{stroke:#F5212D;stroke-linecap:round;stroke-linejoin:round;fill:none;stroke-width:4;animation:ln-ra 2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes ln-ra{0%,100%{d:path('M94,27 L100,52 L104,68')}50%{d:path('M94,47 L100,72 L104,88')}}#ln-fl{stroke:#F5212D;stroke-linecap:round;stroke-linejoin:round;fill:none;stroke-width:5.5;animation:ln-fl 2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes ln-fl{0%,100%{d:path('M73,67 L71,98 L69,122')}50%{d:path('M73,87 L52,107 L30,122')}}#ln-bl{stroke:rgba(245,33,45,.6);stroke-linecap:round;stroke-linejoin:round;fill:none;stroke-width:5.5;animation:ln-bl 2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes ln-bl{0%,100%{d:path('M87,67 L89,98 L91,122')}50%{d:path('M87,87 L108,112 L128,115')}}</style></defs><ellipse cx="78" cy="127" rx="68" ry="3.5" fill="rgba(245,33,45,.09)"/><path id="ln-bl" d="M87,67 L89,98 L91,122"/><path id="ln-tr" d="M66,27 L94,27 L87,67 L73,67 Z"/><path id="ln-sp" d="M80,22 L80,67"/><path id="ln-sh" d="M66,27 L94,27"/><path id="ln-hp" d="M73,67 L87,67"/><path id="ln-la" d="M66,27 L60,52 L56,68"/><path id="ln-ra" d="M94,27 L100,52 L104,68"/><path id="ln-fl" d="M73,67 L71,98 L69,122"/><circle cx="89" cy="98" r="3.5" fill="rgba(255,112,64,.6)"><animate attributeName="cx" values="89;108;89" dur="2s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/><animate attributeName="cy" values="98;112;98" dur="2s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="71" cy="98" r="3.5" fill="#FF7040"><animate attributeName="cx" values="71;52;71" dur="2s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/><animate attributeName="cy" values="98;107;98" dur="2s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="73" cy="67" r="2.5" fill="#FF6030"><animate attributeName="cy" values="67;87;67" dur="2s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="87" cy="67" r="2.5" fill="#FF6030"><animate attributeName="cy" values="67;87;67" dur="2s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="60" cy="52" r="2.5" fill="#FF7040"><animate attributeName="cy" values="52;72;52" dur="2s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="100" cy="52" r="2.5" fill="#FF7040"><animate attributeName="cy" values="52;72;52" dur="2s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="80" cy="12" r="10.5" fill="#F5212D"><animate attributeName="cy" values="12;32;12" dur="2s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle></svg>`,
   crunch:`<svg viewBox="0 0 170 82" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%"><defs><style>#cr-bf{fill:rgba(245,33,45,.13);stroke:rgba(245,33,45,.25);stroke-width:.8;animation:cr-bf 1.6s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes cr-bf{0%,100%{d:path('M36,46 L90,50 L90,58 L36,54 Z')}50%{d:path('M40,26 L90,48 L90,56 L40,34 Z')}}#cr-ub{stroke:#F5212D;stroke-linecap:round;fill:none;stroke-width:3.5;animation:cr-ub 1.6s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes cr-ub{0%,100%{d:path('M36,50 L90,54')}50%{d:path('M40,30 L90,52')}}#cr-ar{stroke:#F5212D;stroke-linecap:round;stroke-linejoin:round;fill:none;stroke-width:4;animation:cr-ar 1.6s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes cr-ar{0%,100%{d:path('M36,48 L20,44 L8,44')}50%{d:path('M40,28 L28,20 L18,20')}}#cr-lb{stroke:rgba(245,33,45,.4);stroke-width:5.5;stroke-linecap:round;stroke-linejoin:round;fill:none;animation:cr-lb 1.6s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes cr-lb{0%,100%{d:path('M96,54 L124,44 L146,64')}50%{d:path('M96,52 L124,44 L146,64')}}#cr-lf{stroke:#F5212D;stroke-linecap:round;stroke-linejoin:round;fill:none;stroke-width:5.5;animation:cr-lf 1.6s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes cr-lf{0%,100%{d:path('M90,54 L118,46 L140,64')}50%{d:path('M90,52 L118,46 L140,64')}}</style></defs><ellipse cx="84" cy="72" rx="68" ry="3.5" fill="rgba(245,33,45,.09)"/><path id="cr-lb" d="M96,54 L124,44 L146,64"/><path id="cr-lf" d="M90,54 L118,46 L140,64"/><path id="cr-bf" d="M36,46 L90,50 L90,58 L36,54 Z"/><path id="cr-ub" d="M36,50 L90,54"/><path id="cr-ar" d="M36,48 L20,44 L8,44"/><circle cx="124" cy="44" r="3" fill="rgba(255,112,64,.4)"/><circle cx="118" cy="46" r="3.5" fill="#FF7040"/><circle cx="90" cy="54" r="2.5" fill="#FF6030"><animate attributeName="cy" values="54;52;54" dur="1.6s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="20" cy="44" r="2.5" fill="#FF7040"><animate attributeName="cx" values="20;28;20" dur="1.6s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/><animate attributeName="cy" values="44;20;44" dur="1.6s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="18" cy="44" r="10" fill="#F5212D"><animate attributeName="cx" values="18;32;18" dur="1.6s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/><animate attributeName="cy" values="44;24;44" dur="1.6s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle></svg>`,
   plank:`<svg viewBox="0 0 170 90" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%"><defs><style>#pl-ab{stroke:rgba(245,33,45,.35);stroke-width:4.5;stroke-linecap:round;stroke-linejoin:round;fill:none;animation:pl-arm-b 2.4s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes pl-arm-b{0%,100%{d:path('M44,40 L36,72 L18,72')}50%{d:path('M44,36 L36,72 L18,72')}}#pl-af{stroke:#F5212D;stroke-width:5;stroke-linecap:round;stroke-linejoin:round;fill:none;animation:pl-arm-f 2.4s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes pl-arm-f{0%,100%{d:path('M38,40 L30,72 L12,72')}50%{d:path('M38,36 L30,72 L12,72')}}#pl-bf{fill:rgba(245,33,45,.13);stroke:rgba(245,33,45,.25);stroke-width:.8;animation:pl-body 2.4s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes pl-body{0%,100%{d:path('M38,36 L122,44 L122,52 L38,44 Z')}50%{d:path('M38,32 L122,40 L122,48 L38,40 Z')}}#pl-lb{stroke:rgba(245,33,45,.35);stroke-width:5.5;stroke-linecap:round;stroke-linejoin:round;fill:none;animation:pl-leg-b 2.4s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes pl-leg-b{0%,100%{d:path('M128,48 L138,65 L148,78')}50%{d:path('M128,44 L138,62 L148,78')}}#pl-lf{stroke:#F5212D;stroke-width:5.5;stroke-linecap:round;stroke-linejoin:round;fill:none;animation:pl-leg-f 2.4s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes pl-leg-f{0%,100%{d:path('M122,48 L132,65 L142,78')}50%{d:path('M122,44 L132,62 L142,78')}}</style></defs><ellipse cx="85" cy="82" rx="66" ry="3.5" fill="rgba(245,33,45,.09)"/><path id="pl-ab" d="M44,40 L36,72 L18,72"/><path id="pl-lb" d="M128,48 L138,65 L148,78"/><path id="pl-bf" d="M38,36 L122,44 L122,52 L38,44 Z"/><path id="pl-af" d="M38,40 L30,72 L12,72"/><path id="pl-lf" d="M122,48 L132,65 L142,78"/><circle cx="138" cy="65" r="3" fill="rgba(255,112,64,.5)"><animate attributeName="cy" values="65;62;65" dur="2.4s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="132" cy="65" r="3.5" fill="#FF7040"><animate attributeName="cy" values="65;62;65" dur="2.4s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="122" cy="48" r="2.5" fill="#FF6030"><animate attributeName="cy" values="48;44;48" dur="2.4s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="44" cy="40" r="2" fill="rgba(255,96,48,.5)"><animate attributeName="cy" values="40;36;40" dur="2.4s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="38" cy="40" r="2.5" fill="#FF6030"><animate attributeName="cy" values="40;36;40" dur="2.4s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="16" cy="28" r="9.5" fill="#F5212D"><animate attributeName="cy" values="28;24;28" dur="2.4s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle></svg>`,
-  generic:`<svg viewBox="0 0 80 128" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%"><defs><style>.wfg{stroke:#FF6A3C;stroke-width:3;stroke-linecap:round;fill:none}.wfal{animation:wfal 1.15s ease-in-out infinite;transform-origin:40px 42px}.wfar{animation:wfar 1.15s ease-in-out infinite;transform-origin:40px 42px}@keyframes wfal{0%,100%{transform:rotate(0)}50%{transform:rotate(-36deg)}}@keyframes wfar{0%,100%{transform:rotate(0)}50%{transform:rotate(36deg)}}</style></defs><circle cx="40" cy="13" r="10" class="wfg"/><line x1="40" y1="23" x2="40" y2="68" class="wfg"/><g class="wfal"><line x1="40" y1="42" x2="13" y2="58" class="wfg"/></g><g class="wfar"><line x1="40" y1="42" x2="67" y2="58" class="wfg"/></g><line x1="40" y1="68" x2="20" y2="108" class="wfg"/><line x1="40" y1="68" x2="60" y2="108" class="wfg"/></svg>`
+  generic:''
 };
 function _woSvg(name){
   const n=name.toLowerCase();
-  if(/клек|squat|мъртва|deadlift|преса|press|набир/.test(n))return _WO_SVG.squat;
+  if(/клек|squat|мъртва|deadlift/.test(n))return _WO_SVG.squat;
   if(/лицев|push.*up|bench|лег/.test(n))return _WO_SVG.pushup;
   if(/кранч|коремни|sit.?up|crunch/.test(n))return _WO_SVG.crunch;
   if(/планк|plank/.test(n))return _WO_SVG.plank;
   if(/изпад|lunge/.test(n))return _WO_SVG.lunge;
-  return _WO_SVG.generic;
+  return '';
 }
 
 // ── Parse workout plan from rendered AI message element
@@ -1683,10 +1737,11 @@ function _woRender(){
 function _woRenderEx(b){
   const ex=_wo.exs[_wo.ei];
   const reps=Math.max(1,ex.baseReps+ex.repDelta);
+  const svg=_woSvg(ex.name);
   b.innerHTML=`
     <div class="wo-ex-name">${ex.name}</div>
     ${ex.note?`<div class="wo-ex-note">${ex.note}</div>`:''}
-    <div class="wo-svg-wrap">${_woSvg(ex.name)}</div>
+    ${svg?`<div class="wo-svg-wrap">${svg}</div>`:''}
     <div class="wo-set-lbl">Сет ${_wo.si+1} от ${ex.sets}</div>
     <div class="wo-reps">${reps}</div>
     <div class="wo-reps-sub">повторения</div>
