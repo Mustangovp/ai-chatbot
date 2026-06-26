@@ -3,10 +3,11 @@
 
 ---
 
-> This document defines the decision architecture.
-> COACHING_ENGINE.md defines the philosophy. APEX_PERSONALITY.md defines the voice.
-> APEX_MOTIVATION_SYSTEM.md defines the reinforcement framework.
-> This document is where all three converge into specific, automated coaching decisions.
+> This document is the single source of truth for Apex decision architecture.
+> It contains the coaching philosophy, the priority hierarchy, and all decision logic.
+> APEX_PERSONALITY.md defines the voice. APEX_MOTIVATION_SYSTEM.md defines the reinforcement framework.
+> APEX_GUARDRAILS.md is the constitutional authority above this document.
+> All references to COACHING_ENGINE.md in other Foundation documents resolve to this document.
 
 ---
 
@@ -923,8 +924,8 @@ Do not decide for them. Provide the analysis they need to make the decision them
 
 | Document | Relationship to This System |
 |---|---|
-| `COACHING_ENGINE.md` | Establishes the philosophical foundation (coach's mental model, priority hierarchy, single-variable rule). This document operationalizes that foundation into decision rules. |
-| `APEX_PERSONALITY.md` | Defines the voice. This document defines the decision. The same decision can be communicated in Supportive, Balanced, or Elite mode — APEX_PERSONALITY governs which. |
+| `APEX_GUARDRAILS.md` | The constitutional authority. Every decision produced by this system must be verifiable against the Guardrails. |
+| `APEX_PERSONALITY.md` | Defines the voice. This document defines the decision. The same decision can be communicated in Supportive, Balanced, or Elite mode — APEX_PERSONALITY governs which. Mode activation logic and the canonical system mapping are in §13 of this document. |
 | `APEX_MOTIVATION_SYSTEM.md` | The five reinforcement mechanisms apply at the communication layer (Layer 5). Recovery state determines the appropriate reinforcement type: Green = progress evidence, Red = behavioral acknowledgment. |
 | Workout Memory System | Supplies session-level data (exercise performance, volume trend, consistency) that feeds the Training State assessment and plateau detection. |
 | Recovery Feedback Loop | Supplies the post-workout energy, motivation, perceived difficulty, and notes that determine Recovery State. |
@@ -948,6 +949,85 @@ Before delivering any coaching recommendation, verify each level has been assess
 ```
 
 A coaching response that cannot be verified against this checklist is incomplete.
+
+---
+
+## §13 — CANONICAL SYSTEM MAPPING
+
+Three frameworks govern Apex coaching behavior. Each operates on a different axis. This section is the single authoritative mapping between them.
+
+| Framework | Source | Axis | Scope |
+|---|---|---|---|
+| Recovery + Training States | This document (§3–4) | Physiological readiness | Per session |
+| Coaching Modes | APEX_PERSONALITY.md §8 | Communication approach | Per interaction |
+| Transformation Phases | APEX_MOTIVATION_SYSTEM.md §3 | Behavioral trajectory | Longitudinal |
+
+---
+
+### Recovery State → Training State
+
+Direct mapping. No exceptions.
+
+| Recovery State | Training State |
+|---|---|
+| Green | Progress |
+| Yellow | Maintain |
+| Red | Deload |
+
+---
+
+### Transformation Phase → Default Coaching Mode
+
+Phase establishes the default mode when no override is active.
+
+| Transformation Phase | Default Coaching Mode |
+|---|---|
+| Phase 1 — Foundation (Weeks 1–8) | Supportive |
+| Phase 2 — Integration (Months 2–6) | Balanced |
+| Phase 3 — Autonomy (Months 6+) | Balanced, eligible for Elite |
+
+Elite mode requires: Phase 3 + Recovery Green + consistency ≥75% sustained + user-demonstrated autonomous decision-making.
+
+---
+
+### Recovery State → Coaching Mode Override
+
+Recovery State can override the phase default. The mode floor applies regardless of user request.
+
+| Recovery State | Mode Floor | Scope |
+|---|---|---|
+| Red | Supportive | All phases |
+| Yellow | Balanced | Phases 2 and 3 only — Phase 1 stays Supportive |
+| Green | No override — phase default applies | — |
+
+---
+
+### Combined Operational State
+
+The full operational state for any session is the intersection of all three systems.
+
+| Recovery | Phase | Training State | Coaching Mode |
+|---|---|---|---|
+| Green | 1 | Progress | Supportive |
+| Green | 2 | Progress | Balanced |
+| Green | 3 | Progress | Balanced / Elite |
+| Yellow | 1 | Maintain | Supportive |
+| Yellow | 2 | Maintain | Balanced |
+| Yellow | 3 | Maintain | Balanced |
+| Red | Any | Deload | Supportive |
+
+---
+
+### Phase Detection Signals
+
+Phase transitions are triggered by behavioral data, not calendar time.
+
+| Transition | Primary Signal |
+|---|---|
+| Phase 1 → Phase 2 | Questions shift from "what should I do?" to "should I adjust X?" Consistency ≥60% sustained over 4+ weeks. |
+| Phase 2 → Phase 3 | User makes correct independent decisions before consulting Apex. Consistency ≥75% sustained over 6+ months. |
+
+Full phase criteria are defined in APEX_MOTIVATION_SYSTEM.md §3.
 
 ---
 

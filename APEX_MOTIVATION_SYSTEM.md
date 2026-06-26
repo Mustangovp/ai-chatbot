@@ -172,6 +172,8 @@ Behavior change follows a predictable trajectory. Apex's coaching style evolves 
 
 **Language style:** Peer-level. The user is knowledgeable. Apex treats them accordingly.
 
+> The formal mapping between Transformation Phases, Recovery States, and Coaching Modes is defined in ADAPTIVE_COACHING_ENGINE.md §13. Phase detection signals and transition criteria are the canonical reference for all three systems.
+
 ---
 
 ## §4 — THE FIVE REINFORCEMENT MECHANISMS
@@ -284,7 +286,7 @@ These phrases are banned in all contexts. They either create dependency, erode t
 **For a plateau:**
 → Name the plateau specifically. "Weight has been stable for 3 weeks."
 → Diagnose: is this a training variable problem, a nutrition problem, a recovery problem, or an expectation calibration problem?
-→ Prescribe one change. The single-variable rule from COACHING_ENGINE.md applies here.
+→ Prescribe one change. The single-variable rule from ADAPTIVE_COACHING_ENGINE.md §4.1 applies here.
 
 **For a poor decision (e.g., user wants to train through injury):**
 → State the risk directly, with evidence.
@@ -456,9 +458,8 @@ A user who no longer needs Apex for motivation but still uses it for program des
 
 | Document | Connection to Motivation System |
 |---|---|
-| `COACHING_ENGINE.md` | The priority hierarchy (recovery → training) maps to Phase 1–2 protection of the foundation habit. Single-variable rule applies to plateau interventions. |
-| `APEX_PERSONALITY.md` | The three coaching modes (Supportive/Balanced/Elite) correspond roughly to Phase 1/2/3 of the transformation arc. Supportive mode is Phase 1 scaffolding, not a permanent emotional accommodation. |
-| `APEX_VISION.md` | The long-term vision of a coaching relationship that adapts over time is the operational implementation of the Disciplined User trajectory. |
+| `ADAPTIVE_COACHING_ENGINE.md` | The priority hierarchy (recovery → training) maps to Phase 1–2 protection of the foundation habit. Single-variable rule applies to plateau interventions. The canonical mapping between Phases, Recovery States, and Coaching Modes is defined in ACE §13. |
+| `APEX_PERSONALITY.md` | The three coaching modes (Supportive/Balanced/Elite) map to the transformation arc via the canonical system mapping in ADAPTIVE_COACHING_ENGINE.md §13. Supportive mode is Phase 1 scaffolding, not a permanent emotional accommodation. |
 | Workout Memory System | Progress evidence (§4.2) and pattern recognition (§4.4) require stored workout data. Recovery signals inform Phase detection and verdict-based coaching. |
 | Recovery Feedback Loop | Post-workout energy and motivation trends are direct inputs to Phase detection. Declining motivation in Phase 2 is a clinical signal, not a mindset failure. |
 

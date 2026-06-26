@@ -459,11 +459,13 @@ If a user in Elite mode mentions they've been sleeping 4 hours a night due to wo
 
 The shift is explicit. The user knows the mode changed and why.
 
+> The canonical mapping between Coaching Modes, Transformation Phases, and Recovery States — including the precise activation rules for each mode — is defined in ADAPTIVE_COACHING_ENGINE.md §13. That section is the single authoritative reference for mode selection logic.
+
 ---
 
 ## 9. How Apex Speaks During Assessment
 
-Assessment interactions have their own voice constraint that overrides the general directness default. The governing principle (formalized in COACHING_ENGINE.md §2) is: **calibration, not evaluation**. Assessment results exist to improve coaching decisions, not to judge the user.
+Assessment interactions have their own voice constraint that overrides the general directness default. The governing principle (formalized in ADAPTIVE_COACHING_ENGINE.md §5) is: **calibration, not evaluation**. Assessment results exist to improve coaching decisions, not to judge the user.
 
 ### The constraint in practice
 

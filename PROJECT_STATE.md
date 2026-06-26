@@ -406,6 +406,49 @@ The AI will be able to reference previous workouts in responses. Users will have
 
 ---
 
+## EXPERIENCE PHASE STATUS
+
+| Step | Name | Status | Date |
+|---|---|---|---|
+| Step 1 | M2 — Rewrite greeting copy | ✅ COMPLETE | 2026-06-26 |
+| Step 2 | M5 — Day 0 card (TDEE verdict) | ✅ COMPLETE | 2026-06-26 |
+| Step 3 | M6 — Remove chips, add directive + CTA | ✅ COMPLETE | 2026-06-26 |
+| Step 4 | M3 — Full-screen question flow | ⬜ PENDING | — |
+| Step 5 | M3 — Answer transitions + progress bar | ⬜ PENDING | — |
+| **Step 6** | **M4 — Transformation Moment** | **✅ COMPLETE** | **2026-06-26** |
+| Step 7 | M2 — Skip behavior (returning users) | ⬜ PENDING | — |
+| Step 8 | M1 — Landing dissolve transition | ⬜ PENDING | — |
+
+### Step 6 — Certification Record
+
+```
+Status:              COMPLETE — FROZEN
+Implementation date: 2026-06-26
+Commit tag:          experience-step-6
+Regression status:   10/10 scenarios PASS — no regressions
+Production ready:    YES
+
+Regression matrix:
+  EN · FREE · muscle_gain · moderate+intermediate   PASS
+  BG · FREE · fat_loss · sedentary+beginner         PASS
+  EN · FREE · strength · active+advanced            PASS
+  EN · FREE · endurance · very_active+advanced      PASS
+  BG · CORE · strength · very_active+advanced       PASS
+  EN · PRO · muscle_gain (badge + plan verify)      PASS
+  No-profile fallback (guard condition)             PASS
+  Mobile 375px · EN · fat_loss · FREE               PASS
+  DOM leak check (.tfm-wrap after dissolve)         PASS
+  Grammar: "an intermediate" / "an advanced"        PASS (fixed)
+
+Architecture freeze:
+  _pfShowTransformation() — DO NOT MODIFY without new creative review
+  CSS: .tfm-* classes — locked
+  Timing: 1760ms sequence + 300ms dissolve — locked
+  Copy: "I have everything I need." / "Имам всичко нужно." — locked
+```
+
+---
+
 ## DOCUMENT HISTORY
 
 | Date | What changed |
@@ -416,6 +459,8 @@ The AI will be able to reference previous workouts in responses. Users will have
 | June 2026 | **Apex 1.5 Step 3** — Persistent Goal Bar added below nav. 3 active columns: Primary Goal · Current Weight + direction · Coaching Focus (from sleep/stress/goal hierarchy). Edit Profile button opens pre-populated 3-step onboarding. 4 future DOM slots pre-wired (hidden). `updateGoalBar()` called on load, save, skip, language switch. Commit e395c80. |
 | June 2026 | **Apex 1.5 Step 4** — System Prompt Context Upgrade. `_build_profile_block()` made bilingual: BG/EN section headers, value labels, coaching flags. `lang` now sent in `/chat` request body (`body.lang = lang`). Backend extracts + validates `lang`, passes to `_build_profile_block(profile, lang)`. Assessment results section (section 7) pre-wired — reads `assessmentResults`, `compositeLevel`, `assessmentDate` from profile; silent when absent. SYSTEM_INSTRUCTIONS: name greeting rule added (first message only), EN food recommendation section added (no Bulgarian store references), fitness assessment awareness section added. |
 | June 2026 | **Workout Memory System** — `localStorage.apexWorkoutLog` schema: `{ts, date, dur, type, diff, exs:[{n,s,r:[]}]}`, capped at 20 sessions. `_woFb()` extended to record actual reps + RPE per set into `_wo.exLog`/`_wo.fbLog`. `_woLogSave()` runs at workout completion (guarded by `_wo._logged` flag to prevent double-save), computes session difficulty (mode of RPE), workout type via `_woDetectType()` regex (upper/lower/full/core/mixed, BG+EN), duration in minutes. `_woGetSummary(lang)` generates bilingual token-efficient coaching context: last 3 workouts (date · type · duration · difficulty · top 3 exercises with actual reps) + 30-day summary (total, weekly frequency, consistency %, avg difficulty, volume trend ↑↓→ per body area, days since last session). Summary injected ephemerally into `profile.workoutContext` in `send()`. Backend `_build_profile_block()` adds it as section 8. Done screen now shows duration + BG/EN text + "saved to log" confirmation. |
+| 2026-06-26 | **Experience Phase Steps 1–3** — SCENE_1_FINAL locked after Experience Manifesto → Blueprint → Production Review → Calibration cycle. Step 1: greeting rewritten as two-line coaching voice ("Your first session starts here. / Six questions...") with single chip. Step 2: `_pfShowDayZero()` rewritten — Mifflin-St Jeor TDEE computed in JS, 5 goal×activity verdict paragraphs (EN+BG), coaching promise. Step 3: suggestion chips removed, personalized directive added (session matrix: 2–4 sessions from activityLevel×level), goal-specific CTA, `_pfAutoStart()` now triggered only by CTA click (not automatic 600ms timer). |
+| 2026-06-26 | **Experience Phase Step 6 — Transformation Moment** — `_pfShowTransformation()` added. 6-step sequence: name anchor → profile echo → "Here is what your profile requires." → Maintenance established → Protein target set → [goal-specific label: Deficit/Surplus/Maintenance/Fuel/Daily] → Weekly training volume selected → "I have everything I need." (callback to greeting promise). Fade rhythm: each arriving row dims all previous to 40%; closing line restores all to 100%. 1760ms sequence + 300ms dissolve. `submitProfile()` now calls `_pfShowTransformation()` instead of `_pfShowDayZero()` directly. Day 0 card fades in with `day0-fadein` animation. Grammar fix: "a intermediate" → "an intermediate" in muscle_gain EN verdict. Tagged: `experience-step-6`. |
 | June 2026 | **Recovery Feedback Loop** — Post-workout check-in screen (`phase='recovery'`) added to state machine after `phase='done'`. Collects: overall session difficulty (4-option: Easy/Moderate/Hard/Very Hard), energy after training (1–10 tap scale), motivation (1–10 tap scale), optional text note (max 200 chars). `_woSaveRecovery()` appends `rec:{feel,energy,motivation,note}` to the last log entry. `_woGetSummary()` extended: when ≥2 sessions have `rec` data, appends recovery signals block — avg perceived difficulty, avg energy ↑↓→, avg motivation ↑↓→, Recovery Verdict (GOOD/MODERATE/CONCERNING/POOR with coaching instruction). Recent notes (last 2 non-empty) included verbatim. SYSTEM_INSTRUCTIONS: RECOVERY VERDICT section added — maps each verdict level to volume/intensity directive. AI instructed to never ignore verdict even when user requests max intensity. |
 
 ---

@@ -441,6 +441,33 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 .day0-goal-val{font-size:14px;color:var(--text);font-weight:700;}
 .day0-detail{font-size:11px;color:var(--muted);font-style:italic;margin-top:3px;line-height:1.5;}
 .day0-ready{font-size:13px;color:var(--muted);margin-top:12px;line-height:1.5;}
+.day0-assessment-label{font-family:'Unbounded';font-size:10px;letter-spacing:2px;color:#F5212D;text-transform:uppercase;opacity:0.9;}
+.day0-name{font-size:22px;color:var(--text);font-weight:600;margin:7px 0 5px;}
+.day0-ref{font-size:13px;color:rgba(139,147,167,0.6);letter-spacing:.2px;margin-bottom:10px;}
+.day0-verdict{font-size:15px;color:var(--text);line-height:1.65;margin-top:14px;}
+.day0-start{font-size:15px;color:var(--text);font-weight:700;margin-top:10px;}
+.day0-promise{font-size:13px;color:var(--muted);margin-top:7px;line-height:1.5;font-style:italic;}
+.d0-directive{margin-top:18px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.07);}
+.d0-dir-week{font-size:16px;color:var(--text);font-weight:500;line-height:1.5;margin-bottom:5px;}
+.d0-dir-rationale{font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:16px;}
+.d0-cta-btn{display:block;width:100%;padding:14px 20px;background:linear-gradient(135deg,rgba(245,33,45,0.14),rgba(245,33,45,0.07));border:1px solid rgba(245,33,45,0.38);border-radius:10px;color:var(--text);font-family:'Unbounded';font-size:12px;letter-spacing:1px;text-transform:uppercase;font-weight:600;text-align:center;cursor:pointer;transition:background .18s,border-color .18s;}
+.d0-cta-btn:hover,.d0-cta-btn:active{background:linear-gradient(135deg,rgba(245,33,45,0.22),rgba(245,33,45,0.12));border-color:rgba(245,33,45,0.6);}
+
+/* ── TRANSFORMATION MOMENT ── */
+.tfm-wrap{padding:48px 24px 32px;min-height:240px;transition:opacity 300ms ease-out;}
+.tfm-inner{max-width:420px;}
+.tfm-name{font-size:18px;color:var(--text);font-weight:500;margin-bottom:4px;}
+.tfm-profile{font-size:12px;color:var(--muted);letter-spacing:.3px;margin-bottom:22px;}
+.tfm-opener{font-size:12px;color:rgba(139,147,167,0.7);font-style:italic;margin-bottom:22px;letter-spacing:.2px;transition:opacity 180ms cubic-bezier(.4,0,.2,1);}
+.tfm-rows{display:flex;flex-direction:column;gap:10px;margin-bottom:24px;}
+.tfm-row{display:flex;justify-content:space-between;align-items:baseline;gap:12px;transition:opacity 150ms cubic-bezier(.4,0,.2,1);}
+.tfm-label{font-size:12px;color:rgba(139,147,167,0.65);font-weight:400;flex:1;min-width:0;}
+.tfm-value{font-size:13px;color:var(--text);font-weight:500;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap;flex-shrink:0;}
+.tfm-unit{font-size:11px;color:var(--muted);margin-left:2px;}
+.tfm-delta{font-size:12px;color:rgba(139,147,167,0.5);margin-left:6px;}
+.tfm-complete{font-size:15px;color:var(--text);font-weight:600;transition:opacity 200ms cubic-bezier(.4,0,.2,1);}
+.day0-fadein{animation:day0-in 300ms ease-out forwards;}
+@keyframes day0-in{from{opacity:0;}to{opacity:1;}}
 
 /* ── TOAST ── */
 .toast-el{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#FFB13C,#D89020);color:#000;padding:12px 22px;border-radius:30px;font-weight:700;font-size:14px;letter-spacing:1px;box-shadow:0 8px 30px rgba(255,177,60,0.4);z-index:9999;animation:toast-in .3s ease-out;}
@@ -823,7 +850,7 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 <div id="workout-overlay">
   <div class="wo-header">
     <span class="wo-header-title">🔱 Workout Mode</span>
-    <button class="wo-close" onclick="closeWorkout()" title="Затвори">✕</button>
+    <button class="wo-close" onclick="closeWorkout()">✕</button>
   </div>
   <div class="wo-prog-bar"><div class="wo-prog-fill" id="wo-prog-fill" style="width:0%"></div></div>
   <div class="wo-body" id="wo-body"></div>
@@ -897,12 +924,9 @@ const T={
     'wd-cancel':'Назад',
     'wd-confirm':'Потвърди отказа →',
     copySuccess:'Планът е копиран! 🔥',pdfError:'Първо задай въпрос на AI!',
-    greeting:'**🔱 Влизаш в Apex.**\n\nАз съм треньорът ти от тук нататък. Ти даваш целта — аз пиша плана. Точен, реалистичен, твой.\n\nС какво започваме?',
+    greeting:'**Твоята първа сесия започва тук.**\n\nШест въпроса. После имам всичко нужно.',
     chips:[
-      'Искам да отслабна',
-      'Искам мускулна маса',
-      'Започвам от нула',
-      'Искам по-добра форма'
+      'Изгради моя план',
     ],
     scrollHint:'← плъзни хоризонтално →',
     payError:'Грешка при плащане. Опитай отново.',
@@ -959,12 +983,9 @@ const T={
     'wd-cancel':'Back',
     'wd-confirm':'Confirm cancellation →',
     copySuccess:'Plan copied! 🔥',pdfError:'First ask the AI a question!',
-    greeting:'**🔱 You\'re in Apex.**\n\nI\'m your coach from here on. You give me the goal — I write the plan. Precise, realistic, yours.\n\nWhere do we start?',
+    greeting:'**Your first session starts here.**\n\nSix questions. Then I\'ll have everything I need.',
     chips:[
-      'I want to lose weight',
-      'I want muscle mass',
-      'I\'m starting from zero',
-      'I want better shape'
+      'Build my plan',
     ],
     scrollHint:'← swipe horizontally →',
     payError:'Payment error. Try again.',
@@ -1240,55 +1261,273 @@ function maybeShowProfile(){
   if(!localStorage.getItem('apexProfile'))openProfile();
 }
 
+function _pfShowTransformation(){
+  const p=_pfLoad();
+  if(!p||!p.weight||!p.height||!p.age){_pfShowDayZero();return;}
+  const en=lang==='en';
+  const name=p.name||'';
+
+  // Compute all values (mirrors _pfShowDayZero logic)
+  const bmr=(p.gender==='f')
+    ?(10*p.weight+6.25*p.height-5*p.age-161)
+    :(10*p.weight+6.25*p.height-5*p.age+5);
+  const actMult={sedentary:1.2,moderate:1.375,active:1.55,very_active:1.725};
+  const tdee=Math.round(bmr*(actMult[p.activityLevel]||1.375));
+  const protRate={fat_loss:1.8,muscle_gain:2.2,strength:2.0,endurance:1.6,general:1.6};
+  const protein=Math.round(p.weight*(protRate[p.goal]||1.8));
+  const calAdj={fat_loss:-450,muscle_gain:250,strength:0,endurance:150,general:0};
+  const adj=calAdj[p.goal]||0;
+  const target=tdee+adj;
+  const delta=Math.abs(adj);
+  const fmt=n=>n?n.toLocaleString(en?'en-US':'bg-BG'):'—';
+
+  // Profile echo line
+  const ACT_SHORT={
+    en:{sedentary:'sedentary',moderate:'lightly active',active:'moderately active',very_active:'very active'},
+    bg:{sedentary:'заседнал',moderate:'лека активност',active:'умерена активност',very_active:'висока активност'}
+  };
+  const actShort=(ACT_SHORT[en?'en':'bg'])[p.activityLevel||'moderate']||'';
+  const gLbl=en?(p.gender==='f'?'female':'male'):(p.gender==='f'?'жена':'мъж');
+  const profileLine=[
+    p.age?(p.age+(en?'y':'г')):null,
+    gLbl,
+    p.weight?(p.weight+(en?'kg':'кг')):null,
+    p.height?(p.height+(en?'cm':'см')):null,
+    actShort||null
+  ].filter(Boolean).join(' · ');
+
+  // Goal-specific label for Line 4
+  const LINE4={
+    fat_loss:   en?'Deficit calculated'          :'Дефицит изчислен',
+    muscle_gain:en?'Surplus determined'          :'Излишък определен',
+    strength:   en?'Maintenance confirmed'       :'Поддържащо ниво потвърдено',
+    endurance:  en?'Fuel target set'             :'Горивна цел определена',
+    general:    en?'Daily target set'            :'Дневна цел определена'
+  };
+  const line4Lbl=LINE4[p.goal]||LINE4.general;
+
+  // Delta string
+  const deltaStr=adj<0?`−${fmt(delta)}`:adj>0?`+${fmt(delta)}`:'';
+
+  // Session count (mirrors Step 3 matrix)
+  const actCode=p.activityLevel||'moderate';
+  const lvlCode=p.level||'beginner';
+  let sessions=2;
+  if(actCode==='sedentary')sessions=2;
+  else if(actCode==='moderate')sessions=lvlCode==='beginner'?2:3;
+  else if(actCode==='active')sessions=3;
+  else if(actCode==='very_active')sessions=lvlCode==='beginner'?3:4;
+
+  // Render container
+  box.innerHTML='';
+  const wrap=document.createElement('div');
+  wrap.className='tfm-wrap';
+  wrap.innerHTML=`
+    <div class="tfm-inner">
+      ${name?`<div class="tfm-name">${name}</div>`:''}
+      <div class="tfm-profile">${profileLine}</div>
+      <div class="tfm-opener" id="tfm-opener" style="opacity:0">${en?'Here is what your profile requires.':'Ето какво изисква твоят профил.'}</div>
+      <div class="tfm-rows">
+        <div class="tfm-row" id="tfm-r1" style="opacity:0">
+          <span class="tfm-label">${en?'Maintenance established':'Поддържащо ниво установено'}</span>
+          <span class="tfm-value">${fmt(tdee)}<span class="tfm-unit"> ${en?'kcal':'ккал'}</span></span>
+        </div>
+        <div class="tfm-row" id="tfm-r2" style="opacity:0">
+          <span class="tfm-label">${en?'Protein target set':'Протеинова цел определена'}</span>
+          <span class="tfm-value">${protein}<span class="tfm-unit">${en?'g':'г'}</span></span>
+        </div>
+        <div class="tfm-row" id="tfm-r3" style="opacity:0">
+          <span class="tfm-label">${line4Lbl}</span>
+          <span class="tfm-value">${fmt(target)}<span class="tfm-unit"> ${en?'kcal':'ккал'}</span>${deltaStr?`<span class="tfm-delta">${deltaStr}</span>`:''}</span>
+        </div>
+        <div class="tfm-row" id="tfm-r4" style="opacity:0">
+          <span class="tfm-label">${en?'Weekly training volume selected':'Седмичен тренировъчен обем избран'}</span>
+          <span class="tfm-value">${sessions}<span class="tfm-unit">×/${en?'week':'седм.'}</span></span>
+        </div>
+      </div>
+      <div class="tfm-complete" id="tfm-complete" style="opacity:0">${en?'I have everything I need.':'Имам всичко нужно.'}</div>
+    </div>`;
+  box.appendChild(wrap);
+
+  // Helpers
+  const fadeIn=(id,dur)=>{
+    const el=document.getElementById(id);
+    if(!el)return;
+    el.style.transition=`opacity ${dur}ms cubic-bezier(.4,0,.2,1)`;
+    el.style.opacity='1';
+  };
+  const dimPrev=(keepId)=>{
+    ['tfm-r1','tfm-r2','tfm-r3','tfm-r4'].forEach(id=>{
+      if(id===keepId)return;
+      const el=document.getElementById(id);
+      if(!el)return;
+      if(parseFloat(el.style.opacity)>0.5){
+        el.style.transition='opacity 100ms ease-in';
+        el.style.opacity='0.4';
+      }
+    });
+  };
+  const restoreAll=()=>{
+    ['tfm-r1','tfm-r2','tfm-r3','tfm-r4'].forEach(id=>{
+      const el=document.getElementById(id);
+      if(el){el.style.transition='opacity 200ms ease-out';el.style.opacity='1';}
+    });
+  };
+
+  // Sequence
+  setTimeout(()=>fadeIn('tfm-opener',180),280);
+  setTimeout(()=>fadeIn('tfm-r1',150),400);
+  setTimeout(()=>{dimPrev('tfm-r2');fadeIn('tfm-r2',150);},650);
+  setTimeout(()=>{dimPrev('tfm-r3');fadeIn('tfm-r3',150);},880);
+  setTimeout(()=>{dimPrev('tfm-r4');fadeIn('tfm-r4',150);},1100);
+  setTimeout(()=>{restoreAll();fadeIn('tfm-complete',200);},1380);
+
+  // Dissolve → Day 0
+  setTimeout(()=>{
+    wrap.style.transition='opacity 300ms ease-out';
+    wrap.style.opacity='0';
+    setTimeout(()=>_pfShowDayZero(),300);
+  },1760);
+}
+
 function _pfShowDayZero(){
   const p=_pfLoad();
   const en=lang==='en';
-  const name=p.name||'';
-  const GOAL_LBL={
-    bg:{fat_loss:'Сваляне на мазнини',muscle_gain:'Мускулна маса',strength:'Сила',endurance:'Издръжливост',general:'Общ тонус'},
-    en:{fat_loss:'Fat Loss',muscle_gain:'Muscle Gain',strength:'Strength',endurance:'Endurance',general:'General Fitness'}
+  const name=p&&p.name?p.name:'';
+
+  // TDEE via Mifflin-St Jeor
+  let tdee=null,protein=null,target=null,deficit=null,surplus=null;
+  if(p&&p.weight&&p.height&&p.age){
+    const bmr=(p.gender==='f')
+      ?(10*p.weight+6.25*p.height-5*p.age-161)
+      :(10*p.weight+6.25*p.height-5*p.age+5);
+    const actMult={sedentary:1.2,moderate:1.375,active:1.55,very_active:1.725};
+    tdee=Math.round(bmr*(actMult[p.activityLevel]||1.375));
+    const protRate={fat_loss:1.8,muscle_gain:2.2,strength:2.0,endurance:1.6,general:1.6};
+    protein=Math.round(p.weight*(protRate[p.goal]||1.8));
+    const calAdj={fat_loss:-450,muscle_gain:250,strength:0,endurance:150,general:0};
+    const adj=calAdj[p.goal]||0;
+    target=tdee+adj;
+    if(adj<0)deficit=Math.abs(adj);
+    if(adj>0)surplus=adj;
+  }
+
+  const ACT_V={
+    en:{sedentary:'Sedentary',moderate:'Lightly active',active:'Moderately active',very_active:'Very active'},
+    bg:{sedentary:'Заседнала',moderate:'Лека активност',active:'Умерена активност',very_active:'Висока активност'}
   };
-  const LEVEL_LBL={bg:{beginner:'Начинаещ',intermediate:'Среден',advanced:'Напреднал'},en:{beginner:'Beginner',intermediate:'Intermediate',advanced:'Advanced'}};
-  const ACT_LBL={bg:{sedentary:'Заседнала',moderate:'Умерена',active:'Активна',very_active:'Много активна'},en:{sedentary:'Sedentary',moderate:'Moderate',active:'Active',very_active:'Very Active'}};
-  const EQUIP_LBL={bg:{gym:'Зала',home:'Вкъщи',none:'Без оборудване'},en:{gym:'Gym',home:'Home',none:'No equipment'}};
-  const L=en?'en':'bg';
-  const goalLabel=(GOAL_LBL[L]||GOAL_LBL.bg)[p.goal]||'—';
-  const levelLabel=(LEVEL_LBL[L]||LEVEL_LBL.bg)[p.level]||'';
-  const actLabel=(ACT_LBL[L]||ACT_LBL.bg)[p.activityLevel]||'';
-  const equipLabel=(EQUIP_LBL[L]||EQUIP_LBL.bg)[p.equipment]||'';
-  const stats=[];
-  if(p.age)stats.push(p.age+(en?' y.o.':' г.'));
-  if(p.weight)stats.push(p.weight+' кг');
-  if(p.height)stats.push(p.height+' см');
-  if(equipLabel)stats.push(equipLabel);
-  const greetMd=name?(en?`**Welcome, ${name}.**`:`**Добре дошъл, ${name}.**`):(en?'**Welcome.**':'**Добре дошъл.**');
-  const readyLine=en?'Apex has your profile. Sending your first plan now.':'Apex е готов. Изпращам първия ти план.';
-  const dateStr=new Date().toLocaleDateString(en?'en-GB':'bg-BG',{day:'numeric',month:'short',year:'numeric'});
+  const LVL_V={
+    en:{beginner:'beginner',intermediate:'intermediate',advanced:'advanced'},
+    bg:{beginner:'начинаещ',intermediate:'среден',advanced:'напреднал'}
+  };
+  const actLbl=(ACT_V[en?'en':'bg'])[p.activityLevel||'moderate']||'';
+  const lvlLbl=(LVL_V[en?'en':'bg'])[p.level||'beginner']||'';
+  const fmt=n=>n?n.toLocaleString(en?'en-US':'bg-BG'):'—';
+
+  const refLine=(tdee&&target&&protein)
+    ?(en
+      ?`${fmt(tdee)} kcal · ${protein}g protein · ${fmt(target)} kcal target`
+      :`${fmt(tdee)} ккал · ${protein} г протеин · ${fmt(target)} ккал цел`)
+    :'';
+
+  const pfx=name?`${name}. `:'';
+  const T=fmt(tdee),P=protein||'—',G=fmt(target),D=fmt(deficit),S=fmt(surplus);
+  let verdict='';
+  if(en){
+    switch(p.goal){
+      case 'fat_loss':
+        verdict=`${pfx}${actLbl} baseline, fat loss target. Your TDEE is ${T} calories — that is what your body burns right now at your current activity level. Eating at ${G} puts you in a ${D}-calorie daily deficit: enough to lose fat consistently without triggering the body's protective response. The ${P}g protein target is structural, not aesthetic. Without it, the weight you lose includes muscle.`;break;
+      case 'muscle_gain':
+        verdict=`${pfx}${actLbl} baseline, muscle gain target. Your body needs ${T} calories to maintain what it currently has. At ${G} — ${S} above maintenance — you give it the minimum surplus ${lvlLbl==='beginner'?'a':'an'} ${lvlLbl} needs to build new tissue. The ${P}g protein target is your daily construction material. Below that threshold, the surplus becomes fat storage, not muscle.`;break;
+      case 'strength':
+        verdict=`${pfx}${actLbl} baseline, strength target. Strength does not require a caloric surplus — it requires consistency and adequate fuel. Eating at maintenance (${T} calories) keeps your body composition stable while your neuromuscular system adapts. ${P}g of protein daily is non-negotiable: strength athletes who underfuel protein stop progressing before they reach their actual limit.`;break;
+      case 'endurance':
+        verdict=`${pfx}${actLbl} baseline, endurance target. Endurance athletes consistently underfuel — it is the most common mistake at every level. Your target of ${G} calories supports both training and recovery, not just maintenance. ${P}g of protein daily prevents the muscle breakdown that extended cardio causes. Fuel is not optional in endurance. It is the work itself.`;break;
+      default:
+        verdict=`${pfx}${actLbl} baseline, general fitness target. Your daily target of ${G} calories keeps you in energy balance while training — enough to perform, not so much that the surplus accumulates. ${P}g of protein daily ensures every session contributes to something. General fitness rewards consistency over intensity.`;
+    }
+  } else {
+    switch(p.goal){
+      case 'fat_loss':
+        verdict=`${pfx}${actLbl} база, цел за отслабване. Твоят TDEE е ${T} калории — толкова изразходва тялото ти в момента при текущата ти активност. ${G} калории ти дават дефицит от ${D} на ден: достатъчен за устойчиво отслабване, без да задейства защитната реакция на тялото. ${P} г протеин дневно е структурна необходимост, не естетически избор. Без него отслабваш с мускули, не само с мазнини.`;break;
+      case 'muscle_gain':
+        verdict=`${pfx}${actLbl} база, цел за мускулна маса. Тялото ти се нуждае от ${T} калории, за да поддържа съществуващото. ${G} калории — ${S} над поддържащото ниво — осигуряват минималния излишък, нужен на ${lvlLbl} атлет за изграждане на нова тъкан. ${P} г протеин дневно е строителният материал. Под тази граница излишъкът се превръща в мазнини, не в мускули.`;break;
+      case 'strength':
+        verdict=`${pfx}${actLbl} база, цел за сила. Силата не изисква излишък от калории — изисква последователност и достатъчно гориво. Поддържащото ниво от ${T} калории стабилизира телесния ти състав, докато нервно-мускулната система се адаптира. ${P} г протеин дневно е задължителен: атлетите за сила, които подхранват недостатъчно, спират да прогресират преди да достигнат реалния си потенциал.`;break;
+      case 'endurance':
+        verdict=`${pfx}${actLbl} база, цел за издръжливост. Атлетите за издръжливост системно приемат недостатъчно гориво — това е най-честата грешка на всяко ниво. ${G} калории поддържат тренировките и възстановяването, не само поддържащото ниво. ${P} г протеин дневно предотвратява мускулния разпад, причинен от продължителното кардио. Горивото не е опция при издръжливостта. То е самата работа.`;break;
+      default:
+        verdict=`${pfx}${actLbl} база, цел за обща форма. ${G} калории дневно те държат в енергиен баланс по време на тренировки — достатъчно, за да работиш, без да се натрупва излишък. ${P} г протеин дневно гарантира, че всяка сесия допринася за нещо. Общата форма се гради чрез последователност.`;
+    }
+  }
+
+  const startLine=en?'This is your starting point.':'Това е твоята отправна точка.';
+  const promise=en
+    ?'From this point forward, every recommendation will adapt to your progress.'
+    :'От този момент нататък всяка препоръка ще се променя заедно с твоя напредък.';
+
   box.innerHTML='';
+  // Session plan — derived from activity + level + goal
+  const actCode=p.activityLevel||'moderate';
+  const lvlCode=p.level||'beginner';
+  const goalCode=p.goal||'general';
+  let sessions=2;
+  if(actCode==='sedentary')sessions=2;
+  else if(actCode==='moderate')sessions=lvlCode==='beginner'?2:3;
+  else if(actCode==='active')sessions=3;
+  else if(actCode==='very_active')sessions=lvlCode==='beginner'?3:4;
+
+  const STRUCT={
+    fat_loss:   {2:en?'both full body':'обе с цяло тяло',3:en?'full body + one cardio focus':'цяло тяло + кардио фокус',4:en?'strength and cardio':'сила и кардио'},
+    muscle_gain:{2:en?'both full body':'обе с цяло тяло',3:en?'upper · lower · full body':'горна · долна · цяло тяло',4:en?'upper · lower · push · pull':'горна · долна · бутане · дърпане'},
+    strength:   {2:en?'compound sessions':'съставни сесии',3:en?'squat · press · pull':'клек · преса · дърпане',4:en?'squat · press · pull · accessory':'клек · преса · дърпане · допълнителни'},
+    endurance:  {2:en?'strength + cardio':'сила + кардио',3:en?'two strength + one endurance':'две сила + издръжливост',4:en?'two strength + two cardio':'две сила + две кардио'},
+    general:    {2:en?'full body sessions':'сесии цяло тяло',3:en?'full body sessions':'сесии цяло тяло',4:en?'varied full body':'разнообразно цяло тяло'}
+  };
+  const structStr=(STRUCT[goalCode]||STRUCT.general)[sessions]||(en?'full body':'цяло тяло');
+
+  const RATIONALE={
+    fat_loss:   en?'Week 1 establishes your baseline. Consistency now compounds later.'   :'Седмица 1 установява базата. Последователността сега се умножава по-късно.',
+    muscle_gain:en?'Week 1 tests your baseline lifts. We build from real numbers.'       :'Седмица 1 тества базовите ти вдигания. Изграждаме от реални числа.',
+    strength:   en?'Week 1 is for technique and baselines. Load comes after.'            :'Седмица 1 е за техника и базови стойности. Тежестта идва след.',
+    endurance:  en?'Week 1 measures where your aerobic base actually is.'                :'Седмица 1 измерва реалното ниво на твоята аеробна база.',
+    general:    en?'Week 1 builds the habit. Everything else follows.'                   :'Седмица 1 изгражда навика. Всичко останало следва.'
+  };
+  const rationale=RATIONALE[goalCode]||RATIONALE.general;
+
+  const CTA_TXT={
+    fat_loss:   en?'Start Week 1'              :'Започни Седмица 1',
+    muscle_gain:en?'Begin Your First Session'  :'Започни първата сесия',
+    strength:   en?'Start Week 1'              :'Започни Седмица 1',
+    endurance:  en?'Start Week 1'              :'Започни Седмица 1',
+    general:    en?'Start Week 1'              :'Започни Седмица 1'
+  };
+  const ctaTxt=CTA_TXT[goalCode]||CTA_TXT.general;
+  const weekLine=en
+    ?`Your Week 1 plan is ready. ${sessions} session${sessions>1?'s':''} — ${structStr}.`
+    :`Твоят план за Седмица 1 е готов. ${sessions} сес${sessions===1?'ия':'ии'} — ${structStr}.`;
+
   const el=document.createElement('div');
-  el.className='msg-a greeting';
+  el.className='msg-a greeting day0-fadein';
   el.innerHTML=`
     <div id="badge" class="greeting-badge"></div>
-    <div style="margin-bottom:12px;">${marked.parse(greetMd)}</div>
     <div class="day0-card">
-      <div class="day0-header">
-        <span class="day0-label">${en?'PROFILE · DAY 0':'ПРОФИЛ · ДЕН 0'}</span>
-        <span class="day0-date">${dateStr}</span>
-      </div>
-      ${stats.length?`<div class="day0-stats">${stats.join(' · ')}</div>`:''}
-      ${levelLabel?`<div class="day0-row"><span class="day0-key">${en?'Level':'Ниво'}</span><span class="day0-val">${levelLabel}</span></div>`:''}
-      ${actLabel?`<div class="day0-row"><span class="day0-key">${en?'Activity':'Активност'}</span><span class="day0-val">${actLabel}</span></div>`:''}
+      <div class="day0-assessment-label">${en?'DAY 0 ASSESSMENT':'ОЦЕНКА — ДЕН 0'}</div>
+      ${name?`<div class="day0-name">${name}</div>`:''}
+      ${refLine?`<div class="day0-ref">${refLine}</div>`:''}
       <div class="day0-divider"></div>
-      <div class="day0-goal-row">
-        <span class="day0-goal-label">${en?'GOAL':'ЦЕЛ'}</span>
-        <span class="day0-goal-val">${goalLabel}</span>
-      </div>
-      ${p.goalDetail?`<div class="day0-detail">"${p.goalDetail}"</div>`:''}
+      <div class="day0-verdict">${verdict}</div>
+      <div class="day0-start">${startLine}</div>
+      <div class="day0-promise">${promise}</div>
     </div>
-    <div class="day0-ready">${readyLine}</div>`;
+    <div class="d0-directive">
+      <div class="d0-dir-week">${weekLine}</div>
+      <div class="d0-dir-rationale">${rationale}</div>
+      <button class="d0-cta-btn" onclick="_pfAutoStart()">${ctaTxt} →</button>
+    </div>`;
+  box.innerHTML='';
   box.appendChild(el);
   updatePlanBadge();
-  setTimeout(()=>{_pfAutoStart();},600);
 }
 
 function submitProfile(){
@@ -1296,7 +1535,7 @@ function submitProfile(){
   document.getElementById('profile-modal').classList.remove('active');
   updateGoalBar();
   if(window._pendingWorkout){const exs=window._pendingWorkout;window._pendingWorkout=null;startWorkout(exs,true);return;}
-  _pfShowDayZero();
+  _pfShowTransformation();
 }
 function skipProfile(){
   // Only write empty profile if user has none yet — never overwrite existing data
@@ -1401,7 +1640,7 @@ function detectWorkoutTrigger(msgEl){
     if(!exs.length)return;
     const btn=document.createElement('button');
     btn.className='wo-trigger';
-    btn.innerHTML='🏋️ Режим Тренировка';
+    btn.innerHTML=lang==='en'?'🏋️ Workout Mode':'🏋️ Режим Тренировка';
     btn.onclick=()=>startWorkout(exs);
     msgEl.appendChild(btn);
   }catch(e){}
@@ -1419,12 +1658,15 @@ function _woRestSecs(exName){
 }
 function _woRestReason(exName,s){
   let pf={};try{pf=JSON.parse(localStorage.getItem('apexProfile')||'{}');}catch(e){}
-  const lv=pf.level==='advanced'?'напреднал':pf.level==='intermediate'?'среден':'начинаещ';
-  const parts=[lv+' ниво'];
-  if(/клек|мъртва|лежанка|squat|deadlift|bench|преса/.test(exName.toLowerCase()))parts.push('съставно упражнение');
-  if(parseInt(pf.age)>50)parts.push('над 50 г.');
-  if(/(отслаб|сваля|weight.loss)/i.test(pf.goal||''))parts.push('цел отслабване');
-  return `Почивка ${s} сек. — ${parts.join(', ')}.`;
+  const en=lang==='en';
+  const lv=en
+    ?(pf.level==='advanced'?'advanced':pf.level==='intermediate'?'intermediate':'beginner')
+    :(pf.level==='advanced'?'напреднал':pf.level==='intermediate'?'среден':'начинаещ');
+  const parts=[lv+(en?' level':' ниво')];
+  if(/клек|мъртва|лежанка|squat|deadlift|bench|преса/.test(exName.toLowerCase()))parts.push(en?'compound exercise':'съставно упражнение');
+  if(parseInt(pf.age)>50)parts.push(en?'50+ yrs':'над 50 г.');
+  if(/(отслаб|сваля|weight.loss)/i.test(pf.goal||''))parts.push(en?'fat loss goal':'цел отслабване');
+  return en?`Rest ${s} sec — ${parts.join(', ')}.`:`Почивка ${s} сек. — ${parts.join(', ')}.`;
 }
 
 // ── Coach voice comments (Task 3)
@@ -1433,7 +1675,12 @@ const _WO_CMT={
   medium:['Точно там трябва да е. Продължаваме.','Перфектна интензивност. Запазваме темпото.','Правилна зона. Следващия сет — същото.'],
   hard:['Нормално е трудно. Намаляваме с 1 повторение следващия сет.','Пазим техниката. Намаляваме леко — качеството е по-важно.','Добра работа. Следващия сет -1 повторение.']
 };
-function _woCmt(fb){const pool=_WO_CMT[fb]||_WO_CMT.medium;return pool[Math.floor(Math.random()*pool.length)];}
+const _WO_CMT_EN={
+  easy:['Too easy. Adding 2 reps next set.','Body adapting — time to increase intensity.','Smooth set. Advancing next set.'],
+  medium:['Right where it should be. Keep going.','Perfect intensity. Maintain the tempo.','Good zone. Same effort next set.'],
+  hard:['Hard is normal. Dropping 1 rep next set.','Protect the form. Quality beats quantity.','Good work. Next set: minus 1 rep.']
+};
+function _woCmt(fb){const tbl=lang==='en'?_WO_CMT_EN:_WO_CMT;const pool=tbl[fb]||tbl.medium;return pool[Math.floor(Math.random()*pool.length)];}
 
 // ── Session state
 let _wo=null,_woTimer=null;
@@ -1871,11 +2118,11 @@ function _woRenderEx(b){
     <div class="wo-ex-name">${ex.name}</div>
     ${ex.note?`<div class="wo-ex-note">${ex.note}</div>`:''}
     ${cardHtml}
-    <div class="wo-set-lbl">Сет ${_wo.si+1} от ${ex.sets}</div>
+    <div class="wo-set-lbl">${lang==='en'?`Set ${_wo.si+1} of ${ex.sets}`:`Сет ${_wo.si+1} от ${ex.sets}`}</div>
     <div class="wo-reps">${reps}</div>
-    <div class="wo-reps-sub">повторения</div>
-    <button class="wo-done-btn" onclick="_woDone()">✓ &nbsp;Готово</button>
-    <button class="wo-hr-btn" onclick="_woStartHr()">📏 Пулс ръчно</button>`;
+    <div class="wo-reps-sub">${lang==='en'?'reps':'повторения'}</div>
+    <button class="wo-done-btn" onclick="_woDone()">✓ &nbsp;${lang==='en'?'Done':'Готово'}</button>
+    <button class="wo-hr-btn" onclick="_woStartHr()">📏 ${lang==='en'?'Heart Rate':'Пулс ръчно'}</button>`;
 }
 
 function _woDone(){_wo.phase='fb';_woSave();_woRender();}
@@ -1886,12 +2133,12 @@ function _woRenderFb(b){
   const reps=Math.max(1,ex.baseReps+ex.repDelta);
   b.innerHTML=`
     <div class="wo-ex-name">${ex.name}</div>
-    <div class="wo-set-lbl">Сет ${_wo.si+1} от ${ex.sets} — ${reps} повт.</div>
-    <div style="font-size:14px;color:var(--muted);text-align:center;margin:22px 0 14px;">Как беше?</div>
+    <div class="wo-set-lbl">${lang==='en'?`Set ${_wo.si+1} of ${ex.sets} — ${reps} reps`:`Сет ${_wo.si+1} от ${ex.sets} — ${reps} повт.`}</div>
+    <div style="font-size:14px;color:var(--muted);text-align:center;margin:22px 0 14px;">${lang==='en'?'How was it?':'Как беше?'}</div>
     <div class="wo-feedback">
-      <button class="wo-fb-btn easy" onclick="_woFb('easy')">😌 Лесно</button>
-      <button class="wo-fb-btn medium" onclick="_woFb('medium')">💪 Средно</button>
-      <button class="wo-fb-btn hard" onclick="_woFb('hard')">🔥 Трудно</button>
+      <button class="wo-fb-btn easy" onclick="_woFb('easy')">😌 ${lang==='en'?'Easy':'Лесно'}</button>
+      <button class="wo-fb-btn medium" onclick="_woFb('medium')">💪 ${lang==='en'?'Moderate':'Средно'}</button>
+      <button class="wo-fb-btn hard" onclick="_woFb('hard')">🔥 ${lang==='en'?'Hard':'Трудно'}</button>
     </div>`;
 }
 
@@ -1927,11 +2174,11 @@ function _woRenderRest(b){
   const total=s;
   b.innerHTML=`
     <div class="wo-rest">
-      <div class="wo-rest-title">⏱ Почивка</div>
+      <div class="wo-rest-title">⏱ ${lang==='en'?'Rest':'Почивка'}</div>
       <div class="wo-rest-reason">${_wo._rr}</div>
       <div class="wo-rest-count" id="wo-tc">${s}</div>
       <div class="wo-timer-bar-wrap"><div class="wo-timer-bar" id="wo-tb" style="width:100%"></div></div>
-      <button class="wo-skip-btn" onclick="_woSkip()">Пропусни →</button>
+      <button class="wo-skip-btn" onclick="_woSkip()">${lang==='en'?'Skip →':'Пропусни →'}</button>
       ${_wo._rc?`<div class="wo-coach-bubble">🔱 ${_wo._rc}</div>`:''}
     </div>`;
   clearInterval(_woTimer);
@@ -2055,19 +2302,19 @@ function _woStartHr(){
 function _woRenderHr(b){
   b.innerHTML=`
     <div class="wo-hr">
-      <div class="wo-hr-title">📏 Измерване на пулса</div>
-      <div class="wo-hr-instr">Постави 2 пръста на китката или врата за 15 секунди и преброй ударите. Умножи по 4.</div>
-      <input id="wo-manual-bpm" type="number" min="40" max="220" placeholder="напр. 84"
+      <div class="wo-hr-title">📏 ${lang==='en'?'Heart Rate Measurement':'Измерване на пулса'}</div>
+      <div class="wo-hr-instr">${lang==='en'?'Place 2 fingers on your wrist or neck for 15 seconds and count the beats. Multiply by 4.':'Постави 2 пръста на китката или врата за 15 секунди и преброй ударите. Умножи по 4.'}</div>
+      <input id="wo-manual-bpm" type="number" min="40" max="220" placeholder="${lang==='en'?'e.g. 84':'напр. 84'}"
         style="width:130px;text-align:center;font-family:'Unbounded';font-size:28px;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:12px;display:block;margin:24px auto 16px;-moz-appearance:textfield;appearance:textfield;">
-      <button class="wo-done-btn" style="margin-top:0" onclick="_woManualBpm()">Потвърди пулса</button>
+      <button class="wo-done-btn" style="margin-top:0" onclick="_woManualBpm()">${lang==='en'?'Confirm Heart Rate':'Потвърди пулса'}</button>
       <div id="wo-hr-out"></div>
-      <button class="wo-skip-btn" style="margin-top:14px" onclick="_woHrCancel()">Пропусни</button>
+      <button class="wo-skip-btn" style="margin-top:14px" onclick="_woHrCancel()">${lang==='en'?'Skip':'Пропусни'}</button>
     </div>`;
 }
 
 function _woManualBpm(){
   const val=parseInt(document.getElementById('wo-manual-bpm')?.value);
-  if(!val||val<40||val>220){toast('Въведи валиден пулс (40–220 уд/мин)');return;}
+  if(!val||val<40||val>220){toast(lang==='en'?'Enter a valid heart rate (40–220 bpm)':'Въведи валиден пулс (40–220 уд/мин)');return;}
   let pf={};try{pf=JSON.parse(localStorage.getItem('apexProfile')||'{}');}catch(e){}
   const maxHr=220-(parseInt(pf.age)||30);
   _woShowHr(val,maxHr);
@@ -2077,20 +2324,21 @@ function _woManualBpm(){
 function _woShowHr(bpm,maxHr){
   const pct=Math.round((bpm/maxHr)*100);
   let zone,zc,extra='';
-  if(pct<60){zone='Ниска зона — намали почивката с 15 сек.';zc='z-easy';}
-  else if(pct<=80){zone='Оптимална зона. Продължаваме по план.';zc='z-optimal';}
-  else{zone='Висока зона — удължи почивката с 30 сек.';zc='z-hard';extra='<div style="font-size:12px;color:rgba(245,33,45,.7);text-align:center;margin-top:6px">Изчакай, преди да продължиш.</div>';}
+  const en=lang==='en';
+  if(pct<60){zone=en?'Low zone — shorten rest by 15 sec.':'Ниска зона — намали почивката с 15 сек.';zc='z-easy';}
+  else if(pct<=80){zone=en?'Optimal zone. On track.':'Оптимална зона. Продължаваме по план.';zc='z-optimal';}
+  else{zone=en?'High zone — extend rest by 30 sec.':'Висока зона — удължи почивката с 30 сек.';zc='z-hard';extra=`<div style="font-size:12px;color:rgba(245,33,45,.7);text-align:center;margin-top:6px">${en?'Wait before continuing.':'Изчакай, преди да продължиш.'}</div>`;}
   const hc=document.getElementById('wo-hc');
   if(hc){hc.textContent=bpm;hc.style.color=pct>80?'var(--red)':pct<60?'var(--gold)':'var(--lime)';}
   const hb=document.getElementById('wo-hb');
   if(hb)hb.style.width=`${Math.min(100,pct*1.25)}%`;
 const out=document.getElementById('wo-hr-out');
   if(out)out.innerHTML=`
-    <div style="font-family:'Unbounded';font-size:28px;color:var(--text);text-align:center">${bpm} <span style="font-size:14px;color:var(--muted)">уд/мин</span></div>
-    <div class="wo-hr-zone ${zc}">${pct}% от макс. (${maxHr}) · ${zone}</div>
+    <div style="font-family:'Unbounded';font-size:28px;color:var(--text);text-align:center">${bpm} <span style="font-size:14px;color:var(--muted)">${lang==='en'?'bpm':'уд/мин'}</span></div>
+    <div class="wo-hr-zone ${zc}">${pct}% ${lang==='en'?'of max':'от макс.'} (${maxHr}) · ${zone}</div>
     ${extra}
-    <div style="font-size:11px;color:rgba(139,147,167,.35);text-align:center;margin-top:8px">220 − ${220-maxHr} г. = ${maxHr} уд/мин макс.</div>
-    <button class="wo-done-btn" style="margin-top:18px" onclick="_woHrDone()">Продължи</button>`;
+    <div style="font-size:11px;color:rgba(139,147,167,.35);text-align:center;margin-top:8px">220 − ${220-maxHr} ${lang==='en'?'yrs':'г.'} = ${maxHr} ${lang==='en'?'bpm max':'уд/мин макс.'}</div>
+    <button class="wo-done-btn" style="margin-top:18px" onclick="_woHrDone()">${lang==='en'?'Continue':'Продължи'}</button>`;
 }
 
 function _woHrCancel(){_wo.phase='ex';_woSave();_woRender();}
