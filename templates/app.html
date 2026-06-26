@@ -311,7 +311,9 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 /* ── PROFILE SETUP MODAL ── */
 #profile-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.97);z-index:1000;align-items:center;justify-content:center;padding:16px;overflow-y:auto;}
 #profile-modal.active{display:flex;}
-.pf-card{max-width:480px;width:100%;background:linear-gradient(180deg,var(--surface2),var(--surface));border:1.5px solid rgba(245,33,45,0.3);border-radius:18px;padding:28px 22px;color:var(--text);animation:modal-card-in .28s cubic-bezier(0.34,1.4,0.64,1);overflow-y:auto;max-height:90dvh;}
+.pf-card{position:relative;max-width:480px;width:100%;background:linear-gradient(180deg,var(--surface2),var(--surface));border:1.5px solid rgba(245,33,45,0.3);border-radius:18px;padding:28px 22px;color:var(--text);animation:modal-card-in .28s cubic-bezier(0.34,1.4,0.64,1);overflow-y:auto;max-height:90dvh;}
+.pf-close-btn{position:absolute;top:14px;right:14px;background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;line-height:1;padding:4px 8px;border-radius:6px;}
+.pf-close-btn:hover{color:var(--text);background:rgba(255,255,255,0.06);}
 .pf-icon{font-size:36px;text-align:center;margin-bottom:8px;}
 .pf-title{font-family:'Unbounded';font-size:18px;letter-spacing:1px;color:var(--red);text-align:center;margin:0 0 4px;}
 .pf-sub{font-size:12px;color:var(--muted);text-align:center;margin-bottom:20px;letter-spacing:.5px;}
@@ -676,6 +678,7 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 <!-- PROFILE SETUP MODAL -->
 <div id="profile-modal">
   <div class="pf-card">
+    <button class="pf-close-btn" onclick="closeProfile()" aria-label="Затвори">✕</button>
 
     <!-- Step progress indicator -->
     <div class="pf-progress">
@@ -1296,10 +1299,15 @@ function submitProfile(){
   _pfShowDayZero();
 }
 function skipProfile(){
-  localStorage.setItem('apexProfile','{}');
+  // Only write empty profile if user has none yet — never overwrite existing data
+  if(!localStorage.getItem('apexProfile')) localStorage.setItem('apexProfile','{}');
   document.getElementById('profile-modal').classList.remove('active');
   updateGoalBar();
   if(window._pendingWorkout){const exs=window._pendingWorkout;window._pendingWorkout=null;startWorkout(exs,true);}
+}
+function closeProfile(){
+  // Pure cancel — hides modal without touching localStorage
+  document.getElementById('profile-modal').classList.remove('active');
 }
 
 /* ══════════════════════════════════════════════════
@@ -2385,7 +2393,7 @@ window.onload=async()=>{
   
   // Plan param from landing pricing buttons → open the paywall on that plan
   const planParam=params.get('plan');
-  if(planParam&&(planParam==='core'||planParam==='pro')&&!isElite){
+  if(planParam&&(planParam==='core'||planParam==='pro')&&!isEliteOnLoad){
     params.delete('plan');
     const ns=params.toString();
     window.history.replaceState({},'',window.location.pathname+(ns?'?'+ns:''));
@@ -2414,10 +2422,8 @@ window.onload=async()=>{
   // No goal — show greeting + 4 chips
   showGreeting();
   updateGoalBar();
-  // Show profile setup once if disclaimer already accepted and profile not yet set
-  if(localStorage.getItem('apexDisclaimerAccepted')==='true'){
-    maybeShowProfile();
-  }
+  // Show profile setup once if profile not yet set (no payment gate — any new user gets onboarding)
+  maybeShowProfile();
 };
 
 async function send(){
