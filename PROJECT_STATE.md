@@ -424,7 +424,7 @@ The AI will be able to reference previous workouts in responses. Users will have
 ```
 Status:              COMPLETE — FROZEN
 Implementation date: 2026-06-26
-Commit tag:          experience-step-6
+Commit tag:          experience-step-6 (22c1649)
 Regression status:   10/10 scenarios PASS — no regressions
 Production ready:    YES
 
