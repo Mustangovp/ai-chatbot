@@ -487,6 +487,133 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 .footer-mini a{font-size:12px;color:var(--muted);text-decoration:none;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;transition:color .2s;}
 .footer-mini a:hover{color:var(--text);}
 .footer-copyright{font-size:10px;color:#5a5868;letter-spacing:1.5px;text-transform:uppercase;}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   APEX COACH CARD — PRODUCTION SYSTEM v1
+   Primary presentation layer for coaching, memory, readiness, recovery.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.cc-root{
+  --ccBg:#070b14;--ccCard:#0d1525;--ccCard2:#111b2e;
+  --ccBorder:rgba(255,255,255,0.07);
+  --ccCyan:#00d9ff;--ccCyanDim:rgba(0,217,255,0.15);--ccCyanGlow:rgba(0,217,255,0.4);
+  --ccPurple:#9b59ff;--ccPurpleDim:rgba(155,89,255,0.15);
+  --ccText:#ffffff;--ccSub:rgba(255,255,255,0.55);--ccMuted:rgba(255,255,255,0.3);
+}
+#workout-overlay.cc-active .wo-header,
+#workout-overlay.cc-active .wo-prog-bar{display:none!important;}
+#workout-overlay.cc-active #wo-body{padding:0!important;align-items:stretch!important;max-width:none!important;width:100%!important;}
+.cc-root{display:flex;flex-direction:column;background:var(--ccBg);min-height:100%;font-family:system-ui,-apple-system,sans-serif;}
+
+/* nav */
+.cc-nav{display:flex;align-items:center;justify-content:space-between;padding:11px 14px;position:sticky;top:0;z-index:10;background:rgba(7,11,20,0.9);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--ccBorder);}
+.cc-nav-back{width:34px;height:34px;border-radius:50%;border:1px solid var(--ccBorder);background:var(--ccCard2);color:var(--ccText);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;padding:0;}
+.cc-nav-logo{text-align:center;}
+.cc-nav-apex{font-family:'Unbounded',sans-serif;font-size:13px;font-weight:700;letter-spacing:3.5px;color:var(--ccText);}
+.cc-nav-sub{font-size:8px;letter-spacing:4px;color:var(--ccMuted);margin-top:2px;}
+.cc-nav-save{padding:7px 13px;border:1px solid var(--ccBorder);border-radius:20px;background:transparent;color:var(--ccSub);font-size:11px;cursor:pointer;font-family:inherit;}
+
+/* hero card */
+.cc-hero{margin:10px 10px 0;border-radius:18px;background:var(--ccCard);border:1px solid var(--ccBorder);position:relative;overflow:hidden;min-height:310px;}
+.cc-hero::before{content:'';position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at 28% 65%,rgba(0,217,255,0.09) 0%,transparent 55%),radial-gradient(ellipse at 82% 18%,rgba(155,89,255,0.07) 0%,transparent 45%);animation:cc-ambient 7s ease-in-out infinite alternate;}
+@keyframes cc-ambient{0%{opacity:.7;transform:translateX(-5px);}100%{opacity:1;transform:translateX(5px);}}
+
+/* exercise header */
+.cc-ex-hdr{position:relative;padding:18px 0 0 16px;z-index:3;}
+.cc-ex-name-bg{font-family:'Unbounded',sans-serif;font-size:21px;font-weight:700;color:var(--ccText);line-height:1.1;}
+.cc-ex-name-en{font-size:10.5px;color:var(--ccSub);letter-spacing:2.5px;text-transform:uppercase;margin-top:3px;margin-bottom:9px;}
+.cc-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border:1px solid rgba(255,255,255,0.11);border-radius:20px;font-size:10px;color:var(--ccSub);background:rgba(255,255,255,0.04);}
+
+/* body illustration slot — replaceable in Phase 2 */
+.cc-body-slot{position:absolute;left:0;bottom:0;width:68%;height:100%;z-index:1;display:flex;align-items:flex-end;pointer-events:none;}
+.cc-body-img{width:100%;height:auto;object-fit:contain;object-position:bottom left;filter:drop-shadow(0 0 22px rgba(0,217,255,0.35)) drop-shadow(0 0 44px rgba(0,217,255,0.15));animation:cc-breathe 3.5s ease-in-out infinite;will-change:transform;}
+@keyframes cc-breathe{0%,100%{transform:scale(1);}50%{transform:scale(1.018);}}
+
+/* callout overlay — lines + dots only */
+.cc-callouts{position:absolute;inset:0;width:100%;height:100%;z-index:4;pointer-events:none;overflow:visible;}
+.cc-co-line{stroke:rgba(255,255,255,0.22);stroke-width:1;fill:none;stroke-dasharray:90;stroke-dashoffset:90;animation:cc-line-in .55s ease-out forwards;}
+.cc-co-line:nth-of-type(2){animation-delay:.13s;}
+.cc-co-line:nth-of-type(3){animation-delay:.24s;}
+@keyframes cc-line-in{to{stroke-dashoffset:0;}}
+.cc-co-dot{animation:cc-dot-in .3s ease-out forwards;}
+@keyframes cc-dot-in{from{opacity:0;}to{opacity:1;}}
+/* callout HTML labels — correctly sized in CSS px, not SVG units */
+.cc-co-label{position:absolute;z-index:5;pointer-events:none;line-height:1.2;}
+.cc-co-lname{display:block;font-family:'Unbounded',sans-serif;font-size:9.5px;font-weight:700;color:#fff;letter-spacing:.3px;}
+.cc-co-lrole{display:block;font-size:8.5px;font-family:system-ui,sans-serif;margin-top:1px;}
+
+/* muscle activity panel */
+.cc-mpanel{position:absolute;top:14px;right:11px;width:126px;z-index:5;}
+.cc-mpanel-lbl{font-size:7px;color:var(--ccMuted);letter-spacing:1.2px;text-transform:uppercase;text-align:center;margin-bottom:8px;}
+.cc-mrow{display:flex;align-items:center;gap:7px;margin-bottom:5px;}
+.cc-mdot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.cc-mname{font-size:10px;color:var(--ccText);flex:1;}
+.cc-mpct{font-size:10px;color:var(--ccSub);}
+.cc-ring-wrap{display:flex;flex-direction:column;align-items:center;margin-top:10px;}
+.cc-ring-sublbl{font-size:6.5px;color:var(--ccMuted);letter-spacing:1px;text-transform:uppercase;text-align:center;margin-top:4px;line-height:1.4;}
+@keyframes cc-ring-draw{from{stroke-dashoffset:var(--ringFull);}to{stroke-dashoffset:var(--ringOffset);}}
+@keyframes cc-glow-pulse{0%,100%{opacity:.5;}50%{opacity:1;}}
+
+/* info row */
+.cc-info-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;margin:7px 10px 0;}
+.cc-panel{background:var(--ccCard);border:1px solid var(--ccBorder);border-radius:13px;padding:12px 11px;}
+.cc-plbl{font-size:7px;letter-spacing:1.5px;text-transform:uppercase;color:var(--ccMuted);margin-bottom:9px;display:block;}
+
+/* technique */
+.cc-tech-item{display:flex;align-items:flex-start;gap:6px;margin-bottom:6px;}
+.cc-tech-chk{color:var(--ccCyan);font-size:10px;flex-shrink:0;margin-top:1px;}
+.cc-tech-txt{font-size:10px;color:var(--ccSub);line-height:1.4;}
+
+/* sets */
+.cc-sets-nums{display:flex;gap:16px;margin-bottom:9px;}
+.cc-sets-col{display:flex;flex-direction:column;align-items:center;}
+.cc-sets-num{font-family:'Unbounded',sans-serif;font-size:30px;font-weight:700;color:var(--ccText);line-height:1;}
+.cc-sets-sub{font-size:7px;letter-spacing:1px;color:var(--ccMuted);text-transform:uppercase;margin-top:3px;}
+.cc-rest-row{display:flex;flex-direction:column;gap:2px;padding-top:8px;border-top:1px solid var(--ccBorder);}
+.cc-rest-lbl{font-size:7px;color:var(--ccMuted);letter-spacing:.8px;text-transform:uppercase;}
+.cc-rest-val{font-size:11px;color:var(--ccSub);display:flex;align-items:center;gap:4px;}
+
+/* muscle map */
+.cc-mmap{display:flex;flex-direction:column;align-items:center;}
+.cc-mmap-bodies{display:flex;gap:8px;justify-content:center;margin-bottom:5px;}
+.cc-mmap-legend{display:flex;flex-direction:column;gap:3px;align-self:stretch;margin-top:4px;}
+.cc-mmap-leg-item{display:flex;align-items:center;gap:4px;font-size:8px;color:var(--ccSub);}
+.cc-mmap-ldot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+
+/* tip + progress row */
+.cc-tip-row{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:7px 10px 0;}
+.cc-tip-card{display:flex;gap:10px;align-items:flex-start;}
+.cc-tip-hdr{font-size:9px;color:var(--ccCyan);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:5px;font-weight:600;}
+.cc-tip-txt{font-size:11px;color:var(--ccSub);line-height:1.55;}
+
+/* set progress */
+.cc-prog-lbl{font-size:7px;color:var(--ccMuted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:12px;display:block;}
+.cc-prog-track{display:flex;align-items:center;}
+.cc-prog-step{display:flex;flex-direction:column;align-items:center;gap:4px;}
+.cc-prog-dot{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;transition:all .3s ease;}
+.cc-prog-dot.done{background:rgba(0,217,255,0.18);border:1.5px solid var(--ccCyan);color:var(--ccCyan);}
+.cc-prog-dot.active{background:var(--ccCyan);color:#070b14;transform:scale(1.18);box-shadow:0 0 14px rgba(0,217,255,0.55);}
+.cc-prog-dot.upcoming{background:transparent;border:1.5px solid rgba(255,255,255,0.13);color:var(--ccMuted);}
+.cc-prog-conn{flex:1;height:1.5px;background:rgba(255,255,255,0.08);margin:0 2px;margin-bottom:20px;}
+.cc-prog-conn.done{background:rgba(0,217,255,0.26);}
+.cc-prog-pct{font-size:8px;color:var(--ccMuted);}
+.cc-prog-setlbl{font-size:7px;color:var(--ccMuted);}
+
+/* metrics bar */
+.cc-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin:7px 10px 0;background:var(--ccCard);border:1px solid var(--ccBorder);border-radius:13px;overflow:hidden;}
+.cc-metric{padding:11px 5px;display:flex;flex-direction:column;align-items:center;gap:2px;border-right:1px solid var(--ccBorder);}
+.cc-metric:last-child{border-right:none;}
+.cc-metric-lbl{font-size:6.5px;color:var(--ccMuted);letter-spacing:.8px;text-transform:uppercase;}
+.cc-metric-val{display:flex;align-items:baseline;gap:2px;}
+.cc-metric-num{font-family:'Unbounded',sans-serif;font-size:18px;font-weight:700;color:var(--ccText);}
+.cc-metric-unit{font-size:9px;color:var(--ccMuted);}
+.cc-metric-bar{width:100%;height:3px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;margin-top:2px;}
+.cc-metric-bar-fill{height:100%;background:linear-gradient(90deg,var(--ccCyan),var(--ccPurple));border-radius:2px;transition:width 1.2s ease;}
+
+/* footer */
+.cc-footer{text-align:center;padding:14px 12px 16px;font-size:9px;color:var(--ccMuted);letter-spacing:1.5px;}
+
+@media(max-height:700px){.cc-hero{min-height:260px;}.cc-sets-num{font-size:24px;}}
+@media(max-width:360px){.cc-info-row{grid-template-columns:1fr 1fr;}.cc-mmap-bodies{display:none;}}
 </style>
 </head>
 <body>
@@ -2080,6 +2207,7 @@ function startWorkout(exercises,_bypass){
 
 function closeWorkout(){
   clearInterval(_woTimer);_woTimer=null;
+  _ccRestoreLayout();
   document.getElementById('workout-overlay').classList.remove('active');
   document.body.style.overflow='';
 }
@@ -2105,14 +2233,265 @@ function _woRender(){
   else if(_wo.phase==='recovery')_woRenderRecovery(b);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// APEX COACH CARD — PRODUCTION SYSTEM v1
+// ─────────────────────────────────────────────────────────────────────────────
+
+const CC_META={
+  pushup:{
+    nameBG:'Лицеви опори',nameEN:'PUSH-UP',
+    difficulty:{bg:'Средна трудност',en:'Moderate'},
+    image:'/static/exercise/pushup-holo.png',
+    muscles:[
+      {name:'Гърди',nameEN:'Chest',   pct:100,color:'#00d9ff'},
+      {name:'Рамо', nameEN:'Shoulder',pct:90, color:'#9b59ff'},
+      {name:'Трицепс',nameEN:'Tricep',pct:80, color:'#60eeff'}
+    ],
+    activation:84,
+    technique:[
+      {bg:'Ръцете на ширината на раменете.',en:'Hands at shoulder width.'},
+      {bg:'Спусни се контролирано.',         en:'Lower yourself in control.'},
+      {bg:'Лактите ~45° спрямо тялото.',en:'Elbows ~45° from body.'},
+      {bg:'Стегнат корем и неутрален гръб.', en:'Tight core, neutral spine.'},
+      {bg:'Избутай експлозивно нагоре.',      en:'Push up explosively.'}
+    ],
+    rest:'60 – 90 сек',restEN:'60 – 90 sec',
+    tip:{
+      bg:'Спри 1–2 повторения преди отказ. Фокусирай се върху стегнат корем и пълен обхват на движение.',
+      en:'Stop 1–2 reps before failure. Focus on tight core and full range of motion.'
+    },
+    callouts:[
+      {muscle:'ГЪРДИ',role:'Основно',  roleEN:'Primary',  color:'var(--ccCyan)',  ax:29,ay:62,lx:6, ly:33},
+      {muscle:'РАМО', role:'Вторично',roleEN:'Secondary',color:'var(--ccPurple)',ax:41,ay:42,lx:40,ly:26},
+      {muscle:'ТРИЦЕПС',role:'Вторично',roleEN:'Secondary',color:'var(--ccCyan)', ax:53,ay:52,lx:53,ly:37}
+    ],
+    muscleMap:{
+      front:{chest:'primary',lShoulder:'secondary',rShoulder:'secondary'},
+      back: {lArm:'primary',rArm:'primary',lShoulder:'secondary',rShoulder:'secondary'}
+    }
+  }
+};
+
+function _ccKey(name){
+  const n=(name||'').toLowerCase().replace(/\s+/g,'');
+  if(/push.?up|лицев|лицеви/.test(n))return'pushup';
+  return null;
+}
+
+function _ccRestoreLayout(){
+  const ov=document.getElementById('workout-overlay');
+  if(ov)ov.classList.remove('cc-active');
+}
+
+function _ccIntensity(){
+  const log=(_wo&&_wo.fbLog)||[];
+  if(!log.length)return null;
+  const m={easy:60,medium:80,hard:95};
+  return Math.round(log.reduce((s,f)=>s+(m[f]||80),0)/log.length);
+}
+
+function _ccCalories(){
+  if(!_wo||!_wo.startTs)return null;
+  const mins=(Date.now()-_wo.startTs)/60000;
+  let w=70;
+  try{const p=JSON.parse(localStorage.getItem('apexProfile')||'{}');if(p.weight)w=parseFloat(p.weight)||70;}catch(e){}
+  return Math.max(1,Math.round(3.8*3.5*w/200*mins));
+}
+
+// ── SVG component builders ────────────────────────────────────────────────────
+
+function _ccHex(){
+  return`<svg width="44" height="44" viewBox="0 0 44 44" fill="none" style="flex-shrink:0"><polygon points="22,2 39,11.5 39,32.5 22,42 5,32.5 5,11.5" stroke="var(--ccCyan)" stroke-width="1.5" fill="rgba(0,217,255,0.07)"/><text x="22" y="28" text-anchor="middle" font-family="Unbounded,sans-serif" font-size="14" font-weight="700" fill="var(--ccCyan)">A</text></svg>`;
+}
+
+function _ccRing(pct,color){
+  color=color||'#00d9ff';
+  const r=32,cx=40,cy=40,circ=Math.round(2*Math.PI*r);
+  const offset=Math.round(circ*(1-pct/100));
+  return`<svg width="80" height="80" viewBox="0 0 80 80" fill="none"><circle cx="${cx}" cy="${cy}" r="${r}" stroke="rgba(255,255,255,0.07)" stroke-width="5"/><circle cx="${cx}" cy="${cy}" r="${r}" stroke="${color}" stroke-width="5" stroke-linecap="round" stroke-dasharray="${circ}" stroke-dashoffset="${circ}" transform="rotate(-90 ${cx} ${cy})" style="--ringFull:${circ};--ringOffset:${offset};animation:cc-ring-draw 1.2s cubic-bezier(.25,.46,.45,.94) .4s forwards"/><text x="${cx}" y="${cy-3}" text-anchor="middle" font-family="Unbounded,sans-serif" font-size="16" font-weight="700" fill="#fff">${pct}</text><text x="${cx}" y="${cy+10}" text-anchor="middle" font-size="10" fill="rgba(255,255,255,0.4)">%</text></svg>`;
+}
+
+function _ccWave(){
+  return`<svg width="54" height="20" viewBox="0 0 54 20" fill="none"><polyline points="0,10 5,4 9,16 13,2 17,18 21,10 25,10 29,5 33,15 37,3 41,17 45,10 49,10 54,10" stroke="#9b59ff" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="200" stroke-dashoffset="200" style="animation:cc-line-in 1.8s ease-out .6s forwards"/></svg>`;
+}
+
+function _ccBodySvg(side,mmap){
+  mmap=mmap||{};
+  const s=function(k){
+    const v=mmap[k];
+    if(v==='primary')return'fill:var(--ccCyan);opacity:0.85;animation:cc-glow-pulse 2.5s ease-in-out infinite;';
+    if(v==='secondary')return'fill:var(--ccPurple);opacity:0.7;animation:cc-glow-pulse 2.5s ease-in-out .4s infinite;';
+    return'fill:rgba(255,255,255,0.06);';
+  };
+  const bodies={
+    front:[
+      ['ellipse','cx="29" cy="9" rx="9" ry="9"',s('head')],
+      ['polygon','points="24,18 34,18 33,25 25,25"',s('neck')],
+      ['polygon','points="13,26 45,26 48,70 10,70"',s('chest')],
+      ['polygon','points="13,26 6,28 4,38 12,42"',s('lShoulder')],
+      ['polygon','points="45,26 52,28 54,38 46,42"',s('rShoulder')],
+      ['polygon','points="6,28 2,62 9,64 12,42 4,38"',s('lArm')],
+      ['polygon','points="52,28 56,62 49,64 46,42 54,38"',s('rArm')],
+      ['polygon','points="2,62 9,64 7,88 0,86"',s('lForearm')],
+      ['polygon','points="49,64 56,62 58,86 51,88"',s('rForearm')],
+      ['polygon','points="10,70 26,70 25,106 9,106"',s('lThigh')],
+      ['polygon','points="32,70 48,70 49,106 33,106"',s('rThigh')],
+      ['polygon','points="9,106 25,106 23,130 7,130"',s('lCalf')],
+      ['polygon','points="33,106 49,106 51,130 35,130"',s('rCalf')]
+    ],
+    back:[
+      ['ellipse','cx="29" cy="9" rx="9" ry="9"',s('head')],
+      ['polygon','points="24,18 34,18 33,25 25,25"',s('neck')],
+      ['polygon','points="13,26 45,26 48,70 10,70"',s('back')],
+      ['polygon','points="13,26 6,28 4,38 12,42"',s('lShoulder')],
+      ['polygon','points="45,26 52,28 54,38 46,42"',s('rShoulder')],
+      ['polygon','points="6,28 2,62 9,64 12,42 4,38"',s('lArm')],
+      ['polygon','points="52,28 56,62 49,64 46,42 54,38"',s('rArm')],
+      ['polygon','points="2,62 9,64 7,88 0,86"',s('lForearm')],
+      ['polygon','points="49,64 56,62 58,86 51,88"',s('rForearm')],
+      ['polygon','points="10,70 26,70 25,106 9,106"',s('lThigh')],
+      ['polygon','points="32,70 48,70 49,106 33,106"',s('rThigh')],
+      ['polygon','points="9,106 25,106 23,130 7,130"',s('lCalf')],
+      ['polygon','points="33,106 49,106 51,130 35,130"',s('rCalf')]
+    ]
+  };
+  return`<svg viewBox="0 0 58 136" width="55" height="128" xmlns="http://www.w3.org/2000/svg">`
+    +bodies[side].map(([tag,attr,st])=>`<${tag} ${attr} style="${st}"/>`).join('')
+    +'</svg>';
+}
+
+function _ccCalloutsSvg(callouts){
+  if(!callouts||!callouts.length)return'';
+  const lines=callouts.map(c=>`<line x1="${c.ax}" y1="${c.ay}" x2="${c.lx+2}" y2="${c.ly+10}" class="cc-co-line"/>
+<circle cx="${c.ax}" cy="${c.ay}" r="2.2" fill="${c.color}" class="cc-co-dot"/>`).join('');
+  return`<svg class="cc-callouts" viewBox="0 0 100 100" preserveAspectRatio="none">${lines}</svg>`;
+}
+
+function _ccCalloutLabels(callouts){
+  if(!callouts||!callouts.length)return'';
+  const role=lang==='en';
+  return callouts.map(c=>`<div class="cc-co-label" style="left:${c.lx}%;top:${c.ly}%">
+<span class="cc-co-lname">${c.muscle}</span>
+<span class="cc-co-lrole" style="color:${c.color}">${role?c.roleEN:c.role}</span>
+</div>`).join('');
+}
+
+// ── Main card HTML builder ────────────────────────────────────────────────────
+
+function _ccCard(ex,meta,reps,si,totalSets){
+  const en=lang==='en';
+  const tech=meta.technique.map(t=>`<div class="cc-tech-item"><span class="cc-tech-chk">&#10003;</span><span class="cc-tech-txt">${en?t.en:t.bg}</span></div>`).join('');
+  const mrows=meta.muscles.map(m=>`<div class="cc-mrow"><span class="cc-mdot" style="background:${m.color}"></span><span class="cc-mname">${en?m.nameEN:m.name}</span><span class="cc-mpct">${m.pct}%</span></div>`).join('');
+  const pcts=[100,85,65,40];
+  const dots=Array.from({length:totalSets},(_,i)=>{
+    const state=i<si?'done':i===si?'active':'upcoming';
+    const conn=i<totalSets-1?`<div class="cc-prog-conn${i<si?' done':''}"></div>`:'';
+    return`<div class="cc-prog-step"><div class="cc-prog-dot ${state}">${i+1}</div><span class="cc-prog-setlbl">${en?'SET':'СЕТ'}</span><span class="cc-prog-pct">${pcts[i]||''}%</span></div>${conn}`;
+  }).join('');
+  const bpm=_wo.lastBpm||'—';
+  const cal=_ccCalories()||'—';
+  const tut=_wo.tut||0;
+  const ipt=_ccIntensity()||78;
+  return`<div class="cc-root">
+<div class="cc-nav">
+  <button class="cc-nav-back" onclick="closeWorkout()">&#8592;</button>
+  <div class="cc-nav-logo"><div class="cc-nav-apex">APEX</div><div class="cc-nav-sub">AI COACH</div></div>
+  <button class="cc-nav-save">&#9734; ${en?'Save':'&#1047;&#1072;&#1087;&#1072;&#1079;&#1080;'}</button>
+</div>
+<div class="cc-hero">
+  <div class="cc-ex-hdr">
+    <div class="cc-ex-name-bg">${meta.nameBG}</div>
+    <div class="cc-ex-name-en">${meta.nameEN}</div>
+    <div class="cc-badge">&#9889; ${en?meta.difficulty.en:meta.difficulty.bg}</div>
+  </div>
+  <div class="cc-body-slot">
+    <img src="${meta.image}" class="cc-body-img" alt="${meta.nameEN}" draggable="false">
+  </div>
+  ${_ccCalloutsSvg(meta.callouts)}
+  ${_ccCalloutLabels(meta.callouts)}
+  <div class="cc-mpanel">
+    <div class="cc-mpanel-lbl">${en?'MUSCLE ACTIVITY':'&#1040;&#1050;&#1058;&#1048;&#1042;&#1053;&#1054;&#1057;&#1058; &#1053;&#1040; &#1052;&#1059;&#1057;&#1050;&#1059;&#1051;&#1048;&#1058;&#1045;'}</div>
+    ${mrows}
+    <div class="cc-ring-wrap">${_ccRing(meta.activation)}<div class="cc-ring-sublbl">${en?'MUSCLE\nACTIVATION':'&#1052;&#1059;&#1057;&#1050;&#1059;&#1051;&#1053;&#1040;\n&#1040;&#1050;&#1058;&#1048;&#1042;&#1040;&#1062;&#1048;&#1071;'}</div></div>
+  </div>
+</div>
+<div class="cc-info-row">
+  <div class="cc-panel">
+    <span class="cc-plbl">${en?'TECHNIQUE':'&#1058;&#1045;&#1061;&#1053;&#1048;&#1050;&#1040;'}</span>
+    ${tech}
+  </div>
+  <div class="cc-panel">
+    <span class="cc-plbl">${en?'SETS &amp; REPS':'&#1057;&#1045;&#1056;&#1048;&#1048; &#1048; &#1055;&#1054;&#1042;&#1058;&#1054;&#1056;&#1045;&#1053;&#1048;&#1071;'}</span>
+    <div class="cc-sets-nums">
+      <div class="cc-sets-col"><span class="cc-sets-num">${totalSets}</span><span class="cc-sets-sub">${en?'SETS':'&#1057;&#1045;&#1056;&#1048;&#1048;'}</span></div>
+      <div class="cc-sets-col"><span class="cc-sets-num">${reps}</span><span class="cc-sets-sub">${en?'REPS':'&#1055;&#1054;&#1042;&#1058;&#1054;&#1056;&#1045;&#1053;&#1048;&#1071;'}</span></div>
+    </div>
+    <div class="cc-rest-row">
+      <span class="cc-rest-lbl">${en?'REST':'&#1055;&#1054;&#1063;&#1048;&#1042;&#1050;&#1040;'}</span>
+      <span class="cc-rest-val">&#9711; ${en?meta.restEN:meta.rest}</span>
+    </div>
+  </div>
+  <div class="cc-panel cc-mmap">
+    <span class="cc-plbl">${en?'MUSCLE MAP':'&#1052;&#1059;&#1057;&#1050;&#1059;&#1051;&#1053;&#1040; &#1050;&#1040;&#1056;&#1058;&#1040;'}</span>
+    <div class="cc-mmap-bodies">${_ccBodySvg('front',meta.muscleMap.front)}${_ccBodySvg('back',meta.muscleMap.back)}</div>
+    <div class="cc-mmap-legend">
+      <div class="cc-mmap-leg-item"><span class="cc-mmap-ldot" style="background:var(--ccCyan)"></span>${en?'Primary load':'&#1054;&#1089;&#1085;&#1086;&#1074;&#1085;&#1086; &#1085;&#1072;&#1090;&#1086;&#1074;&#1072;&#1088;&#1074;&#1072;&#1085;&#1077;'}</div>
+      <div class="cc-mmap-leg-item"><span class="cc-mmap-ldot" style="background:var(--ccPurple)"></span>${en?'Secondary load':'&#1042;&#1090;&#1086;&#1088;&#1080;&#1095;&#1085;&#1086; &#1085;&#1072;&#1090;&#1086;&#1074;&#1072;&#1088;&#1074;&#1072;&#1085;&#1077;'}</div>
+    </div>
+  </div>
+</div>
+<div class="cc-tip-row">
+  <div class="cc-panel">
+    <div class="cc-tip-card">${_ccHex()}<div><div class="cc-tip-hdr">APEX COACH TIP</div><div class="cc-tip-txt">${en?meta.tip.en:meta.tip.bg}</div></div></div>
+  </div>
+  <div class="cc-panel">
+    <span class="cc-prog-lbl">${en?'WORKOUT PROGRESS':'&#1055;&#1056;&#1054;&#1043;&#1056;&#1045;&#1057; &#1042; &#1058;&#1056;&#1045;&#1053;&#1048;&#1056;&#1054;&#1042;&#1050;&#1040;&#1058;&#1040;'}</span>
+    <div class="cc-prog-track">${dots}</div>
+    <div style="margin-top:14px;"><button class="wo-done-btn" style="margin:0;width:100%;" onclick="_woDone()">&#10003; ${en?'Done':'&#1043;&#1086;&#1090;&#1086;&#1074;&#1086;'}</button></div>
+  </div>
+</div>
+<div class="cc-metrics">
+  <div class="cc-metric">
+    <span class="cc-metric-lbl">${en?'PULSE':'&#1055;&#1059;&#1051;&#1057;'}</span>
+    <div class="cc-metric-val"><span class="cc-metric-num">${bpm}</span>${typeof bpm==='number'?'<span class="cc-metric-unit">BPM</span>':''}</div>
+    ${_ccWave()}
+  </div>
+  <div class="cc-metric">
+    <span class="cc-metric-lbl">${en?'CALORIES':'&#1050;&#1040;&#1051;&#1054;&#1056;&#1048;&#1048;'}</span>
+    <div class="cc-metric-val"><span class="cc-metric-num">${cal}</span>${typeof cal==='number'?'<span class="cc-metric-unit">kcal</span>':''}</div>
+  </div>
+  <div class="cc-metric">
+    <span class="cc-metric-lbl">${en?'TUT':'&#1053;&#1040;&#1055;&#1056;&#1045;&#1046;&#1045;&#1053;&#1048;&#1045;'}</span>
+    <div class="cc-metric-val"><span class="cc-metric-num">${tut||'—'}</span>${tut?'<span class="cc-metric-unit">&#1089;&#1077;&#1082;</span>':''}</div>
+  </div>
+  <div class="cc-metric">
+    <span class="cc-metric-lbl">${en?'INTENSITY':'&#1048;&#1053;&#1058;&#1045;&#1053;&#1047;&#1048;&#1042;&#1053;&#1054;&#1057;&#1058;'}</span>
+    <div class="cc-metric-val"><span class="cc-metric-num">${ipt}</span><span class="cc-metric-unit">%</span></div>
+    <div class="cc-metric-bar"><div class="cc-metric-bar-fill" style="width:${ipt}%"></div></div>
+  </div>
+</div>
+<div class="cc-footer">${en?'TRAIN SMART. PROGRESS EVERY DAY.':'&#1058;&#1056;&#1045;&#1053;&#1048;&#1056;&#1040;&#1049; &#1059;&#1052;&#1053;&#1054;. &#1055;&#1056;&#1054;&#1043;&#1056;&#1045;&#1057;&#1048;&#1056;&#1040;&#1049; &#1042;&#1057;&#1045;&#1050;&#1048; &#1044;&#1045;&#1053;.'}</div>
+</div>`;
+}
+
 // Task 1 — exercise card
 function _woRenderEx(b){
   const ex=_wo.exs[_wo.ei];
   const reps=Math.max(1,ex.baseReps+ex.repDelta);
+  const key=_ccKey(ex.name);
+  const meta=key?CC_META[key]:null;
+  if(meta){
+    document.getElementById('workout-overlay').classList.add('cc-active');
+    _wo.setStartTs=Date.now();
+    b.innerHTML=_ccCard(ex,meta,reps,_wo.si,ex.sets);
+    return;
+  }
+  // Legacy fallback for exercises not yet in CC_META
+  _ccRestoreLayout();
   const svg=_woSvg(ex.name);
-  const meta=_woMeta(ex.name);
-  const cardHtml=svg&&meta
-    ?`<div class="wo-ex-card" style="--card-accent:${meta.color};--card-glow:${meta.glow}"><div class="wo-muscle-label">${lang==='en'?meta.muscleEn:meta.muscle}</div><div class="wo-svg-wrap">${svg}</div></div>`
+  const wmeta=_woMeta(ex.name);
+  const cardHtml=svg&&wmeta
+    ?`<div class="wo-ex-card" style="--card-accent:${wmeta.color};--card-glow:${wmeta.glow}"><div class="wo-muscle-label">${lang==='en'?wmeta.muscleEn:wmeta.muscle}</div><div class="wo-svg-wrap">${svg}</div></div>`
     :svg?`<div class="wo-svg-wrap">${svg}</div>`:'';
   b.innerHTML=`
     <div class="wo-ex-name">${ex.name}</div>
@@ -2121,14 +2500,18 @@ function _woRenderEx(b){
     <div class="wo-set-lbl">${lang==='en'?`Set ${_wo.si+1} of ${ex.sets}`:`Сет ${_wo.si+1} от ${ex.sets}`}</div>
     <div class="wo-reps">${reps}</div>
     <div class="wo-reps-sub">${lang==='en'?'reps':'повторения'}</div>
-    <button class="wo-done-btn" onclick="_woDone()">✓ &nbsp;${lang==='en'?'Done':'Готово'}</button>
-    <button class="wo-hr-btn" onclick="_woStartHr()">📏 ${lang==='en'?'Heart Rate':'Пулс ръчно'}</button>`;
+    <button class="wo-done-btn" onclick="_woDone()">&#10003; &nbsp;${lang==='en'?'Done':'Готово'}</button>
+    <button class="wo-hr-btn" onclick="_woStartHr()">&#128207; ${lang==='en'?'Heart Rate':'Пулс ръчно'}</button>`;
 }
 
-function _woDone(){_wo.phase='fb';_woSave();_woRender();}
+function _woDone(){
+  if(_wo.setStartTs){_wo.tut=(_wo.tut||0)+Math.round((Date.now()-_wo.setStartTs)/1000);_wo.setStartTs=null;}
+  _wo.phase='fb';_woSave();_woRender();
+}
 
 // Task 3 — feedback + rep adaptation
 function _woRenderFb(b){
+  _ccRestoreLayout();
   const ex=_wo.exs[_wo.ei];
   const reps=Math.max(1,ex.baseReps+ex.repDelta);
   b.innerHTML=`
@@ -2170,6 +2553,7 @@ function _woFb(fb){
 
 // Task 2 — smart rest timer
 function _woRenderRest(b){
+  _ccRestoreLayout();
   let s=_wo._rs;
   const total=s;
   b.innerHTML=`
@@ -2199,6 +2583,7 @@ function _woSkip(){
 
 // Done screen
 function _woRenderDone(b){
+  _ccRestoreLayout();
   _woLogSave();
   const total=_wo.exs.reduce((a,e)=>a+e.sets,0);
   const dur=_wo.startTs?Math.round((Date.now()-_wo.startTs)/60000):0;
@@ -2223,6 +2608,7 @@ function _woRenderDone(b){
 let _recState={feel:null,energy:0,motivation:0,note:''};
 
 function _woRenderRecovery(b){
+  _ccRestoreLayout();
   _recState={feel:null,energy:0,motivation:0,note:''};
   const en=lang==='en';
   const diffOpts=[
@@ -2300,6 +2686,7 @@ function _woStartHr(){
 }
 
 function _woRenderHr(b){
+  _ccRestoreLayout();
   b.innerHTML=`
     <div class="wo-hr">
       <div class="wo-hr-title">📏 ${lang==='en'?'Heart Rate Measurement':'Измерване на пулса'}</div>
