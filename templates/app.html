@@ -2582,6 +2582,8 @@ function updateGoalBar(){
 window.onload=async()=>{
   configurePaywall();
   await checkAccess();
+  _memInit();
+  _memValidate();
   // Sync language UI with the choice carried over from landing (or saved earlier)
   document.getElementById('langBtn').innerText=lang==='bg'?'EN':'BG';
   document.documentElement.lang=lang;
@@ -3442,6 +3444,191 @@ async function submitFeedback(){
     submitBtn.disabled=false;
     toast(T[lang].fbErrorSend);
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// APEX MEMORY SERVICES — SPRINT 1: FOUNDATION
+// Implements COACHING_MEMORY_ARCHITECTURE.md storage layer (L1–L4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function _memAdaptiveDefault(){
+  return{
+    sessionDuration:{preferredMinutes:null,avgShortSessionPerf:null,avgLongSessionPerf:null,observationCount:0,lastUpdated:null},
+    trainingTime:{preferredHour:null,avgPerfByTimeBlock:{morning:null,afternoon:null,evening:null},observationCount:0,lastUpdated:null},
+    weeklyAdherence:{byDay:{0:{scheduled:0,completed:0},1:{scheduled:0,completed:0},2:{scheduled:0,completed:0},3:{scheduled:0,completed:0},4:{scheduled:0,completed:0},5:{scheduled:0,completed:0},6:{scheduled:0,completed:0}},strongDays:[],weakDays:[],lastUpdated:null},
+    recoverySensitivity:{energyDropOnHighStress:null,energyDropOnPoorSleep:null,recoveryTimeAfterHard:null,baseline:null,observationCount:0,lastUpdated:null},
+    exerciseResponse:{highPerformance:[],avoidance:[],recentSkips:[],lastUpdated:null},
+    coachingResponse:{overrideCount:0,overrideOutcomes:[],conservativeOutcomes:[],autonomyScore:null,lastUpdated:null},
+    injuryHistory:[],
+    progressRate:{avgWeightIncrement:null,avgRepIncrement:null,plateauLength:null,respondsToBetter:null,observationCount:0,lastUpdated:null}
+  };
+}
+
+function _memInit(){
+  try{
+    if(!localStorage.getItem('apexAdaptiveMemory')){
+      localStorage.setItem('apexAdaptiveMemory',JSON.stringify(_memAdaptiveDefault()));
+    }
+    if(!localStorage.getItem('apexCoachingInsights')){
+      localStorage.setItem('apexCoachingInsights',JSON.stringify({insights:[],archive:[]}));
+    }
+  }catch(e){console.warn('[mem] init failed:',e);}
+}
+
+// ── L1: PERMANENT MEMORY ─────────────────────────────────────────────────────
+
+function _memGetProfile(){try{return JSON.parse(localStorage.getItem('apexProfile')||'null');}catch(e){return null;}}
+function _memProfileComplete(){const p=_memGetProfile();return!!(p&&p.weight&&p.height&&p.age&&p.goal);}
+function _memGetGoal(){const p=_memGetProfile();return p?p.goal||null:null;}
+function _memGetAssessmentLevel(){const p=_memGetProfile();if(!p)return null;return p.assessmentLevel||p.level||null;}
+
+// ── L2: ADAPTIVE MEMORY ──────────────────────────────────────────────────────
+
+function _memGetAdaptive(){
+  try{
+    const raw=localStorage.getItem('apexAdaptiveMemory');
+    if(!raw)return _memAdaptiveDefault();
+    return JSON.parse(raw);
+  }catch(e){return _memAdaptiveDefault();}
+}
+
+function _memSaveAdaptive(obj){
+  try{localStorage.setItem('apexAdaptiveMemory',JSON.stringify(obj));}catch(e){console.warn('[mem] adaptive save failed:',e);}
+}
+
+function _memUpdateAdaptiveField(path,value){
+  const am=_memGetAdaptive();
+  const keys=path.split('.');
+  let cursor=am;
+  for(let i=0;i<keys.length-1;i++){
+    if(cursor[keys[i]]===undefined)cursor[keys[i]]={};
+    cursor=cursor[keys[i]];
+  }
+  cursor[keys[keys.length-1]]=value;
+  _memSaveAdaptive(am);
+}
+
+// ── L3: SESSION MEMORY ───────────────────────────────────────────────────────
+
+function _memGetSessions(n){
+  try{
+    const log=JSON.parse(localStorage.getItem('apexWorkoutLog')||'[]');
+    if(!Array.isArray(log))return[];
+    return n?log.slice(-n).reverse():log.slice().reverse();
+  }catch(e){return[];}
+}
+
+function _memGetCoachingWindow(){
+  try{
+    const log=JSON.parse(localStorage.getItem('apexWorkoutLog')||'[]');
+    if(!Array.isArray(log)||!log.length)return[];
+    const now=Math.floor(Date.now()/1000);
+    const last30days=log.filter(s=>now-s.ts<=30*86400);
+    const last12=log.slice(-12);
+    const pool=last30days.length>=last12.length?last30days:last12;
+    return pool.slice().reverse();
+  }catch(e){return[];}
+}
+
+function _memDaysSinceLastSession(){
+  try{
+    const log=JSON.parse(localStorage.getItem('apexWorkoutLog')||'[]');
+    if(!Array.isArray(log)||!log.length)return null;
+    return Math.floor((Date.now()/1000-log[log.length-1].ts)/86400);
+  }catch(e){return null;}
+}
+
+function _memGetRecoverySignals(){
+  const sessions=_memGetCoachingWindow();
+  const withRec=sessions.filter(s=>s.rec&&typeof s.rec.energy==='number');
+
+  let avgEnergy=null,energyTrend=null;
+  if(withRec.length>=2){
+    const last3=withRec.slice(0,Math.min(3,withRec.length));
+    avgEnergy=parseFloat((last3.reduce((s,x)=>s+x.rec.energy,0)/last3.length).toFixed(1));
+    if(withRec.length>=4){
+      const prior=withRec.slice(3,6);
+      const priorAvg=prior.reduce((s,x)=>s+x.rec.energy,0)/prior.length;
+      const delta=avgEnergy-priorAvg;
+      energyTrend=delta>0.3?'up':delta<-0.3?'down':'flat';
+    }
+  }
+
+  const withMot=sessions.filter(s=>s.rec&&typeof s.rec.motivation==='number');
+  const avgMotivation=withMot.length>=2
+    ?parseFloat((withMot.slice(0,3).reduce((s,x)=>s+x.rec.motivation,0)/Math.min(3,withMot.length)).toFixed(1))
+    :null;
+
+  const withFeel=sessions.filter(s=>s.rec&&s.rec.feel);
+  let recentDifficulty=null;
+  if(withFeel.length>=1){
+    const cnt={};
+    withFeel.slice(0,3).forEach(s=>{cnt[s.rec.feel]=(cnt[s.rec.feel]||0)+1;});
+    recentDifficulty=Object.entries(cnt).sort((a,b)=>b[1]-a[1])[0][0];
+  }
+
+  const PAIN_BG=/болка|наранен|дискомфорт|коляно|рамо|гръб|наранявам|боли/i;
+  const PAIN_EN=/pain|injur|hurt|discomfort|knee|shoulder|back|sore/i;
+  const painDetected=sessions.slice(0,3).some(s=>
+    s.rec&&s.rec.note&&(PAIN_BG.test(s.rec.note)||PAIN_EN.test(s.rec.note))
+  );
+
+  return{
+    avgEnergy,
+    energyTrend,
+    avgMotivation,
+    recentDifficulty,
+    painDetected,
+    lastSessionDate:sessions.length?sessions[0].date:null
+  };
+}
+
+// ── L4: COACHING INSIGHTS ────────────────────────────────────────────────────
+
+function _memGetInsights(){
+  try{
+    const raw=localStorage.getItem('apexCoachingInsights');
+    if(!raw)return{insights:[],archive:[]};
+    return JSON.parse(raw);
+  }catch(e){return{insights:[],archive:[]};}
+}
+
+function _memSaveInsights(obj){
+  try{localStorage.setItem('apexCoachingInsights',JSON.stringify(obj));}catch(e){console.warn('[mem] insights save failed:',e);}
+}
+
+function _memGetActiveInsights(){
+  return _memGetInsights().insights.filter(i=>i.status==='active'&&i.influencesDecisions);
+}
+
+function _memGetInsightByType(type){
+  return _memGetInsights().insights.find(i=>i.type===type&&i.status!=='expired')||null;
+}
+
+// ── INTEGRITY GUARD ──────────────────────────────────────────────────────────
+
+function _memValidate(){
+  const errors=[];
+  const REQUIRED=['sessionDuration','trainingTime','weeklyAdherence','recoverySensitivity','exerciseResponse','coachingResponse','injuryHistory','progressRate'];
+  try{
+    const am=_memGetAdaptive();
+    REQUIRED.forEach(k=>{if(!(k in am))errors.push('apexAdaptiveMemory missing: '+k);});
+  }catch(e){errors.push('apexAdaptiveMemory parse error');}
+  try{
+    const ins=_memGetInsights();
+    if(!Array.isArray(ins.insights))errors.push('apexCoachingInsights.insights not array');
+    if(!Array.isArray(ins.archive))errors.push('apexCoachingInsights.archive not array');
+  }catch(e){errors.push('apexCoachingInsights parse error');}
+  if(errors.length){
+    console.warn('[mem] validate errors:',errors);
+    try{
+      const am=_memGetAdaptive();
+      const def=_memAdaptiveDefault();
+      REQUIRED.forEach(k=>{if(!(k in am))am[k]=def[k];});
+      _memSaveAdaptive(am);
+    }catch(e){}
+  }
+  return{valid:errors.length===0,errors};
 }
 </script>
 </body>
