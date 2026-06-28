@@ -615,6 +615,413 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 
 @media(max-height:700px){.cc-hero{min-height:260px;}.cc-sets-num{font-size:24px;}}
 @media(max-width:360px){.cc-info-row{grid-template-columns:1fr 1fr;}.cc-mmap-bodies{display:none;}}
+
+/* ══════════════════════════════════════════════════════════════════════
+   PHYSIOLOGY CORE — Phase 1 Skeleton
+   Spec: Bio-OS v1.0 / Rendering Engine Spec v1.0
+   Layer order (bottom→top): Ambient → Nucleus → Flow → Lattice → Cortex
+                              → Membrane → Glow
+   GPU budget: 4 promoted layers (breath-group, flow-rotate, glow, core-div)
+   SVG filter budget: 4 filters / 6 primitives
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Stage — containing block, centers Core in the page flow */
+#phys-core-stage {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px 16px 6px;
+  width: 100%;
+  max-width: 920px;
+  margin: 0 auto;
+}
+
+/* Core root — coordinate origin, gravity offset, ALL CSS variables.
+   Nothing in the renderer is hardcoded. Every visual property is driven
+   from here. JavaScript touches only this element's CSS variables on
+   state changes. The renderer reads passively. */
+#phys-core {
+  /* ── Structural ──────────────────────────────── */
+  --core-size: 200px;
+  --gravity-offset-x: 0px;
+  --gravity-offset-y: 2px;         /* biological: center of mass has gravity */
+
+  /* ── Pressure & Elasticity ───────────────────── */
+  --core-pressure: 0.95;
+  --core-elasticity: 1.00;
+  --creep-accumulation: 0.00;
+
+  /* ── Breath Clock (Phase 1 placeholder — Peak values) ── */
+  --breath-period: 7340ms;
+  --breath-amplitude: 0.015;       /* 1.5% scale — barely visible at Peak */
+  --breath-regularity: 1.0;
+
+  /* ── Pulse Clock — inactive in Phase 1 (Phase 2) ── */
+  --pulse-period: 950ms;
+  --pulse-amplitude: 0.0;
+
+  /* ── Cellular Clock — inactive in Phase 1 (Phase 2) ── */
+  --cellular-period: 180ms;
+  --cellular-amplitude: 0.0;
+  --cellular-count: 0;
+
+  /* ── Flow Field ───────────────────────────────── */
+  --flow-period: 74800ms;          /* non-round: avoids perceived periodicity */
+  --flow-coherence: 1.0;
+  --flow-opacity: 0.80;
+
+  /* ── Phase Coherence — all layers in perfect sync at Peak ── */
+  --phase-coherence: 1.0;
+  --phase-offset-cortex: 0ms;
+  --phase-offset-lattice: 0ms;
+  --phase-offset-flow: 0ms;
+  --phase-offset-nucleus: 0ms;
+
+  /* ── Membrane Surface ─────────────────────────── */
+  --membrane-tension: 0.98;
+  --membrane-stroke-width: 1.1;
+  --membrane-stroke-opacity: 0.30;  /* behavioral: reinforced in Pain, soft in Recovery */
+
+  /* ── Cortex ───────────────────────────────────── */
+  --cortex-opacity: 0.50;           /* behavioral: thick in Pain, thin in Training */
+
+  /* ── Glow Emission ────────────────────────────── */
+  --glow-intensity: 0.28;
+
+  /* ── Inertia / Damping ────────────────────────── */
+  --inertia-coefficient: 0.75;
+  --damping-coefficient: 1.00;
+
+  /* ── Lattice ──────────────────────────────────── */
+  --lattice-opacity: 0.45;
+  --lattice-fracture-opacity: 0.0;
+  --lattice-stress-opacity: 0.0;
+
+  /* ── Nucleus ──────────────────────────────────── */
+  --nucleus-luminosity: 0.90;
+  --nucleus-offset-x: 0px;
+  --nucleus-offset-y: 0px;
+
+  /* ── Color Confirmation (Peak state palette) ─────
+     Color never leads — it confirms what morphology
+     and motion already communicate.               */
+  --color-nucleus-a: rgba(215,250,255,0.95);
+  --color-nucleus-b: rgba(56,224,255,0.90);
+  --color-nucleus-c: rgba(28,110,220,0.76);
+  --color-nucleus-d: rgba(14,38,118,0.60);
+  --color-flow-a: rgba(56,200,255,0.17);
+  --color-flow-b: rgba(30,150,255,0.08);
+  --color-cortex-edge: rgba(56,224,255,0.16);
+  --color-membrane-fill: rgba(56,224,255,0.04);
+  --color-membrane-stroke: rgba(56,224,255,0.30);
+  --color-membrane-inner: rgba(180,240,255,0.11);
+  --color-glow-a: rgba(56,224,255,0.40);
+  --color-glow-b: rgba(40,160,255,0.13);
+  --color-lattice-a: rgba(56,224,255,0.32);
+  --color-lattice-b: rgba(30,150,220,0.08);
+  --color-ambient-a: rgba(20,52,120,0.30);
+  --color-ambient-b: rgba(10,24,68,0.13);
+  --color-temperature: 0;          /* 0=cool/Peak, 1=warm/Pain */
+
+  /* ── Layout ───────────────────────────────────── */
+  position: relative;
+  width: var(--core-size);
+  height: var(--core-size);
+  /* Gravity bias: organism never perfectly centered — Law 5 */
+  transform: translate(var(--gravity-offset-x), var(--gravity-offset-y));
+  will-change: transform;          /* own compositor layer */
+  flex-shrink: 0;
+}
+
+/* SVG fills the Core div exactly. viewBox handles all internal geometry. */
+#phys-core-svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;               /* allow glow to bleed beyond Core boundary */
+}
+
+/* ── ANIMATION: Breath Clock ──────────────────────────────────────────
+   Asymmetric biological breath: peaks at 22% of cycle, organism rests
+   for the remaining 78%. Inspiration is faster than expiration.
+   7340ms period (non-round) — conscious brain cannot lock onto it.
+   GPU: compositor thread only — scale on promoted layer.                  */
+@keyframes pc-breath {
+  0%   { transform: scale(1.000); }
+  22%  { transform: scale(calc(1 + var(--breath-amplitude))); }
+  100% { transform: scale(1.000); }
+}
+
+#phys-breath-group {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pc-breath var(--breath-period)
+             cubic-bezier(0.22, 0.61, 0.36, 1) infinite;
+  will-change: transform;
+}
+
+/* ── ANIMATION: Macro metabolic drift ─────────────────────────────────
+   Outer slow oscillation layered below breath: 23700ms period.
+   LCM with breath (7340ms) ≈ 870 000ms — no repeat for 14+ minutes.
+   Downward bias on Y at every keyframe = gravitational mass. Organism
+   feels heavy, suspended by internal forces, not placed by CSS.
+   GPU: own compositor layer for parallel compositing.                    */
+@keyframes pc-meta-drift {
+  0%   { transform: translate(0.0px, 0.0px); }
+  27%  { transform: translate(0.5px, 0.7px); }
+  54%  { transform: translate(-0.3px, 1.0px); }
+  81%  { transform: translate(0.4px, 0.4px); }
+  100% { transform: translate(0.0px, 0.0px); }
+}
+
+#phys-meta-drift {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pc-meta-drift 23700ms ease-in-out infinite;
+  will-change: transform;
+}
+
+/* ── ANIMATION: Nucleus micro-drift ───────────────────────────────────
+   Nucleus suspended in internal biological fluid: 17230ms period.
+   Sub-pixel amplitude — felt, not seen. Downward bias = nucleus mass.
+   Period is incommensurable with breath + drift — three-body aperiodicity.
+   No GPU promotion: sub-pixel on small element, no visible jank.         */
+@keyframes pc-nucleus-drift {
+  0%   { transform: translate(0.0px, 0.0px); }
+  31%  { transform: translate(0.3px, 0.4px); }
+  63%  { transform: translate(-0.2px, 0.6px); }
+  88%  { transform: translate(0.3px, 0.2px); }
+  100% { transform: translate(0.0px, 0.0px); }
+}
+
+#pc-nucleus-drift-wrap {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pc-nucleus-drift 17230ms ease-in-out infinite;
+}
+
+/* ── ANIMATION: Flow Field rotation ───────────────────────────────────
+   74800ms period (not 75000 — non-round prevents perceived drift lock).
+   The rotating gradient phase never aligns with breath expansion.
+   GPU: single rotate on promoted layer.                                   */
+@keyframes pc-flow-rotate {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+#pc-flow-rotate-group {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pc-flow-rotate var(--flow-period) linear infinite;
+  will-change: transform;
+}
+
+/* ── ANIMATION: Glow emission ─────────────────────────────────────────
+   Peaks at 28% of cycle — 6% after breath peak (22%). Biological
+   capacitance: organism breathes first, then radiates. The lag between
+   expansion and glow emission is what makes this feel alive, not looped.
+   GPU: opacity on promoted screen-blend layer.                           */
+@keyframes pc-glow-pulse {
+  0%   { opacity: calc(var(--glow-intensity) * 0.72); }
+  28%  { opacity: var(--glow-intensity); }
+  100% { opacity: calc(var(--glow-intensity) * 0.72); }
+}
+
+#pc-glow-layer {
+  animation: pc-glow-pulse var(--breath-period)
+             cubic-bezier(0.22, 0.61, 0.36, 1) infinite;
+  will-change: opacity;
+  mix-blend-mode: screen;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   LAW OF INTENT — BEHAVIORAL WIRE
+   These rules bridge CSS variables → SVG elements. State classes redefine
+   the variables; these rules apply them to the correct rendering targets.
+   Nothing is hardcoded here. All values come from behavioral state classes.
+   Transitions let the organism drift to its new posture — not snap.
+   ═════════════════════════════════════════════════════════════════════ */
+
+/* Nucleus center of gravity: shifts to resting posture per state */
+#pc-nucleus-layer {
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: translate(var(--nucleus-offset-x), var(--nucleus-offset-y));
+  transition: transform 2400ms cubic-bezier(0.45, 0, 0.55, 1);
+}
+
+/* Organism posture: overall body lean per state */
+#phys-core { transition: transform 2400ms cubic-bezier(0.45, 0, 0.55, 1); }
+
+/* Cortex depth: thickness of biological damping layer */
+#pc-cortex-layer {
+  opacity: var(--cortex-opacity, 0.50);
+  transition: opacity 2400ms ease-in-out;
+}
+
+/* Lattice structural integrity */
+#pc-lattice-layer {
+  opacity: var(--lattice-opacity);
+  transition: opacity 2400ms ease-in-out;
+}
+
+/* Membrane surface tension: reinforced in defensive states */
+#pc-membrane-body {
+  stroke: rgba(56,224,255,var(--membrane-stroke-opacity,0.30));
+  transition: stroke 2400ms ease-in-out;
+}
+
+/* Flow circulation coherence: reflects metabolic activity */
+#pc-flow-rotate-group > ellipse {
+  opacity: var(--flow-opacity);
+  transition: opacity 2400ms ease-in-out;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   LAW OF INTENT — BEHAVIORAL STATES
+   Each state is a complete behavioral posture. Five axes per state:
+     1. Nucleus position  — center of gravity
+     2. Body lean         — directional bias / posture
+     3. Breath profile    — metabolic cost of each breath
+     4. Circulation       — speed and coherence of internal flow
+     5. Emission profile  — what escapes vs. what is contained
+   The organism must communicate its condition through posture alone.
+   ═════════════════════════════════════════════════════════════════════ */
+
+/* ── PEAK — Restrained ─────────────────────────────────────────────────
+   Not relaxed. At maximum capacity, under full voluntary control.
+   Nucleus dead center — this is precision by discipline, not accident.
+   Gravity barely acknowledged. Movement is minimal by choice, not fatigue.
+   Nothing is escaping. The restraint is the message.                      */
+#phys-core.state-peak {
+  --nucleus-offset-x: 0px;
+  --nucleus-offset-y: 0px;
+  --gravity-offset-x: 0px;
+  --gravity-offset-y: 1px;
+  --breath-amplitude: 0.015;
+  --breath-period: 7340ms;
+  --flow-period: 74800ms;
+  --flow-opacity: 0.80;
+  --glow-intensity: 0.28;
+  --cortex-opacity: 0.50;
+  --lattice-opacity: 0.45;
+  --membrane-stroke-opacity: 0.30;
+}
+
+/* ── RECOVERY — Regenerative ───────────────────────────────────────────
+   Not slow. Actively rebuilding. Nucleus has risen — mass lifts as cells
+   repair. Body floats upward: buoyant, drawing energy in from above.
+   Deeper, slower breath: taking in resources deliberately.
+   Circulation turns inward — nutrition, not performance.
+   Cortex thickens: protective wrap while reconstruction occurs.           */
+#phys-core.state-recovery {
+  --nucleus-offset-x: 0px;
+  --nucleus-offset-y: -6px;
+  --gravity-offset-x: 0px;
+  --gravity-offset-y: -1px;
+  --breath-amplitude: 0.024;
+  --breath-period: 9200ms;
+  --flow-period: 98000ms;
+  --flow-opacity: 0.58;
+  --glow-intensity: 0.38;
+  --cortex-opacity: 0.62;
+  --lattice-opacity: 0.34;
+  --membrane-stroke-opacity: 0.24;
+}
+
+/* ── FATIGUE — Heavy ───────────────────────────────────────────────────
+   Not weak. Burdened. Accumulated load has pressed the organism downward.
+   Nucleus sags: the center of mass has dropped under its own weight.
+   Body sinks into gravity — not collapsed, but unable to resist.
+   Breath is shallow: each breath costs more than it should.
+   Circulation depleted. Lattice lines dimmed under stress load.           */
+#phys-core.state-fatigue {
+  --nucleus-offset-x: 0px;
+  --nucleus-offset-y: 10px;
+  --gravity-offset-x: 0px;
+  --gravity-offset-y: 7px;
+  --breath-amplitude: 0.010;
+  --breath-period: 8600ms;
+  --flow-period: 122000ms;
+  --flow-opacity: 0.36;
+  --glow-intensity: 0.16;
+  --cortex-opacity: 0.36;
+  --lattice-opacity: 0.26;
+  --membrane-stroke-opacity: 0.20;
+}
+
+/* ── PAIN — Defensive ──────────────────────────────────────────────────
+   Not unstable. Protecting the core. Nucleus has retreated — displaced
+   inward and inferior, away from the source of threat.
+   Whole body contracts asymmetrically toward the defended position.
+   Movement nearly stops: organism is bracing, not collapsing.
+   Cortex maximally thickened: defensive wall. Membrane reinforced.
+   Circulation in near-shutdown. Glow extinguished — nothing escaping.    */
+#phys-core.state-pain {
+  --nucleus-offset-x: -5px;
+  --nucleus-offset-y: 5px;
+  --gravity-offset-x: -2px;
+  --gravity-offset-y: 3px;
+  --breath-amplitude: 0.006;
+  --breath-period: 10800ms;
+  --flow-period: 148000ms;
+  --flow-opacity: 0.20;
+  --glow-intensity: 0.10;
+  --cortex-opacity: 0.74;
+  --lattice-opacity: 0.16;
+  --membrane-stroke-opacity: 0.50;
+}
+
+/* ── TRAINING — Purposeful ─────────────────────────────────────────────
+   Not busy. Directionally committed. Nucleus risen and forward — leading.
+   Body lifts and leans into the work: forward lean is the directional bias.
+   Fast, deep breath: working capacity fully engaged.
+   Circulation at maximum: active metabolism doing what it was built for.
+   Glow visible: energy consciously expended toward a goal.               */
+#phys-core.state-training {
+  --nucleus-offset-x: 0px;
+  --nucleus-offset-y: -4px;
+  --gravity-offset-x: 1px;
+  --gravity-offset-y: -1px;
+  --breath-amplitude: 0.026;
+  --breath-period: 6400ms;
+  --flow-period: 46000ms;
+  --flow-opacity: 0.95;
+  --glow-intensity: 0.45;
+  --cortex-opacity: 0.42;
+  --lattice-opacity: 0.58;
+  --membrane-stroke-opacity: 0.38;
+}
+
+/* ── RESPONSIVE ────────────────────────────────────────────────────────
+   Core size only. All internal geometry is viewBox-relative — it scales
+   automatically with the CSS size. No geometry changes needed.            */
+@media (max-width: 400px) {
+  #phys-core { --core-size: 158px; }
+}
+@media (min-width: 600px) {
+  #phys-core { --core-size: 210px; }
+}
+@media (min-width: 900px) {
+  #phys-core { --core-size: 220px; }
+}
+
+/* Respect reduced motion: stop animations and behavioral transitions */
+@media (prefers-reduced-motion: reduce) {
+  #phys-breath-group,
+  #phys-meta-drift,
+  #pc-nucleus-drift-wrap,
+  #pc-nucleus-layer,
+  #pc-flow-rotate-group,
+  #pc-glow-layer,
+  #pc-cortex-layer,
+  #pc-lattice-layer,
+  #pc-membrane-body,
+  #phys-core {
+    animation: none;
+    transition: none;
+  }
+  #pc-flow-rotate-group > ellipse { transition: none; }
+}
 </style>
 </head>
 <body>
@@ -680,6 +1087,393 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
     </div>
   </div>
 </div>
+
+<!-- ════════════════════════════════════════════════════════════════════
+     PHYSIOLOGY CORE — Phase 1 Skeleton
+     Spec: Bio-OS v1.0 / Rendering Engine Spec v1.0
+     DOM budget: 28 visible nodes / 64 max
+     Filter budget: 4 filters / 6 filter primitives / 6 max
+     GPU layers: breath-group, flow-rotate, glow, core-div = 4 promoted
+     ════════════════════════════════════════════════════════════════════ -->
+<div id="phys-core-stage">
+  <div id="phys-core">
+    <svg id="phys-core-svg"
+         viewBox="0 0 300 300"
+         xmlns="http://www.w3.org/2000/svg"
+         preserveAspectRatio="xMidYMid meet"
+         role="img"
+         aria-label="APEX Physiology Core">
+
+      <defs>
+
+        <!-- ═══ FILTERS ═══════════════════════════════════════════════ -->
+
+        <!-- F1 — Membrane: biological surface texture via displacement.
+             Restricted region (x/y -15%, 130% size) bounds rasterization
+             to Core boundary + margin. Most expensive filter in the system.
+             scale="3" = Peak state: barely perceptible surface imperfection.
+             State machine will update scale via CSS custom property in Phase 3. -->
+        <filter id="pcf-membrane"
+                x="-15%" y="-15%" width="130%" height="130%"
+                color-interpolation-filters="sRGB">
+          <feTurbulence type="turbulence"
+                        baseFrequency="0.018 0.015"
+                        numOctaves="3"
+                        seed="42"
+                        result="noise"/>
+          <feDisplacementMap in="SourceGraphic" in2="noise"
+                             scale="3"
+                             xChannelSelector="R" yChannelSelector="G"/>
+        </filter>
+
+        <!-- F2 — Nucleus glow: bioluminescent deep core emission.
+             Large region needed: glow extends 150% beyond nucleus bounds. -->
+        <filter id="pcf-nucleus-glow"
+                x="-150%" y="-150%" width="400%" height="400%"
+                color-interpolation-filters="sRGB">
+          <feGaussianBlur stdDeviation="14"/>
+        </filter>
+
+        <!-- F3 — Cortex: biological damping blur between Lattice and Membrane.
+             High blur = effective damping = healthy tissue. -->
+        <filter id="pcf-cortex"
+                x="-30%" y="-30%" width="160%" height="160%"
+                color-interpolation-filters="sRGB">
+          <feGaussianBlur stdDeviation="9"/>
+        </filter>
+
+        <!-- F4 — Glow: outer luminosity emission. Large region for bleed. -->
+        <filter id="pcf-glow"
+                x="-55%" y="-55%" width="210%" height="210%"
+                color-interpolation-filters="sRGB">
+          <feGaussianBlur stdDeviation="24"/>
+        </filter>
+
+        <!-- ═══ GRADIENTS ═════════════════════════════════════════════ -->
+
+        <!-- G1 — Ambient: atmospheric depth behind the Core.
+             cy=60% shifts the density center below the geometric center —
+             creates gravitational shadow. Organism appears to press down
+             against invisible field. Not the organism — its gravity well. -->
+        <radialGradient id="pcg-ambient" cx="50%" cy="60%" r="52%">
+          <stop offset="0%"   stop-color="rgba(15,42,115,0.40)"/>
+          <stop offset="45%"  stop-color="rgba(8,20,65,0.20)"/>
+          <stop offset="100%" stop-color="rgba(3,8,25,0)"/>
+        </radialGradient>
+
+        <!-- G2 — Nucleus: compressed energy, not glowing orb.
+             Bright core occupies only inner 20% of radius — the rest is
+             dark containment zone. Hard transition at 22-40% = compression
+             wall. User subconsciously perceives enormous restrained force.
+             Like a neutron star: impossibly bright at center, then dark. -->
+        <radialGradient id="pcg-nucleus" cx="46%" cy="40%" r="56%">
+          <stop offset="0%"   stop-color="rgba(255,255,255,0.98)"/>
+          <stop offset="10%"  stop-color="rgba(190,245,255,0.95)"/>
+          <stop offset="20%"  stop-color="rgba(56,224,255,0.90)"/>
+          <stop offset="40%"  stop-color="rgba(20,80,200,0.82)"/>
+          <stop offset="65%"  stop-color="rgba(8,25,95,0.85)"/>
+          <stop offset="100%" stop-color="rgba(3,10,45,0.90)"/>
+        </radialGradient>
+
+        <!-- G3 — Flow base: offset radial for directional current impression.
+             Offset cx/cy creates the sense of uneven internal pressure. -->
+        <radialGradient id="pcg-flow-base" cx="60%" cy="42%" r="55%">
+          <stop offset="0%"   stop-color="rgba(56,200,255,0.17)"/>
+          <stop offset="50%"  stop-color="rgba(30,150,255,0.08)"/>
+          <stop offset="100%" stop-color="rgba(20,100,200,0)"/>
+        </radialGradient>
+
+        <!-- G4 — Flow current: highly off-center gradient in a rotating ellipse.
+             As the ellipse rotates, the bright spot travels in a circle around
+             the Core center — creating the vortex circulation visual.
+             This is the biological circulation mechanism, not decoration. -->
+        <radialGradient id="pcg-flow-current" cx="68%" cy="28%" r="50%">
+          <stop offset="0%"   stop-color="rgba(80,220,255,0.22)"/>
+          <stop offset="55%"  stop-color="rgba(40,180,255,0.06)"/>
+          <stop offset="100%" stop-color="rgba(20,120,200,0)"/>
+        </radialGradient>
+
+        <!-- G5 — Cortex: cool dark navy, distinct from the warm cyan flow field.
+             Luminosity contrast between flow (warm cyan) and cortex (dark navy)
+             creates clear optical plane separation — eye perceives depth.
+             Transparent center (don't obscure nucleus/flow), dark at edge. -->
+        <radialGradient id="pcg-cortex" cx="50%" cy="52%" r="52%">
+          <stop offset="0%"   stop-color="rgba(0,0,0,0)"/>
+          <stop offset="52%"  stop-color="rgba(8,28,110,0.09)"/>
+          <stop offset="80%"  stop-color="rgba(15,48,155,0.18)"/>
+          <stop offset="100%" stop-color="rgba(22,62,180,0.26)"/>
+        </radialGradient>
+
+        <!-- G6 — Membrane fill: glass-quality internal depth.
+             Nearly transparent. Membrane appearance comes from stroke + filter,
+             not fill. Offset gradient creates glass lens depth illusion. -->
+        <radialGradient id="pcg-membrane" cx="42%" cy="35%" r="65%">
+          <stop offset="0%"   stop-color="rgba(56,224,255,0.04)"/>
+          <stop offset="78%"  stop-color="rgba(30,140,240,0.02)"/>
+          <stop offset="100%" stop-color="rgba(56,224,255,0.09)"/>
+        </radialGradient>
+
+        <!-- G7 — Glow emission: luminosity from biological metabolism.
+             Organism radiates energy. At Peak: minimal (nothing is escaping).
+             Center-bright, fades to transparent. -->
+        <radialGradient id="pcg-glow" cx="50%" cy="44%" r="56%">
+          <stop offset="0%"   stop-color="rgba(56,224,255,0.40)"/>
+          <stop offset="44%"  stop-color="rgba(40,160,255,0.13)"/>
+          <stop offset="100%" stop-color="rgba(30,100,200,0)"/>
+        </radialGradient>
+
+        <!-- G8 — Lattice: structural lines, fades toward periphery. -->
+        <linearGradient id="pcg-lattice" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%"   stop-color="rgba(56,224,255,0.32)"/>
+          <stop offset="100%" stop-color="rgba(30,150,220,0.08)"/>
+        </linearGradient>
+
+        <!-- G9–G13: State ambient gradients — directional gravity field per state.
+             SVG gradient cx/cy/r cannot be driven by CSS custom properties,
+             so physCoreSetState() switches #pc-ambient's fill attribute directly.
+             The center point encodes where the organism's gravitational mass sits. -->
+
+        <!-- G9 — Ambient: PEAK — precise, minimal. Mass barely displaced. -->
+        <radialGradient id="pcg-ambient-peak" cx="50%" cy="60%" r="52%">
+          <stop offset="0%"   stop-color="rgba(15,42,115,0.40)"/>
+          <stop offset="45%"  stop-color="rgba(8,20,65,0.20)"/>
+          <stop offset="100%" stop-color="rgba(3,8,25,0)"/>
+        </radialGradient>
+
+        <!-- G10 — Ambient: RECOVERY — shadow above center. Buoyant. Rising. -->
+        <radialGradient id="pcg-ambient-recovery" cx="50%" cy="38%" r="52%">
+          <stop offset="0%"   stop-color="rgba(15,52,110,0.34)"/>
+          <stop offset="45%"  stop-color="rgba(8,28,60,0.15)"/>
+          <stop offset="100%" stop-color="rgba(3,8,25,0)"/>
+        </radialGradient>
+
+        <!-- G11 — Ambient: FATIGUE — heavy shadow well below center. Sinking. -->
+        <radialGradient id="pcg-ambient-fatigue" cx="50%" cy="74%" r="56%">
+          <stop offset="0%"   stop-color="rgba(10,28,85,0.50)"/>
+          <stop offset="42%"  stop-color="rgba(6,14,48,0.28)"/>
+          <stop offset="100%" stop-color="rgba(3,8,25,0)"/>
+        </radialGradient>
+
+        <!-- G12 — Ambient: PAIN — shadow toward lower-left. Asymmetric withdrawal. -->
+        <radialGradient id="pcg-ambient-pain" cx="40%" cy="66%" r="54%">
+          <stop offset="0%"   stop-color="rgba(10,25,80,0.46)"/>
+          <stop offset="40%"  stop-color="rgba(6,12,45,0.24)"/>
+          <stop offset="100%" stop-color="rgba(3,8,25,0)"/>
+        </radialGradient>
+
+        <!-- G13 — Ambient: TRAINING — shadow forward-lifted. Energy directed out. -->
+        <radialGradient id="pcg-ambient-training" cx="52%" cy="44%" r="50%">
+          <stop offset="0%"   stop-color="rgba(20,50,125,0.38)"/>
+          <stop offset="42%"  stop-color="rgba(10,25,65,0.17)"/>
+          <stop offset="100%" stop-color="rgba(3,8,25,0)"/>
+        </radialGradient>
+
+        <!-- ═══ CLIP ════════════════════════════════════════════════════
+             Core boundary. Slightly non-circular — biological imperfection.
+             rx=110, ry=109: 1px eccentricity, barely perceptible at rest.
+             A perfect circle would look digital. Biology is not perfectly circular. -->
+        <clipPath id="pcc-core">
+          <ellipse cx="150" cy="152" rx="110" ry="109"/>
+        </clipPath>
+
+      </defs>
+
+      <!-- ══════════════════════════════════════════════════════════════
+           LAYER 1 — AMBIENT FIELD
+           The biological environment. Not the organism. Its space.
+           Atmospheric depth. Near-static — repaints only on state change.
+           ══════════════════════════════════════════════════════════════ -->
+      <ellipse id="pc-ambient"
+               cx="150" cy="152" rx="148" ry="144"
+               fill="url(#pcg-ambient)"/>
+
+      <!-- ══════════════════════════════════════════════════════════════
+           LAYERS 2–7 — BIOLOGICAL BODY
+           All wrapped in the breath animation group.
+           transform-box: fill-box → transform-origin = geometric center (150,152).
+           Breathing is a scale transform on the entire biological body.
+           ══════════════════════════════════════════════════════════════ -->
+      <g id="phys-breath-group">
+
+        <!-- ── METABOLIC DRIFT WRAPPER ─────────────────────────────────
+             23700ms outer oscillation layered on breath (7340ms).
+             Three simultaneous periods: drift + breath + nucleus (17230ms).
+             LCM is enormous — organism never repeats visually.
+             Downward Y bias at every keyframe = gravitational mass.      -->
+        <g id="phys-meta-drift">
+
+        <!-- ── LAYER 2: NUCLEUS ────────────────────────────────────────
+             Biological center of mass. Energy source. Systemic heartbeat.
+             Position encodes load distribution (Phase 3: drift on fatigue/pain).
+             ────────────────────────────────────────────────────────────── -->
+        <g id="pc-nucleus-layer">
+
+          <!-- Nucleus suspension wrapper: 17230ms micro-drift.
+               Nucleus floats in internal fluid — sub-pixel gravity bias. -->
+          <g id="pc-nucleus-drift-wrap">
+
+          <!-- Nucleus aura: pressure containment field, not ambient glow.
+               r=36 (reduced), opacity=0.28 (reduced) — tight and dense.
+               Looks like energy being held back, not freely radiating.   -->
+          <circle id="pc-nucleus-aura"
+                  cx="150" cy="152" r="36"
+                  fill="url(#pcg-nucleus)"
+                  filter="url(#pcf-nucleus-glow)"
+                  opacity="0.28"/>
+
+          <!-- Nucleus body: compressed plasma core. Enormous force restrained. -->
+          <circle id="pc-nucleus-body"
+                  cx="150" cy="152" r="26"
+                  fill="url(#pcg-nucleus)"/>
+
+          <!-- Pressure lens flare: light escaping through a containment crack.
+               Smaller (7×5), brighter (0.55), harder (blur 2px) than before.
+               Not a soft glow — a hard bright point under containment stress. -->
+          <ellipse id="pc-nucleus-highlight"
+                   cx="145" cy="144" rx="7" ry="5"
+                   fill="rgba(240,255,255,0.55)"
+                   style="filter:blur(2px)"/>
+
+          </g><!-- /pc-nucleus-drift-wrap -->
+
+        </g><!-- /pc-nucleus-layer -->
+
+        <!-- ── LAYER 3: FLOW FIELD ─────────────────────────────────────
+             Internal metabolic circulation. Direction of biological energy.
+             Coherence of internal current = biological health metric.
+             ─────────────────────────────────────────────────────────────→ -->
+        <g id="pc-flow-field-layer" clip-path="url(#pcc-core)">
+
+          <!-- Static base illumination: ambient internal light.
+               Non-rotating. Establishes the base internal glow. -->
+          <circle cx="150" cy="152" r="80"
+                  fill="url(#pcg-flow-base)"
+                  opacity="0.90"/>
+
+          <!-- Rotating directional current: the biological vortex.
+               Off-center gradient (pcg-flow-current) creates the circulation
+               impression as it rotates. The bright spot travels in a circle
+               around Core center (150,152). This is biological circulation,
+               not a spinning logo. flow-period=75000ms at Peak = 75s/rotation. -->
+          <g id="pc-flow-rotate-group">
+            <ellipse cx="150" cy="152" rx="74" ry="44"
+                     fill="url(#pcg-flow-current)"
+                     opacity="0.80"/>
+          </g>
+
+        </g><!-- /pc-flow-field-layer -->
+
+        <!-- ── LAYER 4: STRUCTURAL LATTICE ────────────────────────────
+             Biological tensegrity skeleton. 6 radial spokes + hexagonal
+             connector ring at r=70 + inner diamond ring at r=38.
+             All clipped to Core boundary so spokes don't exit the membrane.
+             ────────────────────────────────────────────────────────────── -->
+        <g id="pc-lattice-layer" opacity="0.45" clip-path="url(#pcc-core)">
+
+          <!-- 6 radial spokes from nucleus center toward membrane boundary.
+               Dashed: biological structures are not rigid solid lines.
+               All directions computed from Core center (150, 152). -->
+          <!-- 0° — superior -->
+          <line x1="150" y1="152" x2="150" y2="54"
+                stroke="url(#pcg-lattice)" stroke-width="0.7" stroke-dasharray="3,8"/>
+          <!-- 60° — superior-right -->
+          <line x1="150" y1="152" x2="235" y2="103"
+                stroke="url(#pcg-lattice)" stroke-width="0.7" stroke-dasharray="3,8"/>
+          <!-- 120° — inferior-right -->
+          <line x1="150" y1="152" x2="235" y2="201"
+                stroke="url(#pcg-lattice)" stroke-width="0.7" stroke-dasharray="3,8"/>
+          <!-- 180° — inferior -->
+          <line x1="150" y1="152" x2="150" y2="250"
+                stroke="url(#pcg-lattice)" stroke-width="0.7" stroke-dasharray="3,8"/>
+          <!-- 240° — inferior-left -->
+          <line x1="150" y1="152" x2="65" y2="201"
+                stroke="url(#pcg-lattice)" stroke-width="0.7" stroke-dasharray="3,8"/>
+          <!-- 300° — superior-left -->
+          <line x1="150" y1="152" x2="65" y2="103"
+                stroke="url(#pcg-lattice)" stroke-width="0.7" stroke-dasharray="3,8"/>
+
+          <!-- Hexagonal connector ring at r=70.
+               Vertices at 0°/60°/120°/180°/240°/300° from Core center. -->
+          <polygon points="150,82 211,117 211,187 150,222 89,187 89,117"
+                   fill="none"
+                   stroke="url(#pcg-lattice)" stroke-width="0.7"/>
+
+          <!-- Inner diamond ring at r=38.
+               Vertices at 0°/90°/180°/270° — interlocks with hex ring visually. -->
+          <polygon points="150,114 188,152 150,190 112,152"
+                   fill="none"
+                   stroke="url(#pcg-lattice)" stroke-width="0.7" opacity="0.65"/>
+
+          <!-- Lattice nodes at hex ring vertices: 6 structural anchor points. -->
+          <circle cx="150" cy="82"  r="2.2" fill="rgba(56,224,255,0.52)"/>
+          <circle cx="211" cy="117" r="2.2" fill="rgba(56,224,255,0.52)"/>
+          <circle cx="211" cy="187" r="2.2" fill="rgba(56,224,255,0.52)"/>
+          <circle cx="150" cy="222" r="2.2" fill="rgba(56,224,255,0.52)"/>
+          <circle cx="89"  cy="187" r="2.2" fill="rgba(56,224,255,0.52)"/>
+          <circle cx="89"  cy="117" r="2.2" fill="rgba(56,224,255,0.52)"/>
+
+          <!-- Central nucleus node: marks biological center of mass. -->
+          <circle cx="150" cy="152" r="2.8" fill="rgba(56,224,255,0.38)"/>
+
+        </g><!-- /pc-lattice-layer -->
+
+        <!-- ── LAYER 5: CORTEX ─────────────────────────────────────────
+             Biological damping layer. Absorbs and distributes disturbances
+             from inner layers before they reach the Membrane surface.
+             High blur = effective biological damping = healthy organism.
+             ─────────────────────────────────────────────────────────────→ -->
+        <circle id="pc-cortex-layer"
+                cx="150" cy="152" r="92"
+                fill="url(#pcg-cortex)"
+                filter="url(#pcf-cortex)"
+                opacity="0.50"/>
+
+        <!-- ── LAYER 6: MEMBRANE ───────────────────────────────────────
+             Outermost biological containment. Organism's skin.
+             feTurbulence displacement creates organic, non-perfect-circle
+             surface — the biological imperfection that separates this from
+             any digital badge or UI element.
+             Two strokes: outer (main edge) + inner (glass thickness illusion).
+             ─────────────────────────────────────────────────────────────→ -->
+
+        <!-- Membrane body: slightly non-circular for biological truth.
+             rx=109, ry=108: 1px eccentricity visible at scale. -->
+        <ellipse id="pc-membrane-body"
+                 cx="150" cy="152" rx="109" ry="108"
+                 fill="url(#pcg-membrane)"
+                 stroke="rgba(56,224,255,0.30)"
+                 stroke-width="1.1"
+                 filter="url(#pcf-membrane)"/>
+
+        <!-- Inner glass edge: 3px inset from outer membrane.
+             Creates the double-line glass thickness illusion.
+             No filter — this is the crisp inner edge of the glass. -->
+        <ellipse id="pc-membrane-inner-edge"
+                 cx="150" cy="152" rx="106" ry="105"
+                 fill="none"
+                 stroke="rgba(180,240,255,0.11)"
+                 stroke-width="0.8"/>
+
+        <!-- ── LAYER 7: GLOW LAYER ─────────────────────────────────────
+             Luminosity emission. Biological energy radiation.
+             mix-blend-mode: screen — adds light without obscuring depth.
+             At Peak: minimal (0.28 opacity). Nothing is escaping.
+             Synchronized with breath: brightens at peak expansion.
+             Promoted to compositor layer via will-change: opacity.
+             ─────────────────────────────────────────────────────────────→ -->
+        <ellipse id="pc-glow-layer"
+                 cx="150" cy="152" rx="109" ry="108"
+                 fill="url(#pcg-glow)"
+                 filter="url(#pcf-glow)"
+                 opacity="0.28"/>
+
+        </g><!-- /phys-meta-drift -->
+
+      </g><!-- /phys-breath-group -->
+
+    </svg>
+  </div>
+</div><!-- /phys-core-stage -->
 
 <main>
   <div id="chat-box"></div>
@@ -1862,6 +2656,7 @@ function _woLogSave(){
     if(log.length>90)log=log.slice(-90);
     localStorage.setItem('apexWorkoutLog',JSON.stringify(log));
   }catch(e){}
+  _brainNotifySessionEnd();
 }
 
 function _woGetSummary(l){
@@ -3241,6 +4036,8 @@ function _progressEngine(){
       exMap[ex.n].push({ts:session.ts,date:session.date,sets:ex.s||1,reps:ex.r||[],avgReps,vol:(ex.s||1)*totalReps});
     });
   });
+  // Log is stored newest-first; sort each exercise chronologically so slice(-5) = 5 most recent
+  Object.values(exMap).forEach(s=>s.sort((a,b)=>a.ts-b.ts));
 
   const lines=[];
   lines.push(en?'[PROGRESS ENGINE — PER-EXERCISE ANALYSIS]':'[ПРОГРЕС АНАЛИЗ — ПО УПРАЖНЕНИЕ]');
@@ -4371,6 +5168,744 @@ function _memValidate(){
   }
   return{valid:errors.length===0,errors};
 }
+
+/* ── PHYSIOLOGY CORE: LAW OF INTENT ─────────────────────────────────────
+   physCoreSetState(state) — switches the organism's behavioral posture.
+
+   Each state defines: resting posture, center of gravity, directional
+   bias, metabolic profile, and emission profile. Called by Phase 2 state
+   machine. Safe to call manually: physCoreSetState('fatigue').
+
+   States: 'peak' | 'recovery' | 'fatigue' | 'pain' | 'training'
+
+   What happens on call:
+     1. Behavioral class applied → CSS variables change → organism drifts
+        to new posture via 2400ms transitions on all behavioral wires.
+     2. Ambient gradient updated → directional gravity field shifts.
+        (SVG gradient cx/cy/r cannot be driven by CSS custom properties —
+         this is the only JS-required part of the behavioral system.)     */
+
+const PHYS_AMBIENT_MAP = {
+  peak:     'pcg-ambient-peak',
+  recovery: 'pcg-ambient-recovery',
+  fatigue:  'pcg-ambient-fatigue',
+  pain:     'pcg-ambient-pain',
+  training: 'pcg-ambient-training'
+};
+
+const PHYS_STATE_CLASSES = [
+  'state-peak','state-recovery','state-fatigue','state-pain','state-training'
+];
+
+function physCoreSetState(state) {
+  const core    = document.getElementById('phys-core');
+  const ambient = document.getElementById('pc-ambient');
+  if (!core || !ambient) return;
+
+  PHYS_STATE_CLASSES.forEach(c => core.classList.remove(c));
+
+  if (state && PHYS_AMBIENT_MAP[state]) {
+    core.classList.add('state-' + state);
+    ambient.setAttribute('fill', 'url(#' + PHYS_AMBIENT_MAP[state] + ')');
+  }
+}
+
+/* Wire lattice opacity to --lattice-opacity via JS (SVG opacity attribute
+   cannot be overridden via CSS variable in all browsers — this ensures it). */
+function _physSyncLattice() {
+  const core = document.getElementById('phys-core');
+  const lattice = document.getElementById('pc-lattice-layer');
+  if (!core || !lattice) return;
+  const opacity = getComputedStyle(core).getPropertyValue('--lattice-opacity').trim();
+  if (opacity) lattice.style.opacity = opacity;
+}
+
+/* ── BSE Renderer Bridge ───────────────────────────────────────────────
+   Translates BehavioralSignature → CSS custom properties on #phys-core.
+   Called after every Brain intent. State class is applied first by
+   physCoreSetState(); this function personalizes within that state.
+
+   Architecture invariants:
+   - This function reads BSE output only — no Brain signals, no metrics.
+   - State character is preserved: BSE modulates within per-state ranges.
+   - Permanently stable values (gravityBias, symmetryBias) are additive offsets
+     layered on top of state-specific base positions.
+   - All changes are inline style.setProperty() — highest specificity,
+     zero DOM additions, zero new CSS rules.                              */
+function _physApplySignature(sig, state) {
+  const core = document.getElementById('phys-core');
+  if (!core || !sig) return;
+
+  const C  = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const Lm = (a, b, t)   => a + (b - a) * t;
+  const sp = (k, v)      => core.style.setProperty(k, v);
+
+  // ── Per-state base tables ─────────────────────────────────────────────
+  // These mirror the CSS state class values exactly.
+  // BSE modulates around these — never overrides the state character.
+  const BASE = {
+    breathPeriod:      { peak:7340,  recovery:9200,  fatigue:8600,  pain:10800, training:6400  },
+    breathAmplitude:   { peak:0.015, recovery:0.024, fatigue:0.010, pain:0.006, training:0.026 },
+    flowPeriod:        { peak:74800, recovery:98000, fatigue:122000,pain:148000,training:46000  },
+    flowOpacity:       { peak:0.80,  recovery:0.58,  fatigue:0.36,  pain:0.20,  training:0.95  },
+    glowIntensity:     { peak:0.28,  recovery:0.38,  fatigue:0.16,  pain:0.10,  training:0.45  },
+    latticeOpacity:    { peak:0.45,  recovery:0.34,  fatigue:0.26,  pain:0.16,  training:0.58  },
+    membraneStroke:    { peak:0.30,  recovery:0.24,  fatigue:0.20,  pain:0.50,  training:0.38  },
+    gravityOffsetX:    { peak:0,     recovery:0,     fatigue:0,     pain:-2,    training:1     },
+    gravityOffsetY:    { peak:1,     recovery:-1,    fatigue:7,     pain:3,     training:-1    },
+    nucleusOffsetX:    { peak:0,     recovery:0,     fatigue:0,     pain:-5,    training:0     },
+    nucleusOffsetY:    { peak:0,     recovery:-6,    fatigue:10,    pain:5,     training:-4    },
+  };
+  const b = s => BASE[s]?.[state] ?? BASE[s]?.peak;
+
+  // ── 1. breathPeriod ───────────────────────────────────────────────────
+  // BSE period already state-modulated via _compose() M.breath multiplier.
+  // Clamp within ±35% of state base so state character is always readable.
+  const bpBase  = b('breathPeriod');
+  const bpClamped = C(sig.breathPeriod, bpBase * 0.65, bpBase * 1.35);
+  sp('--breath-period', Math.round(bpClamped) + 'ms');
+
+  // ── 2. pulseAmplitude → breath amplitude ──────────────────────────────
+  // Higher pulse amplitude = deeper breaths. ±25% of state base.
+  const baBase = b('breathAmplitude');
+  const bse_ba = C(baBase * (0.75 + sig.pulseAmplitude * 0.50), 0.004, 0.032);
+  sp('--breath-amplitude', bse_ba.toFixed(4));
+
+  // ── 3. glowPersistence → glow intensity ───────────────────────────────
+  // Metabolic luminosity — how brightly this organism radiates.
+  const giBase = b('glowIntensity');
+  const bse_gi = C(giBase * (0.65 + sig.glowPersistence * 0.70), 0.06, 0.55);
+  sp('--glow-intensity', bse_gi.toFixed(3));
+
+  // ── 4. cellularActivity → flow opacity + lattice opacity ──────────────
+  // How much metabolic activity is visible. ±25% of state base.
+  const foBase = b('flowOpacity');
+  const bse_fo = C(foBase * (0.75 + sig.cellularActivity * 0.50), 0.10, 1.00);
+  sp('--flow-opacity', bse_fo.toFixed(3));
+
+  const loBase = b('latticeOpacity');
+  const bse_lo = C(loBase * (0.75 + sig.cellularActivity * 0.50), 0.08, 0.70);
+  sp('--lattice-opacity', bse_lo.toFixed(3));
+  // Also write direct to SVG element — _physSyncLattice reads computed style
+  // but inline --lattice-opacity on core isn't available via getComputedStyle
+  const lattice = document.getElementById('pc-lattice-layer');
+  if (lattice) lattice.style.opacity = bse_lo.toFixed(3);
+
+  // ── 5. membraneElasticity → membrane stroke ───────────────────────────
+  // Elastic membranes are softer (lower opacity). Rigid membranes are denser.
+  const msBase  = b('membraneStroke');
+  const bse_ms  = C(msBase * (1.20 - sig.membraneElasticity * 0.40), 0.08, 0.60);
+  sp('--membrane-stroke-opacity', bse_ms.toFixed(3));
+
+  // ── 6. flowViscosity → flow period ────────────────────────────────────
+  // Viscous organisms have slower internal flow. ±30% of state base.
+  const fpBase  = b('flowPeriod');
+  const bse_fp  = C(Math.round(fpBase * (0.70 + sig.flowViscosity * 0.60)), fpBase * 0.60, fpBase * 1.45);
+  sp('--flow-period', Math.round(bse_fp) + 'ms');
+
+  // ── 7. driftStrength → meta-drift animation speed ─────────────────────
+  // High drift = more frequent oscillation = shorter period.
+  // Range: 12 000ms (restless) → 38 000ms (still). Default hardcoded: 23 700ms.
+  const metaDrift = document.getElementById('phys-meta-drift');
+  if (metaDrift) {
+    const driftPeriod = Math.round(Lm(38000, 12000, sig.driftStrength));
+    metaDrift.style.animationDuration = driftPeriod + 'ms';
+  }
+
+  // ── 8. symmetryBias → nucleus x-offset (additive) ─────────────────────
+  // Personal lateral lean layered on state's nucleus position.
+  // symmetryBias range: ≈ −0.18 → +0.18. Scale to ±4px.
+  const nxBase  = b('nucleusOffsetX');
+  const bse_nx  = nxBase + sig.symmetryBias * 22;  // ≈ ±4px personal lean
+  sp('--nucleus-offset-x', bse_nx.toFixed(1) + 'px');
+
+  // ── 9. gravityBias → gravity offsets (additive) ───────────────────────
+  // Personal gravitational character layered on state gravity.
+  const gxBase  = b('gravityOffsetX');
+  const gyBase  = b('gravityOffsetY');
+  sp('--gravity-offset-x', (gxBase + sig.gravityBias.x * 0.35).toFixed(1) + 'px');
+  sp('--gravity-offset-y', (gyBase + sig.gravityBias.y * 0.22).toFixed(1) + 'px');
+
+  // ── 10. microTremorThreshold → nucleus drift period ───────────────────
+  // Only in pain state: sensitive organisms tremor faster.
+  // Other states: preserve the biological 17 230ms aperiodic drift.
+  const nucleusDrift = document.getElementById('pc-nucleus-drift-wrap');
+  if (nucleusDrift) {
+    if (state === 'pain') {
+      // Threshold 0→1 maps to period 21 000→11 000ms (shorter = more visible tremor)
+      const tremorPeriod = Math.round(Lm(21000, 11000, sig.microTremorThreshold));
+      nucleusDrift.style.animationDuration = tremorPeriod + 'ms';
+    } else {
+      nucleusDrift.style.animationDuration = '17230ms';
+    }
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   BIOLOGICAL BRAIN — Phase 2
+   ══════════════════════════════════════════════════════════════════════
+
+   The only system permitted to interpret physiological signals.
+   The renderer is ignorant of every metric that flows into this system.
+   That ignorance is enforced by architecture, not convention.
+
+   Signal pipeline (mandatory — no shortcuts):
+     Raw Signals  →  Brain.ingest()
+     Brain signals  →  Brain.compute()
+     Brain.compute()  →  PhysiologicalIntent
+     PhysiologicalIntent  →  onIntent listener
+     listener  →  physCoreSetState(intent.state)
+
+   The renderer receives only: a state name (string).
+   The renderer never sees: energy, pain, load, days, sessions, difficulty.
+   ══════════════════════════════════════════════════════════════════════ */
+
+// ── PhysiologicalIntent ────────────────────────────────────────────────
+// The Brain's only output. The contract between interpretation and rendering.
+// state + intensity fully describe what the renderer needs to know.
+// reason is diagnostic — never passed to the renderer, never rendered.
+
+class PhysiologicalIntent {
+  constructor({ state, intensity = 0.5, confidence = 0.5, reason = '' }) {
+    this.state      = state;       // 'peak'|'recovery'|'fatigue'|'pain'|'training'
+    this.intensity  = intensity;   // 0–1: how strongly this state is expressed
+    this.confidence = confidence;  // 0–1: Brain's certainty in this assessment
+    this.reason     = reason;      // diagnostic label — Brain-internal only
+    this.timestamp  = Date.now();
+  }
+}
+
+// ── ApexBiologicalBrain ────────────────────────────────────────────────
+class ApexBiologicalBrain {
+
+  constructor() {
+    this._signals   = {};   // raw physiological signals — opaque to renderer
+    this._intent    = null; // last computed PhysiologicalIntent
+    this._listeners = [];   // output subscribers (renderer is one)
+  }
+
+  // ── ingest(): accept a raw physiological signal ──
+  // All signal vocabulary is Brain-internal.
+  // No signal key is ever visible outside this class.
+  ingest(key, value) {
+    this._signals[key] = { value, at: Date.now() };
+    return this;
+  }
+
+  // ── compute(): synthesize all ingested signals → single PhysiologicalIntent ──
+  // This method contains the Brain's entire biological knowledge.
+  // All heuristics, thresholds, and weightings live HERE and ONLY here.
+  // Change the interpretation of "fatigue" → change one block of this function.
+  // The renderer learns nothing from the change.
+  compute() {
+    const S   = this._signals;
+    const val = (key, fallback = 0) => S[key]?.value ?? fallback;
+
+    // ── Priority waterfall ────────────────────────────────────────────
+    // States evaluated highest-urgency first.
+    // First matching condition produces the intent and exits.
+
+    // ── PAIN ─────────────────────────────────────────────────────────
+    // Source: pain keywords detected in recovery notes, or explicit flag.
+    // Pain takes absolute priority — no other state overrides it.
+    // The organism is not unstable. The organism is protecting itself.
+    const painSignal = val('painLevel', 0);
+    if (painSignal > 0.30) {
+      return this._emit({ state: 'pain',
+        intensity:  Math.min(painSignal, 1),
+        confidence: 0.88,
+        reason:     'pain_keywords_or_flag' });
+    }
+
+    // ── TRAINING ─────────────────────────────────────────────────────
+    // Source: active _wo session object is non-null and not yet logged.
+    // Organism is inside a session right now. No other signal overrides this.
+    if (val('sessionActive', false) === true) {
+      return this._emit({ state: 'training',
+        intensity:  val('currentLoad', 0.65),
+        confidence: 0.97,
+        reason:     'active_workout_session' });
+    }
+
+    // ── RECOVERY ─────────────────────────────────────────────────────
+    // Source: recent high-effort session + insufficient time elapsed.
+    // Organism is in biological repair mode. Not slow — regenerating.
+    // Threshold: <36 hours since a session with difficulty ≥ medium.
+    // Exception: severe chronic debt overrides the acute recovery window.
+    const loadDebt  = val('accumulatedLoad', 0);   // rolling avg difficulty
+    const energyCap = val('recoveryCapacity', 0.5); // recent energy reports
+    const severeDebt = loadDebt > 0.75 && energyCap < 0.30;
+    const hoursRest = val('hoursSinceSession', 999);
+    const lastLoad  = val('lastSessionLoad', 0);
+    if (!severeDebt && hoursRest < 36 && lastLoad > 0.40) {
+      const depth = Math.max(0, 1 - (hoursRest / 36)); // 1.0→0 as hours pass
+      return this._emit({ state: 'recovery',
+        intensity:  depth * (0.35 + lastLoad * 0.65),
+        confidence: 0.80,
+        reason:     'post_session_repair_window' });
+    }
+
+    // ── FATIGUE ──────────────────────────────────────────────────────
+    // Source: accumulated load across recent sessions exceeds recovery capacity.
+    // Distinct from Recovery: fatigue is chronic, Recovery is acute.
+    // Organism is not weak. It is carrying a load it cannot yet shed.
+    if (loadDebt > 0.60 && energyCap < 0.45) {
+      const magnitude = (loadDebt - 0.40) * (1 - energyCap);
+      return this._emit({ state: 'fatigue',
+        intensity:  Math.min(magnitude, 1),
+        confidence: 0.72,
+        reason:     'chronic_load_vs_energy' });
+    }
+
+    // ── PEAK ─────────────────────────────────────────────────────────
+    // Source: absence of the above. Conditions are favorable.
+    // Not "nothing is wrong." Conditions are right.
+    // Confidence is lower here — Peak is the default assumption.
+    const energy   = val('recoveryCapacity', 0.65);
+    const fresh    = Math.max(0, 1 - loadDebt * 0.8);
+    const peakMag  = energy * 0.5 + fresh * 0.5;
+    return this._emit({ state: 'peak',
+      intensity:  Math.min(peakMag, 1),
+      confidence: 0.52,   // lower: absence of bad data ≠ presence of good data
+      reason:     'no_adverse_signals' });
+  }
+
+  // ── _emit(): store intent, notify all subscribers ──
+  _emit(props) {
+    const intent = new PhysiologicalIntent(props);
+    this._intent = intent;
+    this._listeners.forEach(fn => { try { fn(intent); } catch(e) {} });
+    return intent;
+  }
+
+  // ── onIntent(): subscribe to intent changes ──
+  // The renderer subscribes here. So can haptics, audio, analytics.
+  // None of those systems ever call _signals or _emit.
+  onIntent(fn) { this._listeners.push(fn); return this; }
+
+  // ── notify(): re-compute and re-emit ──
+  // Called after new data arrives (session end, recovery check-in).
+  notify() { return this.compute(); }
+
+  // ── loadFromMemory(): translate APEX data layer → Brain signals ────
+  // This is the ONLY bridge between the coaching data system and the Brain.
+  // If the workout log schema changes, only this function changes.
+  // The Brain's signal vocabulary is never exposed upstream.
+  loadFromMemory() {
+    try {
+
+      // ── Active session ────────────────────────────────────────────
+      // _wo is the live workout state object (null when no session active)
+      const isActive = (typeof _wo !== 'undefined') && _wo !== null && !_wo._logged;
+      this.ingest('sessionActive', isActive);
+
+      if (isActive && _wo) {
+        // Translate workout difficulty to a 0–1 load signal
+        const dMap = { easy: 0.28, medium: 0.55, moderate: 0.60, hard: 0.82, very_hard: 0.95 };
+        const fbLog = _wo.fbLog || [];
+        if (fbLog.length > 0) {
+          const cnt = {};
+          fbLog.forEach(f => { cnt[f] = (cnt[f] || 0) + 1; });
+          const dominant = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0][0];
+          this.ingest('currentLoad', dMap[dominant] ?? 0.55);
+        }
+      }
+
+      // ── Hours since last session ──────────────────────────────────
+      const daysSince = _memDaysSinceLastSession();
+      if (daysSince !== null) {
+        this.ingest('hoursSinceSession', daysSince * 24);
+      }
+
+      // ── Last session load ─────────────────────────────────────────
+      const lastSessions = _memGetSessions(1);
+      if (lastSessions.length > 0) {
+        const dMap = { easy: 0.28, medium: 0.55, moderate: 0.60, hard: 0.82, very_hard: 0.95 };
+        this.ingest('lastSessionLoad', dMap[lastSessions[0].diff] ?? 0.55);
+      }
+
+      // ── Accumulated load (rolling 7-session average) ──────────────
+      const recent7 = _memGetSessions(7);
+      if (recent7.length > 0) {
+        const dMap = { easy: 0.28, medium: 0.55, moderate: 0.60, hard: 0.82, very_hard: 0.95 };
+        const avg = recent7.reduce((s, r) => s + (dMap[r.diff] ?? 0.55), 0) / recent7.length;
+        this.ingest('accumulatedLoad', avg);
+      }
+
+      // ── Recovery capacity (from energy self-reports) ──────────────
+      // avgEnergy is 0–10; normalize to 0–1
+      const rec = _memGetRecoverySignals();
+      if (rec.avgEnergy !== null) {
+        this.ingest('recoveryCapacity', rec.avgEnergy / 10);
+      }
+
+      // ── Pain detection ────────────────────────────────────────────
+      // Derived from keyword regex on recovery notes (see _memGetRecoverySignals)
+      // Always write painLevel so within-session re-evaluations don't carry stale pain.
+      if (rec.painDetected) {
+        this.ingest('painLevel', 0.72);
+      } else {
+        this.ingest('painLevel', 0);
+      }
+
+    } catch(e) {
+      // Brain degrades gracefully — no memory → stays at Peak (low confidence)
+      // This is the correct behavior for a new user with no history
+      console.debug('[apex:brain] memory read error — defaulting to peak:', e?.message);
+    }
+
+    return this;
+  }
+
+  get intent()   { return this._intent; }
+  get signals()  { return { ...this._signals }; } // diagnostic read-only snapshot
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// APEX BIOLOGICAL SIGNATURE ENGINE v1
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// The BSE owns the organism's permanent biological identity.
+// It lives between Brain and Renderer in the pipeline.
+// The Brain never reads it. The Renderer (Phase 2.5-B) will read only its
+// behavioral output — never the internal trait names.
+//
+// Pipeline:  Brain → PhysiologicalIntent
+//                         ↓
+//                   apexBSE.tick(intent) → BehavioralSignature
+//                         ↑
+//            apexBSE.observe(session) — on session end
+//
+// This phase: BSE is silent. It builds and persists the signature.
+// No renderer connection until Phase 2.5-B is approved.
+
+class ApexBiologicalSignatureEngine {
+
+  constructor() {
+    this._sig    = null;  // loaded from storage or freshly generated
+    this._output = null;  // cached behavioral output — safe to read at 60 FPS
+  }
+
+  // ── Public API ──────────────────────────────────────────────────────────────
+
+  // init(): load or generate the signature. Called once at DOMContentLoaded.
+  init() {
+    this._sig    = this._load() || this._genesis();
+    this._output = this._compose(this._sig, 'peak');
+    return this;
+  }
+
+  // tick(intent): called on every Brain emit. Pure computation — zero I/O.
+  // Recomposes behavioral output modulated by current physiological state.
+  tick(intent) {
+    if (!this._sig || !intent) return this;
+    this._output = this._compose(this._sig, intent.state);
+    return this;
+  }
+
+  // observe(session): called on session end. Reinforces traits slowly. Persists.
+  observe(session) {
+    if (!this._sig) return this;
+    this._reinforce(session);
+    this._sig.evolution.totalSessions++;
+    this._sig.evolution.lastReinforcement = Date.now();
+    this._output = this._compose(this._sig);
+    this._save();
+    return this;
+  }
+
+  // getSignature(): returns the 10 behavioral variables.
+  // Returns cached output — no computation on call. Safe at 60 FPS.
+  getSignature() {
+    return this._output || this._defaultOutput();
+  }
+
+  // ── Genesis ─────────────────────────────────────────────────────────────────
+
+  _genesis() {
+    // Profile contributes a deterministic bias so identical twins on same device
+    // still start closer to each other — the random component guarantees divergence.
+    let profileBias = 0.5;
+    try {
+      const p = JSON.parse(localStorage.getItem('apexProfile') || '{}');
+      profileBias = (((p.age||25)*7 + (p.weight||70)*3 + (p.height||170)*5) % 1000) / 1000;
+    } catch(e) {}
+
+    const r   = () => Math.random();
+    const mix = (a, t) => a * (1 - t) + r() * t; // blend deterministic + random
+
+    // 17-dimensional genesis seed. Locked permanently after first write.
+    // seed[0–9]:  primary biological trait seeds
+    // seed[10–16]: modulation seeds (symmetry, gravity axes, handedness, coherence, etc.)
+    const seed = [
+      mix(profileBias, 0.75),  // 0  metabolism        — profile-biased
+      mix(profileBias, 0.85),  // 1  inertia            — lightly profile-biased
+      r(),                      // 2  membraneElasticity — pure random
+      r(),                      // 3  breathAmplitude    — pure random
+      r(),                      // 4  pulseSharpness     — pure random
+      mix(profileBias, 0.90),  // 5  recoveryViscosity  — lightly profile-biased
+      r(),                      // 6  structuralRigidity — pure random
+      r(),                      // 7  motionSmoothness   — pure random
+      r(),                      // 8  nervousSensitivity — pure random
+      r(),                      // 9  adaptationSpeed    — pure random (always slow after range clamp)
+      r(),                      // 10 symmetry axis bias — STABLE, never reinforced
+      r(),                      // 11 gravity x pull     — STABLE, never reinforced
+      r(),                      // 12 gravity y pull     — STABLE, never reinforced
+      r(),                      // 13 handedness         — IMMUTABLE
+      r(),                      // 14 pulse coherence    — slowly reinforced
+      r(),                      // 15 breath asymmetry   — slowly reinforced
+      r(),                      // 16 flow polarity      — slowly reinforced
+    ];
+
+    const orgId = 'org-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,8);
+
+    const sig = {
+      schema:      'bse-v1',
+      organism_id: orgId,
+      genesis: {
+        timestamp: Date.now(),
+        seed,
+        locked:    true,
+        checksum:  this._checksum(seed)
+      },
+      traits:    this._traitsFromSeed(seed),
+      evolution: { totalSessions: 0, lastReinforcement: null, consolidationEpoch: 0 }
+    };
+
+    this._save(sig);
+    return sig;
+  }
+
+  // ── Trait Initialization ────────────────────────────────────────────────────
+
+  _traitsFromSeed(seed) {
+    // Map each seed dimension to a biological property within realistic bounds.
+    // L(lo, hi, s) = linear interpolation within range.
+    const L = (lo, hi, s) => lo + (hi - lo) * s;
+    return {
+      metabolism:         L(0.28, 0.88, seed[0]),  // 0.28=sluggish, 0.88=fast
+      inertia:            L(0.18, 0.76, seed[1]),  // resistance to state change
+      membraneElasticity: L(0.32, 0.92, seed[2]),  // surface tension flexibility
+      breathAmplitude:    L(0.28, 0.82, seed[3]),  // breathing depth range
+      pulseSharpness:     L(0.32, 0.90, seed[4]),  // pulse attack character
+      recoveryViscosity:  L(0.18, 0.74, seed[5]),  // recovery propagation damping
+      structuralRigidity: L(0.22, 0.84, seed[6]),  // postural stiffness
+      motionSmoothness:   L(0.38, 0.94, seed[7]),  // movement fluidity
+      nervousSensitivity: L(0.15, 0.80, seed[8]),  // reactivity amplitude
+      adaptationSpeed:    L(0.04, 0.26, seed[9]),  // pace of long-term trait drift
+    };
+  }
+
+  // ── Composition: traits + physiological state → behavioral output ────────────
+
+  _compose(sig, state = 'peak') {
+    const t = sig.traits;
+    const s = sig.genesis.seed;
+
+    // State modifiers — the Brain's classification biases the behavioral output.
+    // These multipliers are the ONLY way physiological state enters the BSE output.
+    const M = {
+      peak:     { metab:1.00, tension:1.00, breath:1.00, pulse:1.00 },
+      training: { metab:1.22, tension:1.18, breath:1.28, pulse:1.32 },
+      recovery: { metab:0.74, tension:0.82, breath:0.88, pulse:0.76 },
+      fatigue:  { metab:0.58, tension:0.72, breath:0.76, pulse:0.62 },
+      pain:     { metab:0.52, tension:1.22, breath:0.68, pulse:0.88 },
+    }[state] ?? { metab:1.00, tension:1.00, breath:1.00, pulse:1.00 };
+
+    const C  = (v, lo=0, hi=1) => Math.max(lo, Math.min(hi, v));
+    const Lm = (a, b, v)       => a + (b-a) * v;
+
+    return {
+      // ── Respiratory ──────────────────────────────────────────────────────
+      // Slower breath for high inertia + low metabolism. State modulates speed.
+      breathPeriod: Math.round(Lm(5200, 18500, t.inertia * (1 - t.metabolism * 0.38)) * (1 / M.breath)),
+
+      // ── Circulatory ──────────────────────────────────────────────────────
+      // Metabolic rate and pulse sharpness combine to set output intensity.
+      pulseAmplitude: C((t.metabolism * 0.55 + t.pulseSharpness * 0.45) * M.pulse),
+
+      // ── Kinetic / Gravity ─────────────────────────────────────────────────
+      // Nervous sensitivity and inverse rigidity determine how much the organism drifts.
+      driftStrength: C((t.nervousSensitivity * 0.50 + (1 - t.structuralRigidity) * 0.50) * M.tension),
+
+      // Stable lateral asymmetry — genesis-derived, never drifts.
+      symmetryBias: (s[10] - 0.5) * 0.36,
+
+      // Stable gravitational pull direction — unique per organism.
+      gravityBias: { x: Math.round((s[11]-0.5)*24), y: Math.round((s[12]-0.5)*18) },
+
+      // ── Membrane ─────────────────────────────────────────────────────────
+      membraneElasticity: C(t.membraneElasticity * M.tension),
+
+      // ── Flow ─────────────────────────────────────────────────────────────
+      // Recovery viscosity and inertia together determine damping of motion.
+      flowViscosity: C(t.recoveryViscosity * 0.64 + t.inertia * 0.36),
+
+      // ── Luminous ─────────────────────────────────────────────────────────
+      // Metabolic luminosity — how quickly the glow decays between pulses.
+      glowPersistence: C((t.metabolism * 0.52 + t.pulseSharpness * 0.48) * M.metab),
+
+      // ── Nervous ──────────────────────────────────────────────────────────
+      // Threshold at which micro-tremors become visible.
+      microTremorThreshold: C(t.nervousSensitivity * M.tension),
+
+      // ── Cellular ─────────────────────────────────────────────────────────
+      // Composite metabolic-kinetic activity index.
+      cellularActivity: C((t.metabolism * 0.60 + t.motionSmoothness * 0.40) * M.metab),
+    };
+  }
+
+  // ── Reinforcement: session observation → slow trait drift ───────────────────
+  // Maximum drift per session = adaptationSpeed × reinforcement_weight.
+  // adaptationSpeed range: 0.04–0.26 → trait can shift 0.004–0.026 per session.
+  // At 3 sessions/week a trait fully crosses its range in ≈ 4–25 months.
+
+  _reinforce(session) {
+    if (!session || !this._sig) return;
+    const t   = this._sig.traits;
+    const spd = t.adaptationSpeed;
+
+    const nudge = (key, dir, weight=1) => {
+      this._sig.traits[key] = Math.max(0, Math.min(1, t[key] + dir * weight * spd));
+    };
+
+    const dMap = { easy:0.28, medium:0.55, moderate:0.60, hard:0.82, very_hard:0.95 };
+    const load = dMap[session.diff] ?? 0.55;
+
+    // High-load sessions push metabolic rate up and smooth motion
+    if (load > 0.70) {
+      nudge('metabolism',        +1, 0.040);
+      nudge('recoveryViscosity', +1, 0.028);
+      nudge('motionSmoothness',  +1, 0.020);
+      nudge('pulseSharpness',    +1, 0.016);
+    }
+
+    // Easy sessions: increased damping, metabolism cools slightly
+    if (load < 0.40) {
+      nudge('inertia',           +1, 0.022);
+      nudge('metabolism',        -1, 0.018);
+    }
+
+    // Energy reports shift recovery viscosity (low energy = harder recovery)
+    const energy = session.rec?.energy;
+    if (typeof energy === 'number') {
+      const e = energy / 10;  // normalize 0–10 → 0–1
+      nudge('recoveryViscosity', e < 0.40 ? +1 : -1, 0.020);
+    }
+
+    // Milestone: every 10 sessions, adaptation capacity itself grows slightly
+    const n = this._sig.evolution.totalSessions;
+    if (n > 0 && n % 10 === 0) {
+      nudge('adaptationSpeed', +1, 0.060);
+    }
+  }
+
+  // ── Persistence ─────────────────────────────────────────────────────────────
+
+  _save(sig) {
+    const target = sig || this._sig;
+    if (!target) return;
+    try {
+      localStorage.setItem('apexBiologicalSignature', JSON.stringify(target));
+    } catch(e) {
+      console.debug('[apex:bse] save failed:', e?.message);
+    }
+  }
+
+  _load() {
+    try {
+      const raw = localStorage.getItem('apexBiologicalSignature');
+      if (!raw) return null;
+      const sig = JSON.parse(raw);
+      if (sig?.schema !== 'bse-v1' || !sig?.genesis?.seed || !sig?.traits) return null;
+      if (sig.genesis.checksum !== this._checksum(sig.genesis.seed)) {
+        console.warn('[apex:bse] genesis integrity failure — organism will be regenerated');
+        return null;
+      }
+      return sig;
+    } catch(e) { return null; }
+  }
+
+  // ── Integrity ────────────────────────────────────────────────────────────────
+  // XOR-based checksum over the 17-element seed.
+  // Not cryptographic — sufficient to detect accidental corruption or manual edits.
+
+  _checksum(seed) {
+    return seed.reduce((acc, v, i) => acc ^ (Math.round(v * 99991) * (i + 1)), 0) >>> 0;
+  }
+
+  // ── Default output ───────────────────────────────────────────────────────────
+  // Returned before init() completes. Mid-range values — no character, no identity.
+
+  _defaultOutput() {
+    return {
+      breathPeriod:         9200,
+      pulseAmplitude:       0.55,
+      driftStrength:        0.40,
+      symmetryBias:         0,
+      gravityBias:          { x: 0, y: 0 },
+      membraneElasticity:   0.60,
+      flowViscosity:        0.45,
+      glowPersistence:      0.50,
+      microTremorThreshold: 0.35,
+      cellularActivity:     0.55,
+    };
+  }
+}
+
+// ── Singletons ─────────────────────────────────────────────────────────
+const apexBrain = new ApexBiologicalBrain();
+const apexBSE   = new ApexBiologicalSignatureEngine();
+
+// ── Renderer Bridge ────────────────────────────────────────────────────
+// Phase 2.5-B pipeline: Brain → physCoreSetState → BSE.tick → _physApplySignature
+// Order is mandatory:
+//   1. physCoreSetState applies the state CSS class (sets behavioral posture)
+//   2. apexBSE.tick recomputes the signature for this specific intent
+//   3. _physApplySignature writes BSE values as inline CSS vars — highest
+//      specificity, overrides class values — personalizing the organism within state
+apexBrain.onIntent(intent => {
+  physCoreSetState(intent.state);
+  apexBSE.tick(intent);
+  _physApplySignature(apexBSE.getSignature(), intent.state);
+});
+
+// ── Session Completion Hook ────────────────────────────────────────────
+// Brain re-evaluates when a session ends — state may shift from
+// Training → Recovery or Fatigue as accumulated load updates.
+// BSE observes the completed session to reinforce biological traits.
+// Wrapped in try/catch: Brain/BSE failure must never disrupt workout logging.
+function _brainNotifySessionEnd() {
+  try {
+    setTimeout(() => {
+      apexBrain.loadFromMemory().compute();
+      try {
+        const _bseLog = JSON.parse(localStorage.getItem('apexWorkoutLog') || '[]');
+        if (_bseLog.length) apexBSE.observe(_bseLog[_bseLog.length - 1]);
+      } catch(e) {}
+    }, 600);
+  } catch(e) {}
+}
+
+// ── Initialization ─────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+  // Frame 0: organism starts in Peak — the correct assumption before data loads
+  physCoreSetState('peak');
+  _physSyncLattice();
+
+  // BSE initializes first — loads or generates the biological signature.
+  // Must run before Brain.compute() so tick() has a valid signature on first emit.
+  apexBSE.init();
+
+  // Apply BSE immediately on frame 0 (peak state) so organism is personal
+  // from first render rather than waiting for Brain.compute() at 500ms.
+  _physApplySignature(apexBSE.getSignature(), 'peak');
+
+  // ~500ms: Brain reads all available memory and computes true physiological state.
+  // Delay allows memory system, workout log, and session state to fully settle.
+  // Brain.compute() → onIntent → _physApplySignature runs again with correct state.
+  setTimeout(() => apexBrain.loadFromMemory().compute(), 500);
+});
 </script>
 </body>
 </html>
