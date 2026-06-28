@@ -517,6 +517,10 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 .cc-hero::before{content:'';position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at 28% 65%,rgba(0,217,255,0.09) 0%,transparent 55%),radial-gradient(ellipse at 82% 18%,rgba(155,89,255,0.07) 0%,transparent 45%);animation:cc-ambient 7s ease-in-out infinite alternate;}
 @keyframes cc-ambient{0%{opacity:.7;transform:translateX(-5px);}100%{opacity:1;transform:translateX(5px);}}
 
+/* biological core slot — receives #phys-core via DOM move during workout */
+.cc-core-slot{position:absolute;inset:0;display:flex;justify-content:center;align-items:center;z-index:2;pointer-events:none;}
+.cc-core-slot #phys-core{--core-size:190px;}
+
 /* exercise header */
 .cc-ex-hdr{position:relative;padding:18px 0 0 16px;z-index:3;}
 .cc-ex-name-bg{font-family:'Unbounded',sans-serif;font-size:21px;font-weight:700;color:var(--ccText);line-height:1.1;}
@@ -3034,6 +3038,9 @@ function closeWorkout(){
   clearInterval(_woTimer);_woTimer=null;
   _wo=null;
   try{localStorage.removeItem('apexWo');}catch(e){}
+  const _stage=document.getElementById('phys-core-stage');
+  const _core=document.getElementById('phys-core');
+  if(_stage&&_core&&_core.parentElement!==_stage)_stage.appendChild(_core);
   _ccRestoreLayout();
   document.getElementById('workout-overlay').classList.remove('active');
   document.body.style.overflow='';
@@ -3362,6 +3369,7 @@ function _ccCard(ex,meta,reps,si,totalSets,key){
   <button class="cc-nav-save">&#9734; ${en?'Save':'&#1047;&#1072;&#1087;&#1072;&#1079;&#1080;'}</button>
 </div>
 <div class="cc-hero">
+  <div id="cc-core-slot" class="cc-core-slot"></div>
   <div class="cc-ex-hdr">
     <div class="cc-ex-name-bg">${meta.nameBG}</div>
     <div class="cc-ex-name-en">${meta.nameEN}</div>
@@ -3442,6 +3450,9 @@ function _woRenderEx(b){
     document.getElementById('workout-overlay').classList.add('cc-active');
     _wo.setStartTs=Date.now();
     b.innerHTML=_ccCard(ex,meta,reps,_wo.si,ex.sets,key);
+    const _slot=document.getElementById('cc-core-slot');
+    const _core=document.getElementById('phys-core');
+    if(_slot&&_core)_slot.appendChild(_core);
     return;
   }
   // Legacy fallback for exercises not yet in CC_META
