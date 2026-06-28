@@ -936,6 +936,254 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
+   PER-STATE KINETICS
+   Different keyframe shapes + timing functions per physiological state.
+   The CSS variable system drives amplitude; these drive character.
+   CSS cascade: state class selector overrides the base animation-name.
+   No JavaScript required — class switch triggers the behavioral switch.
+   ═════════════════════════════════════════════════════════════════════ */
+
+/* ── PEAK KEYFRAMES ─────────────────────────────────────────────────────
+   Barely perceptible motion. Discipline manifests as near-stillness.
+   Every keyframe deviates by the minimum biologically plausible amount.
+   The organism is not resting — it is at maximum voluntary restraint.   */
+@keyframes pc-membrane-peak {
+  0%   { transform: scale(1.00000); }
+  31%  { transform: scale(1.00018); }
+  67%  { transform: scale(0.99992); }
+  100% { transform: scale(1.00000); }
+}
+@keyframes pc-aura-peak {
+  0%   { transform: scale(1.000); opacity: 0.30; }
+  44%  { transform: scale(1.010); opacity: 0.32; }
+  81%  { transform: scale(0.994); opacity: 0.28; }
+  100% { transform: scale(1.000); opacity: 0.30; }
+}
+@keyframes pc-meta-peak {
+  0%   { transform: translate(0.0px, 0.0px); }
+  41%  { transform: translate(0.09px, 0.18px); }
+  79%  { transform: translate(-0.06px, 0.12px); }
+  100% { transform: translate(0.0px, 0.0px); }
+}
+@keyframes pc-nucleus-peak {
+  0%   { transform: translate(0.00px, 0.00px); }
+  53%  { transform: translate(0.03px, 0.05px); }
+  100% { transform: translate(0.00px, 0.00px); }
+}
+@keyframes pc-cortex-peak {
+  0%   { opacity: var(--cortex-opacity); }
+  47%  { opacity: calc(var(--cortex-opacity) * 1.04); }
+  100% { opacity: var(--cortex-opacity); }
+}
+
+/* ── TRAINING KEYFRAMES ─────────────────────────────────────────────────
+   Active metabolism. Membrane elastic — spring overshoot on expansion.
+   Nucleus pressure spikes, then rebounds below baseline (use it all).
+   Meta-drift forward-biased: organism leads with its energy direction.
+   All periods intentionally fast to match metabolic expenditure rate.   */
+@keyframes pc-membrane-training {
+  0%   { transform: scale(1.0000); }
+  14%  { transform: scale(1.0082); }
+  24%  { transform: scale(1.0118); }  /* elastic overshoot */
+  38%  { transform: scale(1.0054); }
+  52%  { transform: scale(0.9946); }  /* contraction through center */
+  64%  { transform: scale(0.9914); }  /* undershoot */
+  78%  { transform: scale(0.9978); }
+  100% { transform: scale(1.0000); }
+}
+@keyframes pc-aura-training {
+  0%   { transform: scale(1.000); opacity: 0.32; }
+  12%  { transform: scale(1.130); opacity: 0.50; }  /* burst */
+  22%  { transform: scale(1.190); opacity: 0.56; }  /* metabolic spike */
+  38%  { transform: scale(1.060); opacity: 0.40; }  /* settle */
+  54%  { transform: scale(0.920); opacity: 0.24; }  /* compression */
+  68%  { transform: scale(0.960); opacity: 0.28; }
+  83%  { transform: scale(0.994); opacity: 0.31; }
+  100% { transform: scale(1.000); opacity: 0.32; }
+}
+@keyframes pc-meta-training {
+  0%   { transform: translate(0.0px, 0.0px); }
+  19%  { transform: translate(1.4px, -1.1px); }  /* forward + lifted */
+  36%  { transform: translate(2.0px, -0.5px); }
+  52%  { transform: translate(1.1px, 0.8px); }
+  68%  { transform: translate(-0.5px, 0.3px); }
+  84%  { transform: translate(0.3px, -0.4px); }
+  100% { transform: translate(0.0px, 0.0px); }
+}
+@keyframes pc-nucleus-training {
+  0%   { transform: translate(0.00px, 0.00px); }
+  16%  { transform: translate(0.54px, -0.42px); }
+  31%  { transform: translate(0.78px, -0.18px); }
+  47%  { transform: translate(0.38px, 0.52px); }
+  63%  { transform: translate(-0.22px, 0.32px); }
+  81%  { transform: translate(0.14px, -0.18px); }
+  100% { transform: translate(0.00px, 0.00px); }
+}
+@keyframes pc-cortex-training {
+  0%   { opacity: var(--cortex-opacity); }
+  21%  { opacity: calc(var(--cortex-opacity) * 0.74); }  /* metabolic burn */
+  44%  { opacity: calc(var(--cortex-opacity) * 1.14); }
+  68%  { opacity: calc(var(--cortex-opacity) * 0.82); }
+  100% { opacity: var(--cortex-opacity); }
+}
+
+/* ── RECOVERY KEYFRAMES ─────────────────────────────────────────────────
+   Membranes expanding outward — cells opening to absorb.
+   Nucleus pressure blooms slowly and holds: reconstruction in progress.
+   Upward meta-drift: mass is lighter. Cellular load is lifting.
+   Warmth in the cortex — protective rebuild layer thickening.
+   Long periods. Recovery does not rush.                                 */
+@keyframes pc-membrane-recovery {
+  0%   { transform: scale(1.00000); }
+  22%  { transform: scale(1.00140); }  /* slow outward separation */
+  46%  { transform: scale(1.00260); }  /* fully expanded — absorbing */
+  68%  { transform: scale(1.00180); }
+  86%  { transform: scale(1.00060); }
+  100% { transform: scale(1.00000); }
+}
+@keyframes pc-aura-recovery {
+  0%   { transform: scale(1.000); opacity: 0.36; }
+  24%  { transform: scale(1.100); opacity: 0.44; }
+  50%  { transform: scale(1.240); opacity: 0.54; }  /* bloom — maximal rebuild */
+  72%  { transform: scale(1.140); opacity: 0.46; }  /* sustain */
+  88%  { transform: scale(1.040); opacity: 0.39; }
+  100% { transform: scale(1.000); opacity: 0.36; }
+}
+@keyframes pc-meta-recovery {
+  0%   { transform: translate(0.0px, 0.0px); }
+  28%  { transform: translate(0.3px, -1.6px); }  /* rising */
+  54%  { transform: translate(-0.2px, -2.1px); } /* buoyant — lightest */
+  76%  { transform: translate(0.4px, -1.0px); }
+  100% { transform: translate(0.0px, 0.0px); }
+}
+@keyframes pc-nucleus-recovery {
+  0%   { transform: translate(0.00px, 0.00px); }
+  33%  { transform: translate(-0.06px, -0.48px); }  /* floating upward */
+  61%  { transform: translate(0.10px, -0.66px); }   /* buoyant peak */
+  82%  { transform: translate(0.04px, -0.30px); }
+  100% { transform: translate(0.00px, 0.00px); }
+}
+@keyframes pc-cortex-recovery {
+  0%   { opacity: var(--cortex-opacity); }
+  36%  { opacity: calc(var(--cortex-opacity) * 1.18); }  /* thickening wrap */
+  70%  { opacity: calc(var(--cortex-opacity) * 1.12); }  /* sustained heal */
+  100% { opacity: var(--cortex-opacity); }
+}
+
+/* ── FATIGUE KEYFRAMES ─────────────────────────────────────────────────
+   Gravitational drag is dominant. All motion is downward-biased.
+   Membrane deforms asymmetrically: scaleY > scaleX (sagging mass).
+   Nucleus aura dim — barely enough pressure to maintain containment.
+   Meta-drift heavy, asymmetric: the organism doesn't fall symmetrically.
+   Long slow periods — everything is expensive and costs more than usual. */
+@keyframes pc-membrane-fatigue {
+  0%   { transform: scaleX(1.00000) scaleY(1.00000); }
+  18%  { transform: scaleX(0.99960) scaleY(1.00060); }  /* gravitational sag */
+  38%  { transform: scaleX(0.99920) scaleY(1.00110); }  /* asymmetric weight */
+  57%  { transform: scaleX(0.99940) scaleY(1.00080); }
+  76%  { transform: scaleX(0.99968) scaleY(1.00036); }
+  100% { transform: scaleX(1.00000) scaleY(1.00000); }
+}
+@keyframes pc-aura-fatigue {
+  0%   { transform: scale(1.000); opacity: 0.17; }
+  27%  { transform: scale(1.022); opacity: 0.21; }  /* barely a pulse */
+  55%  { transform: scale(0.980); opacity: 0.13; }  /* dims under load */
+  80%  { transform: scale(1.008); opacity: 0.18; }
+  100% { transform: scale(1.000); opacity: 0.17; }
+}
+@keyframes pc-meta-fatigue {
+  0%   { transform: translate(0.0px, 0.0px); }
+  21%  { transform: translate(-0.7px, 2.4px); }  /* sinks + slight drift */
+  42%  { transform: translate(0.5px, 3.4px); }   /* heaviest */
+  63%  { transform: translate(-0.9px, 2.8px); }  /* asymmetric tug */
+  82%  { transform: translate(0.3px, 1.6px); }
+  100% { transform: translate(0.0px, 0.0px); }
+}
+@keyframes pc-nucleus-fatigue {
+  0%   { transform: translate(0.00px, 0.00px); }
+  24%  { transform: translate(-0.20px, 0.78px); }  /* drops and shifts */
+  46%  { transform: translate(0.14px, 1.02px); }   /* heaviest — sub-floor */
+  69%  { transform: translate(-0.26px, 0.84px); }  /* drags laterally */
+  88%  { transform: translate(0.06px, 0.42px); }
+  100% { transform: translate(0.00px, 0.00px); }
+}
+@keyframes pc-cortex-fatigue {
+  0%   { opacity: var(--cortex-opacity); }
+  34%  { opacity: calc(var(--cortex-opacity) * 0.88); }  /* degrading */
+  68%  { opacity: calc(var(--cortex-opacity) * 0.94); }
+  100% { opacity: var(--cortex-opacity); }
+}
+
+/* ── PAIN KEYFRAMES ─────────────────────────────────────────────────────
+   Protective contraction: organism withdraws toward threat source.
+   Tremor = nervous system oscillation, not repetitive loop — irregular.
+   Membrane contracted below baseline — the wall has pulled inward.
+   Nucleus aura flickers: containment under stress, losing coherence.
+   Meta-drift strongly asymmetric: the body guards, not escapes.
+   Short irregular periods create aperiodic tremor character.            */
+@keyframes pc-membrane-pain {
+  0%   { transform: scale(0.99380); }   /* contracted */
+  9%   { transform: scale(0.99160); }   /* tremor inward */
+  17%  { transform: scale(0.99620); }   /* release */
+  26%  { transform: scale(0.99290); }   /* second tremor */
+  37%  { transform: scale(0.99480); }
+  49%  { transform: scale(0.99180); }   /* deeper — instability spike */
+  61%  { transform: scale(0.99540); }   /* partial release */
+  73%  { transform: scale(0.99320); }
+  86%  { transform: scale(0.99460); }
+  100% { transform: scale(0.99380); }
+}
+@keyframes pc-aura-pain {
+  0%   { transform: scale(0.930); opacity: 0.13; }   /* contracted */
+  10%  { transform: scale(0.958); opacity: 0.22; }   /* flicker surge */
+  19%  { transform: scale(0.916); opacity: 0.07; }   /* collapse */
+  29%  { transform: scale(0.948); opacity: 0.18; }
+  38%  { transform: scale(0.928); opacity: 0.10; }   /* second drop */
+  48%  { transform: scale(0.966); opacity: 0.25; }   /* momentary surge */
+  57%  { transform: scale(0.922); opacity: 0.06; }   /* deepest failure */
+  67%  { transform: scale(0.952); opacity: 0.20; }
+  78%  { transform: scale(0.934); opacity: 0.11; }
+  89%  { transform: scale(0.944); opacity: 0.16; }
+  100% { transform: scale(0.930); opacity: 0.13; }
+}
+@keyframes pc-meta-pain {
+  0%   { transform: translate(-1.8px, 1.4px); }   /* protective posture */
+  13%  { transform: translate(-2.6px, 2.2px); }   /* deeper withdrawal */
+  24%  { transform: translate(-1.0px, 0.6px); }   /* tremor release */
+  36%  { transform: translate(-2.8px, 1.9px); }   /* retreat */
+  49%  { transform: translate(-1.4px, 1.1px); }
+  62%  { transform: translate(-2.4px, 2.6px); }   /* deep guard */
+  76%  { transform: translate(-1.6px, 0.8px); }
+  100% { transform: translate(-1.8px, 1.4px); }
+}
+@keyframes pc-nucleus-pain {
+  0%   { transform: translate(-0.38px, 0.32px); }
+  10%  { transform: translate(-0.54px, 0.46px); }  /* tremor */
+  19%  { transform: translate(-0.24px, 0.16px); }  /* twitch relief */
+  28%  { transform: translate(-0.58px, 0.38px); }
+  38%  { transform: translate(-0.32px, 0.52px); }
+  47%  { transform: translate(-0.48px, 0.20px); }
+  56%  { transform: translate(-0.28px, 0.42px); }
+  65%  { transform: translate(-0.52px, 0.48px); }
+  74%  { transform: translate(-0.30px, 0.14px); }
+  83%  { transform: translate(-0.50px, 0.40px); }
+  92%  { transform: translate(-0.34px, 0.44px); }
+  100% { transform: translate(-0.38px, 0.32px); }
+}
+@keyframes pc-cortex-pain {
+  0%   { opacity: var(--cortex-opacity); }
+  12%  { opacity: calc(var(--cortex-opacity) * 1.20); }  /* defensive spike */
+  21%  { opacity: calc(var(--cortex-opacity) * 0.80); }  /* flicker */
+  30%  { opacity: calc(var(--cortex-opacity) * 1.14); }
+  41%  { opacity: calc(var(--cortex-opacity) * 0.86); }
+  52%  { opacity: calc(var(--cortex-opacity) * 1.22); }  /* peak defense */
+  63%  { opacity: calc(var(--cortex-opacity) * 0.78); }  /* loss of coherence */
+  74%  { opacity: calc(var(--cortex-opacity) * 1.10); }
+  87%  { opacity: calc(var(--cortex-opacity) * 0.90); }
+  100% { opacity: var(--cortex-opacity); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
    LAW OF INTENT — BEHAVIORAL STATES
    Each state is a complete behavioral posture. Five axes per state:
      1. Nucleus position  — center of gravity
@@ -1050,6 +1298,67 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
   --lattice-opacity: 0.58;
   --membrane-stroke-opacity: 0.38;
 }
+
+/* ── STATE ANIMATION OVERRIDES ─────────────────────────────────────────
+   Per-state: different keyframe names + timing functions per element.
+   Duration values chosen to be incommensurable with each other and with
+   the base period set, maintaining aperiodicity within each state.
+   ─────────────────────────────────────────────────────────────────────── */
+
+/* PEAK — disciplined restraint: near-still, symmetric, dense */
+#phys-core.state-peak #phys-breath-group {
+  animation-timing-function: cubic-bezier(0.37, 0, 0.63, 1);
+  animation-duration: 10800ms;
+}
+#phys-core.state-peak #phys-meta-drift    { animation: pc-meta-peak 34700ms ease-in-out infinite; }
+#phys-core.state-peak #pc-nucleus-drift-wrap { animation: pc-nucleus-peak 24300ms ease-in-out infinite; }
+#phys-core.state-peak #pc-nucleus-aura   { animation: pc-aura-peak 15900ms ease-in-out infinite; }
+#phys-core.state-peak #pc-membrane-body  { animation: pc-membrane-peak 11200ms ease-in-out infinite; }
+#phys-core.state-peak #pc-cortex-layer   { animation: pc-cortex-peak 21400ms ease-in-out infinite; }
+
+/* TRAINING — controlled metabolism: elastic, expanding, fast */
+#phys-core.state-training #phys-breath-group {
+  animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation-duration: 4900ms;
+}
+#phys-core.state-training #phys-meta-drift    { animation: pc-meta-training 16300ms cubic-bezier(0.34,1.56,0.64,1) infinite; }
+#phys-core.state-training #pc-nucleus-drift-wrap { animation: pc-nucleus-training 12100ms cubic-bezier(0.34,1.56,0.64,1) infinite; }
+#phys-core.state-training #pc-nucleus-aura   { animation: pc-aura-training 5700ms cubic-bezier(0.34,1.56,0.64,1) infinite; }
+#phys-core.state-training #pc-membrane-body  { animation: pc-membrane-training 3800ms cubic-bezier(0.34,1.56,0.64,1) infinite; }
+#phys-core.state-training #pc-cortex-layer   { animation: pc-cortex-training 9100ms ease-in-out infinite; }
+
+/* RECOVERY — slow regeneration: separating, warm, buoyant */
+#phys-core.state-recovery #phys-breath-group {
+  animation-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+  animation-duration: 12600ms;
+}
+#phys-core.state-recovery #phys-meta-drift    { animation: pc-meta-recovery 30700ms cubic-bezier(0.23,1,0.32,1) infinite; }
+#phys-core.state-recovery #pc-nucleus-drift-wrap { animation: pc-nucleus-recovery 21800ms cubic-bezier(0.23,1,0.32,1) infinite; }
+#phys-core.state-recovery #pc-nucleus-aura   { animation: pc-aura-recovery 18200ms cubic-bezier(0.23,1,0.32,1) infinite; }
+#phys-core.state-recovery #pc-membrane-body  { animation: pc-membrane-recovery 15400ms cubic-bezier(0.23,1,0.32,1) infinite; }
+#phys-core.state-recovery #pc-cortex-layer   { animation: pc-cortex-recovery 22900ms ease-in-out infinite; }
+
+/* FATIGUE — gravitational drag: heavy, asymmetric, dim */
+#phys-core.state-fatigue #phys-breath-group {
+  animation-timing-function: cubic-bezier(0.55, 0, 0.45, 1);
+  animation-duration: 13200ms;
+}
+#phys-core.state-fatigue #phys-meta-drift    { animation: pc-meta-fatigue 20600ms cubic-bezier(0.55,0,0.45,1) infinite; }
+#phys-core.state-fatigue #pc-nucleus-drift-wrap { animation: pc-nucleus-fatigue 15900ms cubic-bezier(0.55,0,0.45,1) infinite; }
+#phys-core.state-fatigue #pc-nucleus-aura   { animation: pc-aura-fatigue 17200ms ease-in-out infinite; }
+#phys-core.state-fatigue #pc-membrane-body  { animation: pc-membrane-fatigue 12300ms cubic-bezier(0.55,0,0.45,1) infinite; }
+#phys-core.state-fatigue #pc-cortex-layer   { animation: pc-cortex-fatigue 23800ms ease-in-out infinite; }
+
+/* PAIN — containment failure: tremor, protective, irregular */
+#phys-core.state-pain #phys-breath-group {
+  animation-timing-function: ease-in;
+  animation-duration: 3200ms;
+}
+#phys-core.state-pain #phys-meta-drift    { animation: pc-meta-pain 10300ms linear infinite; }
+#phys-core.state-pain #pc-nucleus-drift-wrap { animation: pc-nucleus-pain 7900ms linear infinite; }
+#phys-core.state-pain #pc-nucleus-aura   { animation: pc-aura-pain 4600ms linear infinite; }
+#phys-core.state-pain #pc-membrane-body  { animation: pc-membrane-pain 2700ms linear infinite; }
+#phys-core.state-pain #pc-cortex-layer   { animation: pc-cortex-pain 5300ms linear infinite; }
 
 /* ── RESPONSIVE ────────────────────────────────────────────────────────
    Core size only. All internal geometry is viewBox-relative — it scales
