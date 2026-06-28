@@ -3336,7 +3336,6 @@ function _ccPushupSvg(){
 
 // ── Body illustration dispatcher ──────────────────────────────────────────────
 function _ccBodyIllustration(key){
-  if(key==='pushup')return _ccPushupSvg();
   return'';
 }
 
@@ -3368,9 +3367,6 @@ function _ccCard(ex,meta,reps,si,totalSets,key){
     <div class="cc-ex-name-en">${meta.nameEN}</div>
     <div class="cc-badge">&#9889; ${en?meta.difficulty.en:meta.difficulty.bg}</div>
   </div>
-  ${(()=>{const _bi=_ccBodyIllustration(key);return _bi?`<div class="cc-body-slot">${_bi}</div>`:'';})()}
-  ${_ccCalloutsSvg(meta.callouts)}
-  ${_ccCalloutLabels(meta.callouts)}
   <div class="cc-mpanel">
     <div class="cc-mpanel-lbl">${en?'MUSCLE ACTIVITY':'&#1040;&#1050;&#1058;&#1048;&#1042;&#1053;&#1054;&#1057;&#1058; &#1053;&#1040; &#1052;&#1059;&#1057;&#1050;&#1059;&#1051;&#1048;&#1058;&#1045;'}</div>
     ${mrows}
