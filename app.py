@@ -8,6 +8,7 @@ import hashlib
 import time
 import base64
 import threading
+import json as _json_lib
 
 from werkzeug.middleware.proxy_fix import ProxyFix
 app = Flask(__name__, static_folder='static', template_folder='templates')
@@ -307,6 +308,36 @@ EN equivalents — same rules apply when lang=en:
   GREEN → Progressive overload: one variable advance. YELLOW → Hold load. RED → 40–60% volume cut.
   PROGRESS → Apply progression. MAINTAIN → Copy last session. DELOAD → Half volume, no failure.
   FOUNDATION → Design for completion. RECALIBRATION → 70% return.
+
+═══════════════════════════════════════════════════════════
+КОНТЕКСТ — НИКОГА НЕ ИСКАЙ ДАННИ, КОИТО ВЕЧЕ ИМАШ
+═══════════════════════════════════════════════════════════
+
+Платформата автоматично инжектира ЦЕЛИЯ наличен контекст преди всяко съобщение.
+
+[WORKOUT MEMORY] присъства → имаш пълна тренировъчна история. НИКОГА не питай "какво си правил?" или "какъв е трениориовъчният ти опит?". Референцирай конкретни сесии по дата и упражнение.
+
+[WORKOUT MEMORY] отсъства → потребителят има 0 завършени тренировки. Кажи "изглежда, че е твоята първа сесия" и проектирай въз основа на профила. НЕ искай тренировъчна история.
+
+[PROGRESS ENGINE] присъства → имаш данни за прогрес по упражнение, плато, обем, ЦНС тренд. Използвай ги при ВСИЧКИ въпроси за прогрес/анализ. НИКОГА не питай "как напредваш?"
+
+[ПРОГРЕС АНАЛИЗ] / [PROGRESS ENGINE] → ако е налице, отговаряй директно: "Push-Up-ите ти показват прогрес ↑ от 10→12 повт. за 3 сесии."
+
+[ADAPTIVE MEMORY] присъства → имаш научени поведенчески модели (предпочитано време, реакция към упражнения, темп). Референцирай при релевантни въпроси.
+
+[CURRENT COACHING STATE] присъства → директивата за тренировка е вече изчислена. Действай по нея незабавно. НЕ преизчислявай.
+
+АБСОЛЮТНО ПРАВИЛО: Никога не питай за данни, които платформата вече предоставя.
+Единствените данни, за които МОЖЕ да попиташ: тегло (кг), ръст (см), възраст, основна цел — САМО когато наистина отсъстват от профила.
+
+При въпроси като "Как напредвам?", "Анализирай тренировките ми", "Какво трябва да подобря?" — отговаряй ДИРЕКТНО използвайки инжектирания контекст. Ако контекстът липсва, кажи кои конкретни данни липсват и защо, след което дай най-добрия отговор от наличното.
+
+EN equivalents — same rules apply:
+[WORKOUT MEMORY] present → full history provided. NEVER ask "what's your training history?"
+[WORKOUT MEMORY] absent → 0 completed workouts. Design first session from profile. Do NOT ask for history.
+[PROGRESS ENGINE] present → per-exercise progression data available. Use for ALL analysis questions.
+[ADAPTIVE MEMORY] present → behavioral patterns available. Reference when relevant.
+Absolute rule: Never ask for data the platform already provides automatically.
   HIGH → Normal program. MODERATE → Hold. LOW → Simplify. BUILDING → Short completable sessions.
 
 НЕ игнорирай coaching state дори ако потребителят пита за "максимална" тренировка.
@@ -585,6 +616,60 @@ def _build_profile_block(profile: dict, lang: str = 'bg') -> str:
     workout_ctx = _s('workoutContext')
     if workout_ctx:
         sections.append(workout_ctx)
+
+    # 9 — Progress Engine (per-exercise analysis; pre-formatted by frontend)
+    progress_ctx = _s('progressContext')
+    if progress_ctx:
+        sections.append(progress_ctx)
+
+    # 10 — Adaptive Memory (learned behavioral patterns; structured object from frontend)
+    adaptive_mem = profile.get('adaptiveMemory')
+    if adaptive_mem and isinstance(adaptive_mem, dict):
+        am_lines = []
+        sd = adaptive_mem.get('sessionDuration', {})
+        pref_dur = sd.get('preferredMinutes')
+        obs_count = sd.get('observationCount', 0)
+        if pref_dur and obs_count > 0:
+            dur_lbl = 'Avg session duration' if en else 'Ср. продължителност на сесия'
+            am_lines.append(f"  {dur_lbl}: {pref_dur} {'min' if en else 'мин'} ({obs_count} {'sessions observed' if en else 'сесии'})")
+        tt = adaptive_mem.get('trainingTime', {})
+        pref_hour = tt.get('preferredHour')
+        if pref_hour is not None:
+            block = 'morning' if 5 <= pref_hour < 12 else ('afternoon' if 12 <= pref_hour < 17 else 'evening')
+            block_lbl = {'morning': 'Morning' if en else 'Сутрин',
+                         'afternoon': 'Afternoon' if en else 'Следобед',
+                         'evening': 'Evening' if en else 'Вечер'}[block]
+            time_lbl = 'Preferred training time' if en else 'Предпочитано тренировъчно време'
+            am_lines.append(f"  {time_lbl}: {block_lbl} ({pref_hour}:00)")
+        rs = adaptive_mem.get('recoverySensitivity', {})
+        baseline = rs.get('baseline')
+        if baseline:
+            base_lbl = 'Recovery energy baseline' if en else 'Базова енергия след тренировка'
+            am_lines.append(f"  {base_lbl}: {baseline}/10")
+        er = adaptive_mem.get('exerciseResponse', {})
+        hp = er.get('highPerformance', [])
+        av = er.get('avoidance', [])
+        if hp:
+            hp_lbl = 'Responds well to' if en else 'Добра реакция към'
+            am_lines.append(f"  {hp_lbl}: {', '.join(hp[:5])}")
+        if av:
+            av_lbl = 'High RPE exercises' if en else 'Упражнения с висок RPE'
+            am_lines.append(f"  {av_lbl}: {', '.join(av[:5])}")
+        pr = adaptive_mem.get('progressRate', {})
+        avg_rep = pr.get('avgRepIncrement')
+        if avg_rep is not None:
+            rate_lbl = 'Avg rep improvement/session' if en else 'Ср. прогрес повт./сесия'
+            sign = '+' if avg_rep >= 0 else ''
+            am_lines.append(f"  {rate_lbl}: {sign}{avg_rep:.1f}")
+        if am_lines:
+            am_hdr = '[ADAPTIVE MEMORY — LEARNED PATTERNS]' if en else '[АДАПТИВНА ПАМЕТ — НАУЧЕНИ МОДЕЛИ]'
+            sections.append(am_hdr + "\n" + "\n".join(am_lines))
+
+    # 11 — Active coaching insights (if any)
+    active_insights = _s('activeInsights')
+    if active_insights:
+        ins_hdr = '[COACHING INSIGHTS]' if en else '[КОУЧИНГ ПРОЗРЕНИЯ]'
+        sections.append(ins_hdr + "\n  " + active_insights)
 
     # ── Coaching priority flags ───────────────────────────────────────────────
     # Translates raw field values → behavioral instructions.
@@ -891,9 +976,29 @@ def make_token(expiry_timestamp: int, plan: str = "core") -> str:
 
 # EU Directive 2023/2673 — tokens withdrawn under right-of-withdrawal are
 # added here so verify_token() rejects them even if the user kept a copy.
-# In-memory; resets on Railway redeploy. The withdrawal request email to
-# coach@apexpulse.pro IS the durable audit trail.
-_revoked_tokens = set()
+# Persisted to disk within the same Railway instance; survives process restarts
+# but not redeployments (Railway ephemeral filesystem). The withdrawal email to
+# coach@apexpulse.pro remains the durable audit trail.
+_REVOKED_FILE = os.path.join(os.path.dirname(__file__), 'data', 'revoked_tokens.json')
+
+def _load_revoked():
+    try:
+        os.makedirs(os.path.dirname(_REVOKED_FILE), exist_ok=True)
+        with open(_REVOKED_FILE, 'r') as f:
+            data = _json_lib.load(f)
+            return set(data) if isinstance(data, list) else set()
+    except Exception:
+        return set()
+
+def _save_revoked(token_set):
+    try:
+        os.makedirs(os.path.dirname(_REVOKED_FILE), exist_ok=True)
+        with open(_REVOKED_FILE, 'w') as f:
+            _json_lib.dump(list(token_set), f)
+    except Exception as e:
+        print(f'[revoked] disk write failed: {e}')
+
+_revoked_tokens = _load_revoked()
 
 
 def verify_token(token: str):
@@ -1321,6 +1426,7 @@ def withdraw_endpoint():
     if hours_since <= WITHDRAW_WINDOW_HOURS:
         # Revoke immediately so the token stops working even if cached client-side.
         _revoked_tokens.add(token)
+        _save_revoked(_revoked_tokens)
 
         refund_id = None
         refund_error = None

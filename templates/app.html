@@ -524,8 +524,9 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 .cc-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border:1px solid rgba(255,255,255,0.11);border-radius:20px;font-size:10px;color:var(--ccSub);background:rgba(255,255,255,0.04);}
 
 /* body illustration slot — replaceable in Phase 2 */
-.cc-body-slot{position:absolute;left:0;bottom:0;width:68%;height:100%;z-index:1;display:flex;align-items:flex-end;pointer-events:none;}
+.cc-body-slot{position:absolute;left:0;bottom:0;width:68%;height:100%;z-index:1;display:flex;align-items:stretch;pointer-events:none;}
 .cc-body-img{width:100%;height:auto;object-fit:contain;object-position:bottom left;filter:drop-shadow(0 0 22px rgba(0,217,255,0.35)) drop-shadow(0 0 44px rgba(0,217,255,0.15));animation:cc-breathe 3.5s ease-in-out infinite;will-change:transform;}
+.cc-body-svg{width:100%;height:100%;display:block;overflow:visible;animation:cc-breathe 3.5s ease-in-out infinite;will-change:transform;}
 @keyframes cc-breathe{0%,100%{transform:scale(1);}50%{transform:scale(1.018);}}
 
 /* callout overlay — lines + dots only */
@@ -1858,7 +1859,7 @@ function _woLogSave(){
     try{log=JSON.parse(localStorage.getItem('apexWorkoutLog')||'[]');}catch(e){}
     if(!Array.isArray(log))log=[];
     log.push(entry);
-    if(log.length>20)log=log.slice(-20);
+    if(log.length>90)log=log.slice(-90);
     localStorage.setItem('apexWorkoutLog',JSON.stringify(log));
   }catch(e){}
 }
@@ -2207,6 +2208,8 @@ function startWorkout(exercises,_bypass){
 
 function closeWorkout(){
   clearInterval(_woTimer);_woTimer=null;
+  _wo=null;
+  try{localStorage.removeItem('apexWo');}catch(e){}
   _ccRestoreLayout();
   document.getElementById('workout-overlay').classList.remove('active');
   document.body.style.overflow='';
@@ -2376,9 +2379,146 @@ function _ccCalloutLabels(callouts){
 </div>`).join('');
 }
 
+// ── Body illustration: Push-Up (inline SVG, 250×300 viewport) ─────────────────
+function _ccPushupSvg(){
+  return`<svg class="cc-body-svg" viewBox="0 0 250 300" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMax meet">
+<defs>
+  <!-- Cyan edge glow -->
+  <filter id="pfgc" x="-60%" y="-60%" width="220%" height="220%">
+    <feFlood flood-color="#00d9ff" result="fc"/>
+    <feComposite in="fc" in2="SourceAlpha" operator="in" result="cb"/>
+    <feGaussianBlur in="cb" stdDeviation="3.5" result="gb"/>
+    <feMerge><feMergeNode in="gb"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+  <!-- Purple edge glow -->
+  <filter id="pfgp" x="-120%" y="-120%" width="340%" height="340%">
+    <feFlood flood-color="#9b59ff" result="fc"/>
+    <feComposite in="fc" in2="SourceAlpha" operator="in" result="cb"/>
+    <feGaussianBlur in="cb" stdDeviation="9" result="gb"/>
+    <feMerge><feMergeNode in="gb"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+  <!-- Large purple atmosphere (chest glow) -->
+  <filter id="pfgpl" x="-250%" y="-250%" width="600%" height="600%">
+    <feFlood flood-color="#9b40ff" result="fc"/>
+    <feComposite in="fc" in2="SourceAlpha" operator="in" result="cb"/>
+    <feGaussianBlur in="cb" stdDeviation="20" result="gb"/>
+    <feMerge><feMergeNode in="gb"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+  <!-- Background atmosphere blur -->
+  <filter id="pfgxl"><feGaussianBlur stdDeviation="38"/></filter>
+  <!-- Chest gradient fill -->
+  <radialGradient id="pchestg" cx="50%" cy="45%" r="60%">
+    <stop offset="0%" stop-color="#cc55ff" stop-opacity="1"/>
+    <stop offset="38%" stop-color="#8825ee" stop-opacity="0.72"/>
+    <stop offset="100%" stop-color="#3a0088" stop-opacity="0"/>
+  </radialGradient>
+</defs>
+
+<!-- Body atmosphere glow -->
+<ellipse cx="125" cy="168" rx="125" ry="108" fill="#001840" opacity="0.55" filter="url(#pfgxl)"/>
+<!-- Floor reflection -->
+<ellipse cx="108" cy="272" rx="115" ry="13" fill="#0080c0" opacity="0.22" filter="url(#pfgp)"/>
+
+<!-- ═══ FAR-SIDE LIMBS (left arm + left leg — behind torso) ═══ -->
+<!-- Left thigh: LHIP(78,152)→LKNEE(44,207) -->
+<line x1="78" y1="152" x2="44" y2="207" stroke="#0b1e42" stroke-width="16" stroke-linecap="round" filter="url(#pfgc)" opacity="0.78"/>
+<!-- Left calf: LKNEE(44,207)→LANKLE(24,246) -->
+<line x1="44" y1="207" x2="24" y2="246" stroke="#0b1e42" stroke-width="12" stroke-linecap="round" filter="url(#pfgc)" opacity="0.72"/>
+<!-- Left foot -->
+<ellipse cx="18" cy="253" rx="14" ry="7" fill="#08122a" stroke="#00bce5" stroke-width="0.8" opacity="0.76"/>
+<!-- Left upper arm: LSH(172,65)→LELBOW(158,144) -->
+<line x1="172" y1="65" x2="158" y2="144" stroke="#0b1e42" stroke-width="14" stroke-linecap="round" filter="url(#pfgc)" opacity="0.78"/>
+<!-- Left forearm: LELBOW(158,144)→LWRIST(149,228) -->
+<line x1="158" y1="144" x2="149" y2="228" stroke="#0b1e42" stroke-width="11" stroke-linecap="round" filter="url(#pfgc)" opacity="0.74"/>
+<!-- Left hand -->
+<ellipse cx="144" cy="239" rx="14" ry="8" fill="#08122a" stroke="#00b8dc" stroke-width="0.8" opacity="0.78"/>
+
+<!-- ═══ TORSO ═══ -->
+<path d="M 196,72 Q 184,68 172,65 Q 104,112 78,152 L 98,160 Q 170,112 196,72 Z"
+      fill="#0a1d3e" stroke="#00d9ff" stroke-width="1.15" filter="url(#pfgc)" opacity="0.97"/>
+
+<!-- Chest muscle glow — PURPLE (large atmospheric) -->
+<ellipse cx="146" cy="104" rx="58" ry="34" fill="url(#pchestg)" opacity="0.92" filter="url(#pfgpl)" transform="rotate(38 146 104)"/>
+<!-- Chest glow core (brighter inner) -->
+<ellipse cx="144" cy="102" rx="32" ry="18" fill="#a635ee" opacity="0.44" filter="url(#pfgp)" transform="rotate(38 144 102)"/>
+
+<!-- Shoulder glows — PURPLE -->
+<ellipse cx="196" cy="74" rx="19" ry="16" fill="#a040ff" opacity="0.82" filter="url(#pfgp)"/>
+<ellipse cx="172" cy="67" rx="15" ry="13" fill="#a040ff" opacity="0.62" filter="url(#pfgp)"/>
+
+<!-- ═══ NEAR-SIDE LIMBS (right arm + right leg — in front) ═══ -->
+<!-- Right thigh: RHIP(98,160)→RKNEE(56,217) -->
+<line x1="98" y1="160" x2="56" y2="217" stroke="#0b1e42" stroke-width="21" stroke-linecap="round" filter="url(#pfgc)" opacity="0.97"/>
+<!-- Right calf: RKNEE(56,217)→RANKLE(35,258) -->
+<line x1="56" y1="217" x2="35" y2="258" stroke="#0b1e42" stroke-width="16" stroke-linecap="round" filter="url(#pfgc)" opacity="0.96"/>
+<!-- Right foot -->
+<ellipse cx="28" cy="265" rx="17" ry="9" fill="#0a1a32" stroke="#00d4f5" stroke-width="1.1" opacity="0.97"/>
+<!-- Right upper arm: RSH(196,72)→RELBOW(180,152) -->
+<line x1="196" y1="72" x2="180" y2="152" stroke="#0b1e42" stroke-width="18" stroke-linecap="round" filter="url(#pfgc)" opacity="0.97"/>
+<!-- Tricep highlight (bright cyan edge on right arm outer side) -->
+<line x1="200" y1="76" x2="184" y2="148" stroke="#50eaff" stroke-width="6" stroke-linecap="round" opacity="0.14" filter="url(#pfgc)"/>
+<!-- Right forearm: RELBOW(180,152)→RWRIST(172,238) -->
+<line x1="180" y1="152" x2="172" y2="238" stroke="#0b1e42" stroke-width="14" stroke-linecap="round" filter="url(#pfgc)" opacity="0.97"/>
+<!-- Right hand -->
+<ellipse cx="167" cy="249" rx="18" ry="10" fill="#0a1a32" stroke="#00d4f5" stroke-width="1.1" opacity="0.98"/>
+
+<!-- ═══ NECK ═══ -->
+<line x1="210" y1="58" x2="196" y2="72" stroke="#0b1e42" stroke-width="17" stroke-linecap="round" filter="url(#pfgc)" opacity="0.95"/>
+
+<!-- ═══ HEAD ═══ -->
+<!-- Head atmospheric glow -->
+<ellipse cx="210" cy="34" rx="36" ry="40" fill="#000c1e" opacity="0.78" filter="url(#pfgp)"/>
+<!-- Head main shape -->
+<ellipse cx="210" cy="34" rx="22" ry="26" fill="#091630" stroke="#00d9ff" stroke-width="1.35" filter="url(#pfgc)" opacity="0.98"/>
+<!-- Skull cap highlight — subtle brow/forehead anatomy -->
+<ellipse cx="208" cy="22" rx="13" ry="9" fill="#0d2244" opacity="0.62"/>
+<!-- Chin area slightly darker -->
+<ellipse cx="212" cy="48" rx="8" ry="5" fill="#060e20" opacity="0.45"/>
+
+<!-- ═══ HOLOGRAPHIC MESH LINES ═══ -->
+<!-- Cross-spine grid (perpendicular to torso direction, ~52° from horizontal) -->
+<g stroke="#00d9ff" stroke-width="0.55" opacity="0.09">
+  <line x1="186" y1="58" x2="162" y2="75"/>
+  <line x1="177" y1="72" x2="153" y2="89"/>
+  <line x1="168" y1="87" x2="144" y2="104"/>
+  <line x1="159" y1="101" x2="135" y2="119"/>
+  <line x1="150" y1="116" x2="126" y2="134"/>
+  <line x1="141" y1="130" x2="117" y2="149"/>
+  <line x1="132" y1="145" x2="108" y2="163"/>
+  <line x1="123" y1="160" x2="99" y2="178"/>
+  <!-- Longitudinal lines along torso -->
+  <line x1="196" y1="72" x2="98" y2="160"/>
+  <line x1="188" y1="64" x2="90" y2="153"/>
+  <line x1="203" y1="79" x2="105" y2="167"/>
+</g>
+
+<!-- ═══ RIM LIGHT (top edge of torso — brightest highlight) ═══ -->
+<path d="M 193,65 Q 183,61 172,59 Q 114,99 84,146" fill="none" stroke="#88f0ff" stroke-width="1.6" opacity="0.55" filter="url(#pfgc)"/>
+
+<!-- ═══ ENERGY PARTICLES ═══ -->
+<g fill="#00d9ff">
+  <circle cx="160" cy="80" r="1.5" opacity="0.8"/>
+  <circle cx="144" cy="93" r="1.1" fill="#9b59ff" opacity="0.72"/>
+  <circle cx="128" cy="107" r="1.7" opacity="0.65"/>
+  <circle cx="113" cy="121" r="1.2" opacity="0.73"/>
+  <circle cx="97" cy="136" r="1.4" fill="#9b59ff" opacity="0.62"/>
+  <circle cx="188" cy="112" r="1.3" opacity="0.7"/>
+  <circle cx="176" cy="196" r="1.1" opacity="0.62"/>
+  <circle cx="50" cy="192" r="1.2" opacity="0.68"/>
+  <circle cx="36" cy="235" r="0.9" opacity="0.6"/>
+</g>
+</svg>`;
+}
+
+// ── Body illustration dispatcher ──────────────────────────────────────────────
+function _ccBodyIllustration(key){
+  if(key==='pushup')return _ccPushupSvg();
+  return'';
+}
+
 // ── Main card HTML builder ────────────────────────────────────────────────────
 
-function _ccCard(ex,meta,reps,si,totalSets){
+function _ccCard(ex,meta,reps,si,totalSets,key){
   const en=lang==='en';
   const tech=meta.technique.map(t=>`<div class="cc-tech-item"><span class="cc-tech-chk">&#10003;</span><span class="cc-tech-txt">${en?t.en:t.bg}</span></div>`).join('');
   const mrows=meta.muscles.map(m=>`<div class="cc-mrow"><span class="cc-mdot" style="background:${m.color}"></span><span class="cc-mname">${en?m.nameEN:m.name}</span><span class="cc-mpct">${m.pct}%</span></div>`).join('');
@@ -2404,9 +2544,7 @@ function _ccCard(ex,meta,reps,si,totalSets){
     <div class="cc-ex-name-en">${meta.nameEN}</div>
     <div class="cc-badge">&#9889; ${en?meta.difficulty.en:meta.difficulty.bg}</div>
   </div>
-  <div class="cc-body-slot">
-    <img src="${meta.image}" class="cc-body-img" alt="${meta.nameEN}" draggable="false">
-  </div>
+  ${(()=>{const _bi=_ccBodyIllustration(key);return _bi?`<div class="cc-body-slot">${_bi}</div>`:'';})()}
   ${_ccCalloutsSvg(meta.callouts)}
   ${_ccCalloutLabels(meta.callouts)}
   <div class="cc-mpanel">
@@ -2483,7 +2621,7 @@ function _woRenderEx(b){
   if(meta){
     document.getElementById('workout-overlay').classList.add('cc-active');
     _wo.setStartTs=Date.now();
-    b.innerHTML=_ccCard(ex,meta,reps,_wo.si,ex.sets);
+    b.innerHTML=_ccCard(ex,meta,reps,_wo.si,ex.sets,key);
     return;
   }
   // Legacy fallback for exercises not yet in CC_META
@@ -2585,6 +2723,10 @@ function _woSkip(){
 function _woRenderDone(b){
   _ccRestoreLayout();
   _woLogSave();
+  try{
+    const _log=JSON.parse(localStorage.getItem('apexWorkoutLog')||'[]');
+    if(_log.length)_memObserveSession(_log[_log.length-1]);
+  }catch(e){}
   const total=_wo.exs.reduce((a,e)=>a+e.sets,0);
   const dur=_wo.startTs?Math.round((Date.now()-_wo.startTs)/60000):0;
   const pf=document.getElementById('wo-prog-fill');if(pf)pf.style.width='100%';
@@ -2971,6 +3113,22 @@ window.onload=async()=>{
   await checkAccess();
   _memInit();
   _memValidate();
+  // Restore in-progress workout if page was refreshed mid-session
+  try{
+    const saved=localStorage.getItem('apexWo');
+    if(saved){
+      const wo=JSON.parse(saved);
+      // Only restore if workout is genuinely in-progress (not done/recovery)
+      if(wo&&wo.exs&&wo.phase&&wo.phase!=='done'&&wo.phase!=='recovery'){
+        _wo=wo;
+        document.getElementById('workout-overlay').classList.add('active');
+        document.body.style.overflow='hidden';
+        _woRender();
+      }else{
+        localStorage.removeItem('apexWo');
+      }
+    }
+  }catch(e){localStorage.removeItem('apexWo');}
   // Sync language UI with the choice carried over from landing (or saved earlier)
   document.getElementById('langBtn').innerText=lang==='bg'?'EN':'BG';
   document.documentElement.lang=lang;
@@ -3063,6 +3221,88 @@ window.onload=async()=>{
   maybeShowProfile();
 };
 
+function _progressEngine(){
+  let log=[];
+  try{log=JSON.parse(localStorage.getItem('apexWorkoutLog')||'[]');}catch(e){}
+  if(!Array.isArray(log)||log.length<2)return'';
+
+  const en=lang==='en';
+  const now=Math.floor(Date.now()/1000);
+  const DAY=86400;
+
+  // ── Per-exercise map ─────────────────────────────────────────────────────────
+  const exMap={};
+  log.forEach(session=>{
+    if(!session.exs)return;
+    session.exs.forEach(ex=>{
+      if(!exMap[ex.n])exMap[ex.n]=[];
+      const totalReps=ex.r?ex.r.reduce((a,b)=>a+b,0):0;
+      const avgReps=ex.r&&ex.r.length?totalReps/ex.r.length:0;
+      exMap[ex.n].push({ts:session.ts,date:session.date,sets:ex.s||1,reps:ex.r||[],avgReps,vol:(ex.s||1)*totalReps});
+    });
+  });
+
+  const lines=[];
+  lines.push(en?'[PROGRESS ENGINE — PER-EXERCISE ANALYSIS]':'[ПРОГРЕС АНАЛИЗ — ПО УПРАЖНЕНИЕ]');
+
+  // ── Per-exercise progression ─────────────────────────────────────────────────
+  const exLines=[];
+  Object.entries(exMap).forEach(([name,sessions])=>{
+    if(sessions.length<2)return;
+    const last5=sessions.slice(-5);
+    const first=last5[0],last=last5[last5.length-1];
+    const repDelta=last.avgReps-first.avgReps;
+    const volDelta=last.vol-first.vol;
+    const trend=repDelta>1.5?(en?'Progression ↑':'Прогресия ↑'):repDelta<-1.5?(en?'Regression ↓':'Регресия ↓'):(en?'Stable →':'Стабилно →');
+    const repHist=last5.map(s=>Math.round(s.avgReps*10)/10).join('→');
+    // Plateau: last 3 sessions within 0.5 reps of each other
+    let plateauNote='';
+    if(last5.length>=3){
+      const l3=last5.slice(-3).map(s=>s.avgReps);
+      const mn=Math.min(...l3),mx=Math.max(...l3);
+      if(mx-mn<=0.5)plateauNote=' · '+(en?'⚠ PLATEAU':'⚠ ПЛАТО');
+    }
+    const volTrend=volDelta>10?'↑':volDelta<-10?'↓':'→';
+    exLines.push(`  ${name}: ${sessions.length} ${en?'sessions':'сесии'} · ${trend} (${repHist} ${en?'avg reps':'ср. повт.'}) · ${en?'Vol':'Обем'} ${volTrend}${plateauNote}`);
+  });
+  if(exLines.length)lines.push('',...exLines);
+
+  // ── Weekly volume ────────────────────────────────────────────────────────────
+  const wkVol=w=>w.reduce((t,s)=>(s.exs||[]).reduce((a,ex)=>a+(ex.s||1)*(ex.r?ex.r.reduce((x,y)=>x+y,0):0),t),0);
+  const thisWeek=log.filter(s=>now-s.ts<=7*DAY);
+  const lastWeek=log.filter(s=>now-s.ts>7*DAY&&now-s.ts<=14*DAY);
+  if(thisWeek.length||lastWeek.length){
+    const tw=wkVol(thisWeek),lw=wkVol(lastWeek);
+    const wTrend=lw>0?(tw>lw*1.1?'↑':tw<lw*0.9?'↓':'→'):'(baseline)';
+    lines.push('',en?`Weekly volume: ${tw} total reps (${wTrend} vs prev week)`:`Седмичен обем: ${tw} повт. (${wTrend} спрямо минала седмица)`);
+  }
+
+  // ── Monthly improvement ──────────────────────────────────────────────────────
+  const last30=log.filter(s=>now-s.ts<=30*DAY);
+  const prev30=log.filter(s=>now-s.ts>30*DAY&&now-s.ts<=60*DAY);
+  if(last30.length>=3&&prev30.length>=1){
+    const mVol=w=>wkVol(w)/w.length;
+    const pct=Math.round((mVol(last30)-mVol(prev30))/Math.max(1,mVol(prev30))*100);
+    const sign=pct>=0?'+':'';
+    lines.push(en?`Monthly trend: ${sign}${pct}% avg session volume vs prior 30d`:`Месечен тренд: ${sign}${pct}% средна сесия спрямо предходния месец`);
+  }
+
+  // ── CNS load trend ───────────────────────────────────────────────────────────
+  const dMap={easy:1,medium:2,moderate:2,hard:3,very_hard:4};
+  const dVals=log.slice(-8).filter(s=>s.diff).map(s=>dMap[s.diff]||2);
+  if(dVals.length>=3){
+    const half=Math.floor(dVals.length/2);
+    const old=dVals.slice(0,half).reduce((a,b)=>a+b,0)/half;
+    const nw=dVals.slice(half).reduce((a,b)=>a+b,0)/(dVals.length-half);
+    const avg=dVals.reduce((a,b)=>a+b,0)/dVals.length;
+    const avgLbl=avg<1.5?'Low':avg<2.5?'Moderate':avg<3.2?'High':'Very High';
+    const cnsTrend=nw>old+0.3?(en?'rising — monitor for CNS fatigue':'↑ натоварване'):nw<old-0.3?(en?'dropping — fatigue clearing':'↓ разтоварване'):(en?'stable':'стабилно');
+    lines.push(en?`CNS load: ${avgLbl} · ${cnsTrend}`:`ЦНС натоварване: ${avgLbl} · ${cnsTrend}`);
+  }
+
+  return lines.join('\n');
+}
+
 async function send(){
   const inp=document.getElementById('user-in');
   const btn=document.querySelector('.send-btn');
@@ -3114,10 +3354,25 @@ async function send(){
   try{
     const pRaw=localStorage.getItem('apexProfile');
     const p=pRaw?JSON.parse(pRaw):{};
+    // Workout memory summary
     const wCtx=_woGetSummary(lang);
     if(wCtx)p.workoutContext=wCtx;
+    // Coaching state directive (recovery/consistency/training state)
     const csCtx=_woComputeStates(lang);
     if(csCtx)p.coachingState=csCtx;
+    // Progress engine — per-exercise analysis, plateau, CNS trend, volume trend
+    const progCtx=_progressEngine();
+    if(progCtx)p.progressContext=progCtx;
+    // Adaptive memory — learned behavioral patterns (populated after ≥1 session)
+    try{
+      const am=_memGetAdaptive();
+      if(am&&(am.sessionDuration.observationCount||0)>0)p.adaptiveMemory=am;
+    }catch(e){}
+    // Active coaching insights
+    try{
+      const ins=_memGetActiveInsights();
+      if(ins&&ins.length)p.activeInsights=ins.map(i=>i.text||i.summary||'').filter(Boolean).join(' | ');
+    }catch(e){}
     if(p&&Object.keys(p).length)body.profile=p;
   }catch(e){}
   if(isElite&&token){
@@ -3881,6 +4136,105 @@ function _memGetAdaptive(){
 
 function _memSaveAdaptive(obj){
   try{localStorage.setItem('apexAdaptiveMemory',JSON.stringify(obj));}catch(e){console.warn('[mem] adaptive save failed:',e);}
+}
+
+function _memObserveSession(entry){
+  try{
+    const am=_memGetAdaptive();
+    const now=new Date();
+    const hour=now.getHours();
+    const dow=now.getDay();
+    const dur=entry.dur||0;
+    const diff=entry.diff||'medium';
+    const dMap={easy:1,medium:2,moderate:2,hard:3,very_hard:4};
+    const diffVal=dMap[diff]||2;
+
+    // Session duration — rolling average
+    if(dur>0){
+      const n=am.sessionDuration.observationCount||0;
+      const prev=am.sessionDuration.preferredMinutes||dur;
+      am.sessionDuration.preferredMinutes=Math.round((prev*n+dur)/(n+1));
+      am.sessionDuration.observationCount=n+1;
+      am.sessionDuration.lastUpdated=entry.date;
+    }
+
+    // Training time block + preferred hour
+    {
+      const perf=am.trainingTime.avgPerfByTimeBlock||{morning:null,afternoon:null,evening:null};
+      const block=hour>=5&&hour<12?'morning':hour>=12&&hour<17?'afternoon':'evening';
+      const prev=perf[block];
+      perf[block]=prev!==null?parseFloat(((prev+diffVal)/2).toFixed(2)):diffVal;
+      am.trainingTime.avgPerfByTimeBlock=perf;
+      am.trainingTime.preferredHour=hour;
+      am.trainingTime.observationCount=(am.trainingTime.observationCount||0)+1;
+      am.trainingTime.lastUpdated=entry.date;
+    }
+
+    // Weekly adherence
+    {
+      const wa=am.weeklyAdherence.byDay;
+      wa[dow].completed=(wa[dow].completed||0)+1;
+      wa[dow].scheduled=(wa[dow].scheduled||0)+1;
+      const all=Object.entries(wa);
+      am.weeklyAdherence.strongDays=all.filter(([,v])=>v.completed>=2).map(([d])=>parseInt(d));
+      am.weeklyAdherence.weakDays=all.filter(([,v])=>v.completed===0&&v.scheduled>0).map(([d])=>parseInt(d));
+      am.weeklyAdherence.lastUpdated=entry.date;
+    }
+
+    // Recovery sensitivity baseline
+    if(entry.rec&&typeof entry.rec.energy==='number'){
+      const rs=am.recoverySensitivity;
+      const n=rs.observationCount||0;
+      const prev=rs.baseline||entry.rec.energy;
+      rs.baseline=parseFloat(((prev*n+entry.rec.energy)/(n+1)).toFixed(2));
+      rs.observationCount=n+1;
+      rs.lastUpdated=entry.date;
+    }
+
+    // Exercise response — easy → high performance, very_hard → flagged
+    if(entry.exs&&entry.exs.length){
+      const er=am.exerciseResponse;
+      if(diff==='easy'){
+        entry.exs.forEach(ex=>{if(!er.highPerformance.includes(ex.n))er.highPerformance.push(ex.n);});
+      }
+      if(diff==='very_hard'){
+        entry.exs.forEach(ex=>{if(!er.avoidance.includes(ex.n))er.avoidance.push(ex.n);});
+      }
+      er.lastUpdated=entry.date;
+    }
+
+    // Progress rate — compare avg reps vs previous session of same exercises
+    {
+      let log=[];
+      try{log=JSON.parse(localStorage.getItem('apexWorkoutLog')||'[]');}catch(e){}
+      if(log.length>=2){
+        const prev=log[log.length-2];
+        const curr=log[log.length-1];
+        if(prev&&curr&&prev.exs&&curr.exs){
+          const deltas=[];
+          curr.exs.forEach(cex=>{
+            const pex=prev.exs.find(e=>e.n===cex.n);
+            if(pex&&pex.r&&cex.r&&pex.r.length&&cex.r.length){
+              const pAvg=pex.r.reduce((a,b)=>a+b,0)/pex.r.length;
+              const cAvg=cex.r.reduce((a,b)=>a+b,0)/cex.r.length;
+              deltas.push(cAvg-pAvg);
+            }
+          });
+          if(deltas.length){
+            const avgDelta=deltas.reduce((a,b)=>a+b,0)/deltas.length;
+            const pr=am.progressRate;
+            const n=pr.observationCount||0;
+            const prevAvg=pr.avgRepIncrement||0;
+            pr.avgRepIncrement=parseFloat(((prevAvg*n+avgDelta)/(n+1)).toFixed(2));
+            pr.observationCount=n+1;
+            pr.lastUpdated=entry.date;
+          }
+        }
+      }
+    }
+
+    _memSaveAdaptive(am);
+  }catch(e){console.warn('[mem] observe failed:',e);}
 }
 
 function _memUpdateAdaptiveField(path,value){
