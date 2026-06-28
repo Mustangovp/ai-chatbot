@@ -748,6 +748,8 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 @keyframes pc-breath {
   0%   { transform: scale(1.000); }
   22%  { transform: scale(calc(1 + var(--breath-amplitude))); }
+  58%  { transform: scale(calc(1 + var(--breath-amplitude) * 0.07)); }
+  80%  { transform: scale(calc(1 - var(--breath-amplitude) * 0.04)); }
   100% { transform: scale(1.000); }
 }
 
@@ -755,7 +757,7 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
   transform-box: fill-box;
   transform-origin: center;
   animation: pc-breath var(--breath-period)
-             cubic-bezier(0.22, 0.61, 0.36, 1) infinite;
+             cubic-bezier(0.16, 0.72, 0.30, 1) infinite;
   will-change: transform;
 }
 
@@ -767,9 +769,11 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
    GPU: own compositor layer for parallel compositing.                    */
 @keyframes pc-meta-drift {
   0%   { transform: translate(0.0px, 0.0px); }
-  27%  { transform: translate(0.5px, 0.7px); }
-  54%  { transform: translate(-0.3px, 1.0px); }
-  81%  { transform: translate(0.4px, 0.4px); }
+  21%  { transform: translate(0.6px, 0.9px); }
+  39%  { transform: translate(0.1px, 1.4px); }
+  57%  { transform: translate(-0.5px, 0.8px); }
+  74%  { transform: translate(0.3px, 1.1px); }
+  88%  { transform: translate(-0.2px, 0.4px); }
   100% { transform: translate(0.0px, 0.0px); }
 }
 
@@ -786,11 +790,13 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
    Period is incommensurable with breath + drift — three-body aperiodicity.
    No GPU promotion: sub-pixel on small element, no visible jank.         */
 @keyframes pc-nucleus-drift {
-  0%   { transform: translate(0.0px, 0.0px); }
-  31%  { transform: translate(0.3px, 0.4px); }
-  63%  { transform: translate(-0.2px, 0.6px); }
-  88%  { transform: translate(0.3px, 0.2px); }
-  100% { transform: translate(0.0px, 0.0px); }
+  0%   { transform: translate(0.00px, 0.00px); }
+  17%  { transform: translate(0.22px, 0.34px); }
+  38%  { transform: translate(-0.14px, 0.52px); }
+  59%  { transform: translate(0.28px, 0.38px); }
+  79%  { transform: translate(-0.09px, 0.58px); }
+  91%  { transform: translate(0.16px, 0.21px); }
+  100% { transform: translate(0.00px, 0.00px); }
 }
 
 #pc-nucleus-drift-wrap {
@@ -821,16 +827,61 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
    expansion and glow emission is what makes this feel alive, not looped.
    GPU: opacity on promoted screen-blend layer.                           */
 @keyframes pc-glow-pulse {
-  0%   { opacity: calc(var(--glow-intensity) * 0.72); }
+  0%   { opacity: calc(var(--glow-intensity) * 0.65); }
+  19%  { opacity: calc(var(--glow-intensity) * 0.84); }
   28%  { opacity: var(--glow-intensity); }
-  100% { opacity: calc(var(--glow-intensity) * 0.72); }
+  46%  { opacity: calc(var(--glow-intensity) * 0.91); }
+  70%  { opacity: calc(var(--glow-intensity) * 0.68); }
+  87%  { opacity: calc(var(--glow-intensity) * 0.62); }
+  100% { opacity: calc(var(--glow-intensity) * 0.65); }
 }
 
 #pc-glow-layer {
   animation: pc-glow-pulse var(--breath-period)
-             cubic-bezier(0.22, 0.61, 0.36, 1) infinite;
+             ease-in-out infinite;
   will-change: opacity;
   mix-blend-mode: screen;
+}
+
+/* ── ANIMATION: Nucleus internal pressure ─────────────────────────────
+   The nucleus aura expands/contracts independently of breath — internal
+   pressure variations that don't match the surface respiration rhythm.
+   11370ms: incommensurable with all other periods. Never phase-locks.   */
+@keyframes pc-nucleus-pressure {
+  0%   { transform: scale(1.000); opacity: 0.28; }
+  34%  { transform: scale(1.095); opacity: 0.37; }
+  61%  { transform: scale(0.958); opacity: 0.21; }
+  82%  { transform: scale(1.042); opacity: 0.31; }
+  100% { transform: scale(1.000); opacity: 0.28; }
+}
+#pc-nucleus-aura {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pc-nucleus-pressure 11370ms ease-in-out infinite;
+}
+
+/* ── ANIMATION: Cortex depth pulse ───────────────────────────────────
+   The damping layer breathes at its own biological rate — slower than
+   the membrane, faster than metabolic drift. 13700ms period.
+   Creates the perceptual impression of internal depth.                 */
+@keyframes pc-cortex-live {
+  0%   { opacity: var(--cortex-opacity); }
+  39%  { opacity: calc(var(--cortex-opacity) * 1.11); }
+  74%  { opacity: calc(var(--cortex-opacity) * 0.92); }
+  100% { opacity: var(--cortex-opacity); }
+}
+
+/* ── ANIMATION: Membrane surface micro-tension ───────────────────────
+   Sub-perceptual scale oscillation on the membrane wall. Amplitude is
+   0.001 — invisible as a single event, cumulatively alive. 6170ms.    */
+@keyframes pc-membrane-live {
+  0%   { transform: scale(1.0000); }
+  13%  { transform: scale(1.0009); }
+  29%  { transform: scale(0.9993); }
+  51%  { transform: scale(1.0012); }
+  73%  { transform: scale(0.9995); }
+  88%  { transform: scale(1.0007); }
+  100% { transform: scale(1.0000); }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -855,7 +906,8 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 /* Cortex depth: thickness of biological damping layer */
 #pc-cortex-layer {
   opacity: var(--cortex-opacity, 0.50);
-  transition: opacity 2400ms ease-in-out;
+  animation: pc-cortex-live 13700ms ease-in-out infinite;
+  will-change: opacity;
 }
 
 /* Lattice structural integrity */
@@ -868,6 +920,9 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 #pc-membrane-body {
   stroke: rgba(56,224,255,var(--membrane-stroke-opacity,0.30));
   transition: stroke 2400ms ease-in-out;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pc-membrane-live 6170ms ease-in-out infinite;
 }
 
 /* Flow circulation coherence: reflects metabolic activity */
@@ -1010,6 +1065,7 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
   #phys-breath-group,
   #phys-meta-drift,
   #pc-nucleus-drift-wrap,
+  #pc-nucleus-aura,
   #pc-nucleus-layer,
   #pc-flow-rotate-group,
   #pc-glow-layer,
@@ -2475,15 +2531,9 @@ function closeProfile(){
    WORKOUT MODE — Tasks 1-4
 ══════════════════════════════════════════════════ */
 
-// ── SVG animated stick figures
+// ── SVG animated stick figures removed (Bio-OS visual identity sprint)
 const _WO_SVG = {
-  squat:`<svg viewBox="0 0 100 130" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%"><defs><style>#sq-tr{fill:rgba(245,33,45,.12);stroke:rgba(245,33,45,.28);stroke-width:.8;animation:sq-tr 2.2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes sq-tr{0%,100%{d:path('M36,27 L64,27 L57,65 L43,65 Z')}50%{d:path('M36,55 L64,55 L57,90 L43,90 Z')}}#sq-sh{stroke:#F5212D;stroke-linecap:round;fill:none;stroke-width:5;animation:sq-sh 2.2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes sq-sh{0%,100%{d:path('M36,27 L64,27')}50%{d:path('M36,55 L64,55')}}#sq-sp{stroke:#F5212D;stroke-linecap:round;fill:none;stroke-width:3.5;animation:sq-sp 2.2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes sq-sp{0%,100%{d:path('M50,22 L50,65')}50%{d:path('M50,50 L50,90')}}#sq-hp{stroke:#F5212D;stroke-linecap:round;fill:none;stroke-width:5;animation:sq-hp 2.2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes sq-hp{0%,100%{d:path('M43,65 L57,65')}50%{d:path('M43,90 L57,90')}}#sq-la{stroke:#F5212D;stroke-linecap:round;stroke-linejoin:round;fill:none;stroke-width:4;animation:sq-la 2.2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes sq-la{0%,100%{d:path('M36,27 L28,48 L24,62')}50%{d:path('M36,55 L22,53 L10,51')}}#sq-ra{stroke:#F5212D;stroke-linecap:round;stroke-linejoin:round;fill:none;stroke-width:4;animation:sq-ra 2.2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes sq-ra{0%,100%{d:path('M64,27 L72,48 L76,62')}50%{d:path('M64,55 L78,53 L90,51')}}#sq-ll{stroke:#F5212D;stroke-linecap:round;stroke-linejoin:round;fill:none;stroke-width:5.5;animation:sq-ll 2.2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes sq-ll{0%,100%{d:path('M43,65 L40,93 L38,120 L27,122')}50%{d:path('M43,90 L22,102 L38,120 L27,122')}}#sq-rl{stroke:#F5212D;stroke-linecap:round;stroke-linejoin:round;fill:none;stroke-width:5.5;animation:sq-rl 2.2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes sq-rl{0%,100%{d:path('M57,65 L60,93 L62,120 L73,122')}50%{d:path('M57,90 L78,102 L62,120 L73,122')}}</style></defs><ellipse cx="50" cy="124" rx="26" ry="3.5" fill="rgba(245,33,45,.09)"/><path id="sq-ll" d="M43,65 L40,93 L38,120 L27,122"/><path id="sq-rl" d="M57,65 L60,93 L62,120 L73,122"/><path id="sq-tr" d="M36,27 L64,27 L57,65 L43,65 Z"/><path id="sq-sp" d="M50,22 L50,65"/><path id="sq-sh" d="M36,27 L64,27"/><path id="sq-hp" d="M43,65 L57,65"/><path id="sq-la" d="M36,27 L28,48 L24,62"/><path id="sq-ra" d="M64,27 L72,48 L76,62"/><circle r="3.5" fill="#FF7040"><animate attributeName="cx" values="40;22;40" dur="2.2s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/><animate attributeName="cy" values="93;102;93" dur="2.2s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle r="3.5" fill="#FF7040"><animate attributeName="cx" values="60;78;60" dur="2.2s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/><animate attributeName="cy" values="93;102;93" dur="2.2s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle r="2.5" fill="#FF7040"><animate attributeName="cx" values="28;22;28" dur="2.2s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/><animate attributeName="cy" values="48;53;48" dur="2.2s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle r="2.5" fill="#FF7040"><animate attributeName="cx" values="72;78;72" dur="2.2s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/><animate attributeName="cy" values="48;53;48" dur="2.2s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="43" r="2.5" fill="#FF6030"><animate attributeName="cy" values="65;90;65" dur="2.2s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="57" r="2.5" fill="#FF6030"><animate attributeName="cy" values="65;90;65" dur="2.2s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="50" r="10.5" fill="#F5212D"><animate attributeName="cy" values="11;39;11" dur="2.2s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle></svg>`,
-  pushup:`<svg viewBox="0 0 170 90" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%"><defs><style>#pu-ab{stroke:rgba(245,33,45,.35);stroke-width:4.5;stroke-linecap:round;stroke-linejoin:round;fill:none;animation:pu-arm-b 1.8s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes pu-arm-b{0%,100%{d:path('M44,33 L42,56 L36,78')}50%{d:path('M44,57 L20,62 L36,78')}}#pu-af{stroke:#F5212D;stroke-width:5;stroke-linecap:round;stroke-linejoin:round;fill:none;animation:pu-arm-f 1.8s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes pu-arm-f{0%,100%{d:path('M38,33 L36,56 L30,78')}50%{d:path('M38,57 L14,62 L30,78')}}#pu-bf{fill:rgba(245,33,45,.13);stroke:rgba(245,33,45,.25);stroke-width:.8;animation:pu-body 1.8s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes pu-body{0%,100%{d:path('M38,28 L124,38 L125,48 L39,38 Z')}50%{d:path('M38,52 L124,60 L125,70 L39,62 Z')}}#pu-lb{stroke:rgba(245,33,45,.35);stroke-width:5.5;stroke-linecap:round;stroke-linejoin:round;fill:none;animation:pu-leg-b 1.8s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes pu-leg-b{0%,100%{d:path('M130,43 L140,62 L148,78')}50%{d:path('M130,65 L140,70 L148,78')}}#pu-lf{stroke:#F5212D;stroke-width:5.5;stroke-linecap:round;stroke-linejoin:round;fill:none;animation:pu-leg-f 1.8s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes pu-leg-f{0%,100%{d:path('M124,43 L134,62 L142,78')}50%{d:path('M124,65 L134,70 L142,78')}}</style></defs><ellipse cx="86" cy="82" rx="68" ry="3.5" fill="rgba(245,33,45,.09)"/><path id="pu-ab" d="M44,33 L42,56 L36,78"/><path id="pu-lb" d="M130,43 L140,62 L148,78"/><path id="pu-bf" d="M38,28 L124,38 L125,48 L39,38 Z"/><path id="pu-af" d="M38,33 L36,56 L30,78"/><path id="pu-lf" d="M124,43 L134,62 L142,78"/><circle cx="140" cy="62" r="3" fill="rgba(255,112,64,.5)"><animate attributeName="cy" values="62;70;62" dur="1.8s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="134" cy="62" r="3.5" fill="#FF7040"><animate attributeName="cy" values="62;70;62" dur="1.8s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="124" r="2.5" fill="#FF6030"><animate attributeName="cy" values="43;65;43" dur="1.8s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="38" r="2.5" fill="#FF6030"><animate attributeName="cy" values="33;57;33" dur="1.8s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="42" cy="56" r="2.5" fill="rgba(255,112,64,.5)"><animate attributeName="cx" values="42;20;42" dur="1.8s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/><animate attributeName="cy" values="56;62;56" dur="1.8s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="36" cy="56" r="3" fill="#FF7040"><animate attributeName="cx" values="36;14;36" dur="1.8s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/><animate attributeName="cy" values="56;62;56" dur="1.8s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="20" cy="22" r="9.5" fill="#F5212D"><animate attributeName="cy" values="22;46;22" dur="1.8s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle></svg>`,
-  lunge:`<svg viewBox="0 0 160 130" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%"><defs><style>#ln-tr{fill:rgba(245,33,45,.12);stroke:rgba(245,33,45,.28);stroke-width:.8;animation:ln-tr 2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes ln-tr{0%,100%{d:path('M66,27 L94,27 L87,67 L73,67 Z')}50%{d:path('M66,47 L94,47 L87,87 L73,87 Z')}}#ln-sh{stroke:#F5212D;stroke-linecap:round;fill:none;stroke-width:5;animation:ln-sh 2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes ln-sh{0%,100%{d:path('M66,27 L94,27')}50%{d:path('M66,47 L94,47')}}#ln-sp{stroke:#F5212D;stroke-linecap:round;fill:none;stroke-width:3.5;animation:ln-sp 2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes ln-sp{0%,100%{d:path('M80,22 L80,67')}50%{d:path('M80,42 L80,87')}}#ln-hp{stroke:#F5212D;stroke-linecap:round;fill:none;stroke-width:5;animation:ln-hp 2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes ln-hp{0%,100%{d:path('M73,67 L87,67')}50%{d:path('M73,87 L87,87')}}#ln-la{stroke:#F5212D;stroke-linecap:round;stroke-linejoin:round;fill:none;stroke-width:4;animation:ln-la 2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes ln-la{0%,100%{d:path('M66,27 L60,52 L56,68')}50%{d:path('M66,47 L60,72 L56,88')}}#ln-ra{stroke:#F5212D;stroke-linecap:round;stroke-linejoin:round;fill:none;stroke-width:4;animation:ln-ra 2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes ln-ra{0%,100%{d:path('M94,27 L100,52 L104,68')}50%{d:path('M94,47 L100,72 L104,88')}}#ln-fl{stroke:#F5212D;stroke-linecap:round;stroke-linejoin:round;fill:none;stroke-width:5.5;animation:ln-fl 2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes ln-fl{0%,100%{d:path('M73,67 L71,98 L69,122')}50%{d:path('M73,87 L52,107 L30,122')}}#ln-bl{stroke:rgba(245,33,45,.6);stroke-linecap:round;stroke-linejoin:round;fill:none;stroke-width:5.5;animation:ln-bl 2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes ln-bl{0%,100%{d:path('M87,67 L89,98 L91,122')}50%{d:path('M87,87 L108,112 L128,115')}}</style></defs><ellipse cx="78" cy="127" rx="68" ry="3.5" fill="rgba(245,33,45,.09)"/><path id="ln-bl" d="M87,67 L89,98 L91,122"/><path id="ln-tr" d="M66,27 L94,27 L87,67 L73,67 Z"/><path id="ln-sp" d="M80,22 L80,67"/><path id="ln-sh" d="M66,27 L94,27"/><path id="ln-hp" d="M73,67 L87,67"/><path id="ln-la" d="M66,27 L60,52 L56,68"/><path id="ln-ra" d="M94,27 L100,52 L104,68"/><path id="ln-fl" d="M73,67 L71,98 L69,122"/><circle cx="89" cy="98" r="3.5" fill="rgba(255,112,64,.6)"><animate attributeName="cx" values="89;108;89" dur="2s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/><animate attributeName="cy" values="98;112;98" dur="2s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="71" cy="98" r="3.5" fill="#FF7040"><animate attributeName="cx" values="71;52;71" dur="2s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/><animate attributeName="cy" values="98;107;98" dur="2s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="73" cy="67" r="2.5" fill="#FF6030"><animate attributeName="cy" values="67;87;67" dur="2s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="87" cy="67" r="2.5" fill="#FF6030"><animate attributeName="cy" values="67;87;67" dur="2s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="60" cy="52" r="2.5" fill="#FF7040"><animate attributeName="cy" values="52;72;52" dur="2s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="100" cy="52" r="2.5" fill="#FF7040"><animate attributeName="cy" values="52;72;52" dur="2s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="80" cy="12" r="10.5" fill="#F5212D"><animate attributeName="cy" values="12;32;12" dur="2s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle></svg>`,
-  crunch:`<svg viewBox="0 0 170 82" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%"><defs><style>#cr-bf{fill:rgba(245,33,45,.13);stroke:rgba(245,33,45,.25);stroke-width:.8;animation:cr-bf 1.6s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes cr-bf{0%,100%{d:path('M36,46 L90,50 L90,58 L36,54 Z')}50%{d:path('M40,26 L90,48 L90,56 L40,34 Z')}}#cr-ub{stroke:#F5212D;stroke-linecap:round;fill:none;stroke-width:3.5;animation:cr-ub 1.6s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes cr-ub{0%,100%{d:path('M36,50 L90,54')}50%{d:path('M40,30 L90,52')}}#cr-ar{stroke:#F5212D;stroke-linecap:round;stroke-linejoin:round;fill:none;stroke-width:4;animation:cr-ar 1.6s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes cr-ar{0%,100%{d:path('M36,48 L20,44 L8,44')}50%{d:path('M40,28 L28,20 L18,20')}}#cr-lb{stroke:rgba(245,33,45,.4);stroke-width:5.5;stroke-linecap:round;stroke-linejoin:round;fill:none;animation:cr-lb 1.6s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes cr-lb{0%,100%{d:path('M96,54 L124,44 L146,64')}50%{d:path('M96,52 L124,44 L146,64')}}#cr-lf{stroke:#F5212D;stroke-linecap:round;stroke-linejoin:round;fill:none;stroke-width:5.5;animation:cr-lf 1.6s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes cr-lf{0%,100%{d:path('M90,54 L118,46 L140,64')}50%{d:path('M90,52 L118,46 L140,64')}}</style></defs><ellipse cx="84" cy="72" rx="68" ry="3.5" fill="rgba(245,33,45,.09)"/><path id="cr-lb" d="M96,54 L124,44 L146,64"/><path id="cr-lf" d="M90,54 L118,46 L140,64"/><path id="cr-bf" d="M36,46 L90,50 L90,58 L36,54 Z"/><path id="cr-ub" d="M36,50 L90,54"/><path id="cr-ar" d="M36,48 L20,44 L8,44"/><circle cx="124" cy="44" r="3" fill="rgba(255,112,64,.4)"/><circle cx="118" cy="46" r="3.5" fill="#FF7040"/><circle cx="90" cy="54" r="2.5" fill="#FF6030"><animate attributeName="cy" values="54;52;54" dur="1.6s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="20" cy="44" r="2.5" fill="#FF7040"><animate attributeName="cx" values="20;28;20" dur="1.6s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/><animate attributeName="cy" values="44;20;44" dur="1.6s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="18" cy="44" r="10" fill="#F5212D"><animate attributeName="cx" values="18;32;18" dur="1.6s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/><animate attributeName="cy" values="44;24;44" dur="1.6s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle></svg>`,
-  plank:`<svg viewBox="0 0 170 90" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%"><defs><style>#pl-ab{stroke:rgba(245,33,45,.35);stroke-width:4.5;stroke-linecap:round;stroke-linejoin:round;fill:none;animation:pl-arm-b 2.4s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes pl-arm-b{0%,100%{d:path('M44,40 L36,72 L18,72')}50%{d:path('M44,36 L36,72 L18,72')}}#pl-af{stroke:#F5212D;stroke-width:5;stroke-linecap:round;stroke-linejoin:round;fill:none;animation:pl-arm-f 2.4s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes pl-arm-f{0%,100%{d:path('M38,40 L30,72 L12,72')}50%{d:path('M38,36 L30,72 L12,72')}}#pl-bf{fill:rgba(245,33,45,.13);stroke:rgba(245,33,45,.25);stroke-width:.8;animation:pl-body 2.4s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes pl-body{0%,100%{d:path('M38,36 L122,44 L122,52 L38,44 Z')}50%{d:path('M38,32 L122,40 L122,48 L38,40 Z')}}#pl-lb{stroke:rgba(245,33,45,.35);stroke-width:5.5;stroke-linecap:round;stroke-linejoin:round;fill:none;animation:pl-leg-b 2.4s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes pl-leg-b{0%,100%{d:path('M128,48 L138,65 L148,78')}50%{d:path('M128,44 L138,62 L148,78')}}#pl-lf{stroke:#F5212D;stroke-width:5.5;stroke-linecap:round;stroke-linejoin:round;fill:none;animation:pl-leg-f 2.4s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes pl-leg-f{0%,100%{d:path('M122,48 L132,65 L142,78')}50%{d:path('M122,44 L132,62 L142,78')}}</style></defs><ellipse cx="85" cy="82" rx="66" ry="3.5" fill="rgba(245,33,45,.09)"/><path id="pl-ab" d="M44,40 L36,72 L18,72"/><path id="pl-lb" d="M128,48 L138,65 L148,78"/><path id="pl-bf" d="M38,36 L122,44 L122,52 L38,44 Z"/><path id="pl-af" d="M38,40 L30,72 L12,72"/><path id="pl-lf" d="M122,48 L132,65 L142,78"/><circle cx="138" cy="65" r="3" fill="rgba(255,112,64,.5)"><animate attributeName="cy" values="65;62;65" dur="2.4s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="132" cy="65" r="3.5" fill="#FF7040"><animate attributeName="cy" values="65;62;65" dur="2.4s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="122" cy="48" r="2.5" fill="#FF6030"><animate attributeName="cy" values="48;44;48" dur="2.4s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="44" cy="40" r="2" fill="rgba(255,96,48,.5)"><animate attributeName="cy" values="40;36;40" dur="2.4s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="38" cy="40" r="2.5" fill="#FF6030"><animate attributeName="cy" values="40;36;40" dur="2.4s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle><circle cx="16" cy="28" r="9.5" fill="#F5212D"><animate attributeName="cy" values="28;24;28" dur="2.4s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle></svg>`,
-  pullup:`<svg viewBox="0 0 100 150" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto"><defs><style>#pu2-la{stroke:#7B3EFF;stroke-linecap:round;stroke-linejoin:round;fill:none;stroke-width:4;animation:pu2-la 2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes pu2-la{0%,100%{d:path('M36,54 L30,12')}50%{d:path('M36,30 L30,12')}}#pu2-ra{stroke:#7B3EFF;stroke-linecap:round;stroke-linejoin:round;fill:none;stroke-width:4;animation:pu2-ra 2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes pu2-ra{0%,100%{d:path('M64,54 L70,12')}50%{d:path('M64,30 L70,12')}}#pu2-tr{fill:rgba(123,62,255,.14);stroke:rgba(123,62,255,.35);stroke-width:.8;animation:pu2-tr 2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes pu2-tr{0%,100%{d:path('M36,54 L64,54 L58,94 L42,94 Z')}50%{d:path('M36,30 L64,30 L58,70 L42,70 Z')}}#pu2-sh{stroke:#7B3EFF;stroke-linecap:round;fill:none;stroke-width:5;animation:pu2-sh 2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes pu2-sh{0%,100%{d:path('M36,54 L64,54')}50%{d:path('M36,30 L64,30')}}#pu2-sp{stroke:#7B3EFF;stroke-linecap:round;fill:none;stroke-width:3.5;animation:pu2-sp 2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes pu2-sp{0%,100%{d:path('M50,50 L50,94')}50%{d:path('M50,26 L50,70')}}#pu2-ll{stroke:#7B3EFF;stroke-linecap:round;stroke-linejoin:round;fill:none;stroke-width:5.5;animation:pu2-ll 2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes pu2-ll{0%,100%{d:path('M42,94 L40,118 L38,143')}50%{d:path('M42,70 L40,94 L38,119')}}#pu2-rl{stroke:#7B3EFF;stroke-linecap:round;stroke-linejoin:round;fill:none;stroke-width:5.5;animation:pu2-rl 2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes pu2-rl{0%,100%{d:path('M58,94 L60,118 L62,143')}50%{d:path('M58,70 L60,94 L62,119')}}</style></defs><rect x="18" y="8" width="64" height="5" rx="2.5" fill="rgba(123,62,255,0.45)"/><ellipse cx="50" cy="146" rx="24" ry="3.5" fill="rgba(123,62,255,0.1)"/><path id="pu2-ll" d="M42,94 L40,118 L38,143"/><path id="pu2-rl" d="M58,94 L60,118 L62,143"/><path id="pu2-tr" d="M36,54 L64,54 L58,94 L42,94 Z"/><path id="pu2-sp" d="M50,50 L50,94"/><path id="pu2-sh" d="M36,54 L64,54"/><path id="pu2-la" d="M36,54 L30,12"/><path id="pu2-ra" d="M64,54 L70,12"/><ellipse cx="50" rx="20" ry="7" fill="rgba(123,62,255,0.28)" opacity="0"><animate attributeName="cy" values="60;36;60" dur="2s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/><animate attributeName="opacity" values="0;1;0" dur="2s" repeatCount="indefinite" keyTimes="0;.5;1"/></ellipse><circle cx="50" r="10.5" fill="#7B3EFF"><animate attributeName="cy" values="44;20;44" dur="2s" repeatCount="indefinite" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 .05 .55 .95;.45 .05 .55 .95"/></circle></svg>`,
-  shoulder_press:`<svg viewBox="0 0 100 145" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto"><defs><style>#spr-la{stroke:#00D9FF;stroke-linecap:round;stroke-linejoin:round;fill:none;stroke-width:4;animation:spr-la 2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes spr-la{0%,100%{d:path('M36,30 L18,46 L20,24')}50%{d:path('M36,30 L28,14 L24,4')}}#spr-ra{stroke:#00D9FF;stroke-linecap:round;stroke-linejoin:round;fill:none;stroke-width:4;animation:spr-ra 2s cubic-bezier(.45,.05,.55,.95) infinite}@keyframes spr-ra{0%,100%{d:path('M64,30 L82,46 L80,24')}50%{d:path('M64,30 L72,14 L76,4')}}</style></defs><ellipse cx="50" cy="140" rx="26" ry="3.5" fill="rgba(0,217,255,0.08)"/><path d="M42,68 L40,96 L38,122 L28,124" stroke="#00D9FF" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M58,68 L60,96 L62,122 L72,124" stroke="#00D9FF" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M36,30 L64,30 L58,68 L42,68 Z" fill="rgba(0,217,255,.12)" stroke="rgba(0,217,255,.3)" stroke-width=".8"/><path d="M50,26 L50,68" stroke="#00D9FF" stroke-width="3.5" stroke-linecap="round" fill="none"/><path d="M36,30 L64,30" stroke="#00D9FF" stroke-width="5" stroke-linecap="round" fill="none"/><path id="spr-la" d="M36,30 L18,46 L20,24"/><path id="spr-ra" d="M64,30 L82,46 L80,24"/><ellipse cx="50" cy="26" rx="26" ry="9" fill="rgba(0,217,255,0.22)" opacity="0"><animate attributeName="opacity" values="0;1;0" dur="2s" repeatCount="indefinite" keyTimes="0;.5;1"/></ellipse><circle cx="50" cy="12" r="10.5" fill="#00D9FF"/></svg>`,
+  squat:'',pushup:'',lunge:'',crunch:'',plank:'',pullup:'',shoulder_press:'',
 };
 const _WO_META={
   squat:{color:'#7B3EFF',glow:'rgba(123,62,255,0.18)',muscle:'КВАДРИЦЕПС',muscleEn:'QUADS'},
@@ -2505,28 +2555,7 @@ function _woKey(name){
   if(/рамо.*прес|shoulder.*press|overhead|ohp|военна/.test(n))return 'shoulder_press';
   return null;
 }
-function _woSvg(name){
-  const k=_woKey(name);
-  if(!k||!_WO_SVG[k])return'';
-  const m=_WO_META[k];
-  if(!m||k==='pullup'||k==='shoulder_press')return _WO_SVG[k];
-  // Apply identity palette to legacy red SVGs at render time
-  const push=k==='pushup'||k==='crunch'||k==='plank';
-  const c=m.color;
-  const cL=push?'#60EEFF':'#A67FFF';
-  const cM=push?'#40E8FF':'#9060FF';
-  return _WO_SVG[k]
-    .replace(/rgba\(245,33,45,\.12\)/g,push?'rgba(0,217,255,.12)':'rgba(123,62,255,.14)')
-    .replace(/rgba\(245,33,45,\.13\)/g,push?'rgba(0,217,255,.12)':'rgba(123,62,255,.14)')
-    .replace(/rgba\(245,33,45,\.28\)/g,push?'rgba(0,217,255,.38)':'rgba(123,62,255,.35)')
-    .replace(/rgba\(245,33,45,\.25\)/g,push?'rgba(0,217,255,.35)':'rgba(123,62,255,.32)')
-    .replace(/rgba\(245,33,45,\.35\)/g,push?'rgba(0,217,255,.4)':'rgba(123,62,255,.4)')
-    .replace(/rgba\(245,33,45,\.4\)/g,push?'rgba(0,217,255,.4)':'rgba(123,62,255,.4)')
-    .replace(/rgba\(245,33,45,\.09\)/g,push?'rgba(0,217,255,.08)':'rgba(123,62,255,.1)')
-    .replace(/rgba\(255,112,64,/g,push?'rgba(96,238,255,':'rgba(166,127,255,')
-    .replace(/#F5212D/g,c).replace(/#FF7040/g,cL).replace(/#FF6030/g,cM)
-    .replace(/height:100%(?=")/g,'height:auto');
-}
+function _woSvg(){return'';}
 function _woMeta(name){const k=_woKey(name);return k?(_WO_META[k]||null):null;}
 
 // ── Parse workout plan from rendered AI message element
@@ -3421,20 +3450,16 @@ function _woRenderEx(b){
   }
   // Legacy fallback for exercises not yet in CC_META
   _ccRestoreLayout();
-  const svg=_woSvg(ex.name);
   const wmeta=_woMeta(ex.name);
-  const cardHtml=svg&&wmeta
-    ?`<div class="wo-ex-card" style="--card-accent:${wmeta.color};--card-glow:${wmeta.glow}"><div class="wo-muscle-label">${lang==='en'?wmeta.muscleEn:wmeta.muscle}</div><div class="wo-svg-wrap">${svg}</div></div>`
-    :svg?`<div class="wo-svg-wrap">${svg}</div>`:'';
+  const muscleLbl=wmeta?`<div class="wo-muscle-label" style="margin:14px 0 22px;">${lang==='en'?wmeta.muscleEn:wmeta.muscle}</div>`:'';
   b.innerHTML=`
     <div class="wo-ex-name">${ex.name}</div>
     ${ex.note?`<div class="wo-ex-note">${ex.note}</div>`:''}
-    ${cardHtml}
+    ${muscleLbl}
     <div class="wo-set-lbl">${lang==='en'?`Set ${_wo.si+1} of ${ex.sets}`:`Сет ${_wo.si+1} от ${ex.sets}`}</div>
     <div class="wo-reps">${reps}</div>
     <div class="wo-reps-sub">${lang==='en'?'reps':'повторения'}</div>
-    <button class="wo-done-btn" onclick="_woDone()">&#10003; &nbsp;${lang==='en'?'Done':'Готово'}</button>
-    <button class="wo-hr-btn" onclick="_woStartHr()">&#128207; ${lang==='en'?'Heart Rate':'Пулс ръчно'}</button>`;
+    <button class="wo-done-btn" onclick="_woDone()">&#10003; &nbsp;${lang==='en'?'Done':'Готово'}</button>`;
 }
 
 function _woDone(){
@@ -3497,6 +3522,9 @@ function _woRenderRest(b){
       <div class="wo-timer-bar-wrap"><div class="wo-timer-bar" id="wo-tb" style="width:100%"></div></div>
       <button class="wo-skip-btn" onclick="_woSkip()">${lang==='en'?'Skip →':'Пропусни →'}</button>
       ${_wo._rc?`<div class="wo-coach-bubble">🔱 ${_wo._rc}</div>`:''}
+      <div style="margin-top:18px;text-align:center;">
+        <span onclick="_woStartHr()" style="font-size:11px;color:rgba(139,147,167,.4);cursor:pointer;letter-spacing:.5px;text-decoration:underline;text-underline-offset:3px;">${lang==='en'?'log heart rate':'запис на пулс'}</span>
+      </div>
     </div>`;
   clearInterval(_woTimer);
   _woTimer=setInterval(()=>{
@@ -3630,9 +3658,9 @@ function _woRenderHr(b){
       <div class="wo-hr-instr">${lang==='en'?'Place 2 fingers on your wrist or neck for 15 seconds and count the beats. Multiply by 4.':'Постави 2 пръста на китката или врата за 15 секунди и преброй ударите. Умножи по 4.'}</div>
       <input id="wo-manual-bpm" type="number" min="40" max="220" placeholder="${lang==='en'?'e.g. 84':'напр. 84'}"
         style="width:130px;text-align:center;font-family:'Unbounded';font-size:28px;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:12px;display:block;margin:24px auto 16px;-moz-appearance:textfield;appearance:textfield;">
-      <button class="wo-done-btn" style="margin-top:0" onclick="_woManualBpm()">${lang==='en'?'Confirm Heart Rate':'Потвърди пулса'}</button>
+      <button class="wo-done-btn" style="margin-top:0" onclick="_woManualBpm()">${lang==='en'?'Log Heart Rate':'Запиши пулса'}</button>
       <div id="wo-hr-out"></div>
-      <button class="wo-skip-btn" style="margin-top:14px" onclick="_woHrCancel()">${lang==='en'?'Skip':'Пропусни'}</button>
+      <button class="wo-skip-btn" style="margin-top:18px" onclick="_woHrCancel()">${lang==='en'?'← Back to rest':'← Обратно към почивка'}</button>
     </div>`;
 }
 
@@ -3665,7 +3693,7 @@ const out=document.getElementById('wo-hr-out');
     <button class="wo-done-btn" style="margin-top:18px" onclick="_woHrDone()">${lang==='en'?'Continue':'Продължи'}</button>`;
 }
 
-function _woHrCancel(){_wo.phase='ex';_woSave();_woRender();}
+function _woHrCancel(){_wo.phase='rest';_woSave();_woRender();}
 function _woHrDone(){_wo.phase='ex';_woSave();_woRender();}
 
 function activateElite(){
