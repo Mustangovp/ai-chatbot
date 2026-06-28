@@ -6197,6 +6197,317 @@ class ApexBiologicalSignatureEngine {
   }
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+   APEX BIOLOGICAL RENDERER — Phase A: Procedural Engine
+   ══════════════════════════════════════════════════════════════════════
+   Engine only. No DOM writes in Phase A. CSS animations continue
+   unchanged. This rAF loop runs in parallel, computing all procedural
+   biological variables each frame and publishing them to `out`.
+
+   Phase B will add the first DOM writer (glow subsystem only).
+   Phase C will progressively replace remaining subsystems, one per commit.
+
+   Pipeline: Brain → BSE → _bioTranslate → ApexBioRenderer.setIntent
+             → Body Memory → BSE Traits → Trajectory → Targets
+             → Inertia Filter → out (read by Phase B/C DOM writers)
+
+   Biological constraints:
+   - Renderer NEVER knows state names (Peak/Training/Recovery/Fatigue/Pain)
+   - Renderer receives ONLY procedural variables via setIntent()
+   - All state semantics stay inside BSE._compose()
+   ══════════════════════════════════════════════════════════════════════ */
+const ApexBioRenderer = (() => {
+  'use strict';
+
+  // ── DNA: per-user motion signature ─────────────────────────────────
+  // Generated once from peak-state BSE output. Never changes mid-session.
+  // Each parameter shifts a different dimension of the oscillator bank
+  // so every user's organism moves differently.
+  const _dna = { metabolicEff: 1, memFlex: 1, neuralVel: 1, thermal: 1, baseFreq: 1 };
+
+  // ── BODY MEMORY: minute-scale decay accumulators ────────────────────
+  // Persist physiological history across intents.
+  // Build toward input signal; decay exponentially when signal drops.
+  // τ values in ms: fatigue=10min, pain=7min, load=25min, recovery=20min
+  const _mem = { fatigue: 0, pain: 0, load: 0, recovery: 0 };
+
+  // ── INTENT: normalized procedural variables (no state names ever) ───
+  // Updated via setIntent(). Initial values = stable Peak baseline.
+  const _I = {
+    breathAmp: 0.015, breathFreq: 0.136, cellAct: 0.55,
+    luminosity: 0.28, elasticity: 0.60,  viscosity: 0.45,
+    tremor: 0.35,     gravX: 0,          gravY: 0.11, symmetry: 1.0
+  };
+
+  // ── BSE TRAITS: derived from intent + memory (pre-allocated, no GC) ─
+  const _B = { metab:0, sysLoad:0, recDebt:0, joint:0, hyd:0,
+               inflam:0, cns:0, para:0, noise:0 };
+
+  // ── TRAJECTORY: ring buffer for d/dt over 2s sliding window ─────────
+  // 64 slots × 5 floats (ts, metab, sysLoad, para, pain)
+  const _TBuf  = new Float64Array(64 * 5);
+  let   _THead = 0, _TCount = 0;
+  const _traj  = { metab: 0, fatigue: 0, recovery: 0, pain: 0 };
+
+  // ── INERTIA STATE: per-variable current value + time constant ────────
+  // τ spans 300ms (glow, fast neural) → 27s (meta-drift, slowest fascial)
+  // current += (target − current) × (1 − e^(−dt/τ))
+  const _F = {
+    lum:  { v: 0.280, τ:   300 },
+    tre:  { v: 0.000, τ:   500 },
+    ela:  { v: 0.001, τ:  1800 },
+    bPer: { v: 7340,  τ:  4200 },
+    bAmp: { v: 0.015, τ:  6500 },
+    nPre: { v: 1.000, τ:  9000 },
+    nDX:  { v: 0.000, τ:  9000 },
+    nDY:  { v: 0.000, τ:  9000 },
+    gX:   { v: 0.000, τ: 13000 },
+    gY:   { v: 2.000, τ: 13000 },
+    ctx:  { v: 0.500, τ: 19000 },
+    flw:  { v: 74800, τ: 24000 },
+    mX:   { v: 0.000, τ: 27000 },
+    mY:   { v: 0.000, τ: 27000 },
+  };
+
+  // ── OSCILLATOR PHASES: irrational frequency ratios → LCM = ∞ ────────
+  // Random per session so motion never repeats across users or sessions.
+  // Frequencies chosen so no two oscillators share a common period.
+  const _P = {
+    b:   Math.random() * 6.2832,
+    b2:  Math.random() * 6.2832,
+    mb:  Math.random() * 6.2832,
+    mb2: Math.random() * 6.2832,
+    nc:  Math.random() * 6.2832,
+    nc2: Math.random() * 6.2832,
+  };
+
+  // ── PUBLIC OUTPUT: read by Phase B/C DOM writers ─────────────────────
+  // Updated every rAF frame. No locking needed (single-threaded JS).
+  const out = {
+    luminosity: 0.280,   breathScale: 1.000,  breathPeriod: 7340,
+    membraneOsc: 0,      nucleusPressure: 1,  nucleusX: 0,  nucleusY: 0,
+    gravityX: 0,         gravityY: 2,          cortexDepth: 0.5,
+    flowVelocity: 74800, metaX: 0,            metaY: 0,
+    microTremorX: 0,     microTremorY: 0,
+    _frameMs: 0,
+  };
+
+  // ── INTERNAL ─────────────────────────────────────────────────────────
+  let _raf = null, _running = false, _lastTs = 0;
+  const _cl  = (v, lo, hi) => v < lo ? lo : v > hi ? hi : v;
+  const _exp = Math.exp;
+  const _sin = Math.sin;
+  const _cos = Math.cos;
+  const _PI2 = Math.PI * 2;
+
+  // ── PUBLIC API ────────────────────────────────────────────────────────
+
+  function setIntent(v) {
+    if (v.breathAmp  != null) _I.breathAmp  = v.breathAmp;
+    if (v.breathFreq != null) _I.breathFreq = v.breathFreq;
+    if (v.cellAct    != null) _I.cellAct    = v.cellAct;
+    if (v.luminosity != null) _I.luminosity = v.luminosity;
+    if (v.elasticity != null) _I.elasticity = v.elasticity;
+    if (v.viscosity  != null) _I.viscosity  = v.viscosity;
+    if (v.tremor     != null) _I.tremor     = v.tremor;
+    if (v.gravX      != null) _I.gravX      = v.gravX;
+    if (v.gravY      != null) _I.gravY      = v.gravY;
+    if (v.symmetry   != null) _I.symmetry   = v.symmetry;
+  }
+
+  function loadDNA(bseOut) {
+    // Called once after BSE.init() with peak-state output.
+    // Peak multiplier = 1.0 on all traits, so output reflects raw organism traits.
+    if (!bseOut) return;
+    _dna.metabolicEff = 0.78 + bseOut.cellularActivity     * 0.44;
+    _dna.memFlex      = 0.82 + bseOut.membraneElasticity   * 0.36;
+    _dna.neuralVel    = 0.76 + bseOut.microTremorThreshold * 0.48;
+    _dna.thermal      = 0.91 + bseOut.driftStrength        * 0.18;
+    _dna.baseFreq     = 0.88 + bseOut.pulseAmplitude       * 0.24;
+  }
+
+  function start() {
+    if (_running) return;
+    _running = true;
+    _lastTs  = performance.now();
+    _raf     = requestAnimationFrame(_tick);
+  }
+
+  // ── TICK ──────────────────────────────────────────────────────────────
+  // 7-step execution order. Target: ≤ 2ms JS per frame on mid-range Android.
+  // No object allocation in hot path — all state is pre-allocated above.
+  function _tick(ts) {
+    _raf = requestAnimationFrame(_tick);
+    const t0 = performance.now();
+
+    // STEP 1 — CLAMP dt (handles tab sleep/wake without massive jumps)
+    const dt = _cl(ts - _lastTs, 0, 100);
+    _lastTs = ts;
+
+    // STEP 2 — TICK BODY MEMORY
+    // Each accumulator builds toward current input and decays when input drops.
+    const αf = _exp(-dt / 600000);
+    const αp = _exp(-dt / 420000);
+    const αl = _exp(-dt / 1500000);
+    const αr = _exp(-dt / 1200000);
+    _mem.fatigue  = _mem.fatigue  * αf + (1 - αf) * _I.viscosity;
+    _mem.pain     = _mem.pain     * αp + (1 - αp) * _I.tremor;
+    _mem.load     = _mem.load     * αl + (1 - αl) * _I.cellAct;
+    _mem.recovery = _mem.recovery * αr + (1 - αr) * _cl(1 - _I.viscosity, 0, 1);
+
+    // STEP 3 — COMPUTE BSE TRAITS (state-agnostic; driven only by accumulated signals)
+    _B.metab   = _I.cellAct   * 0.60 + _mem.load    * 0.40;
+    _B.sysLoad = _I.viscosity * 0.55 + _mem.fatigue * 0.35 + (1 - _I.symmetry) * 0.10;
+    _B.recDebt = _cl(_I.viscosity * 0.70 - _mem.recovery * 0.30, 0, 1);
+    _B.joint   = _I.symmetry  * 0.45 + (1 - _mem.pain)   * 0.35 + (1 - _I.tremor) * 0.20;
+    _B.hyd     = _cl(1 - _mem.load * 0.45, 0.20, 1);
+    _B.inflam  = _mem.pain    * 0.40 + _mem.fatigue * 0.30 + _I.viscosity * 0.30;
+    _B.cns     = _I.luminosity * 0.50 + (1 - _I.viscosity) * 0.30 + _mem.recovery * 0.20;
+    _B.para    = (1 - _I.viscosity) * 0.40 + _mem.recovery * 0.40 + (1 - _B.inflam) * 0.20;
+    _B.noise   = _mem.fatigue * 0.35 + _mem.pain    * 0.40 + (1 - _I.symmetry) * 0.25;
+
+    // STEP 4 — TRAJECTORY (ring buffer d/dt over 2s sliding window)
+    const s4 = _THead * 5;
+    _TBuf[s4]     = ts;
+    _TBuf[s4 + 1] = _B.metab;
+    _TBuf[s4 + 2] = _B.sysLoad;
+    _TBuf[s4 + 3] = _B.para;
+    _TBuf[s4 + 4] = _mem.pain;
+    _THead = (_THead + 1) % 64;
+    if (_TCount < 64) _TCount++;
+
+    _traj.metab = 0; _traj.fatigue = 0; _traj.recovery = 0; _traj.pain = 0;
+    if (_TCount > 1) {
+      let oldSlot = -1;
+      const maxLook = _TCount - 1;
+      for (let i = 1; i <= maxLook; i++) {
+        const slot = ((_THead - 1 - i + 128) % 64);
+        if (ts - _TBuf[slot * 5] > 2000) break;
+        oldSlot = slot;
+      }
+      if (oldSlot >= 0) {
+        const o   = oldSlot * 5;
+        const dtW = ts - _TBuf[o];
+        if (dtW > 200) {
+          const inv  = 1000 / dtW;
+          _traj.metab    = (_B.metab   - _TBuf[o + 1]) * inv;
+          _traj.fatigue  = (_B.sysLoad - _TBuf[o + 2]) * inv;
+          _traj.recovery = (_B.para    - _TBuf[o + 3]) * inv;
+          _traj.pain     = (_mem.pain  - _TBuf[o + 4]) * inv;
+        }
+      }
+    }
+
+    // STEP 5 — COMPUTE TARGETS (each includes small predictive offset from trajectory)
+    const dna = _dna;
+    const B   = _B;
+    const tr  = _traj;
+
+    const tLum  = _cl(_I.luminosity  + tr.recovery * 0.06 - tr.fatigue * 0.04, 0.06, 0.55);
+    const tTre  = _cl(B.noise * _I.tremor + tr.pain * 0.40, 0, 1);
+    const tEla  = _cl((0.0004 + (1 - _I.viscosity) * 0.0012 + B.hyd * 0.0008
+                    - B.inflam * 0.0006 - _mem.pain * 0.001 + tr.fatigue * -0.0002)
+                    * dna.memFlex, 0.0001, 0.0028);
+    const tBPer = _cl(4000 - B.cns * 2400 + B.para * 3800, 3400, 14000) / dna.neuralVel;
+    const tBAmp = _cl(_I.breathAmp * dna.metabolicEff, 0.003, 0.038);
+    const tNPre = _cl(1.0 + B.cns * 0.14 + B.metab * 0.08
+                    - B.inflam * 0.06 + tr.metab * 0.04, 0.88, 1.26);
+    const tNDX  = (B.joint - 0.5) * 0.3  * dna.thermal;
+    const tNDY  =  B.sysLoad      * 0.6  * dna.thermal;
+    const tGX   = _cl((B.joint - 0.5) * -4 * dna.thermal, -6, 4);
+    const tGY   = _cl(B.sysLoad * 8 - B.para * 3 + B.recDebt * 4
+                    + tr.fatigue * 0.60, -2, 14);
+    const tCtx  = _cl(0.24 + B.inflam * 0.32 + (1 - _I.symmetry) * 0.18
+                    - B.cns * 0.08, 0.20, 0.76);
+    const tFlw  = _cl(100000 - B.metab * 58000 - B.cns * 16000, 42000, 158000);
+    const tMX   = tGX * 0.40;
+    const tMY   = tGY * 0.30;
+
+    // STEP 6 — INERTIA FILTER: current += (target − current) × (1 − e^(−dt/τ))
+    // Each variable converges at its own biological time scale.
+    const F = _F;
+    F.lum.v  += (tLum  - F.lum.v)  * (1 - _exp(-dt / F.lum.τ));
+    F.tre.v  += (tTre  - F.tre.v)  * (1 - _exp(-dt / F.tre.τ));
+    F.ela.v  += (tEla  - F.ela.v)  * (1 - _exp(-dt / F.ela.τ));
+    F.bPer.v += (tBPer - F.bPer.v) * (1 - _exp(-dt / F.bPer.τ));
+    F.bAmp.v += (tBAmp - F.bAmp.v) * (1 - _exp(-dt / F.bAmp.τ));
+    F.nPre.v += (tNPre - F.nPre.v) * (1 - _exp(-dt / F.nPre.τ));
+    F.nDX.v  += (tNDX  - F.nDX.v)  * (1 - _exp(-dt / F.nDX.τ));
+    F.nDY.v  += (tNDY  - F.nDY.v)  * (1 - _exp(-dt / F.nDY.τ));
+    F.gX.v   += (tGX   - F.gX.v)   * (1 - _exp(-dt / F.gX.τ));
+    F.gY.v   += (tGY   - F.gY.v)   * (1 - _exp(-dt / F.gY.τ));
+    F.ctx.v  += (tCtx  - F.ctx.v)  * (1 - _exp(-dt / F.ctx.τ));
+    F.flw.v  += (tFlw  - F.flw.v)  * (1 - _exp(-dt / F.flw.τ));
+    F.mX.v   += (tMX   - F.mX.v)   * (1 - _exp(-dt / F.mX.τ));
+    F.mY.v   += (tMY   - F.mY.v)   * (1 - _exp(-dt / F.mY.τ));
+
+    // STEP 6b — ADVANCE OSCILLATOR PHASES
+    // Irrational frequency ratios → LCM = ∞ → motion never repeats.
+    // All phases scale with DNA.baseFreq so each user has a unique rhythm.
+    const dFreq = dt * 0.001 * _PI2 * dna.baseFreq;
+    _P.b   += dFreq / 7.340;
+    _P.b2  += dFreq / (7.340 * 1.6180);   // golden ratio harmonic
+    _P.mb  += dFreq / 6.170;
+    _P.mb2 += dFreq / 4.130;
+    _P.nc  += dFreq / 11.370;
+    _P.nc2 += dFreq / (11.370 * 1.2720);
+
+    // STEP 7 — WRITE PUBLIC OUTPUT (Phase A: out object only, zero DOM writes)
+    // Phase B will read these values and write CSS custom properties / transforms.
+    const noise = (Math.random() - 0.5) * B.noise * 0.04;
+    out.luminosity      = F.lum.v;
+    out.breathScale     = 1 + F.bAmp.v * _sin(_P.b)
+                            + F.bAmp.v * 0.12 * _sin(_P.b2)
+                            + noise;
+    out.breathPeriod    = F.bPer.v;
+    out.membraneOsc     = F.ela.v * _sin(_P.mb) + F.ela.v * 0.40 * _sin(_P.mb2);
+    out.nucleusPressure = F.nPre.v * (1 + 0.08 * _sin(_P.nc));
+    out.microTremorX    = F.tre.v * _sin(_P.nc2) * dna.neuralVel;
+    out.microTremorY    = F.tre.v * _cos(_P.nc2 * 1.314) * dna.neuralVel;
+    out.nucleusX        = F.nDX.v + out.microTremorX * 0.40;
+    out.nucleusY        = F.nDY.v + out.microTremorY * 0.40;
+    out.gravityX        = F.gX.v;
+    out.gravityY        = F.gY.v;
+    out.cortexDepth     = F.ctx.v;
+    out.flowVelocity    = F.flw.v;
+    out.metaX           = F.mX.v;
+    out.metaY           = F.mY.v;
+    out._frameMs        = performance.now() - t0;
+  }
+
+  // Pause rAF when tab is hidden; resume when visible.
+  // Does NOT call start()/stop() — preserves _running flag so resume works.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      if (_raf) { cancelAnimationFrame(_raf); _raf = null; }
+    } else if (_running && !_raf) {
+      _lastTs = performance.now();
+      _raf    = requestAnimationFrame(_tick);
+    }
+  });
+
+  return { setIntent, loadDNA, start, out };
+})();
+
+// ── BSE → Renderer Bridge: state-blind translation ──────────────────────
+// Converts BSE behavioral output to procedural renderer variables.
+// Critically: sig values already encode state — no state name crosses here.
+// gravityBias normalised: BSE emits px offsets (±12x, ±9y); renderer wants −1..1.
+function _bioTranslate(sig) {
+  return {
+    breathAmp:  sig.pulseAmplitude,
+    breathFreq: 1000 / (sig.breathPeriod || 7340),
+    cellAct:    sig.cellularActivity,
+    luminosity: sig.glowPersistence,
+    elasticity: sig.membraneElasticity,
+    viscosity:  sig.flowViscosity,
+    tremor:     sig.microTremorThreshold,
+    gravX:      sig.gravityBias.x / 12,
+    gravY:      sig.gravityBias.y / 9,
+    symmetry:   Math.max(0, Math.min(1, 1 - Math.abs(sig.symmetryBias) * 5.56)),
+  };
+}
+
 // ── Singletons ─────────────────────────────────────────────────────────
 const apexBrain = new ApexBiologicalBrain();
 const apexBSE   = new ApexBiologicalSignatureEngine();
@@ -6211,7 +6522,9 @@ const apexBSE   = new ApexBiologicalSignatureEngine();
 apexBrain.onIntent(intent => {
   physCoreSetState(intent.state);
   apexBSE.tick(intent);
-  _physApplySignature(apexBSE.getSignature(), intent.state);
+  const _bseSig = apexBSE.getSignature();
+  _physApplySignature(_bseSig, intent.state);
+  ApexBioRenderer.setIntent(_bioTranslate(_bseSig));  // Phase A: feed procedural engine
 });
 
 // ── Session Completion Hook ────────────────────────────────────────────
@@ -6233,21 +6546,23 @@ function _brainNotifySessionEnd() {
 
 // ── Initialization ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function() {
-  // Frame 0: organism starts in Peak — the correct assumption before data loads
   physCoreSetState('peak');
   _physSyncLattice();
 
-  // BSE initializes first — loads or generates the biological signature.
-  // Must run before Brain.compute() so tick() has a valid signature on first emit.
   apexBSE.init();
 
-  // Apply BSE immediately on frame 0 (peak state) so organism is personal
-  // from first render rather than waiting for Brain.compute() at 500ms.
-  _physApplySignature(apexBSE.getSignature(), 'peak');
+  const _initSig = apexBSE.getSignature();
 
-  // ~500ms: Brain reads all available memory and computes true physiological state.
-  // Delay allows memory system, workout log, and session state to fully settle.
-  // Brain.compute() → onIntent → _physApplySignature runs again with correct state.
+  // Phase A: extract DNA from peak-state output (peak multiplier = 1.0 = no state bias).
+  // Must run before start() so oscillator frequencies are personalised from frame 1.
+  ApexBioRenderer.loadDNA(_initSig);
+  ApexBioRenderer.setIntent(_bioTranslate(_initSig));
+
+  _physApplySignature(_initSig, 'peak');
+
+  // Phase A: start procedural rAF loop (computes only, no DOM writes yet).
+  ApexBioRenderer.start();
+
   setTimeout(() => apexBrain.loadFromMemory().compute(), 500);
 });
 </script>
