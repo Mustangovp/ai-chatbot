@@ -220,9 +220,70 @@ nav{position:sticky;top:0;z-index:50;background:rgba(5,5,12,0.92);backdrop-filte
 .pdf-msg-btn{display:inline-flex;align-items:center;gap:5px;margin-top:12px;padding:5px 13px;background:transparent;border:1px solid rgba(255,255,255,0.1);color:var(--muted);font-family:inherit;font-size:12px;letter-spacing:.4px;border-radius:6px;cursor:pointer;transition:all .2s;}
 .pdf-msg-btn:hover{border-color:var(--red);color:var(--text);}
 
-/* Goal bar — hidden, replaced by telemetry in shell */
-#goal-bar{display:none!important;}
-.gb-col,.gb-label,.gb-value,.gb-sub,.gb-edit-wrap,.gb-edit-btn,.goal-bar-inner{display:none!important;}
+/* Goal bar — high-contrast horizontal console status strip */
+#goal-bar {
+  background: rgba(11, 14, 20, 0.95);
+  backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-family: 'Unbounded', sans-serif;
+  padding: 8px 20px;
+  position: relative;
+  z-index: 200;
+}
+.goal-bar-inner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  max-width: 1200px;
+  margin: 0 auto;
+  gap: 16px;
+}
+.gb-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.gb-label {
+  font-size: 8px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+.gb-value {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.5px;
+}
+.gb-sub {
+  font-size: 9px;
+  color: var(--lime);
+  font-weight: 500;
+}
+.gb-edit-wrap {
+  display: flex;
+  align-items: center;
+}
+.gb-edit-btn {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--muted);
+  font-size: 9px;
+  font-family: inherit;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.gb-edit-btn:hover {
+  background: rgba(182, 255, 60, 0.08);
+  border-color: var(--lime);
+  color: var(--lime);
+}
 
 /* ── MODAL ANIMATIONS ── */
 @keyframes modal-backdrop-in{from{opacity:0;}to{opacity:1;}}
@@ -1776,6 +1837,28 @@ body.state-laboratory .footer-mini{display:none!important;}
 </style>
 </head>
 <body>
+
+<div id="goal-bar" style="display:none;">
+  <div class="goal-bar-inner">
+    <div class="gb-col">
+      <span class="gb-label" id="gb-goal-lbl">ЦЕЛ</span>
+      <span class="gb-value" id="gb-goal-val">—</span>
+      <span class="gb-sub" id="gb-goal-sub">—</span>
+    </div>
+    <div class="gb-col">
+      <span class="gb-label" id="gb-weight-lbl">СЕГА</span>
+      <span class="gb-value" id="gb-weight-val">—</span>
+      <span class="gb-sub" id="gb-weight-sub">—</span>
+    </div>
+    <div class="gb-col">
+      <span class="gb-label" id="gb-focus-lbl">КОУЧИНГ ФОКУС</span>
+      <span class="gb-value" id="gb-focus-val">—</span>
+    </div>
+    <div class="gb-edit-wrap">
+      <button class="gb-edit-btn" id="gb-edit-lbl" onclick="openProfile()">Редактирай</button>
+    </div>
+  </div>
+</div>
 
 <div id="apex-atmo"></div>
 
@@ -4687,6 +4770,7 @@ window.onload=async()=>{
   document.getElementById('langBtn').innerText=lang==='bg'?'EN':'BG';
   document.documentElement.lang=lang;
   applyStaticLang();
+  updateGoalBar();
   
   // After returning from Stripe payment: restore the plan the user paid for
   // This solves the bug where user paid, returned, and saw empty chat
