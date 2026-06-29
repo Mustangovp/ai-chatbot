@@ -1553,6 +1553,179 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
   }
   #pc-flow-rotate-group > ellipse { transition: none; }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   APEX APP V2 — PREMIUM UI SHELL
+   Visual upgrades only. No Biological Core, Brain, BSE, or
+   workout logic changes.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Layout widening ────────────────────────────────────────── */
+main{max-width:1100px;}
+.goal-bar-inner{max-width:1100px;}
+
+/* ── Premium organism stage ─────────────────────────────────── */
+#phys-core-stage{
+  max-width:1100px;
+  position:relative;
+  padding:44px 16px 36px;
+  overflow:visible;
+  isolation:isolate;
+}
+/* Grid texture behind organism — fades radially into bg */
+#phys-core-stage::before{
+  content:'';
+  position:absolute;
+  inset:0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.018) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,.018) 1px,transparent 1px);
+  background-size:48px 48px;
+  mask-image:radial-gradient(ellipse at center,#000 8%,transparent 68%);
+  -webkit-mask-image:radial-gradient(ellipse at center,#000 8%,transparent 68%);
+  pointer-events:none;
+  z-index:-1;
+}
+
+/* Conic orbit ring — premium framing (matches landing page .ring pattern) */
+#phys-stage-ring{
+  position:absolute;
+  top:50%;left:50%;
+  transform:translate(-50%,-50%);
+  width:min(370px,92vw);height:min(370px,92vw);
+  border-radius:50%;
+  background:conic-gradient(
+    from 0deg,
+    rgba(56,224,255,0) 0%,
+    rgba(56,224,255,0.22) 22%,
+    rgba(182,255,60,0.12) 38%,
+    rgba(56,224,255,0) 58%
+  );
+  -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 1.5px),#fff calc(100% - 1.5px));
+  mask:radial-gradient(farthest-side,transparent calc(100% - 1.5px),#fff calc(100% - 1.5px));
+  animation:v2-ring-spin 22s linear infinite;
+  pointer-events:none;
+  z-index:0;
+}
+@keyframes v2-ring-spin{to{transform:translate(-50%,-50%) rotate(360deg);}}
+@media(prefers-reduced-motion:reduce){ #phys-stage-ring{animation:none;} }
+
+/* State label — live, updates via physCoreSetState() */
+#phys-state-label{
+  position:absolute;
+  bottom:10px;
+  left:50%;
+  transform:translateX(-50%);
+  font-family:'Unbounded',sans-serif;
+  font-size:7px;
+  letter-spacing:4px;
+  text-transform:uppercase;
+  color:rgba(56,224,255,0.4);
+  white-space:nowrap;
+  pointer-events:none;
+  transition:color 1.4s cubic-bezier(0.45,0,0.55,1),opacity .8s ease;
+  opacity:0;
+}
+#phys-state-label.v-show{opacity:1;}
+/* Per-state label color tints match state color temperature */
+.state-training~#phys-state-label { color:rgba(56,245,255,0.55); }
+.state-recovery~#phys-state-label { color:rgba(50,255,168,0.45); }
+.state-fatigue~#phys-state-label  { color:rgba(80,130,220,0.4); }
+.state-pain~#phys-state-label     { color:rgba(255,60,80,0.55); }
+
+/* ── Nav live indicator ──────────────────────────────────────── */
+.nav-live{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  font-family:'Unbounded',sans-serif;
+  font-size:7px;
+  font-weight:700;
+  letter-spacing:2px;
+  color:var(--muted);
+  text-transform:uppercase;
+  padding:5px 13px;
+  border:1px solid rgba(255,255,255,.06);
+  border-radius:30px;
+  background:rgba(18,23,36,.6);
+  backdrop-filter:blur(8px);
+  -webkit-backdrop-filter:blur(8px);
+  white-space:nowrap;
+}
+.nav-live::before{
+  content:'';
+  width:6px;height:6px;
+  border-radius:50%;
+  background:var(--lime);
+  box-shadow:0 0 8px rgba(182,255,60,.75);
+  animation:v2-live-blink 1.8s infinite;
+  flex-shrink:0;
+}
+@keyframes v2-live-blink{0%,100%{opacity:1;}50%{opacity:.2;}}
+@media(max-width:640px){.nav-live{display:none;}}
+
+/* ── Premium chat messages ───────────────────────────────────── */
+.msg-u{
+  border-radius:20px;
+  border-bottom-right-radius:5px;
+  padding:15px 20px;
+  max-width:78%;
+  box-shadow:0 4px 22px rgba(245,33,45,.15);
+}
+.msg-a{
+  border-radius:20px;
+  border-bottom-left-radius:5px;
+  padding:16px 20px;
+  max-width:90%;
+}
+#chat-box{gap:18px;padding:14px 0 24px;}
+
+/* ── Premium input bar ───────────────────────────────────────── */
+.input-row{
+  border-radius:22px;
+  padding:10px 10px 10px 24px;
+  background:rgba(12,15,26,.96);
+  border-color:rgba(255,255,255,.07);
+  box-shadow:0 4px 32px rgba(0,0,0,.42),0 0 0 1px rgba(255,255,255,.03);
+}
+.input-row:focus-within{
+  border-color:rgba(245,33,45,.38);
+  box-shadow:0 0 0 1px rgba(245,33,45,.1),0 6px 40px rgba(245,33,45,.07);
+}
+#user-in{padding:12px 0;}
+.send-btn{width:50px;height:50px;border-radius:14px;}
+.quick-chip{border-radius:28px;padding:12px 20px;}
+
+/* ── Workout overlay V2 ──────────────────────────────────────── */
+.wo-header{
+  padding:16px 24px;
+  background:rgba(5,5,12,.97);
+  border-bottom:1px solid rgba(56,224,255,.07);
+}
+.wo-header-title{
+  font-size:12px;
+  letter-spacing:3px;
+  color:var(--cyan);
+  opacity:.85;
+}
+.wo-reps{
+  background:linear-gradient(135deg,var(--gold) 0%,#FF9200 55%,var(--ember) 100%);
+  -webkit-background-clip:text;
+  background-clip:text;
+  color:transparent;
+}
+.wo-complete-title{
+  background:var(--pulse);
+  -webkit-background-clip:text;
+  background-clip:text;
+  color:transparent;
+}
+.wo-done-btn{
+  border-radius:16px;
+  padding:20px;
+  font-size:14px;
+  letter-spacing:2.5px;
+}
 </style>
 </head>
 <body>
@@ -1578,6 +1751,7 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
         <span class="cs-icon">✕</span>
         <span class="cs-text" data-key="wd-btn">Откажи абонамента</span>
       </button>
+      <span class="nav-live">LIVE</span>
       <button class="lang-btn" id="langBtn" onclick="toggleLang()">EN</button>
     </div>
   </div>
@@ -1627,6 +1801,7 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
      GPU layers: breath-group, flow-rotate, glow, core-div = 4 promoted
      ════════════════════════════════════════════════════════════════════ -->
 <div id="phys-core-stage">
+  <div id="phys-stage-ring"></div>
   <div id="phys-core">
     <svg id="phys-core-svg"
          viewBox="0 0 300 300"
@@ -2004,6 +2179,7 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 
     </svg>
   </div>
+  <div id="phys-state-label"></div>
 </div><!-- /phys-core-stage -->
 
 <main>
@@ -5756,6 +5932,14 @@ function physCoreSetState(state) {
   if (state && PHYS_AMBIENT_MAP[state]) {
     core.classList.add('state-' + state);
     ambient.setAttribute('fill', 'url(#' + PHYS_AMBIENT_MAP[state] + ')');
+  }
+
+  // V2: update state label
+  const lbl = document.getElementById('phys-state-label');
+  if (lbl) {
+    const _stateLabels = {peak:'PEAK',training:'TRAINING',recovery:'RECOVERY',fatigue:'FATIGUE',pain:'PAIN'};
+    lbl.textContent = _stateLabels[state] || '';
+    lbl.classList.toggle('v-show', !!state);
   }
 }
 
