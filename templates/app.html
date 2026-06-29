@@ -6292,6 +6292,11 @@ const ApexBioRenderer = (() => {
     _frameMs: 0,
   };
 
+  // ── PHASE B: Glow subsystem ──────────────────────────────────────────
+  // Resolved in start(). null when element absent or reduced-motion active.
+  let _glowEl    = null;
+  let _glowPhase = 0;   // continuous breath-phase accumulator (radians)
+
   // ── INTERNAL ─────────────────────────────────────────────────────────
   let _raf = null, _running = false, _lastTs = 0;
   const _cl  = (v, lo, hi) => v < lo ? lo : v > hi ? hi : v;
@@ -6330,7 +6335,19 @@ const ApexBioRenderer = (() => {
     if (_running) return;
     _running = true;
     _lastTs  = performance.now();
-    _raf     = requestAnimationFrame(_tick);
+
+    // Phase B: resolve glow element once and stop its CSS animation.
+    // Disabled entirely for prefers-reduced-motion users (CSS already handles them).
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!reducedMotion) {
+      _glowEl = document.getElementById('pc-glow-layer');
+      if (_glowEl) {
+        _glowEl.style.animationName = 'none';
+        _glowPhase = Math.random() * Math.PI * 2;  // unique start phase per session
+      }
+    }
+
+    _raf = requestAnimationFrame(_tick);
   }
 
   // ── TICK ──────────────────────────────────────────────────────────────
@@ -6472,7 +6489,19 @@ const ApexBioRenderer = (() => {
     out.flowVelocity    = F.flw.v;
     out.metaX           = F.mX.v;
     out.metaY           = F.mY.v;
-    out._frameMs        = performance.now() - t0;
+
+    // STEP 8 — GLOW SUBSYSTEM (Phase B: single opacity write per frame)
+    // Replaces pc-glow-pulse CSS animation entirely.
+    // _glowPhase advances continuously with the inertia-filtered breath period
+    // so glow oscillation tracks biological momentum across state changes.
+    // Modulation range 0.62–1.00 mirrors the CSS keyframe multipliers.
+    // mix-blend-mode:screen and will-change:opacity remain on the CSS rule.
+    if (_glowEl) {
+      _glowPhase += (_PI2 * dt) / F.bPer.v;
+      _glowEl.style.opacity = (F.lum.v * (0.81 + 0.19 * _sin(_glowPhase))).toFixed(3);
+    }
+
+    out._frameMs = performance.now() - t0;
   }
 
   // Pause rAF when tab is hidden; resume when visible.
