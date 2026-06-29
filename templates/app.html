@@ -751,9 +751,18 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
    GPU: compositor thread only — scale on promoted layer.                  */
 @keyframes pc-breath {
   0%   { transform: scale(1.000); }
-  22%  { transform: scale(calc(1 + var(--breath-amplitude))); }
-  58%  { transform: scale(calc(1 + var(--breath-amplitude) * 0.07)); }
-  80%  { transform: scale(calc(1 - var(--breath-amplitude) * 0.04)); }
+  /* anticipation: organism contracts slightly before inhale — diaphragm gathering */
+  5%   { transform: scale(calc(1 - var(--breath-amplitude) * 0.20)); }
+  /* inhale — brisk, intentional, 21% of cycle */
+  26%  { transform: scale(calc(1 + var(--breath-amplitude))); }
+  /* brief hold at top — lungs full, internal pressure at peak */
+  33%  { transform: scale(calc(1 + var(--breath-amplitude) * 0.93)); }
+  /* exhale — long, passive, controlled — 45% of cycle */
+  63%  { transform: scale(calc(1 + var(--breath-amplitude) * 0.10)); }
+  /* sub-baseline: body empties below rest, slight contraction */
+  80%  { transform: scale(calc(1 - var(--breath-amplitude) * 0.07)); }
+  /* settling back — organism finds rest before next anticipation */
+  92%  { transform: scale(calc(1 - var(--breath-amplitude) * 0.02)); }
   100% { transform: scale(1.000); }
 }
 
@@ -761,7 +770,7 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
   transform-box: fill-box;
   transform-origin: center;
   animation: pc-breath var(--breath-period)
-             cubic-bezier(0.16, 0.72, 0.30, 1) infinite;
+             cubic-bezier(0.40, 0, 0.22, 1) infinite;
   will-change: transform;
 }
 
@@ -773,11 +782,15 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
    GPU: own compositor layer for parallel compositing.                    */
 @keyframes pc-meta-drift {
   0%   { transform: translate(0.0px, 0.0px); }
-  21%  { transform: translate(0.6px, 0.9px); }
-  39%  { transform: translate(0.1px, 1.4px); }
-  57%  { transform: translate(-0.5px, 0.8px); }
-  74%  { transform: translate(0.3px, 1.1px); }
-  88%  { transform: translate(-0.2px, 0.4px); }
+  /* sinking — organism settles into gravitational mass */
+  19%  { transform: translate(0.5px, 1.3px); }
+  /* heaviest point — spends longer here than in lighter positions */
+  37%  { transform: translate(0.2px, 1.9px); }
+  /* lateral drift while heavy — asymmetric, not mechanical */
+  55%  { transform: translate(-0.5px, 1.5px); }
+  /* rising — slower return than descent */
+  72%  { transform: translate(0.6px, 0.8px); }
+  88%  { transform: translate(-0.3px, 0.3px); }
   100% { transform: translate(0.0px, 0.0px); }
 }
 
@@ -949,30 +962,43 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
    The organism is not resting — it is at maximum voluntary restraint.   */
 @keyframes pc-membrane-peak {
   0%   { transform: scale(1.00000); }
-  31%  { transform: scale(1.00018); }
-  67%  { transform: scale(0.99992); }
+  /* expansion — barely perceptible, but the body knows it's there */
+  29%  { transform: scale(1.00048); }
+  /* compression — membrane holds its tension, never fully relaxes */
+  66%  { transform: scale(0.99976); }
   100% { transform: scale(1.00000); }
 }
 @keyframes pc-aura-peak {
-  0%   { transform: scale(1.000); opacity: 0.30; }
-  44%  { transform: scale(1.010); opacity: 0.32; }
-  81%  { transform: scale(0.994); opacity: 0.28; }
-  100% { transform: scale(1.000); opacity: 0.30; }
+  /* starts compressed — internal pressure always building */
+  0%   { transform: scale(0.988); opacity: 0.26; }
+  /* pressure peak — nucleus pushing against membrane from inside */
+  41%  { transform: scale(1.018); opacity: 0.35; }
+  /* release below baseline — energy has passed through */
+  76%  { transform: scale(0.984); opacity: 0.23; }
+  100% { transform: scale(0.988); opacity: 0.26; }
 }
 @keyframes pc-meta-peak {
   0%   { transform: translate(0.0px, 0.0px); }
-  41%  { transform: translate(0.09px, 0.18px); }
-  79%  { transform: translate(-0.06px, 0.12px); }
+  /* weight settles downward — even at peak, gravity is always present */
+  38%  { transform: translate(0.14px, 0.32px); }
+  /* hold the weight — organism doesn't rush back to neutral */
+  72%  { transform: translate(-0.09px, 0.22px); }
   100% { transform: translate(0.0px, 0.0px); }
 }
 @keyframes pc-nucleus-peak {
   0%   { transform: translate(0.00px, 0.00px); }
-  53%  { transform: translate(0.03px, 0.05px); }
+  /* nucleus has mass — it drifts with the organism's internal fluid */
+  34%  { transform: translate(0.06px, 0.09px); }
+  /* two-stop drift breaks symmetry — nucleus never returns cleanly */
+  71%  { transform: translate(-0.04px, 0.07px); }
   100% { transform: translate(0.00px, 0.00px); }
 }
 @keyframes pc-cortex-peak {
   0%   { opacity: var(--cortex-opacity); }
-  47%  { opacity: calc(var(--cortex-opacity) * 1.04); }
+  /* three irregular stops — asymmetric intervals break the loop perception */
+  24%  { opacity: calc(var(--cortex-opacity) * 1.08); }
+  53%  { opacity: calc(var(--cortex-opacity) * 0.92); }
+  79%  { opacity: calc(var(--cortex-opacity) * 1.05); }
   100% { opacity: var(--cortex-opacity); }
 }
 
@@ -1307,7 +1333,8 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 
 /* PEAK — disciplined restraint: near-still, symmetric, dense */
 #phys-core.state-peak #phys-breath-group {
-  animation-timing-function: cubic-bezier(0.37, 0, 0.63, 1);
+  /* fast engagement (intention) → very slow controlled release (discipline) */
+  animation-timing-function: cubic-bezier(0.50, 0, 0.10, 1);
   animation-duration: 10800ms;
 }
 #phys-core.state-peak #phys-meta-drift    { animation: pc-meta-peak 34700ms ease-in-out infinite; }
@@ -6498,7 +6525,8 @@ const ApexBioRenderer = (() => {
     // mix-blend-mode:screen and will-change:opacity remain on the CSS rule.
     if (_glowEl) {
       _glowPhase += (_PI2 * dt) / F.bPer.v;
-      _glowEl.style.opacity = (F.lum.v * (0.81 + 0.19 * _sin(_glowPhase))).toFixed(3);
+      // range [0.44–1.00] × luminosity — glow visibly breathes with metabolism
+      _glowEl.style.opacity = (F.lum.v * (0.72 + 0.28 * _sin(_glowPhase))).toFixed(3);
     }
 
     out._frameMs = performance.now() - t0;
