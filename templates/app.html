@@ -1726,6 +1726,220 @@ main{max-width:1100px;}
   font-size:14px;
   letter-spacing:2.5px;
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   APEX APP V2 — PHASE 1: APP SHELL
+   Viewport lock · Body state machine · Coach Island · Telemetry
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Design Tokens ───────────────────────────────────────── */
+:root{
+  --obsidian:#050508;
+  --silica:rgba(255,255,255,0.06);
+  --radius:14px;
+}
+
+/* ── Viewport Lock ───────────────────────────────────────── */
+body{overflow:hidden;height:100dvh;min-height:unset;}
+::-webkit-scrollbar{display:none;}
+*{scrollbar-width:none;}
+
+/* ── Core Stage: fill between nav and coach island ───────── */
+#phys-core-stage{
+  flex:1;
+  min-height:0;
+  padding-bottom:130px;
+}
+
+/* ── Core size: Blueprint 60% screen real estate ─────────── */
+#phys-core{--core-size:clamp(200px,38vh,320px);}
+
+/* Scale orbit ring proportionally to new core size */
+#phys-stage-ring{
+  width:min(480px,88vw);
+  height:min(480px,88vw);
+}
+
+/* ── Telemetry Badges (Layer 2) ──────────────────────────── */
+.phys-tele-wrap{
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  z-index:1;
+}
+.tele-badge{
+  position:absolute;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:3px;
+  background:rgba(9,11,20,0.68);
+  backdrop-filter:blur(14px);
+  -webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--silica);
+  border-radius:10px;
+  padding:9px 16px;
+  min-width:72px;
+  opacity:0;
+  transform:translateY(6px);
+  transition:opacity 1.2s ease,transform 1.2s ease;
+}
+.tele-badge.tb-show{opacity:1;transform:translateY(0);}
+.tele-badge-val{
+  font-family:'Unbounded',sans-serif;
+  font-size:15px;
+  font-weight:700;
+  letter-spacing:.5px;
+  color:var(--cyan);
+  line-height:1;
+}
+.tele-badge-lbl{
+  font-size:7px;
+  letter-spacing:2.5px;
+  text-transform:uppercase;
+  color:rgba(139,147,167,0.55);
+  white-space:nowrap;
+}
+.tele-badge-cns{top:28%;left:7%;}
+.tele-badge-rec{top:28%;right:7%;}
+@media(max-width:480px){
+  .tele-badge-cns{top:20%;left:3%;}
+  .tele-badge-rec{top:20%;right:3%;}
+  .tele-badge{padding:7px 12px;min-width:60px;}
+  .tele-badge-val{font-size:13px;}
+}
+
+/* ── Nav: Profile icon button ────────────────────────────── */
+.nav-profile-btn{
+  display:flex;align-items:center;justify-content:center;
+  width:38px;height:38px;border-radius:50%;
+  background:rgba(255,255,255,0.05);
+  border:1px solid var(--silica);
+  cursor:pointer;font-size:17px;
+  transition:background .2s,border-color .2s;
+  flex-shrink:0;
+}
+.nav-profile-btn:hover{
+  background:rgba(245,33,45,0.12);
+  border-color:rgba(245,33,45,0.4);
+}
+
+/* ── Coach Island (Layer 3) ──────────────────────────────── */
+#coach-island{
+  position:fixed;
+  bottom:0;left:0;right:0;
+  z-index:100;
+  background:rgba(9,11,20,0.82);
+  backdrop-filter:blur(24px);
+  -webkit-backdrop-filter:blur(24px);
+  border-top:1px solid var(--silica);
+  transform:translateZ(0);
+  padding:16px 20px max(16px,env(safe-area-inset-bottom));
+}
+
+/* Coach Island — Overview mode */
+.ci-overview{
+  display:none;
+  flex-direction:column;
+  align-items:center;
+  gap:12px;
+  max-width:560px;
+  margin:0 auto;
+  width:100%;
+}
+.ci-brief{
+  font-family:'Manrope',sans-serif;
+  font-size:12px;
+  line-height:1.5;
+  color:rgba(139,147,167,0.65);
+  text-align:center;
+  letter-spacing:.3px;
+  min-height:18px;
+}
+.ci-actions{display:flex;gap:10px;width:100%;}
+.ci-consult-btn{
+  flex:1;height:48px;
+  background:rgba(245,33,45,0.1);
+  border:1px solid rgba(245,33,45,0.3);
+  color:var(--text);
+  font-family:'Unbounded',sans-serif;
+  font-size:9px;letter-spacing:2.5px;
+  text-transform:uppercase;border-radius:12px;
+  cursor:pointer;transition:all .2s;
+}
+.ci-consult-btn:hover{background:rgba(245,33,45,0.2);border-color:rgba(245,33,45,0.55);}
+.ci-protocol-btn{
+  flex:1;height:48px;
+  background:linear-gradient(90deg,#F5212D,#FF6A3C);
+  border:none;color:#fff;
+  font-family:'Unbounded',sans-serif;
+  font-size:9px;letter-spacing:2.5px;
+  text-transform:uppercase;border-radius:12px;
+  cursor:pointer;box-shadow:0 4px 18px rgba(245,33,45,0.28);
+  transition:all .2s;
+}
+.ci-protocol-btn:hover{box-shadow:0 6px 26px rgba(245,33,45,0.45);transform:translateY(-1px);}
+
+/* Coach Island — Consultation mode */
+.ci-consultation{
+  display:none;
+  align-items:center;
+  justify-content:space-between;
+  max-width:1100px;
+  margin:0 auto;
+  width:100%;
+  padding:4px 0;
+}
+.ci-back-btn{
+  background:transparent;
+  border:1px solid var(--silica);
+  color:var(--muted);
+  font-family:'Unbounded',sans-serif;
+  font-size:8px;letter-spacing:2px;
+  padding:9px 16px;border-radius:8px;
+  cursor:pointer;transition:all .2s;
+}
+.ci-back-btn:hover{border-color:rgba(255,255,255,.2);color:var(--text);}
+.ci-engine-label{
+  font-family:'Unbounded',sans-serif;
+  font-size:7px;letter-spacing:3px;
+  color:rgba(56,224,255,0.45);
+  text-transform:uppercase;
+}
+
+/* ── Body State: overview (default) ─────────────────────── */
+body.state-overview main{display:none!important;}
+body.state-overview #goal-bar{display:none!important;}
+body.state-overview .footer-mini{display:none!important;}
+body.state-overview #coach-island .ci-overview{display:flex;}
+body.state-overview #coach-island .ci-consultation{display:none!important;}
+
+/* ── Body State: consultation ────────────────────────────── */
+body.state-consultation main{
+  display:flex!important;
+  flex:1;min-height:0;
+  overflow-y:auto;
+  padding-bottom:68px;
+}
+body.state-consultation #phys-core-stage{
+  flex:0 0 0;
+  height:0;min-height:0;
+  overflow:hidden;
+  padding:0;opacity:0;
+  pointer-events:none;
+}
+body.state-consultation #goal-bar{display:none!important;}
+body.state-consultation .footer-mini{display:none!important;}
+body.state-consultation #coach-island .ci-overview{display:none!important;}
+body.state-consultation #coach-island .ci-consultation{display:flex!important;}
+body.state-consultation #coach-island{
+  padding:10px 20px max(10px,env(safe-area-inset-bottom));
+}
+
+/* ── Body State: laboratory (workout) ────────────────────── */
+body.state-laboratory #coach-island{display:none!important;}
+body.state-laboratory .footer-mini{display:none!important;}
+
 </style>
 </head>
 <body>
@@ -1753,6 +1967,7 @@ main{max-width:1100px;}
       </button>
       <span class="nav-live">LIVE</span>
       <button class="lang-btn" id="langBtn" onclick="toggleLang()">EN</button>
+      <button class="nav-profile-btn" onclick="openProfile()" title="Profile">👤</button>
     </div>
   </div>
 </nav>
@@ -2180,6 +2395,16 @@ main{max-width:1100px;}
     </svg>
   </div>
   <div id="phys-state-label"></div>
+  <div class="phys-tele-wrap" id="phys-tele-wrap">
+    <div class="tele-badge tele-badge-cns" id="tele-cns">
+      <span class="tele-badge-val" id="tele-cns-val">—</span>
+      <span class="tele-badge-lbl">CNS</span>
+    </div>
+    <div class="tele-badge tele-badge-rec" id="tele-rec">
+      <span class="tele-badge-val" id="tele-rec-val">—</span>
+      <span class="tele-badge-lbl">RECOVERY</span>
+    </div>
+  </div>
 </div><!-- /phys-core-stage -->
 
 <main>
@@ -3715,6 +3940,7 @@ function startWorkout(exercises,_bypass){
   _woSave();
   document.getElementById('workout-overlay').classList.add('active');
   document.body.style.overflow='hidden';
+  setAppState('laboratory');
   _woRender();
 }
 
@@ -3728,6 +3954,7 @@ function closeWorkout(){
   _ccRestoreLayout();
   document.getElementById('workout-overlay').classList.remove('active');
   document.body.style.overflow='';
+  setAppState('overview');
 }
 
 function _woProg(){
@@ -7065,6 +7292,51 @@ function _brainNotifySessionEnd() {
 }
 
 // ── Initialization ─────────────────────────────────────────────────────
+/* ── V2 Phase 1: App Shell state machine ────────────────────── */
+function setAppState(state){
+  document.body.classList.remove('state-overview','state-consultation','state-laboratory');
+  document.body.classList.add('state-'+state);
+}
+
+function ciStartProtocol(){
+  // If a pending workout plan exists in memory, start it; otherwise open consultation
+  const msgs=document.querySelectorAll('#chat-box .msg-a:not(.greeting):not(.daily-limit-note)');
+  if(msgs.length>0){
+    // Try the last AI-generated start button if present
+    const lastBtn=document.querySelector('#chat-box .msg-a:last-of-type button[onclick*="startWorkout"]');
+    if(lastBtn){lastBtn.click();return;}
+  }
+  // Fallback: open consultation so user can request a workout
+  setAppState('consultation');
+  document.getElementById('user-in').focus();
+}
+
+function _ciUpdateBrief(){
+  const el=document.getElementById('ci-brief-text');
+  if(!el)return;
+  const lastMsg=document.querySelector('#chat-box .msg-a:not(.greeting):not(.daily-limit-note):last-child');
+  if(!lastMsg)return;
+  const raw=(lastMsg.textContent||'').replace(/\s+/g,' ').trim();
+  if(raw.length>6)el.textContent=raw.length>110?raw.slice(0,108)+'…':raw;
+}
+
+function _ciShowTelemetry(){
+  const cns=document.getElementById('tele-cns');
+  const rec=document.getElementById('tele-rec');
+  if(!cns||!rec)return;
+  try{
+    const sig=apexBSE.getSignature();
+    if(sig){
+      const cnsVal=sig.cns!==undefined?Math.round(sig.cns*100)+'%':'—';
+      const recVal=sig.recovery!==undefined?Math.round(sig.recovery*100)+'%':'—';
+      document.getElementById('tele-cns-val').textContent=cnsVal;
+      document.getElementById('tele-rec-val').textContent=recVal;
+    }
+  }catch(e){}
+  setTimeout(()=>{ cns.classList.add('tb-show'); rec.classList.add('tb-show'); },600);
+}
+/* ─────────────────────────────────────────────────────────────── */
+
 document.addEventListener('DOMContentLoaded', function() {
   physCoreSetState('peak');
   _physSyncLattice();
@@ -7084,7 +7356,35 @@ document.addEventListener('DOMContentLoaded', function() {
   ApexBioRenderer.start();
 
   setTimeout(() => apexBrain.loadFromMemory().compute(), 500);
+
+  // V2 Phase 1: set initial shell state
+  setAppState('overview');
+  setTimeout(_ciShowTelemetry, 1200);
 });
 </script>
+
+<!-- ═══════════════════════════════════════════════════════════
+     COACH ISLAND — Layer 3 / Fixed bottom / Phase 1 Shell
+     ═══════════════════════════════════════════════════════════ -->
+<div id="coach-island">
+
+  <!-- Overview mode: brief + CTA buttons -->
+  <div class="ci-overview">
+    <div class="ci-brief" id="ci-brief-text">APEX COACH ENGINE — READY</div>
+    <div class="ci-actions">
+      <button class="ci-consult-btn" onclick="setAppState('consultation');document.getElementById('user-in').focus();">CONSULT</button>
+      <button class="ci-protocol-btn" id="ci-protocol-btn" onclick="ciStartProtocol()">START PROTOCOL</button>
+    </div>
+  </div>
+
+  <!-- Consultation mode: back + engine label -->
+  <div class="ci-consultation">
+    <button class="ci-back-btn" onclick="setAppState('overview')">← BACK</button>
+    <span class="ci-engine-label">APEX COACH ENGINE</span>
+    <div style="width:80px;"></div>
+  </div>
+
+</div>
+
 </body>
 </html>
