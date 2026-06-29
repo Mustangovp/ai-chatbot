@@ -1677,35 +1677,56 @@ body{overflow:hidden;height:100dvh;min-height:unset;}
   transform:translateZ(0);
 }
 
-/* Overview: brief + two CTAs — Landing goal-line pattern */
+/* Overview: Q1 state badge + Q2 brief + Q3 single CTA */
 .ci-overview{
-  display:none;flex-direction:column;gap:14px;
-  max-width:560px;margin:0 auto;width:100%;
-  padding:20px 20px max(20px,env(safe-area-inset-bottom));
+  display:none;flex-direction:column;gap:12px;
+  max-width:520px;margin:0 auto;width:100%;
+  padding:16px 20px max(20px,env(safe-area-inset-bottom));
   box-sizing:border-box;
 }
+
+/* Q1 — physiological state */
+.ci-state-row{display:flex;justify-content:center;}
+.ci-state-badge{
+  display:inline-flex;align-items:center;gap:8px;
+  font-family:'Unbounded';font-size:9px;font-weight:700;letter-spacing:3px;
+  text-transform:uppercase;padding:7px 18px;border-radius:30px;
+  transition:all .6s ease;
+}
+.ci-state-badge.state-peak{border:1px solid rgba(182,255,60,.35);color:var(--lime);background:rgba(182,255,60,.07);}
+.ci-state-badge.state-recovery{border:1px solid rgba(56,224,255,.35);color:var(--cyan);background:rgba(56,224,255,.07);}
+.ci-state-badge.state-fatigue{border:1px solid rgba(255,177,60,.35);color:var(--gold);background:rgba(255,177,60,.07);}
+.ci-state-badge.state-pain{border:1px solid rgba(245,33,45,.35);color:var(--red);background:rgba(245,33,45,.07);}
+.csb-dot{width:5px;height:5px;border-radius:50%;background:currentColor;animation:blink 1.8s infinite;flex-shrink:0;}
+
+/* Q2 — coach recommendation */
 .ci-brief{
-  font-size:13px;color:var(--muted);
-  text-align:center;line-height:1.55;letter-spacing:.3px;
+  font-size:14px;color:var(--muted);
+  text-align:center;line-height:1.65;
+  min-height:44px;
+  transition:opacity .4s ease;
 }
-.ci-actions{display:flex;gap:10px;}
-.ci-consult-btn{
-  flex:1;
-  background:var(--surface);border:1px solid var(--border);
-  color:var(--text);font-family:'Manrope';font-weight:800;font-size:15px;
-  padding:14px;border-radius:var(--radius);cursor:pointer;
-  transition:transform .15s,border-color .15s;
-}
-.ci-consult-btn:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.2);}
+
+/* Q3 — single primary action */
 .ci-protocol-btn{
-  flex:1;
+  width:100%;
   background:var(--pulse);border:none;
-  color:#fff;font-family:'Manrope';font-weight:800;font-size:15px;
-  padding:14px;border-radius:var(--radius);cursor:pointer;
+  color:#fff;font-family:'Unbounded';font-size:10px;letter-spacing:3px;
+  padding:18px;border-radius:var(--radius);cursor:pointer;
   box-shadow:0 8px 28px rgba(245,33,45,.38);
   transition:transform .15s,box-shadow .15s;
 }
 .ci-protocol-btn:hover{transform:translateY(-1px);box-shadow:0 12px 34px rgba(245,33,45,.48);}
+.ci-protocol-btn:active{transform:scale(.98);}
+
+/* Secondary — text link, not a button competing for attention */
+.ci-consult-link{
+  background:transparent;border:none;
+  color:rgba(139,147,167,.5);font-family:'Manrope';font-size:13px;font-weight:600;
+  cursor:pointer;text-align:center;padding:2px 0;
+  transition:color .2s;letter-spacing:.3px;
+}
+.ci-consult-link:hover{color:var(--muted);}
 
 /* Consultation: header bar + feed + input */
 .ci-consultation{
@@ -5525,7 +5546,7 @@ const LEGAL={
 };
 
 function showLegal(type){document.getElementById('legal-content').innerHTML=(LEGAL[lang]||LEGAL.bg)[type]||'';document.getElementById('legal-modal').style.display='flex';}
-document.getElementById('user-in').addEventListener('keydown',e=>{if(e.key==='Enter')send();});
+{ const _inp=document.getElementById('user-in'); if(_inp) _inp.addEventListener('keydown',e=>{if(e.key==='Enter')send();}); }
 
 // ═══════════════════════════════════════════════════════════
 // FEEDBACK MODAL LOGIC
@@ -7071,13 +7092,70 @@ function ciStartProtocol(){
   document.getElementById('user-in').focus();
 }
 
+/* _ciUpdateState: reads Brain intent + BSE signature and answers all three home-screen questions.
+   Q1 — state badge (what is my current physiological state)
+   Q2 — coach brief (what does APEX recommend right now)
+   Q3 — primary CTA label (what is the single best next action) */
+function _ciUpdateState(){
+  try{
+    // State comes from the Brain (intent classifier), not the BSE renderer.
+    const intent=apexBrain.intent;
+    const state=intent?.state||'peak';
+
+    // Derive human-readable metrics from actual BSE output properties.
+    const sig=apexBSE.getSignature();
+    const readiness=Math.round(((sig.pulseAmplitude||.55)*.40+(sig.cellularActivity||.55)*.40+(sig.glowPersistence||.50)*.20)*100);
+    const recovery =Math.round((1-(sig.flowViscosity||.45))*100);
+
+    const MAP={
+      peak:{
+        label:'PEAK READINESS',cls:'state-peak',
+        brief:`Readiness index ${readiness}%. Recovery at ${recovery}%. Your nervous system is operating at capacity. This is your optimal training window.`,
+        cta:'START PROTOCOL'
+      },
+      recovery:{
+        label:'RECOVERY MODE',cls:'state-recovery',
+        brief:`Recovery at ${recovery}%. Your body is actively rebuilding. Light movement and nutrition today will maximize tomorrow's output.`,
+        cta:'RECOVERY PROTOCOL'
+      },
+      fatigue:{
+        label:'FATIGUE DETECTED',cls:'state-fatigue',
+        brief:`Accumulated load detected. Readiness at ${readiness}%. Pushing through will compound the deficit — rest is today's highest-performance choice.`,
+        cta:'REST PROTOCOL'
+      },
+      pain:{
+        label:'OVERLOAD WARNING',cls:'state-pain',
+        brief:`Overload signal detected. Continuing training risks extending recovery by days. Immediate rest protocol recommended.`,
+        cta:'VIEW RECOVERY'
+      },
+      training:{
+        label:'SESSION ACTIVE',cls:'state-peak',
+        brief:`Training session in progress. Performance data is being tracked live.`,
+        cta:'RESUME SESSION'
+      }
+    };
+
+    const s=MAP[state]||MAP.peak;
+    const badge=document.getElementById('ci-state-badge');
+    const stateText=document.getElementById('ci-state-text');
+    const brief=document.getElementById('ci-brief-text');
+    const cta=document.getElementById('ci-protocol-btn');
+
+    if(badge)badge.className='ci-state-badge '+s.cls;
+    if(stateText)stateText.textContent=s.label;
+    if(brief)brief.textContent=s.brief;
+    if(cta)cta.textContent=s.cta;
+  }catch(e){}
+}
+
+/* After a consultation reply, refresh the brief with the AI's latest output */
 function _ciUpdateBrief(){
   const el=document.getElementById('ci-brief-text');
   if(!el)return;
   const lastMsg=document.querySelector('#chat-box .msg-a:not(.greeting):not(.daily-limit-note):last-child');
   if(!lastMsg)return;
   const raw=(lastMsg.textContent||'').replace(/\s+/g,' ').trim();
-  if(raw.length>6)el.textContent=raw.length>110?raw.slice(0,108)+'…':raw;
+  if(raw.length>6)el.textContent=raw.length>120?raw.slice(0,118)+'…':raw;
 }
 
 function _ciShowTelemetry(){
@@ -7087,10 +7165,12 @@ function _ciShowTelemetry(){
   try{
     const sig=apexBSE.getSignature();
     if(sig){
-      const cnsVal=sig.cns!==undefined?Math.round(sig.cns*100)+'%':'—';
-      const recVal=sig.recovery!==undefined?Math.round(sig.recovery*100)+'%':'—';
-      document.getElementById('tele-cns-val').textContent=cnsVal;
-      document.getElementById('tele-rec-val').textContent=recVal;
+      // Derive from actual BSE output: neural readiness from metabolic + cellular activity;
+      // recovery index from inverse of flow viscosity (less viscosity = faster recovery).
+      const neural=Math.round(((sig.pulseAmplitude||.55)*.50+(sig.cellularActivity||.55)*.50)*100);
+      const recov =Math.round((1-(sig.flowViscosity||.45))*100);
+      document.getElementById('tele-cns-val').textContent=neural+'%';
+      document.getElementById('tele-rec-val').textContent=recov+'%';
     }
   }catch(e){}
   setTimeout(()=>{ cns.classList.add('tb-show'); rec.classList.add('tb-show'); },600);
@@ -7117,9 +7197,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
   setTimeout(() => apexBrain.loadFromMemory().compute(), 500);
 
-  // V2 Phase 1: set initial shell state
+  // Attach input keydown (element is after script tag, must wire here)
+  const _inpEl=document.getElementById('user-in');
+  if(_inpEl) _inpEl.addEventListener('keydown',e=>{if(e.key==='Enter')send();});
+
+  // V2: set initial shell state, then surface BSE answers into Coach Island
   setAppState('overview');
-  setTimeout(_ciShowTelemetry, 1200);
+  setTimeout(()=>{ _ciShowTelemetry(); _ciUpdateState(); }, 1200);
 });
 </script>
 
@@ -7131,11 +7215,18 @@ document.addEventListener('DOMContentLoaded', function() {
 
   <!-- ── OVERVIEW MODE ───────────────────────────────────────── -->
   <div class="ci-overview">
-    <div class="ci-brief" id="ci-brief-text">Your physiology is being analyzed.</div>
-    <div class="ci-actions">
-      <button class="ci-consult-btn" onclick="setAppState('consultation');setTimeout(()=>document.getElementById('user-in').focus(),80);" data-key="ci-consult">CONSULT</button>
-      <button class="ci-protocol-btn" id="ci-protocol-btn" onclick="ciStartProtocol()" data-key="ci-protocol">START PROTOCOL</button>
+    <!-- Q1: What is my current physiological state? -->
+    <div class="ci-state-row">
+      <div class="ci-state-badge state-peak" id="ci-state-badge">
+        <span class="csb-dot"></span>
+        <span id="ci-state-text">ANALYZING</span>
+      </div>
     </div>
+    <!-- Q2: What does APEX recommend right now? -->
+    <div class="ci-brief" id="ci-brief-text">Reading biological signature…</div>
+    <!-- Q3: What is the single best next action? -->
+    <button class="ci-protocol-btn" id="ci-protocol-btn" onclick="ciStartProtocol()">START PROTOCOL</button>
+    <button class="ci-consult-link" onclick="setAppState('consultation');setTimeout(()=>document.getElementById('user-in').focus(),80);">Open consultation →</button>
   </div>
 
   <!-- ── CONSULTATION MODE ───────────────────────────────────── -->
