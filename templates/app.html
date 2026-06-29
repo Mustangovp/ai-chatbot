@@ -3813,10 +3813,10 @@ function _ccRestoreLayout(){
 // Rescues #phys-core into the persistent #wo-organism-slot that lives outside
 // #wo-body, so it survives every b.innerHTML replacement.
 function _ccEnsureOrganism(){
-  // Remove cc-active — the full CC card layout is only for the ex phase.
-  document.getElementById('workout-overlay').classList.remove('cc-active');
-  const _slot=document.getElementById('wo-organism-slot');
-  const _core=document.getElementById('phys-core');
+  const overlay = document.getElementById('workout-overlay');
+  const isCcActive = overlay && overlay.classList.contains('cc-active');
+  const _slot = document.getElementById(isCcActive ? 'cc-core-slot' : 'wo-organism-slot');
+  const _core = document.getElementById('phys-core');
   if(_slot&&_core&&_core.parentElement!==_slot)_slot.appendChild(_core);
 }
 
@@ -4143,15 +4143,19 @@ function _ccCard(ex,meta,reps,si,totalSets,key){
 </div>`;
 }
 
-// Task 1 — exercise card
-function _woRenderEx(b){
-  const ex=_wo.exs[_wo.ei];
+function _woResolveRenderer(ex){
+  const key=_ccKey(ex.name);
+  if(key&&CC_META[key]){
+    return {type:'coach_card',key:key,meta:CC_META[key]};
+  }
+  return {type:'legacy'};
+}
+
+function _woRenderLegacyEx(ex){
   const reps=Math.max(1,ex.baseReps+ex.repDelta);
-  _ccEnsureOrganism();
-  _wo.setStartTs=Date.now();
   const wmeta=_woMeta(ex.name);
   const muscleLbl=wmeta?`<div class="wo-muscle-label" style="margin:14px 0 22px;">${lang==='en'?wmeta.muscleEn:wmeta.muscle}</div>`:'';
-  b.innerHTML=`
+  return `
     <div class="wo-ex-name">${ex.name}</div>
     ${ex.note?`<div class="wo-ex-note">${ex.note}</div>`:''}
     ${muscleLbl}
@@ -4159,6 +4163,28 @@ function _woRenderEx(b){
     <div class="wo-reps">${reps}</div>
     <div class="wo-reps-sub">${lang==='en'?'reps':'повторения'}</div>
     <button class="wo-done-btn" onclick="_woDone()">&#10003; &nbsp;${lang==='en'?'Done':'Готово'}</button>`;
+}
+
+function _woRenderEx(b){
+  const ex=_wo.exs[_wo.ei];
+  _wo.setStartTs=Date.now();
+  
+  const renderer=_woResolveRenderer(ex);
+  
+  if(renderer.type==='coach_card'){
+    document.getElementById('workout-overlay').classList.add('cc-active');
+    const reps=Math.max(1,ex.baseReps+ex.repDelta);
+    b.innerHTML=_ccCard(ex,renderer.meta,reps,_wo.si,ex.sets,renderer.key);
+    
+    // Mount the core organism into the card slot
+    const _slot=document.getElementById('cc-core-slot');
+    const _core=document.getElementById('phys-core');
+    if(_slot&&_core&&_core.parentElement!==_slot)_slot.appendChild(_core);
+  } else {
+    document.getElementById('workout-overlay').classList.remove('cc-active');
+    b.innerHTML=_woRenderLegacyEx(ex);
+    _ccEnsureOrganism(); // Safely docks organism to background slot
+  }
 }
 
 function _woDone(){
