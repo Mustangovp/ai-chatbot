@@ -49,57 +49,38 @@
 
 <style>
 :root{
-  --bg:#0B0E14;
-  --surface:#121724;
-  --surface2:#1A2133;
-  --red:#F5212D;
-  --red-glow:rgba(245,33,45,0.45);
-  --ember:#FF6A3C;
+  --bg:#0B0E14; --surface:#121724; --surface2:#1A2133;
+  --text:#F2F5FA; --muted:#8B93A7; --border:rgba(255,255,255,0.1);
+  --red:#F5212D; --brand:#F5212D; --red-glow:rgba(245,33,45,0.45);
+  --ember:#FF6A3C; --gold:#FFB13C; --cyan:#38E0FF; --lime:#B6FF3C;
   --pulse:linear-gradient(90deg,#F5212D,#FF6A3C);
-  --gold:#FFB13C;
-  --lime:#B6FF3C;
-  --cyan:#38E0FF;
-  --text:#F2F5FA;
-  --muted:#8B93A7;
-  --border:rgba(255,255,255,0.1);
+  --radius:20px;
 }
-*{box-sizing:border-box;}
-html,body{overflow-x:hidden;max-width:100vw;margin:0;padding:0;background:var(--bg);color:var(--text);font-family:'Manrope',Arial,sans-serif;-webkit-font-smoothing:antialiased;}
-body{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;}
+*{margin:0;padding:0;box-sizing:border-box;}
+html{overflow-x:hidden;max-width:100vw;}
+body{background:var(--bg);color:var(--text);font-family:'Manrope',sans-serif;line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden;display:flex;flex-direction:column;}
 body::before{content:'';position:fixed;top:-120px;left:50%;transform:translateX(-50%);width:min(900px,120vw);height:520px;background:radial-gradient(ellipse 65% 55% at 50% 0%,rgba(245,33,45,0.09) 0%,rgba(255,106,60,0.04) 45%,transparent 70%);pointer-events:none;z-index:0;}
 body::after{content:'';position:fixed;bottom:-80px;right:-120px;width:500px;height:400px;background:radial-gradient(ellipse 70% 60% at 100% 100%,rgba(255,177,60,0.05) 0%,transparent 65%);pointer-events:none;z-index:0;}
 
-/* ── NAVIGATION (identical to landing) ── */
-.nav-wrap{position:sticky;top:0;z-index:50;background:rgba(5,5,12,0.92);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);}
-.nav-inner{max-width:1200px;margin:0 auto;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;gap:24px;}
-.nav-brand{display:flex;align-items:center;gap:12px;flex-shrink:0;text-decoration:none;}
-.nav-logo{width:42px;height:42px;border-radius:8px;background:url('/static/logo.png') center/cover no-repeat;box-shadow:0 0 20px var(--red-glow);}
-.nav-title{font-family:'Unbounded';font-size:13px;letter-spacing:.5px;white-space:nowrap;color:var(--text);}
-.nav-title .ra{color:var(--red);}
-.nav-sub{font-size:9px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;margin-top:-3px;}
-.nav-right{display:flex;align-items:center;gap:14px;}
-/* Plan badge — lives inside greeting message, not nav */
+/* ── NAV — exact Landing pattern ─────────────────────────── */
+nav{position:sticky;top:0;z-index:50;background:rgba(5,5,12,0.92);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid rgba(255,255,255,.07);}
+.nav-inner{display:flex;align-items:center;justify-content:space-between;max-width:1100px;margin:0 auto;padding:16px 20px;gap:10px;}
+.logo{display:flex;align-items:center;gap:10px;font-family:'Unbounded';font-weight:700;font-size:14px;letter-spacing:.5px;text-decoration:none;color:var(--text);}
+.logo img{width:34px;height:34px;filter:drop-shadow(0 0 10px rgba(245,33,45,.5));}
+.logo-sub{font-family:'Manrope';font-size:9px;font-weight:700;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;}
+.nav-right{display:flex;align-items:center;gap:12px;}
+.nav-cta{background:var(--pulse);color:#fff;font-weight:800;font-size:13px;padding:10px 18px;border-radius:30px;text-decoration:none;box-shadow:0 4px 16px rgba(245,33,45,.3);white-space:nowrap;transition:transform .15s,box-shadow .15s;border:none;cursor:pointer;font-family:'Manrope';}
+.nav-cta:hover{transform:translateY(-1px);box-shadow:0 6px 22px rgba(245,33,45,.48);}
+
+/* Plan badge */
 .greeting-badge{display:inline-flex;align-items:center;gap:5px;font-family:'Unbounded';font-size:9px;letter-spacing:1.8px;padding:4px 11px;border-radius:20px;margin-bottom:12px;text-transform:uppercase;}
 .greeting-badge.plan-free,.greeting-badge.elite{border:1px solid rgba(255,255,255,0.18);color:var(--muted);background:rgba(255,255,255,0.04);}
 .greeting-badge.plan-core{border:1px solid rgba(182,255,60,0.45);color:var(--lime);background:rgba(182,255,60,0.07);}
 .greeting-badge.plan-pro{border:1px solid rgba(245,33,45,0.45);color:#ff8a5c;background:rgba(245,33,45,0.08);}
-.lang-btn{background:transparent;border:1px solid var(--border);color:var(--text);font-family:'Unbounded';font-size:12px;letter-spacing:2px;padding:6px 12px;border-radius:6px;cursor:pointer;transition:all .2s;}
-.lang-btn:hover{border-color:var(--red);color:var(--red);}
 
-/* Feedback button in navigation */
-.fb-btn{background:transparent;border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:13px;padding:6px 10px;border-radius:6px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px;}
-.fb-btn:hover{border-color:var(--gold);color:var(--gold);}
-.fb-btn .fb-icon{font-size:14px;}
-.fb-btn-text{display:inline;}
-@media(max-width:480px){.fb-btn-text{display:none;}}
-
-/* Cancel-subscription button (EU consumer rights) — kept clearly visible,
-   text label stays on mobile so it never collapses to just an arrow. */
-.cancel-sub-btn{background:rgba(245,33,45,0.10);border:1px solid rgba(245,33,45,0.45);color:#ff8a5c;font-family:inherit;font-weight:700;font-size:13px;padding:6px 13px;border-radius:6px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:6px;white-space:nowrap;}
-.cancel-sub-btn:hover{border-color:var(--red);color:#fff;background:rgba(245,33,45,0.22);}
-.cancel-sub-btn .cs-icon{font-size:15px;line-height:1;}
-.cancel-sub-btn .cs-text{display:inline;}
-@media(max-width:480px){.cancel-sub-btn{padding:6px 10px;}.cancel-sub-btn .cs-text{display:none;}}
+/* Lang + cancel-sub live inside profile modal — these are the compact icon versions kept for JS wiring */
+.lang-btn{display:none;}
+.cancel-sub-btn,.fb-btn{display:none;}
 
 /* Feedback modal */
 #feedback-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.97);z-index:1000;align-items:center;justify-content:center;padding:22px;}
@@ -127,24 +108,37 @@ body::after{content:'';position:fixed;bottom:-80px;right:-120px;width:500px;heig
   .lang-btn{font-size:11px;padding:4px 9px;}
 }
 
-/* ── MAIN CONTAINER ── */
-main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;width:100%;padding:24px 16px 0;}
+/* ── CONSULTATION FEED — clinical, no bubbles ─────────────── */
+#chat-box{display:flex;flex-direction:column;gap:0;overflow-y:auto;padding:0;}
+.msg-u,.msg-a{line-height:1.65;font-size:15px;position:relative;animation:msg-in .3s cubic-bezier(.2,.7,.2,1);}
 
-/* ── CHAT BOX ── */
-#chat-box{flex:1;overflow-y:auto;padding:8px 4px 16px;display:flex;flex-direction:column;gap:14px;min-height:300px;}
-.msg-u,.msg-a{padding:14px 18px;border-radius:12px;line-height:1.6;font-size:15px;max-width:88%;position:relative;}
-.msg-u{align-self:flex-end;background:var(--pulse);border:none;font-weight:600;border-bottom-right-radius:4px;color:var(--text);}
-.msg-a{align-self:flex-start;background:linear-gradient(135deg,rgba(10,10,20,0.95),rgba(20,20,32,0.95));border:1px solid var(--border);border-left:3px solid var(--red);border-bottom-left-radius:4px;color:var(--text);}
-.msg-a.greeting{border-left-color:var(--gold);background:linear-gradient(135deg,rgba(255,177,60,0.07),rgba(10,10,20,0.96));box-shadow:0 0 40px rgba(255,177,60,0.06);}
+/* AI output — full-width, clinical */
+.msg-a{
+  padding:20px 0 24px;
+  border-bottom:1px solid rgba(255,255,255,.05);
+  color:#E5E9F2;
+  width:100%;
+}
+.msg-a::before{
+  content:'APEX COACH ENGINE';
+  display:block;
+  font-family:'Unbounded',sans-serif;
+  font-size:8px;
+  letter-spacing:3px;
+  color:rgba(56,224,255,.5);
+  margin-bottom:12px;
+}
+.msg-a.greeting::before{content:'APEX COACH ENGINE';}
 .msg-a.greeting strong{font-family:'Unbounded';font-size:17px;letter-spacing:.5px;color:var(--gold);display:block;margin-bottom:10px;line-height:1.3;}
-.msg-a.daily-limit-note{border-left-color:var(--gold);background:linear-gradient(135deg,rgba(255,177,60,0.06),rgba(10,10,20,0.97));max-width:100%;text-align:center;padding:24px 20px;}
+.msg-a.daily-limit-note{text-align:center;padding:24px 0;}
+.msg-a.daily-limit-note::before{display:none;}
 .limit-headline{font-family:'Unbounded';font-size:17px;letter-spacing:.5px;color:var(--text);margin:0 0 6px;}
 .limit-sub{font-size:14px;color:var(--muted);margin:0 0 18px;line-height:1.5;}
 .limit-features{list-style:none;padding:0;margin:0 0 22px;display:inline-block;text-align:left;}
 .limit-features li{font-size:13px;color:#cdd4e0;padding:4px 0;display:flex;align-items:baseline;gap:8px;}
 .limit-features li::before{content:'✦';color:var(--gold);font-size:10px;flex-shrink:0;}
 .limit-features li strong{color:#fff;}
-.limit-plan-btn{display:block;width:100%;max-width:320px;margin:0 auto 10px;background:linear-gradient(135deg,var(--red),#D81B26);color:#fff;border:none;font-family:'Unbounded';font-size:14px;letter-spacing:.5px;font-weight:700;padding:14px 22px;border-radius:10px;cursor:pointer;transition:all .2s;box-shadow:0 4px 20px rgba(245,33,45,0.3);}
+.limit-plan-btn{display:block;width:100%;max-width:320px;margin:0 auto 10px;background:linear-gradient(135deg,var(--red),#D81B26);color:#fff;border:none;font-family:'Unbounded';font-size:14px;letter-spacing:.5px;font-weight:700;padding:14px 22px;border-radius:12px;cursor:pointer;transition:all .2s;box-shadow:0 4px 20px rgba(245,33,45,0.3);}
 .limit-plan-btn:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(245,33,45,0.45);}
 .limit-plan-btn.secondary{background:transparent;border:1px solid rgba(255,255,255,0.2);color:var(--text);font-family:inherit;font-size:13px;font-weight:500;letter-spacing:.3px;box-shadow:none;}
 .limit-plan-btn.secondary:hover{border-color:var(--gold);color:var(--gold);transform:none;box-shadow:none;}
@@ -158,13 +152,32 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 .msg-a ul,.msg-a ol{padding-left:22px;margin:8px 0;}
 .msg-a li{margin-bottom:4px;}
 
-/* Quick reply chips (consultative questions after greeting) */
+/* User input — right-aligned, no bubble */
+.msg-u{
+  padding:16px 0 20px;
+  border-bottom:1px solid rgba(255,255,255,.03);
+  text-align:right;
+  color:rgba(242,245,250,.65);
+  font-size:14px;
+}
+.msg-u::before{
+  content:'YOU';
+  display:block;
+  font-family:'Unbounded',sans-serif;
+  font-size:8px;
+  letter-spacing:3px;
+  color:rgba(245,33,45,.4);
+  margin-bottom:8px;
+  text-align:right;
+}
+
+/* Quick reply chips */
 .quick-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;}
-.quick-chip{background:rgba(255,177,60,0.08);border:1px solid rgba(255,177,60,0.3);color:var(--gold);padding:11px 16px;min-height:44px;display:inline-flex;align-items:center;border-radius:22px;font-family:inherit;font-size:13px;letter-spacing:0.5px;cursor:pointer;transition:all .2s;}
+.quick-chip{background:rgba(255,177,60,0.08);border:1px solid rgba(255,177,60,0.3);color:var(--gold);padding:11px 16px;min-height:44px;display:inline-flex;align-items:center;border-radius:var(--radius);font-family:inherit;font-size:13px;letter-spacing:0.5px;cursor:pointer;transition:all .2s;}
 .quick-chip:hover{background:rgba(255,177,60,0.18);border-color:var(--gold);transform:translateY(-1px);}
 
-/* ── TABLES — бранд йерархия: тихи заглавия, силни данни ── */
-.table-wrap{overflow-x:auto;margin:14px 0;border-radius:10px;border:1px solid rgba(245,33,45,.18);background:rgba(0,0,0,.25);}
+/* Tables */
+.table-wrap{overflow-x:auto;margin:14px 0;border-radius:12px;border:1px solid rgba(245,33,45,.18);background:rgba(0,0,0,.25);}
 .msg-a table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:340px;}
 .msg-a thead th{background:rgba(245,33,45,.07);color:var(--muted);padding:10px 12px;font-size:10.5px;letter-spacing:1.6px;text-transform:uppercase;font-weight:700;text-align:left;border-bottom:2px solid var(--red);white-space:nowrap;}
 .msg-a td{padding:11px 12px;border-bottom:1px solid rgba(255,255,255,.05);text-align:left;color:#dbd6e2;font-variant-numeric:tabular-nums;}
@@ -176,31 +189,30 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 .msg-a tr:hover td{background:rgba(245,33,45,.05);}
 .scroll-hint{font-size:10px;color:var(--muted);text-align:center;margin:4px 0 8px;letter-spacing:1px;opacity:.7;}
 
-/* ── TYPING INDICATOR ── */
-.typing{align-self:flex-start;display:flex;align-items:center;gap:10px;padding:12px 16px;background:rgba(10,10,20,0.7);border-radius:12px;border:1px solid var(--border);border-left:3px solid var(--gold);}
-.typing-label{font-family:'Unbounded';font-weight:800;font-size:10px;letter-spacing:2.4px;color:var(--gold);text-transform:uppercase;}
-.typing .dot{width:6px;height:6px;border-radius:50%;background:var(--gold);animation:bounce 1.4s infinite;}
-.typing .dot:nth-child(3){animation-delay:.2s;}
-.typing .dot:nth-child(4){animation-delay:.4s;}
-@keyframes bounce{0%,80%,100%{opacity:.3;transform:translateY(0);}40%{opacity:1;transform:translateY(-4px);}}
+/* Typing indicator — Landing style */
+.typing{align-self:flex-start;display:flex;gap:4px;padding:20px 0;align-items:center;}
+.typing-label{font-family:'Unbounded';font-size:8px;letter-spacing:3px;color:rgba(56,224,255,.45);text-transform:uppercase;margin-right:8px;}
+.typing i{width:6px;height:6px;border-radius:50%;background:var(--red);animation:tp 1.2s infinite;font-style:normal;display:block;}
+.typing i:nth-child(2){animation-delay:.2s;background:var(--ember);}
+.typing i:nth-child(3){animation-delay:.4s;background:var(--gold);}
+@keyframes tp{0%,100%{transform:translateY(0);opacity:.4;}50%{transform:translateY(-4px);opacity:1;}}
 
-/* ── MESSAGE SLIDE-IN ── */
+/* Message entrance */
 @keyframes msg-in{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
-.msg-u,.msg-a,.typing{animation:msg-in .28s cubic-bezier(.2,.7,.2,1);}
-@media(prefers-reduced-motion:reduce){.msg-u,.msg-a,.typing{animation:none;}.typing .dot{animation:none;opacity:.7;}}
+@media(prefers-reduced-motion:reduce){.msg-u,.msg-a,.typing{animation:none;}}
 
-/* ── INPUT BAR ── */
-.input-wrap{position:sticky;bottom:0;background:linear-gradient(180deg,transparent,var(--bg) 25%);padding:14px 0 16px;}
-.input-row{display:flex;gap:10px;align-items:center;background:var(--surface2);border:1.5px solid var(--border);border-radius:14px;padding:8px 8px 8px 18px;transition:border-color .2s,box-shadow .2s;box-shadow:0 2px 20px rgba(0,0,0,0.35);}
-.input-row:focus-within{border-color:rgba(245,33,45,0.5);box-shadow:0 0 0 1px rgba(245,33,45,0.15),0 4px 28px rgba(245,33,45,0.12);}
+/* Input — Landing goal-line style */
+.input-wrap{padding:12px 0 4px;background:transparent;}
+.input-row{display:flex;gap:10px;align-items:center;background:var(--surface);border:1.5px solid var(--border);border-radius:var(--radius);padding:8px 8px 8px 18px;transition:border-color .2s,box-shadow .2s;box-shadow:0 14px 50px rgba(0,0,0,.4);}
+.input-row:focus-within{border-color:rgba(245,33,45,.5);box-shadow:0 0 0 1px rgba(245,33,45,.15),0 8px 34px rgba(245,33,45,.14);}
 #user-in{flex:1;background:transparent;border:none;outline:none;color:var(--text);font-family:inherit;font-size:15px;padding:10px 0;min-width:0;}
 #user-in::placeholder{color:rgba(139,147,167,0.6);letter-spacing:.3px;}
-.send-btn{background:var(--pulse);color:#fff;border:none;width:44px;height:44px;border-radius:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 4px 16px var(--red-glow);transition:all .2s;flex-shrink:0;}
-.send-btn:hover{transform:translateY(-1px);box-shadow:0 6px 20px var(--red-glow);}
+.send-btn{background:var(--pulse);color:#fff;border:none;width:46px;height:46px;border-radius:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 6px 20px rgba(245,33,45,.38);transition:transform .15s,box-shadow .15s;flex-shrink:0;}
+.send-btn:hover{transform:translateY(-1px);box-shadow:0 8px 28px rgba(245,33,45,.48);}
 
-/* ── UTILITY BAR (Copy / PDF) — appears only after first AI reply ── */
-#utility{display:none;margin:10px 0 6px;gap:10px;flex-wrap:wrap;justify-content:center;}
-.util-btn{background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:13px;letter-spacing:1px;padding:8px 14px;border-radius:8px;cursor:pointer;transition:all .2s;}
+/* Utility bar */
+#utility{display:none;margin:8px 0;gap:10px;flex-wrap:wrap;justify-content:center;}
+.util-btn{background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:13px;letter-spacing:1px;padding:8px 14px;border-radius:10px;cursor:pointer;transition:all .2s;}
 .util-btn:hover{border-color:var(--gold);color:var(--gold);}
 .util-btn.locked{opacity:0.55;cursor:pointer;position:relative;}
 .util-btn.locked:hover{border-color:var(--gold);color:var(--gold);opacity:0.75;}
@@ -208,19 +220,9 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 .pdf-msg-btn{display:inline-flex;align-items:center;gap:5px;margin-top:12px;padding:5px 13px;background:transparent;border:1px solid rgba(255,255,255,0.1);color:var(--muted);font-family:inherit;font-size:12px;letter-spacing:.4px;border-radius:6px;cursor:pointer;transition:all .2s;}
 .pdf-msg-btn:hover{border-color:var(--red);color:var(--text);}
 
-/* ── GOAL BAR (Step 3 — North Star) ── */
-#goal-bar{display:none;background:rgba(10,11,18,0.97);border-bottom:1px solid rgba(245,33,45,0.1);}
-.goal-bar-inner{max-width:920px;margin:0 auto;display:flex;align-items:stretch;padding:0 16px;min-height:48px;}
-.gb-col{flex:1;padding:6px 14px;border-right:1px solid rgba(255,255,255,0.05);min-width:0;display:flex;flex-direction:column;justify-content:center;}
-.gb-col:first-child{padding-left:0;}
-.gb-col.gb-hide{display:none;}
-.gb-label{font-size:8px;letter-spacing:1.8px;color:rgba(139,147,167,0.45);text-transform:uppercase;margin-bottom:2px;white-space:nowrap;}
-.gb-value{font-family:'Unbounded';font-size:11px;letter-spacing:.3px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.gb-sub{font-size:10px;color:rgba(139,147,167,0.55);margin-top:1px;white-space:nowrap;}
-.gb-edit-wrap{flex-shrink:0;display:flex;align-items:center;padding-left:12px;}
-.gb-edit-btn{background:transparent;border:1px solid rgba(255,255,255,0.07);color:rgba(139,147,167,0.5);font-size:10px;padding:4px 10px;border-radius:5px;cursor:pointer;transition:all .2s;font-family:inherit;letter-spacing:.5px;white-space:nowrap;}
-.gb-edit-btn:hover{border-color:var(--red);color:var(--text);}
-@media(max-width:580px){.gb-col.gb-mob-hide{display:none;}.gb-col{padding:6px 8px;}}
+/* Goal bar — hidden, replaced by telemetry in shell */
+#goal-bar{display:none!important;}
+.gb-col,.gb-label,.gb-value,.gb-sub,.gb-edit-wrap,.gb-edit-btn,.goal-bar-inner{display:none!important;}
 
 /* ── MODAL ANIMATIONS ── */
 @keyframes modal-backdrop-in{from{opacity:0;}to{opacity:1;}}
@@ -1555,390 +1557,200 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   APEX APP V2 — PREMIUM UI SHELL
-   Visual upgrades only. No Biological Core, Brain, BSE, or
-   workout logic changes.
+   APEX APP V2 — APP SHELL
+   Landing-matched visual language. Replace, not decorate.
    ═══════════════════════════════════════════════════════════════ */
 
-/* ── Layout widening ────────────────────────────────────────── */
-main{max-width:1100px;}
-.goal-bar-inner{max-width:1100px;}
+/* ── Extra tokens (Landing uses --radius:20px already in :root) */
+:root{ --silica:rgba(255,255,255,0.07); }
 
-/* ── Premium organism stage ─────────────────────────────────── */
-#phys-core-stage{
-  max-width:1100px;
-  position:relative;
-  padding:44px 16px 36px;
-  overflow:visible;
-  isolation:isolate;
-}
-/* Grid texture behind organism — fades radially into bg */
-#phys-core-stage::before{
-  content:'';
-  position:absolute;
-  inset:0;
-  background-image:
-    linear-gradient(rgba(255,255,255,.018) 1px,transparent 1px),
-    linear-gradient(90deg,rgba(255,255,255,.018) 1px,transparent 1px);
-  background-size:48px 48px;
-  mask-image:radial-gradient(ellipse at center,#000 8%,transparent 68%);
-  -webkit-mask-image:radial-gradient(ellipse at center,#000 8%,transparent 68%);
-  pointer-events:none;
-  z-index:-1;
-}
-
-/* Conic orbit ring — premium framing (matches landing page .ring pattern) */
-#phys-stage-ring{
-  position:absolute;
-  top:50%;left:50%;
-  transform:translate(-50%,-50%);
-  width:min(370px,92vw);height:min(370px,92vw);
-  border-radius:50%;
-  background:conic-gradient(
-    from 0deg,
-    rgba(56,224,255,0) 0%,
-    rgba(56,224,255,0.22) 22%,
-    rgba(182,255,60,0.12) 38%,
-    rgba(56,224,255,0) 58%
-  );
-  -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 1.5px),#fff calc(100% - 1.5px));
-  mask:radial-gradient(farthest-side,transparent calc(100% - 1.5px),#fff calc(100% - 1.5px));
-  animation:v2-ring-spin 22s linear infinite;
-  pointer-events:none;
-  z-index:0;
-}
-@keyframes v2-ring-spin{to{transform:translate(-50%,-50%) rotate(360deg);}}
-@media(prefers-reduced-motion:reduce){ #phys-stage-ring{animation:none;} }
-
-/* State label — live, updates via physCoreSetState() */
-#phys-state-label{
-  position:absolute;
-  bottom:10px;
-  left:50%;
-  transform:translateX(-50%);
-  font-family:'Unbounded',sans-serif;
-  font-size:7px;
-  letter-spacing:4px;
-  text-transform:uppercase;
-  color:rgba(56,224,255,0.4);
-  white-space:nowrap;
-  pointer-events:none;
-  transition:color 1.4s cubic-bezier(0.45,0,0.55,1),opacity .8s ease;
-  opacity:0;
-}
-#phys-state-label.v-show{opacity:1;}
-/* Per-state label color tints match state color temperature */
-.state-training~#phys-state-label { color:rgba(56,245,255,0.55); }
-.state-recovery~#phys-state-label { color:rgba(50,255,168,0.45); }
-.state-fatigue~#phys-state-label  { color:rgba(80,130,220,0.4); }
-.state-pain~#phys-state-label     { color:rgba(255,60,80,0.55); }
-
-/* ── Nav live indicator ──────────────────────────────────────── */
-.nav-live{
-  display:inline-flex;
-  align-items:center;
-  gap:6px;
-  font-family:'Unbounded',sans-serif;
-  font-size:7px;
-  font-weight:700;
-  letter-spacing:2px;
-  color:var(--muted);
-  text-transform:uppercase;
-  padding:5px 13px;
-  border:1px solid rgba(255,255,255,.06);
-  border-radius:30px;
-  background:rgba(18,23,36,.6);
-  backdrop-filter:blur(8px);
-  -webkit-backdrop-filter:blur(8px);
-  white-space:nowrap;
-}
-.nav-live::before{
-  content:'';
-  width:6px;height:6px;
-  border-radius:50%;
-  background:var(--lime);
-  box-shadow:0 0 8px rgba(182,255,60,.75);
-  animation:v2-live-blink 1.8s infinite;
-  flex-shrink:0;
-}
-@keyframes v2-live-blink{0%,100%{opacity:1;}50%{opacity:.2;}}
-@media(max-width:640px){.nav-live{display:none;}}
-
-/* ── Premium chat messages ───────────────────────────────────── */
-.msg-u{
-  border-radius:20px;
-  border-bottom-right-radius:5px;
-  padding:15px 20px;
-  max-width:78%;
-  box-shadow:0 4px 22px rgba(245,33,45,.15);
-}
-.msg-a{
-  border-radius:20px;
-  border-bottom-left-radius:5px;
-  padding:16px 20px;
-  max-width:90%;
-}
-#chat-box{gap:18px;padding:14px 0 24px;}
-
-/* ── Premium input bar ───────────────────────────────────────── */
-.input-row{
-  border-radius:22px;
-  padding:10px 10px 10px 24px;
-  background:rgba(12,15,26,.96);
-  border-color:rgba(255,255,255,.07);
-  box-shadow:0 4px 32px rgba(0,0,0,.42),0 0 0 1px rgba(255,255,255,.03);
-}
-.input-row:focus-within{
-  border-color:rgba(245,33,45,.38);
-  box-shadow:0 0 0 1px rgba(245,33,45,.1),0 6px 40px rgba(245,33,45,.07);
-}
-#user-in{padding:12px 0;}
-.send-btn{width:50px;height:50px;border-radius:14px;}
-.quick-chip{border-radius:28px;padding:12px 20px;}
-
-/* ── Workout overlay V2 ──────────────────────────────────────── */
-.wo-header{
-  padding:16px 24px;
-  background:rgba(5,5,12,.97);
-  border-bottom:1px solid rgba(56,224,255,.07);
-}
-.wo-header-title{
-  font-size:12px;
-  letter-spacing:3px;
-  color:var(--cyan);
-  opacity:.85;
-}
-.wo-reps{
-  background:linear-gradient(135deg,var(--gold) 0%,#FF9200 55%,var(--ember) 100%);
-  -webkit-background-clip:text;
-  background-clip:text;
-  color:transparent;
-}
-.wo-complete-title{
-  background:var(--pulse);
-  -webkit-background-clip:text;
-  background-clip:text;
-  color:transparent;
-}
-.wo-done-btn{
-  border-radius:16px;
-  padding:20px;
-  font-size:14px;
-  letter-spacing:2.5px;
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   APEX APP V2 — PHASE 1: APP SHELL
-   Viewport lock · Body state machine · Coach Island · Telemetry
-   ═══════════════════════════════════════════════════════════════ */
-
-/* ── Design Tokens ───────────────────────────────────────── */
-:root{
-  --obsidian:#050508;
-  --silica:rgba(255,255,255,0.06);
-  --radius:14px;
-}
-
-/* ── Viewport Lock ───────────────────────────────────────── */
+/* ── Viewport lock ───────────────────────────────────────── */
 body{overflow:hidden;height:100dvh;min-height:unset;}
 ::-webkit-scrollbar{display:none;}
 *{scrollbar-width:none;}
 
-/* ── Core Stage: fill between nav and coach island ───────── */
+/* ── Landing: section labels ─────────────────────────────── */
+.sec-label{font-size:12px;font-weight:800;letter-spacing:2px;color:var(--cyan);text-transform:uppercase;margin-bottom:10px;}
+.eyebrow{display:inline-flex;align-items:center;gap:14px;font-family:'Manrope';font-weight:800;font-size:11px;letter-spacing:3.5px;text-transform:uppercase;color:var(--gold);}
+.eyebrow::before,.eyebrow::after{content:'';width:28px;height:1px;background:linear-gradient(90deg,transparent,rgba(255,177,60,.55),transparent);}
+.eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--lime);box-shadow:0 0 10px rgba(182,255,60,.7);animation:blink 1.8s infinite;flex-shrink:0;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:.35;}}
+
+/* ── Core Stage — the hero ───────────────────────────────── */
 #phys-core-stage{
-  flex:1;
-  min-height:0;
-  padding-bottom:130px;
+  flex:1;min-height:0;
+  position:relative;overflow:hidden;
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  isolation:isolate;
 }
+/* Landing's grid texture */
+#phys-core-stage::before{
+  content:'';position:absolute;inset:0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);
+  background-size:56px 56px;
+  mask-image:radial-gradient(ellipse at center,#000 30%,transparent 75%);
+  -webkit-mask-image:radial-gradient(ellipse at center,#000 30%,transparent 75%);
+  pointer-events:none;z-index:-1;
+}
+.core-eyebrow{margin-bottom:20px;position:relative;z-index:2;}
 
-/* ── Core size: Blueprint 60% screen real estate ─────────── */
-#phys-core{--core-size:clamp(200px,38vh,320px);}
+/* Core size — 60% of available space */
+#phys-core{--core-size:clamp(200px,40vh,320px);}
 
-/* Scale orbit ring proportionally to new core size */
+/* Landing's ring — exact match, colorful spectrum */
 #phys-stage-ring{
-  width:min(480px,88vw);
-  height:min(480px,88vw);
+  position:absolute;top:50%;left:50%;
+  transform:translate(-50%,-50%);
+  width:min(460px,88vw);height:min(460px,88vw);
+  border-radius:50%;
+  border:2px solid transparent;
+  background:conic-gradient(from 180deg,var(--red),var(--ember),var(--gold),var(--cyan),var(--lime),var(--red)) border-box;
+  -webkit-mask:linear-gradient(#fff 0 0) padding-box,linear-gradient(#fff 0 0);
+  -webkit-mask-composite:xor;
+  mask-composite:exclude;
+  opacity:.28;
+  animation:ring-spin 14s linear infinite;
+  pointer-events:none;z-index:0;
 }
+@keyframes ring-spin{to{transform:translate(-50%,-50%) rotate(360deg);}}
+@media(prefers-reduced-motion:reduce){ #phys-stage-ring{animation:none;} }
 
-/* ── Telemetry Badges (Layer 2) ──────────────────────────── */
-.phys-tele-wrap{
-  position:absolute;
-  inset:0;
-  pointer-events:none;
-  z-index:1;
+/* State label */
+#phys-state-label{
+  position:absolute;bottom:16px;left:50%;transform:translateX(-50%);
+  font-family:'Unbounded',sans-serif;font-size:7px;letter-spacing:4px;
+  text-transform:uppercase;color:rgba(56,224,255,0.4);
+  white-space:nowrap;pointer-events:none;
+  transition:color 1.4s ease,opacity .8s ease;opacity:0;
 }
+#phys-state-label.v-show{opacity:1;}
+
+/* Telemetry badges — Landing .proof pill style */
+.phys-tele-wrap{position:absolute;inset:0;pointer-events:none;z-index:2;}
 .tele-badge{
   position:absolute;
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  gap:3px;
-  background:rgba(9,11,20,0.68);
-  backdrop-filter:blur(14px);
-  -webkit-backdrop-filter:blur(14px);
-  border:1px solid var(--silica);
-  border-radius:10px;
-  padding:9px 16px;
-  min-width:72px;
-  opacity:0;
-  transform:translateY(6px);
-  transition:opacity 1.2s ease,transform 1.2s ease;
+  display:inline-flex;align-items:center;gap:8px;
+  font-family:'Unbounded';font-weight:800;font-size:10.5px;letter-spacing:1.6px;
+  color:#A0A6B8;text-transform:uppercase;
+  background:rgba(18,23,36,.55);border:1px solid rgba(255,255,255,.08);
+  padding:8px 14px;border-radius:30px;
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  opacity:0;transform:translateY(4px);
+  transition:opacity .8s ease,transform .8s ease;
 }
 .tele-badge.tb-show{opacity:1;transform:translateY(0);}
-.tele-badge-val{
-  font-family:'Unbounded',sans-serif;
-  font-size:15px;
-  font-weight:700;
-  letter-spacing:.5px;
-  color:var(--cyan);
-  line-height:1;
-}
-.tele-badge-lbl{
-  font-size:7px;
-  letter-spacing:2.5px;
-  text-transform:uppercase;
-  color:rgba(139,147,167,0.55);
-  white-space:nowrap;
-}
-.tele-badge-cns{top:28%;left:7%;}
-.tele-badge-rec{top:28%;right:7%;}
-@media(max-width:480px){
-  .tele-badge-cns{top:20%;left:3%;}
-  .tele-badge-rec{top:20%;right:3%;}
-  .tele-badge{padding:7px 12px;min-width:60px;}
-  .tele-badge-val{font-size:13px;}
-}
+.tele-badge .tb-val{color:var(--gold);font-size:12.5px;font-weight:900;letter-spacing:.5px;}
+.tele-badge::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--lime);box-shadow:0 0 8px rgba(182,255,60,.7);animation:blink 1.8s infinite;flex-shrink:0;}
+.tele-badge-cns{top:28%;left:6%;}
+.tele-badge-rec{top:28%;right:6%;}
+@media(max-width:520px){.tele-badge-cns{top:18%;left:2%;}.tele-badge-rec{top:18%;right:2%;}.tele-badge{font-size:9px;padding:6px 10px;}}
 
-/* ── Nav: Profile icon button ────────────────────────────── */
+/* ── Nav: profile + live pill ────────────────────────────── */
+.nav-live{
+  display:inline-flex;align-items:center;gap:8px;
+  font-family:'Unbounded';font-weight:800;font-size:10.5px;letter-spacing:1.6px;
+  color:#A0A6B8;text-transform:uppercase;
+  background:rgba(18,23,36,.55);border:1px solid rgba(255,255,255,.08);
+  padding:8px 14px;border-radius:30px;
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+}
+.nav-live::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--lime);box-shadow:0 0 8px rgba(182,255,60,.7);animation:blink 1.8s infinite;flex-shrink:0;}
+@media(max-width:560px){.nav-live{display:none;}}
 .nav-profile-btn{
   display:flex;align-items:center;justify-content:center;
   width:38px;height:38px;border-radius:50%;
-  background:rgba(255,255,255,0.05);
-  border:1px solid var(--silica);
-  cursor:pointer;font-size:17px;
-  transition:background .2s,border-color .2s;
-  flex-shrink:0;
+  background:var(--surface);border:1px solid var(--border);
+  cursor:pointer;font-size:16px;
+  transition:border-color .2s,box-shadow .2s;
 }
-.nav-profile-btn:hover{
-  background:rgba(245,33,45,0.12);
-  border-color:rgba(245,33,45,0.4);
-}
+.nav-profile-btn:hover{border-color:rgba(245,33,45,.45);box-shadow:0 0 14px rgba(245,33,45,.2);}
 
-/* ── Coach Island (Layer 3) ──────────────────────────────── */
+/* ── Coach Island — frosted glass, fixed bottom ─────────── */
 #coach-island{
-  position:fixed;
-  bottom:0;left:0;right:0;
-  z-index:100;
-  background:rgba(9,11,20,0.82);
-  backdrop-filter:blur(24px);
-  -webkit-backdrop-filter:blur(24px);
-  border-top:1px solid var(--silica);
+  position:fixed;bottom:0;left:0;right:0;z-index:100;
+  background:rgba(5,5,12,0.92);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border-top:1px solid rgba(255,255,255,.07);
   transform:translateZ(0);
-  padding:16px 20px max(16px,env(safe-area-inset-bottom));
 }
 
-/* Coach Island — Overview mode */
+/* Overview: brief + two CTAs — Landing goal-line pattern */
 .ci-overview{
-  display:none;
-  flex-direction:column;
-  align-items:center;
-  gap:12px;
-  max-width:560px;
-  margin:0 auto;
-  width:100%;
+  display:none;flex-direction:column;gap:14px;
+  max-width:560px;margin:0 auto;width:100%;
+  padding:20px 20px max(20px,env(safe-area-inset-bottom));
+  box-sizing:border-box;
 }
 .ci-brief{
-  font-family:'Manrope',sans-serif;
-  font-size:12px;
-  line-height:1.5;
-  color:rgba(139,147,167,0.65);
-  text-align:center;
-  letter-spacing:.3px;
-  min-height:18px;
+  font-size:13px;color:var(--muted);
+  text-align:center;line-height:1.55;letter-spacing:.3px;
 }
-.ci-actions{display:flex;gap:10px;width:100%;}
+.ci-actions{display:flex;gap:10px;}
 .ci-consult-btn{
-  flex:1;height:48px;
-  background:rgba(245,33,45,0.1);
-  border:1px solid rgba(245,33,45,0.3);
-  color:var(--text);
-  font-family:'Unbounded',sans-serif;
-  font-size:9px;letter-spacing:2.5px;
-  text-transform:uppercase;border-radius:12px;
-  cursor:pointer;transition:all .2s;
+  flex:1;
+  background:var(--surface);border:1px solid var(--border);
+  color:var(--text);font-family:'Manrope';font-weight:800;font-size:15px;
+  padding:14px;border-radius:var(--radius);cursor:pointer;
+  transition:transform .15s,border-color .15s;
 }
-.ci-consult-btn:hover{background:rgba(245,33,45,0.2);border-color:rgba(245,33,45,0.55);}
+.ci-consult-btn:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.2);}
 .ci-protocol-btn{
-  flex:1;height:48px;
-  background:linear-gradient(90deg,#F5212D,#FF6A3C);
-  border:none;color:#fff;
-  font-family:'Unbounded',sans-serif;
-  font-size:9px;letter-spacing:2.5px;
-  text-transform:uppercase;border-radius:12px;
-  cursor:pointer;box-shadow:0 4px 18px rgba(245,33,45,0.28);
-  transition:all .2s;
+  flex:1;
+  background:var(--pulse);border:none;
+  color:#fff;font-family:'Manrope';font-weight:800;font-size:15px;
+  padding:14px;border-radius:var(--radius);cursor:pointer;
+  box-shadow:0 8px 28px rgba(245,33,45,.38);
+  transition:transform .15s,box-shadow .15s;
 }
-.ci-protocol-btn:hover{box-shadow:0 6px 26px rgba(245,33,45,0.45);transform:translateY(-1px);}
+.ci-protocol-btn:hover{transform:translateY(-1px);box-shadow:0 12px 34px rgba(245,33,45,.48);}
 
-/* Coach Island — Consultation mode */
+/* Consultation: header bar + feed + input */
 .ci-consultation{
-  display:none;
-  align-items:center;
-  justify-content:space-between;
-  max-width:1100px;
-  margin:0 auto;
-  width:100%;
-  padding:4px 0;
+  display:none;flex-direction:column;
+  max-width:1100px;margin:0 auto;width:100%;
+  max-height:85dvh;
+  box-sizing:border-box;
+}
+.ci-consult-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 20px;
+  border-bottom:1px solid rgba(255,255,255,.06);
+  flex-shrink:0;
 }
 .ci-back-btn{
-  background:transparent;
-  border:1px solid var(--silica);
-  color:var(--muted);
-  font-family:'Unbounded',sans-serif;
-  font-size:8px;letter-spacing:2px;
-  padding:9px 16px;border-radius:8px;
-  cursor:pointer;transition:all .2s;
+  background:transparent;border:1px solid var(--border);color:var(--muted);
+  font-family:'Unbounded';font-size:8px;letter-spacing:2px;
+  padding:8px 14px;border-radius:30px;cursor:pointer;transition:all .2s;
 }
-.ci-back-btn:hover{border-color:rgba(255,255,255,.2);color:var(--text);}
-.ci-engine-label{
-  font-family:'Unbounded',sans-serif;
-  font-size:7px;letter-spacing:3px;
-  color:rgba(56,224,255,0.45);
-  text-transform:uppercase;
-}
+.ci-back-btn:hover{border-color:rgba(255,255,255,.25);color:var(--text);}
+.ci-engine-label{font-family:'Unbounded';font-size:8px;letter-spacing:3px;color:rgba(56,224,255,.5);text-transform:uppercase;}
+.ci-feed-wrap{flex:1;overflow-y:auto;padding:0 20px;}
+.ci-input-bar{padding:12px 20px max(14px,env(safe-area-inset-bottom));flex-shrink:0;}
 
-/* ── Body State: overview (default) ─────────────────────── */
+/* ── Body State Machine ──────────────────────────────────── */
+
+/* overview */
 body.state-overview main{display:none!important;}
-body.state-overview #goal-bar{display:none!important;}
 body.state-overview .footer-mini{display:none!important;}
 body.state-overview #coach-island .ci-overview{display:flex;}
 body.state-overview #coach-island .ci-consultation{display:none!important;}
 
-/* ── Body State: consultation ────────────────────────────── */
-body.state-consultation main{
-  display:flex!important;
-  flex:1;min-height:0;
-  overflow-y:auto;
-  padding-bottom:68px;
-}
-body.state-consultation #phys-core-stage{
-  flex:0 0 0;
-  height:0;min-height:0;
-  overflow:hidden;
-  padding:0;opacity:0;
-  pointer-events:none;
-}
-body.state-consultation #goal-bar{display:none!important;}
+/* consultation */
+body.state-consultation main{display:none!important;}
+body.state-consultation #phys-core-stage{display:none!important;}
 body.state-consultation .footer-mini{display:none!important;}
 body.state-consultation #coach-island .ci-overview{display:none!important;}
 body.state-consultation #coach-island .ci-consultation{display:flex!important;}
-body.state-consultation #coach-island{
-  padding:10px 20px max(10px,env(safe-area-inset-bottom));
-}
 
-/* ── Body State: laboratory (workout) ────────────────────── */
+/* laboratory */
 body.state-laboratory #coach-island{display:none!important;}
 body.state-laboratory .footer-mini{display:none!important;}
+
+/* ── Footer: gone ────────────────────────────────────────── */
+.footer-mini{display:none!important;}
 
 </style>
 </head>
@@ -1946,67 +1758,25 @@ body.state-laboratory .footer-mini{display:none!important;}
 
 <div id="apex-atmo"></div>
 
-<!-- NAVIGATION (identical to landing.html) -->
-<nav class="nav-wrap">
+<!-- NAVIGATION — identical to landing.html -->
+<nav>
   <div class="nav-inner">
-    <a href="/" class="nav-brand">
-      <div class="nav-logo"></div>
+    <a href="/" class="logo">
+      <img src="/static/logo.png" alt="APEX" width="34" height="34">
       <div>
-        <div class="nav-title"><span class="ra">APEX</span> PULSE PRO</div>
-        <div class="nav-sub" data-key="slogan">Твоят връх. Твоят пулс.</div>
+        <div><span style="color:var(--red)">APEX</span> PULSE PRO</div>
+        <div class="logo-sub" data-key="slogan">Твоят връх. Твоят пулс.</div>
       </div>
     </a>
     <div class="nav-right">
-      <button class="fb-btn" onclick="openFeedback()" title="Изпрати мнение/препоръка">
-        <span class="fb-icon">💬</span>
-        <span class="fb-btn-text" data-key="fb-btn">Мнение</span>
-      </button>
-      <button class="cancel-sub-btn" id="withdrawBtn" style="display:none;" onclick="openWithdraw()" title="Cancel subscription">
-        <span class="cs-icon">✕</span>
-        <span class="cs-text" data-key="wd-btn">Откажи абонамента</span>
-      </button>
       <span class="nav-live">LIVE</span>
-      <button class="lang-btn" id="langBtn" onclick="toggleLang()">EN</button>
-      <button class="nav-profile-btn" onclick="openProfile()" title="Profile">👤</button>
+      <button class="nav-profile-btn" onclick="openProfile()" title="Profile" id="navProfileBtn">👤</button>
+      <!-- Hidden wrappers kept for JS wiring (withdraw check, lang toggle) -->
+      <button id="withdrawBtn" style="display:none;" onclick="openWithdraw()"></button>
+      <button id="langBtn" style="display:none;" onclick="toggleLang()">EN</button>
     </div>
   </div>
 </nav>
-
-<!-- PERSISTENT GOAL BAR — North Star coaching context (Step 3) -->
-<div id="goal-bar">
-  <div class="goal-bar-inner">
-    <div class="gb-col" id="gb-goal-col">
-      <div class="gb-label" id="gb-goal-lbl">ЦЕЛ</div>
-      <div class="gb-value" id="gb-goal-val">—</div>
-      <div class="gb-sub" id="gb-goal-sub"></div>
-    </div>
-    <div class="gb-col gb-mob-hide" id="gb-weight-col">
-      <div class="gb-label" id="gb-weight-lbl">СЕГА</div>
-      <div class="gb-value" id="gb-weight-val">—</div>
-      <div class="gb-sub" id="gb-weight-sub"></div>
-    </div>
-    <div class="gb-col" id="gb-focus-col">
-      <div class="gb-label" id="gb-focus-lbl">КОУЧИНГ ФОКУС</div>
-      <div class="gb-value" id="gb-focus-val">—</div>
-    </div>
-    <!-- Future slots — activated by later Apex 1.5 steps -->
-    <div class="gb-col gb-hide" id="gb-progress-col">
-      <div class="gb-label">ПРОГРЕС</div>
-      <div class="gb-value" id="gb-progress-val">—</div>
-    </div>
-    <div class="gb-col gb-hide" id="gb-score-col">
-      <div class="gb-label">APEX SCORE</div>
-      <div class="gb-value" id="gb-score-val">—</div>
-    </div>
-    <div class="gb-col gb-hide" id="gb-recovery-col">
-      <div class="gb-label">RECOVERY</div>
-      <div class="gb-value" id="gb-recovery-val">—</div>
-    </div>
-    <div class="gb-edit-wrap">
-      <button class="gb-edit-btn" onclick="openProfile()">✎ <span id="gb-edit-lbl">Редактирай</span></button>
-    </div>
-  </div>
-</div>
 
 <!-- ════════════════════════════════════════════════════════════════════
      PHYSIOLOGY CORE — Phase 1 Skeleton
@@ -2016,6 +1786,10 @@ body.state-laboratory .footer-mini{display:none!important;}
      GPU layers: breath-group, flow-rotate, glow, core-div = 4 promoted
      ════════════════════════════════════════════════════════════════════ -->
 <div id="phys-core-stage">
+  <div class="core-eyebrow eyebrow">
+    <span class="dot"></span>
+    <span id="core-eyebrow-text">PHYSIOLOGICAL STATUS</span>
+  </div>
   <div id="phys-stage-ring"></div>
   <div id="phys-core">
     <svg id="phys-core-svg"
@@ -2397,31 +2171,17 @@ body.state-laboratory .footer-mini{display:none!important;}
   <div id="phys-state-label"></div>
   <div class="phys-tele-wrap" id="phys-tele-wrap">
     <div class="tele-badge tele-badge-cns" id="tele-cns">
-      <span class="tele-badge-val" id="tele-cns-val">—</span>
-      <span class="tele-badge-lbl">CNS</span>
+      <span class="tb-val" id="tele-cns-val">—</span>
+      CNS
     </div>
     <div class="tele-badge tele-badge-rec" id="tele-rec">
-      <span class="tele-badge-val" id="tele-rec-val">—</span>
-      <span class="tele-badge-lbl">RECOVERY</span>
+      <span class="tb-val" id="tele-rec-val">—</span>
+      RECOVERY
     </div>
   </div>
 </div><!-- /phys-core-stage -->
 
-<main>
-  <div id="chat-box"></div>
-
-  <div id="utility">
-    <button class="util-btn" onclick="copyPlan()">📋 <span data-key="copy">Копирай плана</span></button>
-    <button class="util-btn" onclick="savePDF()">💾 <span data-key="pdf">Запази PDF</span></button>
-  </div>
-
-  <div class="input-wrap">
-    <div class="input-row">
-      <input type="text" id="user-in" placeholder="Опиши целта си...">
-      <button class="send-btn" onclick="send()">➤</button>
-    </div>
-  </div>
-</main>
+<!-- chat-box and input moved into #coach-island .ci-consultation below -->
 
 <!-- DISCLAIMER MODAL (shown ONCE before first paid checkout) -->
 <div id="disclaimer-modal">
@@ -7363,25 +7123,50 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
-<!-- ═══════════════════════════════════════════════════════════
-     COACH ISLAND — Layer 3 / Fixed bottom / Phase 1 Shell
-     ═══════════════════════════════════════════════════════════ -->
+<!-- ══════════════════════════════════════════════════════════════
+     COACH ISLAND — Layer 3
+     Overview: CTA buttons. Consultation: full feed + input.
+     ══════════════════════════════════════════════════════════════ -->
 <div id="coach-island">
 
-  <!-- Overview mode: brief + CTA buttons -->
+  <!-- ── OVERVIEW MODE ───────────────────────────────────────── -->
   <div class="ci-overview">
-    <div class="ci-brief" id="ci-brief-text">APEX COACH ENGINE — READY</div>
+    <div class="ci-brief" id="ci-brief-text">Your physiology is being analyzed.</div>
     <div class="ci-actions">
-      <button class="ci-consult-btn" onclick="setAppState('consultation');document.getElementById('user-in').focus();">CONSULT</button>
-      <button class="ci-protocol-btn" id="ci-protocol-btn" onclick="ciStartProtocol()">START PROTOCOL</button>
+      <button class="ci-consult-btn" onclick="setAppState('consultation');setTimeout(()=>document.getElementById('user-in').focus(),80);" data-key="ci-consult">CONSULT</button>
+      <button class="ci-protocol-btn" id="ci-protocol-btn" onclick="ciStartProtocol()" data-key="ci-protocol">START PROTOCOL</button>
     </div>
   </div>
 
-  <!-- Consultation mode: back + engine label -->
+  <!-- ── CONSULTATION MODE ───────────────────────────────────── -->
   <div class="ci-consultation">
-    <button class="ci-back-btn" onclick="setAppState('overview')">← BACK</button>
-    <span class="ci-engine-label">APEX COACH ENGINE</span>
-    <div style="width:80px;"></div>
+
+    <!-- Header bar -->
+    <div class="ci-consult-header">
+      <button class="ci-back-btn" onclick="setAppState('overview')" data-key="ci-back">← BACK</button>
+      <span class="ci-engine-label">APEX COACH ENGINE</span>
+      <div style="width:80px;"></div>
+    </div>
+
+    <!-- Clinical consultation feed -->
+    <div class="ci-feed-wrap">
+      <div id="chat-box"></div>
+      <div id="utility" style="padding:8px 0;">
+        <button class="util-btn" onclick="copyPlan()">📋 <span data-key="copy">Копирай плана</span></button>
+        <button class="util-btn" onclick="savePDF()">💾 <span data-key="pdf">Запази PDF</span></button>
+      </div>
+    </div>
+
+    <!-- Input — Landing goal-line style -->
+    <div class="ci-input-bar">
+      <div class="input-wrap">
+        <div class="input-row">
+          <input type="text" id="user-in" placeholder="Опиши целта си..." data-key-placeholder="placeholder">
+          <button class="send-btn" onclick="send()">➤</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 
 </div>
