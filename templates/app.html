@@ -3302,7 +3302,28 @@ function _woGetSummary(l){
     if(notes.length)recLines.push(`  ${en?'Recent notes':'Последни бележки'}: ${notes.join(' · ')}`);
   }
 
+  // ── POST-WORKOUT DIRECTIVE ────────────────────────────────────────────
+  // If the last session ended within 8 hours, prepend a high-priority block
+  // so the AI cannot respond as if the workout hasn't happened yet.
+  const lastTs=log[log.length-1].ts;
+  const hoursAgo=(now-lastTs)/3600;
+  const justDone=hoursAgo<8;
+  const minsAgo=Math.round(hoursAgo*60);
+  const postBlock=justDone?[
+    en
+      ?`⚡ POST-WORKOUT — session ended ${minsAgo<2?'moments':minsAgo} ${minsAgo<2?'ago':minsAgo===1?'min ago':'min ago'}`
+      :`⚡ СЛЕД ТРЕНИРОВКА — тренировката приключи преди ${minsAgo<2?'момент':minsAgo+' мин'}`,
+    en
+      ?'DIRECTIVE: This is a post-workout conversation. The user has already finished training.'
+      :'ДИРЕКТИВА: Това е разговор СЛЕД тренировка. Потребителят вече е завършил тренировката.',
+    en
+      ?'Do NOT suggest starting a workout. Address: recovery, nutrition, hydration, rest, next session timing.'
+      :'НЕ предлагай стартиране на тренировка. Адресирай: възстановяване, хранене, хидратация, почивка, кога е следващата.',
+    '',
+  ]:[];
+
   return[
+    ...postBlock,
     hdr,r3H,...r3,'',sH,
     `  ${wLbl}: ${total} ${en?'completed':'проведени'} · ${freq}${en?'/week avg':'/седм. ср.'}`,
     `  ${cLbl}: ${consistency}% ${en?'vs 3×/week baseline':'спрямо 3×/седм. базова линия'}`,
@@ -3476,6 +3497,17 @@ function _woComputeStates(lang){
   const cLbl=en?'Consistency':'Редовност';
   const tLbl=en?'Training State':'Тренировъчно Състояние';
   const aLbl=en?'Primary Action':'Основно Действие';
+  // Post-workout override: when the user trained TODAY, switch the primary action
+  // to recovery guidance so the AI cannot respond as if the session hasn't happened.
+  const hoursAgoCs=lastSession?(now-lastSession.ts)/3600:null;
+  const justDoneCs=hoursAgoCs!==null&&hoursAgoCs<8;
+  if(justDoneCs){
+    trainingState=en?'POST-WORKOUT':'СЛЕД ТРЕНИРОВКА';
+    primaryAction=en
+      ?'Workout completed today. Respond with recovery guidance: nutrition within 30–60min, hydration, sleep, next session timing. Do NOT design another workout.'
+      :'Тренировката е завършена днес. Отговори с насоки за възстановяване: хранене в рамките на 30–60мин, хидратация, сън, кога е следващата тренировка. НЕ проектирай нова тренировка.';
+  }
+
   const dsLine=daysSince!==null
     ?(en?`Days since last session: ${daysSince}`:`Дни от последната тренировка: ${daysSince}`)
     :'';
