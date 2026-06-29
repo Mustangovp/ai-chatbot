@@ -5636,7 +5636,7 @@ function _physSyncLattice() {
      layered on top of state-specific base positions.
    - All changes are inline style.setProperty() — highest specificity,
      zero DOM additions, zero new CSS rules.                              */
-function _physApplySignature(sig, state) {
+function _physApplySignature(sig, state, mem = null) {
   const core = document.getElementById('phys-core');
   if (!core || !sig) return;
 
@@ -5741,6 +5741,33 @@ function _physApplySignature(sig, state) {
       nucleusDrift.style.animationDuration = tremorPeriod + 'ms';
     } else {
       nucleusDrift.style.animationDuration = '17230ms';
+    }
+  }
+
+  // ── Body Memory — third modulation layer (continuous workout evolution) ───
+  // Paints on top of the BSE layer. Called every ~3s from rAF (Step 9).
+  // bse_gi and bpClamped are still in scope — const from above.
+  // training: _mem.load (τ=25min) builds during workout → compression increases
+  // recovery: _mem.recovery (τ=20min) builds during rest → warmth deepens
+  if (mem) {
+    const load = Math.max(0, Math.min(1, mem.load));
+    const rec  = Math.max(0, Math.min(1, mem.recovery));
+
+    if (state === 'training') {
+      // Progressive workout compression
+      // At load=0 (first set): no change from BSE output
+      // At load=0.63 (15min): glow −20%, period −13%
+      // At load=0.87 (25min): glow −28%, period −17%
+      sp('--glow-intensity',
+         Math.max(0.06, Math.min(0.55, bse_gi * (1 - load * 0.32))).toFixed(3));
+      sp('--breath-period',
+         String(Math.round(Math.max(bpBase * 0.65, bpClamped * (1 - load * 0.20)))) + 'ms');
+    } else if (state === 'recovery') {
+      // Deepening regeneration: glow warms as body memory rebuilds
+      // At rec=0 (just entered recovery): no change
+      // At rec=0.63 (15min into recovery): glow +11%
+      sp('--glow-intensity',
+         Math.max(0.06, Math.min(0.55, bse_gi * (1 + rec * 0.18))).toFixed(3));
     }
   }
 }
@@ -6276,6 +6303,16 @@ class ApexBiologicalSignatureEngine {
    - Renderer receives ONLY procedural variables via setIntent()
    - All state semantics stay inside BSE._compose()
    ══════════════════════════════════════════════════════════════════════ */
+
+// ── Dynamic State Evolution — module-scope, shared by rAF loop + intent bridge ──
+// Declared BEFORE the IIFE so _tick() can close over them via lexical scope.
+// _rendState: the CSS class currently applied to #phys-core (lags Brain during transition)
+// _rendSig: last applied BSE signature (rAF Step 9 re-applies it with fresh _mem)
+// _rendTransId: pending setTimeout for the training→recovery transition phase
+let _rendState   = 'peak';
+let _rendSig     = null;
+let _rendTransId = null;
+
 const ApexBioRenderer = (() => {
   'use strict';
 
@@ -6350,6 +6387,7 @@ const ApexBioRenderer = (() => {
     flowVelocity: 74800, metaX: 0,            metaY: 0,
     microTremorX: 0,     microTremorY: 0,
     _frameMs: 0,
+    mem: { load: 0, fatigue: 0, recovery: 0 },  // body memory snapshot — read by intent bridge
   };
 
   // ── PHASE B: Glow subsystem ──────────────────────────────────────────
@@ -6359,6 +6397,7 @@ const ApexBioRenderer = (() => {
 
   // ── INTERNAL ─────────────────────────────────────────────────────────
   let _raf = null, _running = false, _lastTs = 0;
+  let _physApplyClock = 0;  // throttle for Step 9 body-memory → CSS var evolution
   const _cl  = (v, lo, hi) => v < lo ? lo : v > hi ? hi : v;
   const _exp = Math.exp;
   const _sin = Math.sin;
@@ -6431,6 +6470,10 @@ const ApexBioRenderer = (() => {
     _mem.pain     = _mem.pain     * αp + (1 - αp) * _I.tremor;
     _mem.load     = _mem.load     * αl + (1 - αl) * _I.cellAct;
     _mem.recovery = _mem.recovery * αr + (1 - αr) * _cl(1 - _I.viscosity, 0, 1);
+    // Mirror to public out.mem so the intent bridge reads current body state
+    out.mem.load     = _mem.load;
+    out.mem.fatigue  = _mem.fatigue;
+    out.mem.recovery = _mem.recovery;
 
     // STEP 3 — COMPUTE BSE TRAITS (state-agnostic; driven only by accumulated signals)
     _B.metab   = _I.cellAct   * 0.60 + _mem.load    * 0.40;
@@ -6562,6 +6605,16 @@ const ApexBioRenderer = (() => {
       _glowEl.style.opacity = (F.lum.v * (0.85 + 0.15 * _sin(_glowPhase))).toFixed(3);
     }
 
+    // STEP 9 — Continuous body memory → CSS var evolution (throttled to 3s)
+    // Fires between Brain events so the organism evolves without user interaction.
+    // _rendSig / _rendState are module-scope vars set by the intent bridge.
+    // _mem here is the IIFE-internal accumulator, already updated in STEP 2.
+    _physApplyClock += dt;
+    if (_physApplyClock >= 3000 && typeof _physApplySignature === 'function' && _rendSig) {
+      _physApplyClock = 0;
+      _physApplySignature(_rendSig, _rendState, _mem);
+    }
+
     out._frameMs = performance.now() - t0;
   }
 
@@ -6602,19 +6655,67 @@ function _bioTranslate(sig) {
 const apexBrain = new ApexBiologicalBrain();
 const apexBSE   = new ApexBiologicalSignatureEngine();
 
-// ── Renderer Bridge ────────────────────────────────────────────────────
-// Phase 2.5-B pipeline: Brain → physCoreSetState → BSE.tick → _physApplySignature
-// Order is mandatory:
-//   1. physCoreSetState applies the state CSS class (sets behavioral posture)
-//   2. apexBSE.tick recomputes the signature for this specific intent
-//   3. _physApplySignature writes BSE values as inline CSS vars — highest
-//      specificity, overrides class values — personalizing the organism within state
+// ── Renderer Bridge — Dynamic State Evolution ──────────────────────────
+// Pipeline: Brain → BSE.tick → [transition buffer] → physCoreSetState → _physApplySignature
+//
+// Three layers of modulation (in order of precedence, lowest→highest):
+//   1. CSS class (state keyframes) — switched by physCoreSetState()
+//   2. BSE output — personalized within state by _physApplySignature(sig, state)
+//   3. Body Memory — progressive workout evolution by _physApplySignature(sig, state, mem)
+//
+// Transition Phase (training → any other state):
+//   The organism finished producing force but has not yet begun repairing.
+//   The CSS class stays on 'training' for 8.5s while BSE values evolve toward
+//   the new state — training animations wind down before recovery begins.
 apexBrain.onIntent(intent => {
-  physCoreSetState(intent.state);
   apexBSE.tick(intent);
-  const _bseSig = apexBSE.getSignature();
-  _physApplySignature(_bseSig, intent.state);
-  ApexBioRenderer.setIntent(_bioTranslate(_bseSig));  // Phase A: feed procedural engine
+  const sig = apexBSE.getSignature();
+  const mem = ApexBioRenderer.out.mem;   // current body memory snapshot
+
+  const prev = _rendState;
+  const next = intent.state;
+
+  // If Brain re-enters training (new workout started mid-transition), cancel delay.
+  if (_rendTransId && next === 'training') {
+    clearTimeout(_rendTransId);
+    _rendTransId = null;
+  }
+
+  const workoutEnding = prev === 'training' && next !== 'training' && !_rendTransId;
+
+  if (workoutEnding) {
+    // ── Transition Phase ─────────────────────────────────────────────────
+    // Keep 'training' CSS class. BSE outputs recovery/fatigue values — the
+    // CSS vars evolve while training keyframe animations wind down naturally.
+    _rendSig = sig;
+    _physApplySignature(sig, prev, mem);          // training class, recovery BSE values
+    ApexBioRenderer.setIntent(_bioTranslate(sig));
+
+    _rendTransId = setTimeout(() => {
+      _rendState = next;
+      physCoreSetState(next);
+      _rendSig = apexBSE.getSignature();
+      _physApplySignature(_rendSig, next, ApexBioRenderer.out.mem);
+      _rendTransId = null;
+    }, 8500);
+
+  } else if (!_rendTransId) {
+    // ── Direct transition ─────────────────────────────────────────────────
+    if (next !== prev) {
+      _rendState = next;
+      physCoreSetState(next);
+    }
+    _rendSig = sig;
+    _physApplySignature(sig, _rendState, mem);
+    ApexBioRenderer.setIntent(_bioTranslate(sig));
+
+  } else {
+    // ── Mid-transition (timer running, workout winding down) ──────────────
+    // CSS class unchanged. BSE evolves toward new state. Update vars + renderer.
+    _rendSig = sig;
+    _physApplySignature(sig, _rendState, mem);
+    ApexBioRenderer.setIntent(_bioTranslate(sig));
+  }
 });
 
 // ── Session Completion Hook ────────────────────────────────────────────
