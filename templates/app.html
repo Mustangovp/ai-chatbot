@@ -1030,14 +1030,16 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
   100% { transform: scale(1.0000); }
 }
 @keyframes pc-aura-training {
-  0%   { transform: scale(1.000); opacity: 0.32; }
-  12%  { transform: scale(1.130); opacity: 0.50; }  /* burst */
-  22%  { transform: scale(1.190); opacity: 0.56; }  /* metabolic spike */
-  38%  { transform: scale(1.060); opacity: 0.40; }  /* settle */
-  54%  { transform: scale(0.920); opacity: 0.24; }  /* compression */
-  68%  { transform: scale(0.960); opacity: 0.28; }
-  83%  { transform: scale(0.994); opacity: 0.31; }
-  100% { transform: scale(1.000); opacity: 0.32; }
+  /* purposeful metabolic burst: fast spike → efficient expenditure → fast retract */
+  /* cycle: burst(18%) → brief hold(28%) → rapid compression → reload → repeat     */
+  0%   { transform: scale(0.988); opacity: 0.29; }
+  11%  { transform: scale(1.120); opacity: 0.54; }  /* fast metabolic spike — intentional */
+  21%  { transform: scale(1.072); opacity: 0.46; }  /* brief peak — energy committed */
+  32%  { transform: scale(0.942); opacity: 0.27; }  /* rapid retraction — used it all */
+  45%  { transform: scale(0.930); opacity: 0.21; }  /* compression floor — ready to fire */
+  58%  { transform: scale(0.956); opacity: 0.25; }  /* reloading */
+  74%  { transform: scale(0.978); opacity: 0.27; }
+  100% { transform: scale(0.988); opacity: 0.29; }
 }
 @keyframes pc-meta-training {
   0%   { transform: translate(0.0px, 0.0px); }
@@ -1058,10 +1060,15 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
   100% { transform: translate(0.00px, 0.00px); }
 }
 @keyframes pc-cortex-training {
+  /* metabolically alive — irregular intervals break loop perception */
+  /* alternates dim/bright matching exertion/recovery within each breath cycle */
   0%   { opacity: var(--cortex-opacity); }
-  21%  { opacity: calc(var(--cortex-opacity) * 0.74); }  /* metabolic burn */
-  44%  { opacity: calc(var(--cortex-opacity) * 1.14); }
-  68%  { opacity: calc(var(--cortex-opacity) * 0.82); }
+  12%  { opacity: calc(var(--cortex-opacity) * 0.72); }  /* exertion dim */
+  23%  { opacity: calc(var(--cortex-opacity) * 1.16); }  /* activation spike */
+  38%  { opacity: calc(var(--cortex-opacity) * 0.76); }  /* expenditure */
+  51%  { opacity: calc(var(--cortex-opacity) * 1.14); }  /* second pulse */
+  67%  { opacity: calc(var(--cortex-opacity) * 0.80); }  /* burn */
+  82%  { opacity: calc(var(--cortex-opacity) * 1.09); }
   100% { opacity: var(--cortex-opacity); }
 }
 
@@ -1080,12 +1087,16 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
   100% { transform: scale(1.00000); }
 }
 @keyframes pc-aura-recovery {
-  0%   { transform: scale(1.000); opacity: 0.36; }
-  24%  { transform: scale(1.100); opacity: 0.44; }
-  50%  { transform: scale(1.240); opacity: 0.54; }  /* bloom — maximal rebuild */
-  72%  { transform: scale(1.140); opacity: 0.46; }  /* sustain */
-  88%  { transform: scale(1.040); opacity: 0.39; }
-  100% { transform: scale(1.000); opacity: 0.36; }
+  /* warm regenerative bloom: slow expansion → sustained absorption → slow return */
+  /* the organism HOLDS at maximum — it is drawing in resources, not expending them */
+  0%   { transform: scale(1.000); opacity: 0.32; }
+  16%  { transform: scale(1.036); opacity: 0.37; }  /* gentle start — warmth building */
+  34%  { transform: scale(1.072); opacity: 0.42; }  /* slow bloom */
+  51%  { transform: scale(1.088); opacity: 0.45; }  /* peak — holding to absorb */
+  64%  { transform: scale(1.082); opacity: 0.44; }  /* still holding — sustained repair */
+  78%  { transform: scale(1.048); opacity: 0.40; }  /* slow return */
+  91%  { transform: scale(1.016); opacity: 0.35; }
+  100% { transform: scale(1.000); opacity: 0.32; }
 }
 @keyframes pc-meta-recovery {
   0%   { transform: translate(0.0px, 0.0px); }
@@ -1146,9 +1157,13 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
   100% { transform: translate(0.00px, 0.00px); }
 }
 @keyframes pc-cortex-fatigue {
+  /* depleted nervous system — dims steadily, barely recovers to baseline */
+  /* the cortex is still there but it has almost nothing left to give */
   0%   { opacity: var(--cortex-opacity); }
-  34%  { opacity: calc(var(--cortex-opacity) * 0.88); }  /* degrading */
-  68%  { opacity: calc(var(--cortex-opacity) * 0.94); }
+  22%  { opacity: calc(var(--cortex-opacity) * 0.80); }  /* load beginning to show */
+  45%  { opacity: calc(var(--cortex-opacity) * 0.68); }  /* deep depletion */
+  67%  { opacity: calc(var(--cortex-opacity) * 0.72); }  /* still depleted */
+  87%  { opacity: calc(var(--cortex-opacity) * 0.84); }  /* struggling back */
   100% { opacity: var(--cortex-opacity); }
 }
 
@@ -1209,15 +1224,20 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
   100% { transform: translate(-0.38px, 0.32px); }
 }
 @keyframes pc-cortex-pain {
+  /* neurologically noisy — the interval irregularity IS the noise signal     */
+  /* intervals: 7,6,8,7,9,8,16,9,12,10,11 — brain cannot predict next beat   */
+  /* range 0.68×–1.24× — widest of all states, defensive system is unstable  */
   0%   { opacity: var(--cortex-opacity); }
-  12%  { opacity: calc(var(--cortex-opacity) * 1.20); }  /* defensive spike */
-  21%  { opacity: calc(var(--cortex-opacity) * 0.80); }  /* flicker */
-  30%  { opacity: calc(var(--cortex-opacity) * 1.14); }
-  41%  { opacity: calc(var(--cortex-opacity) * 0.86); }
-  52%  { opacity: calc(var(--cortex-opacity) * 1.22); }  /* peak defense */
-  63%  { opacity: calc(var(--cortex-opacity) * 0.78); }  /* loss of coherence */
-  74%  { opacity: calc(var(--cortex-opacity) * 1.10); }
-  87%  { opacity: calc(var(--cortex-opacity) * 0.90); }
+  7%   { opacity: calc(var(--cortex-opacity) * 1.24); }  /* defensive spike */
+  13%  { opacity: calc(var(--cortex-opacity) * 0.76); }  /* flicker down */
+  21%  { opacity: calc(var(--cortex-opacity) * 1.18); }  /* surge */
+  28%  { opacity: calc(var(--cortex-opacity) * 0.80); }  /* drop */
+  37%  { opacity: calc(var(--cortex-opacity) * 1.14); }
+  45%  { opacity: calc(var(--cortex-opacity) * 0.84); }  /* another drop */
+  61%  { opacity: calc(var(--cortex-opacity) * 1.22); }  /* long slow surge — unstable */
+  70%  { opacity: calc(var(--cortex-opacity) * 0.68); }  /* deepest failure */
+  82%  { opacity: calc(var(--cortex-opacity) * 1.10); }
+  92%  { opacity: calc(var(--cortex-opacity) * 0.88); }
   100% { opacity: var(--cortex-opacity); }
 }
 
@@ -1379,8 +1399,9 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 
 /* FATIGUE — gravitational drag: heavy, asymmetric, dim */
 #phys-core.state-fatigue #phys-breath-group {
-  animation-timing-function: cubic-bezier(0.55, 0, 0.45, 1);
-  animation-duration: 13200ms;
+  /* heavier timing: harder to start, harder to stop — each breath costs */
+  animation-timing-function: cubic-bezier(0.60, 0, 0.40, 1);
+  animation-duration: 16400ms;
 }
 #phys-core.state-fatigue #phys-meta-drift    { animation: pc-meta-fatigue 20600ms cubic-bezier(0.55,0,0.45,1) infinite; }
 #phys-core.state-fatigue #pc-nucleus-drift-wrap { animation: pc-nucleus-fatigue 15900ms cubic-bezier(0.55,0,0.45,1) infinite; }
@@ -5628,7 +5649,7 @@ function _physApplySignature(sig, state) {
   // BSE modulates around these — never overrides the state character.
   const BASE = {
     breathPeriod:      { peak:7340,  recovery:9200,  fatigue:8600,  pain:10800, training:6400  },
-    breathAmplitude:   { peak:0.007, recovery:0.024, fatigue:0.010, pain:0.006, training:0.026 },
+    breathAmplitude:   { peak:0.007, recovery:0.024, fatigue:0.010, pain:0.009, training:0.026 },
     flowPeriod:        { peak:74800, recovery:98000, fatigue:122000,pain:148000,training:46000  },
     flowOpacity:       { peak:0.80,  recovery:0.58,  fatigue:0.36,  pain:0.20,  training:0.95  },
     glowIntensity:     { peak:0.28,  recovery:0.38,  fatigue:0.16,  pain:0.10,  training:0.45  },
