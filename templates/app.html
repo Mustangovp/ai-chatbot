@@ -521,6 +521,14 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 .cc-core-slot{position:absolute;inset:0;display:flex;justify-content:center;align-items:center;z-index:2;pointer-events:none;}
 .cc-core-slot #phys-core{--core-size:190px;}
 
+/* Persistent organism stage: visible in every workout phase except the ex phase
+   (which uses cc-active + cc-hero instead). Hides when overlay is inactive. */
+#wo-organism-stage{display:none;position:relative;height:220px;background:var(--ccCard,#0d1525);border-bottom:1px solid rgba(0,217,255,0.10);flex-shrink:0;overflow:hidden;}
+#wo-organism-stage::before{content:'';position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 60%,rgba(0,217,255,0.07) 0%,transparent 65%);}
+#workout-overlay.active #wo-organism-stage{display:block;}
+#workout-overlay.cc-active #wo-organism-stage{display:none!important;}
+#wo-organism-slot{position:absolute;inset:0;display:flex;justify-content:center;align-items:center;}
+
 /* exercise header */
 .cc-ex-hdr{position:relative;padding:18px 0 0 16px;z-index:3;}
 .cc-ex-name-bg{font-family:'Unbounded',sans-serif;font-size:21px;font-weight:700;color:var(--ccText);line-height:1.1;}
@@ -2227,6 +2235,11 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
     <button class="wo-close" onclick="closeWorkout()">✕</button>
   </div>
   <div class="wo-prog-bar"><div class="wo-prog-fill" id="wo-prog-fill" style="width:0%"></div></div>
+  <!-- Persistent organism stage: holds #phys-core across all workout phases.
+       Hidden when cc-active (ex phase) since the CC card has its own hero. -->
+  <div id="wo-organism-stage">
+    <div id="wo-organism-slot" class="cc-core-slot"></div>
+  </div>
   <div class="wo-body" id="wo-body"></div>
 </div>
 
@@ -3509,6 +3522,17 @@ function _ccRestoreLayout(){
   if(ov)ov.classList.remove('cc-active');
 }
 
+// Keeps the Living Organism mounted across every non-ex workout phase.
+// Rescues #phys-core into the persistent #wo-organism-slot that lives outside
+// #wo-body, so it survives every b.innerHTML replacement.
+function _ccEnsureOrganism(){
+  // Remove cc-active — the full CC card layout is only for the ex phase.
+  document.getElementById('workout-overlay').classList.remove('cc-active');
+  const _slot=document.getElementById('wo-organism-slot');
+  const _core=document.getElementById('phys-core');
+  if(_slot&&_core&&_core.parentElement!==_slot)_slot.appendChild(_core);
+}
+
 function _ccIntensity(){
   const log=(_wo&&_wo.fbLog)||[];
   if(!log.length)return null;
@@ -3848,7 +3872,7 @@ function _woRenderEx(b){
     return;
   }
   // Legacy fallback for exercises not yet in CC_META
-  _ccRestoreLayout();
+  _ccEnsureOrganism();
   const wmeta=_woMeta(ex.name);
   const muscleLbl=wmeta?`<div class="wo-muscle-label" style="margin:14px 0 22px;">${lang==='en'?wmeta.muscleEn:wmeta.muscle}</div>`:'';
   b.innerHTML=`
@@ -3868,7 +3892,7 @@ function _woDone(){
 
 // Task 3 — feedback + rep adaptation
 function _woRenderFb(b){
-  _ccRestoreLayout();
+  _ccEnsureOrganism();
   const ex=_wo.exs[_wo.ei];
   const reps=Math.max(1,ex.baseReps+ex.repDelta);
   b.innerHTML=`
@@ -3891,6 +3915,9 @@ function _woFb(fb){
   _wo.exLog[_wo.ei].r.push(actualReps);
   if(!_wo.fbLog)_wo.fbLog=[];
   _wo.fbLog.push(fb);
+  // reflect exertion in the organism immediately
+  const _fbStateMap={easy:'recovery',medium:'training',hard:'fatigue'};
+  physCoreSetState(_fbStateMap[fb]||'training');
   // adapt reps for next set of this exercise
   if(fb==='easy')ex.repDelta=Math.min(ex.repDelta+2,8);
   else if(fb==='hard')ex.repDelta=Math.max(ex.repDelta-1,-4);
@@ -3910,7 +3937,7 @@ function _woFb(fb){
 
 // Task 2 — smart rest timer
 function _woRenderRest(b){
-  _ccRestoreLayout();
+  _ccEnsureOrganism();
   let s=_wo._rs;
   const total=s;
   b.innerHTML=`
@@ -3943,7 +3970,8 @@ function _woSkip(){
 
 // Done screen
 function _woRenderDone(b){
-  _ccRestoreLayout();
+  _ccEnsureOrganism();
+  physCoreSetState('recovery');
   _woLogSave();
   try{
     const _log=JSON.parse(localStorage.getItem('apexWorkoutLog')||'[]');
@@ -3972,7 +4000,7 @@ function _woRenderDone(b){
 let _recState={feel:null,energy:0,motivation:0,note:''};
 
 function _woRenderRecovery(b){
-  _ccRestoreLayout();
+  _ccEnsureOrganism();
   _recState={feel:null,energy:0,motivation:0,note:''};
   const en=lang==='en';
   const diffOpts=[
@@ -4016,6 +4044,8 @@ function _woRecDiff(val){
   _recState.feel=val;
   document.querySelectorAll('.wo-rec-diff-btn')
     .forEach(b=>b.classList.toggle('sel',b.dataset.feel===val));
+  const _recStateMap={easy:'peak',moderate:'recovery',hard:'fatigue',very_hard:'pain'};
+  physCoreSetState(_recStateMap[val]||'recovery');
 }
 
 function _woRecScale(field,val){
@@ -4050,7 +4080,7 @@ function _woStartHr(){
 }
 
 function _woRenderHr(b){
-  _ccRestoreLayout();
+  _ccEnsureOrganism();
   b.innerHTML=`
     <div class="wo-hr">
       <div class="wo-hr-title">📏 ${lang==='en'?'Heart Rate Measurement':'Измерване на пулса'}</div>
