@@ -2756,9 +2756,10 @@ function applyStaticLang(){
 }
 
 let count=parseInt(localStorage.getItem('apexCount')||'0',10);
-const box=document.getElementById('chat-box');
 
 function showGreeting(){
+  const box=document.getElementById('chat-box');
+  if(!box)return;
   box.innerHTML='';
   const d=T[lang];
   const p=_pfLoad();
@@ -3832,6 +3833,10 @@ function _woProg(){
 function _woRender(){
   if(!_wo)return;
   _woProg();
+  if(_wo.phase!=='ex'){
+    const overlay=document.getElementById('workout-overlay');
+    if(overlay)overlay.classList.remove('cc-active');
+  }
   const b=document.getElementById('wo-body');
   if(!b)return;
   if(_wo.phase==='ex')_woRenderEx(b);
