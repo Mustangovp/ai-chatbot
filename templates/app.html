@@ -961,21 +961,24 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
    Every keyframe deviates by the minimum biologically plausible amount.
    The organism is not resting — it is at maximum voluntary restraint.   */
 @keyframes pc-membrane-peak {
+  /* membrane is the least active element — it only reacts, never initiates */
+  /* deformation is sub-perceptual: felt as containment, not seen as motion */
   0%   { transform: scale(1.00000); }
-  /* expansion — barely perceptible, but the body knows it's there */
-  29%  { transform: scale(1.00048); }
-  /* compression — membrane holds its tension, never fully relaxes */
-  66%  { transform: scale(0.99976); }
+  29%  { transform: scale(1.00030); }  /* reacts to aura pressure peak */
+  66%  { transform: scale(0.99984); }  /* slight return below baseline */
   100% { transform: scale(1.00000); }
 }
 @keyframes pc-aura-peak {
-  /* starts compressed — internal pressure always building */
-  0%   { transform: scale(0.988); opacity: 0.26; }
-  /* pressure peak — nucleus pushing against membrane from inside */
-  41%  { transform: scale(1.018); opacity: 0.35; }
-  /* release below baseline — energy has passed through */
-  76%  { transform: scale(0.984); opacity: 0.23; }
-  100% { transform: scale(0.988); opacity: 0.26; }
+  /* aura is the primary motion source at peak — nucleus pressure visible here */
+  /* percentages are irregular — no two intervals are equal, cycle breaks */
+  0%   { transform: scale(0.978); opacity: 0.21; }  /* compressed: energy stored */
+  13%  { transform: scale(1.006); opacity: 0.30; }  /* pressure begins to rise */
+  27%  { transform: scale(1.022); opacity: 0.39; }  /* internal pressure peak */
+  41%  { transform: scale(1.014); opacity: 0.34; }  /* holding — slow release */
+  57%  { transform: scale(0.991); opacity: 0.26; }  /* falls through baseline */
+  71%  { transform: scale(0.981); opacity: 0.20; }  /* deepest compression */
+  86%  { transform: scale(0.984); opacity: 0.22; }  /* begins recovering */
+  100% { transform: scale(0.978); opacity: 0.21; }
 }
 @keyframes pc-meta-peak {
   0%   { transform: translate(0.0px, 0.0px); }
@@ -986,19 +989,28 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
   100% { transform: translate(0.0px, 0.0px); }
 }
 @keyframes pc-nucleus-peak {
-  0%   { transform: translate(0.00px, 0.00px); }
-  /* nucleus has mass — it drifts with the organism's internal fluid */
-  34%  { transform: translate(0.06px, 0.09px); }
-  /* two-stop drift breaks symmetry — nucleus never returns cleanly */
-  71%  { transform: translate(-0.04px, 0.07px); }
-  100% { transform: translate(0.00px, 0.00px); }
+  /* nucleus is the densest, most energized element — it moves most */
+  /* all other elements react to this motion, never the reverse */
+  /* five irregular stops — nucleus never traces the same path twice */
+  0%   { transform: translate(0.00px,  0.00px); }
+  11%  { transform: translate(0.10px,  0.14px); }  /* nucleus presses forward */
+  29%  { transform: translate(0.14px,  0.18px); }  /* settling at pressure peak */
+  47%  { transform: translate(0.05px,  0.12px); }  /* slow release, stays heavy */
+  63%  { transform: translate(-0.08px, 0.09px); }  /* lateral: fluid dynamics */
+  81%  { transform: translate(-0.04px, 0.06px); }  /* returning, never rushing */
+  100% { transform: translate(0.00px,  0.00px); }
 }
 @keyframes pc-cortex-peak {
+  /* eight stops — intervals: 7,12,12,12,14,14,12,17 — intentionally irregular */
+  /* the uneven final gap prevents the brain from predicting the next beat */
   0%   { opacity: var(--cortex-opacity); }
-  /* three irregular stops — asymmetric intervals break the loop perception */
-  24%  { opacity: calc(var(--cortex-opacity) * 1.08); }
-  53%  { opacity: calc(var(--cortex-opacity) * 0.92); }
-  79%  { opacity: calc(var(--cortex-opacity) * 1.05); }
+  7%   { opacity: calc(var(--cortex-opacity) * 1.07); }
+  19%  { opacity: calc(var(--cortex-opacity) * 0.91); }
+  31%  { opacity: calc(var(--cortex-opacity) * 1.09); }
+  43%  { opacity: calc(var(--cortex-opacity) * 0.93); }
+  57%  { opacity: calc(var(--cortex-opacity) * 1.08); }
+  71%  { opacity: calc(var(--cortex-opacity) * 0.90); }
+  83%  { opacity: calc(var(--cortex-opacity) * 1.05); }
   100% { opacity: var(--cortex-opacity); }
 }
 
@@ -1230,7 +1242,7 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
   --nucleus-offset-y: 0px;
   --gravity-offset-x: 0px;
   --gravity-offset-y: 1px;
-  --breath-amplitude: 0.015;
+  --breath-amplitude: 0.006;
   --breath-period: 7340ms;
   --flow-period: 74800ms;
   --flow-opacity: 0.80;
@@ -1335,11 +1347,11 @@ main{flex:1;display:flex;flex-direction:column;max-width:920px;margin:0 auto;wid
 #phys-core.state-peak #phys-breath-group {
   /* fast engagement (intention) → very slow controlled release (discipline) */
   animation-timing-function: cubic-bezier(0.50, 0, 0.10, 1);
-  animation-duration: 10800ms;
+  animation-duration: 13600ms;
 }
 #phys-core.state-peak #phys-meta-drift    { animation: pc-meta-peak 34700ms ease-in-out infinite; }
 #phys-core.state-peak #pc-nucleus-drift-wrap { animation: pc-nucleus-peak 24300ms ease-in-out infinite; }
-#phys-core.state-peak #pc-nucleus-aura   { animation: pc-aura-peak 15900ms ease-in-out infinite; }
+#phys-core.state-peak #pc-nucleus-aura   { animation: pc-aura-peak 15900ms cubic-bezier(0.42, 0, 0.30, 1) infinite; }
 #phys-core.state-peak #pc-membrane-body  { animation: pc-membrane-peak 11200ms ease-in-out infinite; }
 #phys-core.state-peak #pc-cortex-layer   { animation: pc-cortex-peak 21400ms ease-in-out infinite; }
 
@@ -5616,7 +5628,7 @@ function _physApplySignature(sig, state) {
   // BSE modulates around these — never overrides the state character.
   const BASE = {
     breathPeriod:      { peak:7340,  recovery:9200,  fatigue:8600,  pain:10800, training:6400  },
-    breathAmplitude:   { peak:0.015, recovery:0.024, fatigue:0.010, pain:0.006, training:0.026 },
+    breathAmplitude:   { peak:0.007, recovery:0.024, fatigue:0.010, pain:0.006, training:0.026 },
     flowPeriod:        { peak:74800, recovery:98000, fatigue:122000,pain:148000,training:46000  },
     flowOpacity:       { peak:0.80,  recovery:0.58,  fatigue:0.36,  pain:0.20,  training:0.95  },
     glowIntensity:     { peak:0.28,  recovery:0.38,  fatigue:0.16,  pain:0.10,  training:0.45  },
@@ -6525,8 +6537,8 @@ const ApexBioRenderer = (() => {
     // mix-blend-mode:screen and will-change:opacity remain on the CSS rule.
     if (_glowEl) {
       _glowPhase += (_PI2 * dt) / F.bPer.v;
-      // range [0.44–1.00] × luminosity — glow visibly breathes with metabolism
-      _glowEl.style.opacity = (F.lum.v * (0.72 + 0.28 * _sin(_glowPhase))).toFixed(3);
+      // range [0.70–1.00] × luminosity — contained metabolic flicker, not pulse
+      _glowEl.style.opacity = (F.lum.v * (0.85 + 0.15 * _sin(_glowPhase))).toFixed(3);
     }
 
     out._frameMs = performance.now() - t0;
