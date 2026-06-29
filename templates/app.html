@@ -5732,7 +5732,6 @@ function _physApplySignature(sig, state, mem = null) {
 
   // ── 10. microTremorThreshold → nucleus drift period ───────────────────
   // Only in pain state: sensitive organisms tremor faster.
-  // Other states: preserve the biological 17 230ms aperiodic drift.
   const nucleusDrift = document.getElementById('pc-nucleus-drift-wrap');
   if (nucleusDrift) {
     if (state === 'pain') {
@@ -5740,7 +5739,8 @@ function _physApplySignature(sig, state, mem = null) {
       const tremorPeriod = Math.round(Lm(21000, 11000, sig.microTremorThreshold));
       nucleusDrift.style.animationDuration = tremorPeriod + 'ms';
     } else {
-      nucleusDrift.style.animationDuration = '17230ms';
+      const _nucleusDriftMs = { peak: 24300, training: 12100, recovery: 21800, fatigue: 15900 };
+      nucleusDrift.style.animationDuration = (_nucleusDriftMs[state] || 17230) + 'ms';
     }
   }
 
