@@ -48,6 +48,18 @@
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
 <style>
+@property --color-nucleus-a { syntax: '<color>'; inherits: true; initial-value: rgba(215,250,255,0.95); }
+@property --color-nucleus-b { syntax: '<color>'; inherits: true; initial-value: rgba(56,224,255,0.90); }
+@property --color-nucleus-c { syntax: '<color>'; inherits: true; initial-value: rgba(28,110,220,0.76); }
+@property --color-nucleus-d { syntax: '<color>'; inherits: true; initial-value: rgba(14,38,118,0.60); }
+@property --color-flow-a { syntax: '<color>'; inherits: true; initial-value: rgba(56,200,255,0.17); }
+@property --color-flow-b { syntax: '<color>'; inherits: true; initial-value: rgba(30,150,255,0.08); }
+@property --color-membrane-stroke { syntax: '<color>'; inherits: true; initial-value: rgba(56,224,255,0.30); }
+@property --color-glow-a { syntax: '<color>'; inherits: true; initial-value: rgba(56,224,255,0.40); }
+@property --color-glow-b { syntax: '<color>'; inherits: true; initial-value: rgba(40,160,255,0.13); }
+@property --color-ambient-a { syntax: '<color>'; inherits: true; initial-value: rgba(15,42,115,0.40); }
+@property --color-ambient-b { syntax: '<color>'; inherits: true; initial-value: rgba(8,20,65,0.20); }
+
 :root{
   --bg:#0B0E14; --surface:#121724; --surface2:#1A2133;
   --text:#F2F5FA; --muted:#8B93A7; --border:rgba(255,255,255,0.1);
@@ -733,6 +745,22 @@ nav{position:sticky;top:0;z-index:50;background:rgba(5,5,12,0.92);backdrop-filte
    Nothing in the renderer is hardcoded. Every visual property is driven
    from here. JavaScript touches only this element's CSS variables on
    state changes. The renderer reads passively. */
+#overview-core-slot {
+  width: 200px;
+  height: 200px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 0 auto;
+}
+
+#phys-core-host {
+  position: fixed;
+  inset: 0;
+  z-index: 105;
+  pointer-events: none;
+}
+
 #phys-core {
   /* ── Structural ──────────────────────────────── */
   --core-size: 200px;
@@ -795,9 +823,7 @@ nav{position:sticky;top:0;z-index:50;background:rgba(5,5,12,0.92);backdrop-filte
   --nucleus-offset-x: 0px;
   --nucleus-offset-y: 0px;
 
-  /* ── Color Confirmation (Peak state palette) ─────
-     Color never leads — it confirms what morphology
-     and motion already communicate.               */
+  /* ── Color Confirmation (Peak state palette) ───── */
   --color-nucleus-a: rgba(215,250,255,0.95);
   --color-nucleus-b: rgba(56,224,255,0.90);
   --color-nucleus-c: rgba(28,110,220,0.76);
@@ -817,13 +843,124 @@ nav{position:sticky;top:0;z-index:50;background:rgba(5,5,12,0.92);backdrop-filte
   --color-temperature: 0;          /* 0=cool/Peak, 1=warm/Pain */
 
   /* ── Layout ───────────────────────────────────── */
-  position: relative;
+  position: absolute;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  top: 50%;
+  left: 50%;
   width: var(--core-size);
   height: var(--core-size);
-  /* Gravity bias: organism never perfectly centered — Law 5 */
-  transform: translate(var(--gravity-offset-x), var(--gravity-offset-y));
-  will-change: transform;          /* own compositor layer */
+  will-change: transform, left, top, width, height;          /* own compositor layer */
   flex-shrink: 0;
+  transition: left 0.8s cubic-bezier(0.25, 1, 0.5, 1),
+              top 0.8s cubic-bezier(0.25, 1, 0.5, 1),
+              width 0.8s cubic-bezier(0.25, 1, 0.5, 1),
+              height 0.8s cubic-bezier(0.25, 1, 0.5, 1),
+              --color-nucleus-a 1.2s ease-in-out,
+              --color-nucleus-b 1.2s ease-in-out,
+              --color-nucleus-c 1.2s ease-in-out,
+              --color-nucleus-d 1.2s ease-in-out,
+              --color-flow-a 1.2s ease-in-out,
+              --color-flow-b 1.2s ease-in-out,
+              --color-membrane-stroke 1.2s ease-in-out,
+              --color-glow-a 1.2s ease-in-out,
+              --color-glow-b 1.2s ease-in-out,
+              --color-ambient-a 1.2s ease-in-out,
+              --color-ambient-b 1.2s ease-in-out;
+}
+
+/* ── TELEMETRY GRID ─────────────────────────────────────────────────── */
+.phys-tele-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 12px;
+  width: 100%;
+  max-width: 900px;
+  margin: 20px auto 0;
+  padding: 0 20px;
+  box-sizing: border-box;
+}
+
+.tele-card {
+  background: rgba(18, 23, 36, 0.45);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  will-change: transform, border-color, box-shadow;
+  position: relative;
+  overflow: hidden;
+}
+
+.tele-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.tc-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tc-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  transition: background 0.3s ease, box-shadow 0.3s ease;
+}
+
+.cns-dot { background: var(--cyan); box-shadow: 0 0 6px var(--cyan); }
+.readiness-dot { background: var(--lime); box-shadow: 0 0 6px var(--lime); }
+.recovery-dot { background: var(--cyan); box-shadow: 0 0 6px var(--cyan); }
+.load-dot { background: var(--gold); box-shadow: 0 0 6px var(--gold); }
+.goal-dot { background: var(--red); box-shadow: 0 0 6px var(--red-glow); }
+
+.tc-label {
+  font-family: 'Unbounded';
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.tc-value {
+  font-family: 'Unbounded';
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.1;
+  letter-spacing: -0.5px;
+}
+
+.tc-sub {
+  font-family: 'Manrope';
+  font-size: 9px;
+  color: var(--muted);
+  line-height: 1.3;
+}
+
+#card-cns:hover { border-color: rgba(56, 224, 255, 0.25); }
+#card-readiness:hover { border-color: rgba(182, 255, 60, 0.25); }
+#card-recovery:hover { border-color: rgba(56, 224, 255, 0.25); }
+#card-load:hover { border-color: rgba(255, 177, 60, 0.25); }
+#card-goal:hover { border-color: rgba(245, 33, 45, 0.25); }
+
+@media (max-width: 600px) {
+  .phys-tele-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  #card-goal {
+    grid-column: span 2;
+  }
 }
 
 /* SVG fills the Core div exactly. viewBox handles all internal geometry. */
@@ -1366,6 +1503,17 @@ nav{position:sticky;top:0;z-index:50;background:rgba(5,5,12,0.92);backdrop-filte
   --cortex-opacity: 0.50;
   --lattice-opacity: 0.45;
   --membrane-stroke-opacity: 0.30;
+  --color-nucleus-a: rgba(215,250,255,0.95);
+  --color-nucleus-b: rgba(56,224,255,0.90);
+  --color-nucleus-c: rgba(28,110,220,0.76);
+  --color-nucleus-d: rgba(14,38,118,0.60);
+  --color-flow-a: rgba(56,200,255,0.17);
+  --color-flow-b: rgba(30,150,255,0.08);
+  --color-membrane-stroke: rgba(56,224,255,0.30);
+  --color-glow-a: rgba(56,224,255,0.40);
+  --color-glow-b: rgba(40,160,255,0.13);
+  --color-ambient-a: rgba(20,52,120,0.30);
+  --color-ambient-b: rgba(10,24,68,0.13);
 }
 
 /* ── RECOVERY — Regenerative ───────────────────────────────────────────
@@ -1387,6 +1535,17 @@ nav{position:sticky;top:0;z-index:50;background:rgba(5,5,12,0.92);backdrop-filte
   --cortex-opacity: 0.62;
   --lattice-opacity: 0.34;
   --membrane-stroke-opacity: 0.24;
+  --color-nucleus-a: rgba(220, 240, 255, 0.98);
+  --color-nucleus-b: rgba(100, 190, 255, 0.90);
+  --color-nucleus-c: rgba(50, 130, 220, 0.76);
+  --color-nucleus-d: rgba(15, 50, 120, 0.60);
+  --color-flow-a: rgba(100, 190, 255, 0.12);
+  --color-flow-b: rgba(50, 130, 220, 0.08);
+  --color-membrane-stroke: rgba(100, 190, 255, 0.28);
+  --color-glow-a: rgba(100, 190, 255, 0.35);
+  --color-glow-b: rgba(50, 130, 220, 0.08);
+  --color-ambient-a: rgba(10, 32, 90, 0.40);
+  --color-ambient-b: rgba(5, 16, 45, 0.20);
 }
 
 /* ── FATIGUE — Heavy ───────────────────────────────────────────────────
@@ -1408,6 +1567,17 @@ nav{position:sticky;top:0;z-index:50;background:rgba(5,5,12,0.92);backdrop-filte
   --cortex-opacity: 0.36;
   --lattice-opacity: 0.26;
   --membrane-stroke-opacity: 0.20;
+  --color-nucleus-a: rgba(255, 235, 200, 0.95);
+  --color-nucleus-b: rgba(255, 160, 50, 0.85);
+  --color-nucleus-c: rgba(180, 100, 20, 0.70);
+  --color-nucleus-d: rgba(80, 40, 5, 0.60);
+  --color-flow-a: rgba(255, 160, 50, 0.10);
+  --color-flow-b: rgba(180, 100, 20, 0.05);
+  --color-membrane-stroke: rgba(255, 160, 50, 0.20);
+  --color-glow-a: rgba(255, 160, 50, 0.25);
+  --color-glow-b: rgba(180, 100, 20, 0.05);
+  --color-ambient-a: rgba(45, 28, 5, 0.40);
+  --color-ambient-b: rgba(20, 12, 2, 0.20);
 }
 
 /* ── PAIN — Defensive ──────────────────────────────────────────────────
@@ -1430,6 +1600,17 @@ nav{position:sticky;top:0;z-index:50;background:rgba(5,5,12,0.92);backdrop-filte
   --cortex-opacity: 0.74;
   --lattice-opacity: 0.16;
   --membrane-stroke-opacity: 0.50;
+  --color-nucleus-a: rgba(255, 210, 210, 0.98);
+  --color-nucleus-b: rgba(255, 50, 60, 0.90);
+  --color-nucleus-c: rgba(180, 20, 30, 0.76);
+  --color-nucleus-d: rgba(80, 5, 10, 0.60);
+  --color-flow-a: rgba(255, 50, 60, 0.08);
+  --color-flow-b: rgba(180, 20, 30, 0.04);
+  --color-membrane-stroke: rgba(255, 50, 60, 0.45);
+  --color-glow-a: rgba(255, 50, 60, 0.20);
+  --color-glow-b: rgba(180, 20, 30, 0.04);
+  --color-ambient-a: rgba(60, 8, 10, 0.40);
+  --color-ambient-b: rgba(25, 3, 4, 0.20);
 }
 
 /* ── TRAINING — Purposeful ─────────────────────────────────────────────
@@ -1451,6 +1632,17 @@ nav{position:sticky;top:0;z-index:50;background:rgba(5,5,12,0.92);backdrop-filte
   --cortex-opacity: 0.42;
   --lattice-opacity: 0.58;
   --membrane-stroke-opacity: 0.38;
+  --color-nucleus-a: rgba(220, 255, 220, 0.98);
+  --color-nucleus-b: rgba(50, 255, 120, 0.90);
+  --color-nucleus-c: rgba(20, 180, 80, 0.76);
+  --color-nucleus-d: rgba(8, 70, 30, 0.60);
+  --color-flow-a: rgba(50, 255, 120, 0.15);
+  --color-flow-b: rgba(30, 180, 80, 0.10);
+  --color-membrane-stroke: rgba(50, 255, 120, 0.35);
+  --color-glow-a: rgba(50, 255, 120, 0.40);
+  --color-glow-b: rgba(30, 180, 80, 0.10);
+  --color-ambient-a: rgba(10, 48, 20, 0.40);
+  --color-ambient-b: rgba(5, 24, 10, 0.20);
 }
 
 /* ── STATE ANIMATION OVERRIDES ─────────────────────────────────────────
@@ -1892,9 +2084,67 @@ body.state-laboratory .footer-mini{display:none!important;}
 <div id="phys-core-stage">
   <div class="core-eyebrow eyebrow">
     <span class="dot"></span>
-    <span id="core-eyebrow-text">PHYSIOLOGICAL STATUS</span>
+    <span id="core-eyebrow-text" data-key="core-eyebrow-text">PHYSIOLOGICAL STATUS</span>
   </div>
   <div id="phys-stage-ring"></div>
+  <div id="overview-core-slot"></div>
+  <div id="phys-state-label"></div>
+  
+  <div class="phys-tele-grid" id="phys-tele-grid">
+    <!-- CNS Output Card -->
+    <div class="tele-card" id="card-cns">
+      <div class="tc-header">
+        <span class="tc-dot cns-dot"></span>
+        <span class="tc-label" data-key="tele-cns">CNS OUTPUT</span>
+      </div>
+      <div class="tc-value" id="card-cns-val">—</div>
+      <div class="tc-sub" data-key="tele-cns-sub">Nervous system capacity</div>
+    </div>
+    
+    <!-- Readiness Card -->
+    <div class="tele-card" id="card-readiness">
+      <div class="tc-header">
+        <span class="tc-dot readiness-dot"></span>
+        <span class="tc-label" data-key="tele-readiness">READINESS</span>
+      </div>
+      <div class="tc-value" id="card-readiness-val">—</div>
+      <div class="tc-sub" data-key="tele-readiness-sub">Optimal training window</div>
+    </div>
+
+    <!-- Recovery Card -->
+    <div class="tele-card" id="card-recovery">
+      <div class="tc-header">
+        <span class="tc-dot recovery-dot"></span>
+        <span class="tc-label" data-key="tele-recovery">RECOVERY</span>
+      </div>
+      <div class="tc-value" id="card-recovery-val">—</div>
+      <div class="tc-sub" data-key="tele-recovery-sub">Cellular rebuilding status</div>
+    </div>
+
+    <!-- Today's Load Card -->
+    <div class="tele-card" id="card-load">
+      <div class="tc-header">
+        <span class="tc-dot load-dot"></span>
+        <span class="tc-label" data-key="tele-load">TODAY'S LOAD</span>
+      </div>
+      <div class="tc-value" id="card-load-val">—</div>
+      <div class="tc-sub" data-key="tele-load-sub">Exertion metrics</div>
+    </div>
+
+    <!-- Active Goal Card -->
+    <div class="tele-card" id="card-goal">
+      <div class="tc-header">
+        <span class="tc-dot goal-dot"></span>
+        <span class="tc-label" data-key="tele-goal">ACTIVE GOAL</span>
+      </div>
+      <div class="tc-value" id="card-goal-val">—</div>
+      <div class="tc-sub" data-key="tele-goal-sub">Target objective</div>
+    </div>
+  </div>
+</div>
+
+<!-- GLOBAL FLOATING BIOLOGICAL CORE HOST -->
+<div id="phys-core-host">
   <div id="phys-core">
     <svg id="phys-core-svg"
          viewBox="0 0 300 300"
@@ -1904,388 +2154,144 @@ body.state-laboratory .footer-mini{display:none!important;}
          aria-label="APEX Physiology Core">
 
       <defs>
-
-        <!-- ═══ FILTERS ═══════════════════════════════════════════════ -->
-
-        <!-- F1 — Membrane: biological surface texture via displacement.
-             Restricted region (x/y -15%, 130% size) bounds rasterization
-             to Core boundary + margin. Most expensive filter in the system.
-             scale="3" = Peak state: barely perceptible surface imperfection.
-             State machine will update scale via CSS custom property in Phase 3. -->
-        <filter id="pcf-membrane"
-                x="-15%" y="-15%" width="130%" height="130%"
-                color-interpolation-filters="sRGB">
-          <feTurbulence type="turbulence"
-                        baseFrequency="0.018 0.015"
-                        numOctaves="3"
-                        seed="42"
-                        result="noise"/>
-          <feDisplacementMap in="SourceGraphic" in2="noise"
-                             scale="3"
-                             xChannelSelector="R" yChannelSelector="G"/>
+        <!-- FILTERS -->
+        <filter id="pcf-membrane" x="-15%" y="-15%" width="130%" height="130%" color-interpolation-filters="sRGB">
+          <feTurbulence type="turbulence" baseFrequency="0.018 0.015" numOctaves="3" seed="42" result="noise"/>
+          <feDisplacementMap in="SourceGraphic" in2="noise" scale="3" xChannelSelector="R" yChannelSelector="G"/>
         </filter>
-
-        <!-- F2 — Nucleus glow: bioluminescent deep core emission.
-             Large region needed: glow extends 150% beyond nucleus bounds. -->
-        <filter id="pcf-nucleus-glow"
-                x="-150%" y="-150%" width="400%" height="400%"
-                color-interpolation-filters="sRGB">
+        <filter id="pcf-nucleus-glow" x="-150%" y="-150%" width="400%" height="400%" color-interpolation-filters="sRGB">
           <feGaussianBlur stdDeviation="14"/>
         </filter>
-
-        <!-- F3 — Cortex: biological damping blur between Lattice and Membrane.
-             High blur = effective damping = healthy tissue. -->
-        <filter id="pcf-cortex"
-                x="-30%" y="-30%" width="160%" height="160%"
-                color-interpolation-filters="sRGB">
+        <filter id="pcf-cortex" x="-30%" y="-30%" width="160%" height="160%" color-interpolation-filters="sRGB">
           <feGaussianBlur stdDeviation="9"/>
         </filter>
-
-        <!-- F4 — Glow: outer luminosity emission. Large region for bleed. -->
-        <filter id="pcf-glow"
-                x="-55%" y="-55%" width="210%" height="210%"
-                color-interpolation-filters="sRGB">
+        <filter id="pcf-glow" x="-55%" y="-55%" width="210%" height="210%" color-interpolation-filters="sRGB">
           <feGaussianBlur stdDeviation="24"/>
         </filter>
 
-        <!-- ═══ GRADIENTS ═════════════════════════════════════════════ -->
-
-        <!-- G1 — Ambient: atmospheric depth behind the Core.
-             cy=60% shifts the density center below the geometric center —
-             creates gravitational shadow. Organism appears to press down
-             against invisible field. Not the organism — its gravity well. -->
-        <radialGradient id="pcg-ambient" cx="50%" cy="60%" r="52%">
-          <stop offset="0%"   stop-color="rgba(15,42,115,0.40)"/>
-          <stop offset="45%"  stop-color="rgba(8,20,65,0.20)"/>
+        <!-- GRADIENTS -->
+        <radialGradient id="pcg-nucleus" cx="46%" cy="40%" r="56%">
+          <stop offset="0%"   stop-color="var(--color-nucleus-a)"/>
+          <stop offset="10%"  stop-color="var(--color-nucleus-b)"/>
+          <stop offset="25%"  stop-color="var(--color-nucleus-c)"/>
+          <stop offset="100%" stop-color="var(--color-nucleus-d)"/>
+        </radialGradient>
+        <radialGradient id="pcg-flow-base" cx="60%" cy="42%" r="55%">
+          <stop offset="0%"   stop-color="var(--color-flow-a)"/>
           <stop offset="100%" stop-color="rgba(3,8,25,0)"/>
         </radialGradient>
-
-        <!-- G2 — Nucleus: compressed energy, not glowing orb.
-             Bright core occupies only inner 20% of radius — the rest is
-             dark containment zone. Hard transition at 22-40% = compression
-             wall. User subconsciously perceives enormous restrained force.
-             Like a neutron star: impossibly bright at center, then dark. -->
-        <radialGradient id="pcg-nucleus" cx="46%" cy="40%" r="56%">
-          <stop offset="0%"   stop-color="rgba(255,255,255,0.98)"/>
-          <stop offset="10%"  stop-color="rgba(190,245,255,0.95)"/>
-          <stop offset="20%"  stop-color="rgba(56,224,255,0.90)"/>
-          <stop offset="40%"  stop-color="rgba(20,80,200,0.82)"/>
-          <stop offset="65%"  stop-color="rgba(8,25,95,0.85)"/>
-          <stop offset="100%" stop-color="rgba(3,10,45,0.90)"/>
-        </radialGradient>
-
-        <!-- G3 — Flow base: offset radial for directional current impression.
-             Offset cx/cy creates the sense of uneven internal pressure. -->
-        <radialGradient id="pcg-flow-base" cx="60%" cy="42%" r="55%">
-          <stop offset="0%"   stop-color="rgba(56,200,255,0.17)"/>
-          <stop offset="50%"  stop-color="rgba(30,150,255,0.08)"/>
-          <stop offset="100%" stop-color="rgba(20,100,200,0)"/>
-        </radialGradient>
-
-        <!-- G4 — Flow current: highly off-center gradient in a rotating ellipse.
-             As the ellipse rotates, the bright spot travels in a circle around
-             the Core center — creating the vortex circulation visual.
-             This is the biological circulation mechanism, not decoration. -->
         <radialGradient id="pcg-flow-current" cx="68%" cy="28%" r="50%">
-          <stop offset="0%"   stop-color="rgba(80,220,255,0.22)"/>
-          <stop offset="55%"  stop-color="rgba(40,180,255,0.06)"/>
-          <stop offset="100%" stop-color="rgba(20,120,200,0)"/>
+          <stop offset="0%"   stop-color="var(--color-flow-a)"/>
+          <stop offset="100%" stop-color="rgba(3,8,25,0)"/>
         </radialGradient>
-
-        <!-- G5 — Cortex: cool dark navy, distinct from the warm cyan flow field.
-             Luminosity contrast between flow (warm cyan) and cortex (dark navy)
-             creates clear optical plane separation — eye perceives depth.
-             Transparent center (don't obscure nucleus/flow), dark at edge. -->
         <radialGradient id="pcg-cortex" cx="50%" cy="52%" r="52%">
           <stop offset="0%"   stop-color="rgba(0,0,0,0)"/>
-          <stop offset="52%"  stop-color="rgba(8,28,110,0.09)"/>
-          <stop offset="80%"  stop-color="rgba(15,48,155,0.18)"/>
-          <stop offset="100%" stop-color="rgba(22,62,180,0.26)"/>
+          <stop offset="52%"  stop-color="var(--color-nucleus-d)"/>
+          <stop offset="100%" stop-color="var(--color-nucleus-c)"/>
         </radialGradient>
-
-        <!-- G6 — Membrane fill: glass-quality internal depth.
-             Nearly transparent. Membrane appearance comes from stroke + filter,
-             not fill. Offset gradient creates glass lens depth illusion. -->
         <radialGradient id="pcg-membrane" cx="42%" cy="35%" r="65%">
-          <stop offset="0%"   stop-color="rgba(56,224,255,0.04)"/>
-          <stop offset="78%"  stop-color="rgba(30,140,240,0.02)"/>
-          <stop offset="100%" stop-color="rgba(56,224,255,0.09)"/>
+          <stop offset="0%"   stop-color="var(--color-membrane-stroke)"/>
+          <stop offset="100%" stop-color="rgba(3,8,25,0)"/>
         </radialGradient>
-
-        <!-- G7 — Glow emission: luminosity from biological metabolism.
-             Organism radiates energy. At Peak: minimal (nothing is escaping).
-             Center-bright, fades to transparent. -->
         <radialGradient id="pcg-glow" cx="50%" cy="44%" r="56%">
-          <stop offset="0%"   stop-color="rgba(56,224,255,0.40)"/>
-          <stop offset="44%"  stop-color="rgba(40,160,255,0.13)"/>
-          <stop offset="100%" stop-color="rgba(30,100,200,0)"/>
+          <stop offset="0%"   stop-color="var(--color-glow-a)"/>
+          <stop offset="100%" stop-color="var(--color-glow-b)"/>
         </radialGradient>
-
-        <!-- G8 — Lattice: structural lines, fades toward periphery. -->
         <linearGradient id="pcg-lattice" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%"   stop-color="rgba(56,224,255,0.32)"/>
-          <stop offset="100%" stop-color="rgba(30,150,220,0.08)"/>
+          <stop offset="0%"   stop-color="var(--color-nucleus-c)"/>
+          <stop offset="100%" stop-color="rgba(3,8,25,0)"/>
         </linearGradient>
 
-        <!-- G9–G13: State ambient gradients — directional gravity field per state.
-             SVG gradient cx/cy/r cannot be driven by CSS custom properties,
-             so physCoreSetState() switches #pc-ambient's fill attribute directly.
-             The center point encodes where the organism's gravitational mass sits. -->
-
-        <!-- G9 — Ambient: PEAK — precise, minimal. Mass barely displaced. -->
+        <!-- Ambient gradients with dynamic stop-colors -->
+        <radialGradient id="pcg-ambient" cx="50%" cy="60%" r="52%">
+          <stop offset="0%"   stop-color="var(--color-ambient-a)"/>
+          <stop offset="100%" stop-color="rgba(3,8,25,0)"/>
+        </radialGradient>
         <radialGradient id="pcg-ambient-peak" cx="50%" cy="60%" r="52%">
-          <stop offset="0%"   stop-color="rgba(15,42,115,0.40)"/>
-          <stop offset="45%"  stop-color="rgba(8,20,65,0.20)"/>
+          <stop offset="0%"   stop-color="var(--color-ambient-a)"/>
           <stop offset="100%" stop-color="rgba(3,8,25,0)"/>
         </radialGradient>
-
-        <!-- G10 — Ambient: RECOVERY — shadow above center. Buoyant. Rising. -->
         <radialGradient id="pcg-ambient-recovery" cx="50%" cy="38%" r="52%">
-          <stop offset="0%"   stop-color="rgba(15,52,110,0.34)"/>
-          <stop offset="45%"  stop-color="rgba(8,28,60,0.15)"/>
+          <stop offset="0%"   stop-color="var(--color-ambient-a)"/>
           <stop offset="100%" stop-color="rgba(3,8,25,0)"/>
         </radialGradient>
-
-        <!-- G11 — Ambient: FATIGUE — heavy shadow well below center. Sinking. -->
         <radialGradient id="pcg-ambient-fatigue" cx="50%" cy="74%" r="56%">
-          <stop offset="0%"   stop-color="rgba(10,28,85,0.50)"/>
-          <stop offset="42%"  stop-color="rgba(6,14,48,0.28)"/>
+          <stop offset="0%"   stop-color="var(--color-ambient-a)"/>
           <stop offset="100%" stop-color="rgba(3,8,25,0)"/>
         </radialGradient>
-
-        <!-- G12 — Ambient: PAIN — shadow toward lower-left. Asymmetric withdrawal. -->
         <radialGradient id="pcg-ambient-pain" cx="40%" cy="66%" r="54%">
-          <stop offset="0%"   stop-color="rgba(10,25,80,0.46)"/>
-          <stop offset="40%"  stop-color="rgba(6,12,45,0.24)"/>
+          <stop offset="0%"   stop-color="var(--color-ambient-a)"/>
           <stop offset="100%" stop-color="rgba(3,8,25,0)"/>
         </radialGradient>
-
-        <!-- G13 — Ambient: TRAINING — shadow forward-lifted. Energy directed out. -->
         <radialGradient id="pcg-ambient-training" cx="52%" cy="44%" r="50%">
-          <stop offset="0%"   stop-color="rgba(20,50,125,0.38)"/>
-          <stop offset="42%"  stop-color="rgba(10,25,65,0.17)"/>
+          <stop offset="0%"   stop-color="var(--color-ambient-a)"/>
           <stop offset="100%" stop-color="rgba(3,8,25,0)"/>
         </radialGradient>
 
-        <!-- ═══ CLIP ════════════════════════════════════════════════════
-             Core boundary. Slightly non-circular — biological imperfection.
-             rx=110, ry=109: 1px eccentricity, barely perceptible at rest.
-             A perfect circle would look digital. Biology is not perfectly circular. -->
         <clipPath id="pcc-core">
           <ellipse cx="150" cy="152" rx="110" ry="109"/>
         </clipPath>
-
       </defs>
 
-      <!-- ══════════════════════════════════════════════════════════════
-           LAYER 1 — AMBIENT FIELD
-           The biological environment. Not the organism. Its space.
-           Atmospheric depth. Near-static — repaints only on state change.
-           ══════════════════════════════════════════════════════════════ -->
-      <ellipse id="pc-ambient"
-               cx="150" cy="152" rx="148" ry="144"
-               fill="url(#pcg-ambient)"/>
+      <!-- LAYER 1 — AMBIENT FIELD -->
+      <ellipse id="pc-ambient" cx="150" cy="152" rx="148" ry="144" fill="url(#pcg-ambient)"/>
 
-      <!-- ══════════════════════════════════════════════════════════════
-           LAYERS 2–7 — BIOLOGICAL BODY
-           All wrapped in the breath animation group.
-           transform-box: fill-box → transform-origin = geometric center (150,152).
-           Breathing is a scale transform on the entire biological body.
-           ══════════════════════════════════════════════════════════════ -->
+      <!-- LAYERS 2–7 — BIOLOGICAL BODY -->
       <g id="phys-breath-group">
-
-        <!-- ── METABOLIC DRIFT WRAPPER ─────────────────────────────────
-             23700ms outer oscillation layered on breath (7340ms).
-             Three simultaneous periods: drift + breath + nucleus (17230ms).
-             LCM is enormous — organism never repeats visually.
-             Downward Y bias at every keyframe = gravitational mass.      -->
         <g id="phys-meta-drift">
-
-        <!-- ── LAYER 2: NUCLEUS ────────────────────────────────────────
-             Biological center of mass. Energy source. Systemic heartbeat.
-             Position encodes load distribution (Phase 3: drift on fatigue/pain).
-             ────────────────────────────────────────────────────────────── -->
-        <g id="pc-nucleus-layer">
-
-          <!-- Nucleus suspension wrapper: 17230ms micro-drift.
-               Nucleus floats in internal fluid — sub-pixel gravity bias. -->
-          <g id="pc-nucleus-drift-wrap">
-
-          <!-- Nucleus aura: pressure containment field, not ambient glow.
-               r=36 (reduced), opacity=0.28 (reduced) — tight and dense.
-               Looks like energy being held back, not freely radiating.   -->
-          <circle id="pc-nucleus-aura"
-                  cx="150" cy="152" r="36"
-                  fill="url(#pcg-nucleus)"
-                  filter="url(#pcf-nucleus-glow)"
-                  opacity="0.28"/>
-
-          <!-- Nucleus body: compressed plasma core. Enormous force restrained. -->
-          <circle id="pc-nucleus-body"
-                  cx="150" cy="152" r="26"
-                  fill="url(#pcg-nucleus)"/>
-
-          <!-- Pressure lens flare: light escaping through a containment crack.
-               Smaller (7×5), brighter (0.55), harder (blur 2px) than before.
-               Not a soft glow — a hard bright point under containment stress. -->
-          <ellipse id="pc-nucleus-highlight"
-                   cx="145" cy="144" rx="7" ry="5"
-                   fill="rgba(240,255,255,0.55)"
-                   style="filter:blur(2px)"/>
-
-          </g><!-- /pc-nucleus-drift-wrap -->
-
-        </g><!-- /pc-nucleus-layer -->
-
-        <!-- ── LAYER 3: FLOW FIELD ─────────────────────────────────────
-             Internal metabolic circulation. Direction of biological energy.
-             Coherence of internal current = biological health metric.
-             ─────────────────────────────────────────────────────────────→ -->
-        <g id="pc-flow-field-layer" clip-path="url(#pcc-core)">
-
-          <!-- Static base illumination: ambient internal light.
-               Non-rotating. Establishes the base internal glow. -->
-          <circle cx="150" cy="152" r="80"
-                  fill="url(#pcg-flow-base)"
-                  opacity="0.90"/>
-
-          <!-- Rotating directional current: the biological vortex.
-               Off-center gradient (pcg-flow-current) creates the circulation
-               impression as it rotates. The bright spot travels in a circle
-               around Core center (150,152). This is biological circulation,
-               not a spinning logo. flow-period=75000ms at Peak = 75s/rotation. -->
-          <g id="pc-flow-rotate-group">
-            <ellipse cx="150" cy="152" rx="74" ry="44"
-                     fill="url(#pcg-flow-current)"
-                     opacity="0.80"/>
+          <!-- LAYER 2: NUCLEUS -->
+          <g id="pc-nucleus-layer">
+            <g id="pc-nucleus-drift-wrap">
+              <circle id="pc-nucleus-aura" cx="150" cy="152" r="36" fill="url(#pcg-nucleus)" filter="url(#pcf-nucleus-glow)" opacity="0.28"/>
+              <circle id="pc-nucleus-body" cx="150" cy="152" r="26" fill="url(#pcg-nucleus)"/>
+              <ellipse id="pc-nucleus-highlight" cx="145" cy="144" rx="7" ry="5" fill="rgba(240,255,255,0.55)" style="filter:blur(2px)"/>
+            </g>
           </g>
 
-        </g><!-- /pc-flow-field-layer -->
+          <!-- LAYER 3: FLOW FIELD -->
+          <g id="pc-flow-field-layer" clip-path="url(#pcc-core)">
+            <circle cx="150" cy="152" r="80" fill="url(#pcg-flow-base)" opacity="0.90"/>
+            <g id="pc-flow-rotate-group">
+              <ellipse cx="150" cy="152" rx="74" ry="44" fill="url(#pcg-flow-current)" opacity="0.80"/>
+            </g>
+          </g>
 
-        <!-- ── LAYER 4: STRUCTURAL LATTICE ────────────────────────────
-             Biological tensegrity skeleton. 6 radial spokes + hexagonal
-             connector ring at r=70 + inner diamond ring at r=38.
-             All clipped to Core boundary so spokes don't exit the membrane.
-             ────────────────────────────────────────────────────────────── -->
-        <g id="pc-lattice-layer" opacity="0.45" clip-path="url(#pcc-core)">
+          <!-- LAYER 4: STRUCTURAL LATTICE -->
+          <g id="pc-lattice-layer" opacity="0.45" clip-path="url(#pcc-core)">
+            <!-- spokes -->
+            <line x1="150" y1="152" x2="150" y2="54" stroke="url(#pcg-lattice)" stroke-width="0.7" stroke-dasharray="3,8"/>
+            <line x1="150" y1="152" x2="235" y2="103" stroke="url(#pcg-lattice)" stroke-width="0.7" stroke-dasharray="3,8"/>
+            <line x1="150" y1="152" x2="235" y2="201" stroke="url(#pcg-lattice)" stroke-width="0.7" stroke-dasharray="3,8"/>
+            <line x1="150" y1="152" x2="150" y2="250" stroke="url(#pcg-lattice)" stroke-width="0.7" stroke-dasharray="3,8"/>
+            <line x1="150" y1="152" x2="65" y2="201" stroke="url(#pcg-lattice)" stroke-width="0.7" stroke-dasharray="3,8"/>
+            <line x1="150" y1="152" x2="65" y2="103" stroke="url(#pcg-lattice)" stroke-width="0.7" stroke-dasharray="3,8"/>
+            <!-- polygons -->
+            <polygon points="150,82 211,117 211,187 150,222 89,187 89,117" fill="none" stroke="url(#pcg-lattice)" stroke-width="0.7"/>
+            <polygon points="150,114 188,152 150,190 112,152" fill="none" stroke="url(#pcg-lattice)" stroke-width="0.7" opacity="0.65"/>
+            <!-- nodes -->
+            <circle cx="150" cy="82"  r="2.2" fill="var(--color-nucleus-b)"/>
+            <circle cx="211" cy="117" r="2.2" fill="var(--color-nucleus-b)"/>
+            <circle cx="211" cy="187" r="2.2" fill="var(--color-nucleus-b)"/>
+            <circle cx="150" cy="222" r="2.2" fill="var(--color-nucleus-b)"/>
+            <circle cx="89"  cy="187" r="2.2" fill="var(--color-nucleus-b)"/>
+            <circle cx="89"  cy="117" r="2.2" fill="var(--color-nucleus-b)"/>
+            <circle cx="150" cy="152" r="2.8" fill="var(--color-nucleus-b)"/>
+          </g>
 
-          <!-- 6 radial spokes from nucleus center toward membrane boundary.
-               Dashed: biological structures are not rigid solid lines.
-               All directions computed from Core center (150, 152). -->
-          <!-- 0° — superior -->
-          <line x1="150" y1="152" x2="150" y2="54"
-                stroke="url(#pcg-lattice)" stroke-width="0.7" stroke-dasharray="3,8"/>
-          <!-- 60° — superior-right -->
-          <line x1="150" y1="152" x2="235" y2="103"
-                stroke="url(#pcg-lattice)" stroke-width="0.7" stroke-dasharray="3,8"/>
-          <!-- 120° — inferior-right -->
-          <line x1="150" y1="152" x2="235" y2="201"
-                stroke="url(#pcg-lattice)" stroke-width="0.7" stroke-dasharray="3,8"/>
-          <!-- 180° — inferior -->
-          <line x1="150" y1="152" x2="150" y2="250"
-                stroke="url(#pcg-lattice)" stroke-width="0.7" stroke-dasharray="3,8"/>
-          <!-- 240° — inferior-left -->
-          <line x1="150" y1="152" x2="65" y2="201"
-                stroke="url(#pcg-lattice)" stroke-width="0.7" stroke-dasharray="3,8"/>
-          <!-- 300° — superior-left -->
-          <line x1="150" y1="152" x2="65" y2="103"
-                stroke="url(#pcg-lattice)" stroke-width="0.7" stroke-dasharray="3,8"/>
+          <!-- LAYER 5: CORTEX -->
+          <circle id="pc-cortex-layer" cx="150" cy="152" r="92" fill="url(#pcg-cortex)" filter="url(#pcf-cortex)" opacity="0.50"/>
 
-          <!-- Hexagonal connector ring at r=70.
-               Vertices at 0°/60°/120°/180°/240°/300° from Core center. -->
-          <polygon points="150,82 211,117 211,187 150,222 89,187 89,117"
-                   fill="none"
-                   stroke="url(#pcg-lattice)" stroke-width="0.7"/>
+          <!-- LAYER 6: MEMBRANE -->
+          <ellipse id="pc-membrane-body" cx="150" cy="152" rx="109" ry="108" fill="none" stroke="var(--color-membrane-stroke)" stroke-width="1.1" filter="url(#pcf-membrane)"/>
+          <ellipse id="pc-membrane-inner-edge" cx="150" cy="152" rx="106" ry="105" fill="none" stroke="rgba(180,240,255,0.11)" stroke-width="0.8"/>
 
-          <!-- Inner diamond ring at r=38.
-               Vertices at 0°/90°/180°/270° — interlocks with hex ring visually. -->
-          <polygon points="150,114 188,152 150,190 112,152"
-                   fill="none"
-                   stroke="url(#pcg-lattice)" stroke-width="0.7" opacity="0.65"/>
-
-          <!-- Lattice nodes at hex ring vertices: 6 structural anchor points. -->
-          <circle cx="150" cy="82"  r="2.2" fill="rgba(56,224,255,0.52)"/>
-          <circle cx="211" cy="117" r="2.2" fill="rgba(56,224,255,0.52)"/>
-          <circle cx="211" cy="187" r="2.2" fill="rgba(56,224,255,0.52)"/>
-          <circle cx="150" cy="222" r="2.2" fill="rgba(56,224,255,0.52)"/>
-          <circle cx="89"  cy="187" r="2.2" fill="rgba(56,224,255,0.52)"/>
-          <circle cx="89"  cy="117" r="2.2" fill="rgba(56,224,255,0.52)"/>
-
-          <!-- Central nucleus node: marks biological center of mass. -->
-          <circle cx="150" cy="152" r="2.8" fill="rgba(56,224,255,0.38)"/>
-
-        </g><!-- /pc-lattice-layer -->
-
-        <!-- ── LAYER 5: CORTEX ─────────────────────────────────────────
-             Biological damping layer. Absorbs and distributes disturbances
-             from inner layers before they reach the Membrane surface.
-             High blur = effective biological damping = healthy organism.
-             ─────────────────────────────────────────────────────────────→ -->
-        <circle id="pc-cortex-layer"
-                cx="150" cy="152" r="92"
-                fill="url(#pcg-cortex)"
-                filter="url(#pcf-cortex)"
-                opacity="0.50"/>
-
-        <!-- ── LAYER 6: MEMBRANE ───────────────────────────────────────
-             Outermost biological containment. Organism's skin.
-             feTurbulence displacement creates organic, non-perfect-circle
-             surface — the biological imperfection that separates this from
-             any digital badge or UI element.
-             Two strokes: outer (main edge) + inner (glass thickness illusion).
-             ─────────────────────────────────────────────────────────────→ -->
-
-        <!-- Membrane body: slightly non-circular for biological truth.
-             rx=109, ry=108: 1px eccentricity visible at scale. -->
-        <ellipse id="pc-membrane-body"
-                 cx="150" cy="152" rx="109" ry="108"
-                 fill="url(#pcg-membrane)"
-                 stroke="rgba(56,224,255,0.30)"
-                 stroke-width="1.1"
-                 filter="url(#pcf-membrane)"/>
-
-        <!-- Inner glass edge: 3px inset from outer membrane.
-             Creates the double-line glass thickness illusion.
-             No filter — this is the crisp inner edge of the glass. -->
-        <ellipse id="pc-membrane-inner-edge"
-                 cx="150" cy="152" rx="106" ry="105"
-                 fill="none"
-                 stroke="rgba(180,240,255,0.11)"
-                 stroke-width="0.8"/>
-
-        <!-- ── LAYER 7: GLOW LAYER ─────────────────────────────────────
-             Luminosity emission. Biological energy radiation.
-             mix-blend-mode: screen — adds light without obscuring depth.
-             At Peak: minimal (0.28 opacity). Nothing is escaping.
-             Synchronized with breath: brightens at peak expansion.
-             Promoted to compositor layer via will-change: opacity.
-             ─────────────────────────────────────────────────────────────→ -->
-        <ellipse id="pc-glow-layer"
-                 cx="150" cy="152" rx="109" ry="108"
-                 fill="url(#pcg-glow)"
-                 filter="url(#pcf-glow)"
-                 opacity="0.28"/>
-
-        </g><!-- /phys-meta-drift -->
-
-      </g><!-- /phys-breath-group -->
-
+          <!-- LAYER 7: GLOW LAYER -->
+          <ellipse id="pc-glow-layer" cx="150" cy="152" rx="109" ry="108" fill="url(#pcg-glow)" filter="url(#pcf-glow)" opacity="0.28"/>
+        </g>
+      </g>
     </svg>
   </div>
-  <div id="phys-state-label"></div>
-  <div class="phys-tele-wrap" id="phys-tele-wrap">
-    <div class="tele-badge tele-badge-cns" id="tele-cns">
-      <span class="tb-val" id="tele-cns-val">—</span>
-      CNS
-    </div>
-    <div class="tele-badge tele-badge-rec" id="tele-rec">
-      <span class="tb-val" id="tele-rec-val">—</span>
-      RECOVERY
-    </div>
-  </div>
-</div><!-- /phys-core-stage -->
-
-<!-- chat-box and input moved into #coach-island .ci-consultation below -->
+</div>
 
 <!-- DISCLAIMER MODAL (shown ONCE before first paid checkout) -->
 <div id="disclaimer-modal">
@@ -2680,6 +2686,23 @@ const T={
     copy:'Copy plan',pdf:'Save PDF',
     terms:'Terms',privacy:'Privacy',medical:'Medical',contact:'Contact',close:'Close',
     'pw-back':'Back to chat',
+    'tele-cns': 'CNS OUTPUT',
+    'tele-cns-sub': 'Nervous system capacity',
+    'tele-readiness': 'READINESS',
+    'tele-readiness-sub': 'Optimal training window',
+    'tele-recovery': 'RECOVERY',
+    'tele-recovery-sub': 'Cellular rebuilding status',
+    'tele-load': 'TODAY\'S LOAD',
+    'tele-load-sub': 'Exertion metrics',
+    'tele-goal': 'ACTIVE GOAL',
+    'tele-goal-sub': 'Target objective',
+    'core-eyebrow-text': 'PHYSIOLOGICAL STATUS',
+    'ci-back': '← BACK',
+    'state-peak': 'PEAK',
+    'state-ready': 'READY',
+    'state-recovery': 'RECOVERY',
+    'state-fatigue': 'FATIGUE',
+    'state-pain': 'PAIN',
     'disc-title':'Before you begin',
     'disc-text':'APEX PULSE PRO is an AI assistant for informational purposes only. I am not a doctor, dietitian or personal trainer. All plans are general guidance, not individual medical advice.',
     'disc-l1':'Consult a doctor before starting a diet or exercise plan',
@@ -2753,6 +2776,8 @@ function applyStaticLang(){
   document.getElementById('pw-subheadline').innerText=d.pw_sub;
   updateBadge();
   updateGoalBar();
+  _ciShowTelemetry();
+  _ciUpdateState();
 }
 
 let count=parseInt(localStorage.getItem('apexCount')||'0',10);
@@ -3813,9 +3838,6 @@ function closeWorkout(){
   clearInterval(_woTimer);_woTimer=null;
   _wo=null;
   try{localStorage.removeItem('apexWo');}catch(e){}
-  const _stage=document.getElementById('phys-core-stage');
-  const _core=document.getElementById('phys-core');
-  if(_stage&&_core&&_core.parentElement!==_stage)_stage.appendChild(_core);
   _ccRestoreLayout();
   document.getElementById('workout-overlay').classList.remove('active');
   document.body.style.overflow='';
@@ -3845,6 +3867,7 @@ function _woRender(){
   else if(_wo.phase==='hr')_woRenderHr(b);
   else if(_wo.phase==='done')_woRenderDone(b);
   else if(_wo.phase==='recovery')_woRenderRecovery(b);
+  _physSyncLayout();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3901,11 +3924,7 @@ function _ccRestoreLayout(){
 // Rescues #phys-core into the persistent #wo-organism-slot that lives outside
 // #wo-body, so it survives every b.innerHTML replacement.
 function _ccEnsureOrganism(){
-  const overlay = document.getElementById('workout-overlay');
-  const isCcActive = overlay && overlay.classList.contains('cc-active');
-  const _slot = document.getElementById(isCcActive ? 'cc-core-slot' : 'wo-organism-slot');
-  const _core = document.getElementById('phys-core');
-  if(_slot&&_core&&_core.parentElement!==_slot)_slot.appendChild(_core);
+  _physSyncLayout();
 }
 
 function _ccIntensity(){
@@ -4263,15 +4282,9 @@ function _woRenderEx(b){
     document.getElementById('workout-overlay').classList.add('cc-active');
     const reps=Math.max(1,ex.baseReps+ex.repDelta);
     b.innerHTML=_ccCard(ex,renderer.meta,reps,_wo.si,ex.sets,renderer.key);
-    
-    // Mount the core organism into the card slot
-    const _slot=document.getElementById('cc-core-slot');
-    const _core=document.getElementById('phys-core');
-    if(_slot&&_core&&_core.parentElement!==_slot)_slot.appendChild(_core);
   } else {
     document.getElementById('workout-overlay').classList.remove('cc-active');
     b.innerHTML=_woRenderLegacyEx(ex);
-    _ccEnsureOrganism(); // Safely docks organism to background slot
   }
 }
 
@@ -7190,6 +7203,7 @@ function _brainNotifySessionEnd() {
 function setAppState(state){
   document.body.classList.remove('state-overview','state-consultation','state-laboratory');
   document.body.classList.add('state-'+state);
+  _physSyncLayout();
 }
 
 function ciStartProtocol(){
@@ -7211,50 +7225,76 @@ function ciStartProtocol(){
    Q3 — primary CTA label (what is the single best next action) */
 function _ciUpdateState(){
   try{
-    // State comes from the Brain (intent classifier), not the BSE renderer.
     const intent=apexBrain.intent;
     const state=intent?.state||'peak';
 
-    // Derive human-readable metrics from actual BSE output properties.
     const sig=apexBSE.getSignature();
-    const readiness=Math.round(((sig.pulseAmplitude||.55)*.40+(sig.cellularActivity||.55)*.40+(sig.glowPersistence||.50)*.20)*100);
     const recovery =Math.round((1-(sig.flowViscosity||.45))*100);
 
     const MAP={
-      peak:{
-        label:'PEAK READINESS',cls:'state-peak',
-        brief:`Readiness index ${readiness}%. Recovery at ${recovery}%. Your nervous system is operating at capacity. This is your optimal training window.`,
-        cta:'START PROTOCOL'
+      en:{
+        peak:{
+          label:'PEAK READINESS',
+          brief:`Recovery at ${recovery}%. Your nervous system is operating at capacity. This is your optimal training window.`,
+          cta:'START PROTOCOL'
+        },
+        recovery:{
+          label:'RECOVERY MODE',
+          brief:`Recovery at ${recovery}%. Your body is actively rebuilding. Light movement and nutrition today will maximize tomorrow's output.`,
+          cta:'RECOVERY PROTOCOL'
+        },
+        fatigue:{
+          label:'FATIGUE DETECTED',
+          brief:`Accumulated load detected. Pushing through will compound the deficit — rest is today's highest-performance choice.`,
+          cta:'REST PROTOCOL'
+        },
+        pain:{
+          label:'OVERLOAD WARNING',
+          brief:`Overload signal detected. Continuing training risks extending recovery by days. Immediate rest protocol recommended.`,
+          cta:'VIEW RECOVERY'
+        },
+        training:{
+          label:'SESSION ACTIVE',
+          brief:`Training session in progress. Performance data is being tracked live.`,
+          cta:'RESUME SESSION'
+        }
       },
-      recovery:{
-        label:'RECOVERY MODE',cls:'state-recovery',
-        brief:`Recovery at ${recovery}%. Your body is actively rebuilding. Light movement and nutrition today will maximize tomorrow's output.`,
-        cta:'RECOVERY PROTOCOL'
-      },
-      fatigue:{
-        label:'FATIGUE DETECTED',cls:'state-fatigue',
-        brief:`Accumulated load detected. Readiness at ${readiness}%. Pushing through will compound the deficit — rest is today's highest-performance choice.`,
-        cta:'REST PROTOCOL'
-      },
-      pain:{
-        label:'OVERLOAD WARNING',cls:'state-pain',
-        brief:`Overload signal detected. Continuing training risks extending recovery by days. Immediate rest protocol recommended.`,
-        cta:'VIEW RECOVERY'
-      },
-      training:{
-        label:'SESSION ACTIVE',cls:'state-peak',
-        brief:`Training session in progress. Performance data is being tracked live.`,
-        cta:'RESUME SESSION'
+      bg:{
+        peak:{
+          label:'ПИКОВА ГОТОВНОСТ',
+          brief:`Възстановяване на ${recovery}%. Нервната система работи на пълен капацитет. Оптимален прозорец за тренировка.`,
+          cta:'СТАРТИРАЙ ПРОТОКОЛ'
+        },
+        recovery:{
+          label:'РЕЖИМ ВЪЗСТАНОВЯВАНЕ',
+          brief:`Възстановяване на ${recovery}%. Тялото се възстановява активно. Леко натоварване днес ще максимизира утрешните резултати.`,
+          cta:'ПРОТОКОЛ ЗА ВЪЗСТАНОВЯВАНЕ'
+        },
+        fatigue:{
+          label:'ЗАСЕЧЕНА УМОРА',
+          brief:`Засечено натрупано натоварване. Почивката е най-добрият избор за днес.`,
+          cta:'ПРОТОКОЛ ЗА ПОЧИВКА'
+        },
+        pain:{
+          label:'ПРЕДУПРЕЖДЕНИЕ ЗА ПРЕТОВАРВАНЕ',
+          brief:`Сигнал за претоварване. Продължаването на тренировките крие риск от травми. Препоръчва се незабавна почивка.`,
+          cta:'ВИЖ ВЪЗСТАНОВЯВАНЕТО'
+        },
+        training:{
+          label:'АКТИВНА ТРЕНИРОВКА',
+          brief:`Тренировката е в ход. Показателите се проследяват в реално време.`,
+          cta:'ПОДНОВИ ТРЕНИРОВКАТА'
+        }
       }
     };
 
-    const s=MAP[state]||MAP.peak;
+    const s=MAP[lang]?.[state] || MAP.en.peak;
     const badge=document.getElementById('ci-state-badge');
     const stateText=document.getElementById('ci-state-text');
     const brief=document.getElementById('ci-brief-text');
     const cta=document.getElementById('ci-protocol-btn');
 
-    if(badge)badge.className='ci-state-badge '+s.cls;
+    if(badge)badge.className='ci-state-badge state-'+state;
     if(stateText)stateText.textContent=s.label;
     if(brief)brief.textContent=s.brief;
     if(cta)cta.textContent=s.cta;
@@ -7272,23 +7312,82 @@ function _ciUpdateBrief(){
 }
 
 function _ciShowTelemetry(){
-  const cns=document.getElementById('tele-cns');
-  const rec=document.getElementById('tele-rec');
-  if(!cns||!rec)return;
   try{
     const sig=apexBSE.getSignature();
     if(sig){
-      // Derive from actual BSE output: neural readiness from metabolic + cellular activity;
-      // recovery index from inverse of flow viscosity (less viscosity = faster recovery).
-      const neural=Math.round(((sig.pulseAmplitude||.55)*.50+(sig.cellularActivity||.55)*.50)*100);
-      const recov =Math.round((1-(sig.flowViscosity||.45))*100);
-      document.getElementById('tele-cns-val').textContent=neural+'%';
-      document.getElementById('tele-rec-val').textContent=recov+'%';
+      const recov = Math.round((1-(sig.flowViscosity||.45))*100);
+      const recValEl = document.getElementById('card-recovery-val');
+      if (recValEl) recValEl.textContent = recov + '%';
+    }
+    
+    // CNS and Readiness show "—"
+    const cnsValEl = document.getElementById('card-cns-val');
+    if (cnsValEl) cnsValEl.textContent = '—';
+    
+    const readinessValEl = document.getElementById('card-readiness-val');
+    if (readinessValEl) readinessValEl.textContent = '—';
+    
+    // Today's Load shows "—"
+    const loadValEl = document.getElementById('card-load-val');
+    if (loadValEl) loadValEl.textContent = '—';
+    
+    // Goal drives from profile
+    let pf={};
+    try {
+      pf = JSON.parse(localStorage.getItem('apexProfile') || '{}');
+    } catch(e){}
+    const goalVal = pf.goal || 'fitness';
+    const goalValEl = document.getElementById('card-goal-val');
+    if (goalValEl) {
+      if (lang === 'en') {
+        if(goalVal === 'gain') goalValEl.textContent = 'BUILD';
+        else if(goalVal === 'cut') goalValEl.textContent = 'LEAN';
+        else if(goalVal === 'maintain') goalValEl.textContent = 'MAINTAIN';
+        else goalValEl.textContent = 'FITNESS';
+      } else {
+        if(goalVal === 'gain') goalValEl.textContent = 'СИЛА';
+        else if(goalVal === 'cut') goalValEl.textContent = 'РЕФЛЕКС';
+        else if(goalVal === 'maintain') goalValEl.textContent = 'ТОНУС';
+        else goalValEl.textContent = 'ФИТНЕС';
+      }
     }
   }catch(e){}
-  setTimeout(()=>{ cns.classList.add('tb-show'); rec.classList.add('tb-show'); },600);
 }
 /* ─────────────────────────────────────────────────────────────── */
+
+function _physSyncLayout() {
+  const core = document.getElementById('phys-core');
+  if (!core) return;
+  
+  let activeSlot = null;
+  const overlay = document.getElementById('workout-overlay');
+  const isWorkout = overlay && overlay.classList.contains('active');
+  const isCcActive = overlay && overlay.classList.contains('cc-active');
+  const isConsultation = document.body.classList.contains('state-consultation');
+  
+  if (isWorkout) {
+    if (isCcActive) {
+      activeSlot = document.getElementById('cc-core-slot');
+    } else {
+      activeSlot = document.getElementById('wo-organism-slot');
+    }
+  } else if (isConsultation) {
+    activeSlot = document.getElementById('overview-core-slot');
+  } else {
+    activeSlot = document.getElementById('overview-core-slot');
+  }
+  
+  if (activeSlot) {
+    const rect = activeSlot.getBoundingClientRect();
+    core.style.left = `${rect.left + rect.width / 2}px`;
+    core.style.top = `${rect.top + rect.height / 2}px`;
+    core.style.width = `${rect.width}px`;
+    core.style.height = `${rect.height}px`;
+    core.style.opacity = '1';
+  } else {
+    core.style.opacity = '0';
+  }
+}
 
 document.addEventListener('DOMContentLoaded', function() {
   box = document.getElementById('chat-box');
@@ -7317,7 +7416,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // V2: set initial shell state, then surface BSE answers into Coach Island
   setAppState('overview');
-  setTimeout(()=>{ _ciShowTelemetry(); _ciUpdateState(); }, 1200);
+  _physSyncLayout();
+  setTimeout(()=>{ _ciShowTelemetry(); _ciUpdateState(); _physSyncLayout(); }, 1200);
+
+  // Set layout sync listeners
+  window.addEventListener('resize', _physSyncLayout);
+  window.addEventListener('scroll', _physSyncLayout);
 });
 </script>
 
