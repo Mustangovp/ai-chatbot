@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>APEX — Your living AI coach</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="/static/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;700;900&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════════════════════
+   APEX V3 — AI OPERATING SYSTEM
+   Visual DNA inherited from the approved landing page.
+   The application is the landing page, alive.
+   ═══════════════════════════════════════════════════════════════════ */
+:root{
+  --bg:#0B0E14; --bg-deep:#070910; --surface:#121724; --surface2:#1A2133;
+  --text:#F2F5FA; --muted:#8B93A7; --faint:#5A6276;
+  --border:rgba(255,255,255,0.10);
+  --brand:#F5212D; --ember:#FF6A3C; --gold:#FFB13C;
+  --cyan:#38E0FF; --lime:#B6FF3C;
+  --pulse:linear-gradient(90deg,#F5212D,#FF6A3C);
+  --radius:20px;
+  --ease:cubic-bezier(.2,.7,.2,1);
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;overflow:hidden;}
+body{
+  background:var(--bg-deep); color:var(--text);
+  font-family:'Manrope',sans-serif; line-height:1.6;
+  -webkit-font-smoothing:antialiased; position:fixed; inset:0;
+}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit;}
+input,textarea{font-family:inherit;}
+::selection{background:rgba(245,33,45,.3);}
+
+/* ── THE STAGE: one continuous cinematic space ───────────────────── */
+#stage{position:fixed;inset:0;overflow:hidden;}
+
+/* faint editorial grid — from landing hero */
+#grid{position:absolute;inset:0;z-index:1;pointer-events:none;
+  background-image:linear-gradient(rgba(255,255,255,.020) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.020) 1px,transparent 1px);
+  background-size:64px 64px;
+  -webkit-mask-image:radial-gradient(ellipse at center,#000 25%,transparent 72%);
+  mask-image:radial-gradient(ellipse at center,#000 25%,transparent 72%);}
+
+/* the living organism canvas — the hero, full viewport */
+#core{position:absolute;inset:0;z-index:2;display:block;width:100%;height:100%;}
+
+/* cinematic vignette + grain over the core */
+#vignette{position:absolute;inset:0;z-index:3;pointer-events:none;
+  background:radial-gradient(ellipse 75% 65% at center 46%,transparent 30%,rgba(7,9,16,.55) 78%,rgba(7,9,16,.92) 100%);}
+#grain{position:absolute;inset:-50%;z-index:4;pointer-events:none;opacity:.035;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  animation:grain 6s steps(6) infinite;}
+@keyframes grain{0%{transform:translate(0,0)}20%{transform:translate(-4%,3%)}40%{transform:translate(3%,-4%)}60%{transform:translate(-3%,2%)}80%{transform:translate(4%,3%)}100%{transform:translate(0,0)}}
+
+/* ── UI LAYER ─────────────────────────────────────────────────────── */
+#ui{position:fixed;inset:0;z-index:10;display:flex;flex-direction:column;pointer-events:none;}
+#ui > *{pointer-events:auto;}
+
+/* TOP BAR — minimal, inherits landing nav */
+.topbar{display:flex;align-items:center;justify-content:space-between;
+  padding:18px 24px;gap:12px;}
+.brand{display:flex;align-items:center;gap:11px;text-decoration:none;}
+.brand img{width:32px;height:32px;filter:drop-shadow(0 0 10px rgba(245,33,45,.55));}
+.brand .bt{font-family:'Unbounded';font-weight:700;font-size:14px;letter-spacing:.5px;line-height:1.1;}
+.brand .bt .rd{color:var(--brand);}
+.brand .bs{font-size:8.5px;font-weight:700;letter-spacing:1.6px;color:var(--faint);text-transform:uppercase;}
+.top-right{display:flex;align-items:center;gap:8px;}
+.pill{display:inline-flex;align-items:center;gap:7px;font-family:'Unbounded';font-weight:700;
+  font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);
+  background:rgba(18,23,36,.55);border:1px solid var(--border);
+  padding:8px 13px;border-radius:30px;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  transition:border-color .2s,color .2s,transform .15s;}
+.pill:hover{border-color:rgba(255,255,255,.22);color:var(--text);transform:translateY(-1px);}
+.pill.live::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--lime);box-shadow:0 0 8px rgba(182,255,60,.8);animation:blink 1.8s infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.pill .pv{color:var(--gold);}
+
+/* CENTER ZONE — where the organism lives, and where state copy floats */
+.center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:20px;text-align:center;position:relative;}
+
+/* OVERVIEW state copy */
+#overview{display:flex;flex-direction:column;align-items:center;gap:0;
+  transition:opacity .7s var(--ease),transform .7s var(--ease);}
+.eyebrow{display:inline-flex;align-items:center;gap:12px;font-weight:800;font-size:10.5px;
+  letter-spacing:3.2px;text-transform:uppercase;color:var(--gold);margin-bottom:22px;}
+.eyebrow::before,.eyebrow::after{content:'';width:28px;height:1px;background:linear-gradient(90deg,transparent,rgba(255,177,60,.55),transparent);}
+#read-state{font-family:'Unbounded';font-weight:700;font-size:clamp(26px,5.4vw,46px);
+  line-height:1.04;letter-spacing:-.02em;max-width:14ch;
+  background:linear-gradient(90deg,#F2F5FA,#cfd6e6);-webkit-background-clip:text;background-clip:text;color:transparent;}
+#read-sub{color:#A0A6B8;font-size:clamp(14px,1.7vw,16.5px);font-weight:500;
+  max-width:30ch;margin:18px auto 0;line-height:1.5;}
+.metrics{display:flex;gap:10px;margin-top:30px;flex-wrap:wrap;justify-content:center;}
+.metric{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:74px;
+  background:rgba(18,23,36,.4);border:1px solid var(--border);border-radius:14px;padding:11px 16px;
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);}
+.metric .mv{font-family:'Unbounded';font-weight:700;font-size:18px;}
+.metric .ml{font-size:9px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:var(--faint);}
+.metric.rec .mv{color:var(--lime);} .metric.fat .mv{color:var(--gold);} .metric.str .mv{color:var(--ember);}
+
+/* PRIMARY CTA — landing pulse button */
+.cta{margin-top:36px;background:var(--pulse);color:#fff;font-weight:800;font-size:15.5px;
+  padding:16px 40px;border-radius:40px;box-shadow:0 10px 34px rgba(245,33,45,.42);
+  letter-spacing:.3px;transition:transform .15s,box-shadow .15s;display:inline-flex;align-items:center;gap:10px;}
+.cta:hover{transform:translateY(-2px);box-shadow:0 14px 42px rgba(245,33,45,.55);}
+.cta:active{transform:scale(.97);}
+.cta .arr{transition:transform .2s;}.cta:hover .arr{transform:translateX(4px);}
+.ghost-link{margin-top:18px;font-size:12.5px;color:var(--muted);font-weight:600;
+  background:none;letter-spacing:.2px;transition:color .2s;}
+.ghost-link:hover{color:var(--cyan);}
+
+/* ── CONSULTATION (chat) — the organism recedes, conversation surfaces ── */
+#consult{position:absolute;inset:0;z-index:11;display:none;flex-direction:column;pointer-events:none;}
+#consult.on{display:flex;}
+#consult > *{pointer-events:auto;}
+.consult-head{display:flex;align-items:center;justify-content:center;gap:12px;padding:64px 20px 8px;position:relative;}
+.consult-head .ch-label{font-family:'Unbounded';font-weight:600;font-size:11px;letter-spacing:2.4px;text-transform:uppercase;color:var(--cyan);}
+.back-btn{position:absolute;left:20px;top:60px;font-family:'Unbounded';font-weight:600;font-size:11px;letter-spacing:1.4px;
+  color:var(--muted);display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:30px;
+  border:1px solid var(--border);background:rgba(18,23,36,.5);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);transition:.2s;}
+.back-btn:hover{color:var(--text);border-color:rgba(255,255,255,.2);}
+
+#feed{flex:1;overflow-y:auto;overflow-x:hidden;width:100%;max-width:680px;margin:0 auto;
+  padding:18px 22px 8px;display:flex;flex-direction:column;gap:18px;scroll-behavior:smooth;}
+#feed::-webkit-scrollbar{width:5px;}
+#feed::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:3px;}
+.msg{max-width:90%;font-size:14.5px;line-height:1.62;animation:rise .5s var(--ease) both;}
+@keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.msg.u{align-self:flex-end;text-align:left;background:var(--surface2);border:1px solid rgba(245,33,45,.25);
+  border-right:3px solid var(--brand);border-radius:16px 16px 6px 16px;padding:12px 16px;color:#fff;font-weight:500;}
+.msg.a{align-self:flex-start;color:#E5E9F2;}
+.msg.a .who{font-family:'Unbounded';font-weight:600;font-size:10px;letter-spacing:1.8px;text-transform:uppercase;
+  color:var(--brand);margin-bottom:7px;display:flex;align-items:center;gap:7px;}
+.msg.a .who::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--brand);box-shadow:0 0 8px rgba(245,33,45,.7);}
+.msg.a .body{background:linear-gradient(135deg,rgba(18,23,36,.92),rgba(26,33,51,.86));
+  border:1px solid var(--border);border-left:3px solid var(--brand);border-radius:6px 16px 16px 16px;
+  padding:14px 17px;}
+.msg.a .body strong{color:#fff;font-weight:700;}
+.msg.a .body h4{font-family:'Unbounded';font-weight:600;font-size:13px;letter-spacing:.4px;margin:12px 0 6px;color:var(--gold);}
+.msg.a .body ul{margin:6px 0 6px 2px;list-style:none;}
+.msg.a .body li{padding:3px 0 3px 16px;position:relative;}
+.msg.a .body li::before{content:'';position:absolute;left:0;top:11px;width:5px;height:5px;border-radius:50%;background:var(--ember);}
+.msg.a .body p{margin:6px 0;}
+
+.greet{align-self:stretch;max-width:680px;margin:0 auto;text-align:center;}
+.greet h3{font-family:'Unbounded';font-weight:700;font-size:clamp(20px,3.6vw,28px);letter-spacing:-.01em;margin-bottom:8px;}
+.greet h3 .grad{background:linear-gradient(90deg,#F5212D,#FF6A3C 50%,#FFB13C);-webkit-background-clip:text;background-clip:text;color:transparent;}
+.greet p{color:var(--muted);font-size:14px;}
+.greet .goalrow{margin-top:6px;color:var(--cyan);font-weight:700;font-size:14px;}
+.chips{display:flex;flex-wrap:wrap;gap:9px;justify-content:center;margin-top:22px;}
+.chip{font-size:13px;font-weight:600;color:var(--text);background:rgba(26,33,51,.7);
+  border:1px solid var(--border);border-radius:30px;padding:10px 16px;transition:.18s;backdrop-filter:blur(8px);}
+.chip:hover{border-color:rgba(245,33,45,.5);background:rgba(245,33,45,.10);transform:translateY(-1px);}
+
+.typing{align-self:flex-start;display:inline-flex;align-items:center;gap:8px;padding:11px 16px;
+  background:rgba(18,23,36,.8);border:1px solid var(--border);border-radius:16px;border-bottom-left-radius:5px;}
+.typing .tl{font-family:'Unbounded';font-weight:600;font-size:9.5px;letter-spacing:1.8px;color:var(--muted);}
+.typing i{width:6px;height:6px;border-radius:50%;background:var(--brand);animation:tp 1.2s infinite;}
+.typing i:nth-child(3){animation-delay:.2s;background:var(--ember);}
+.typing i:nth-child(4){animation-delay:.4s;background:var(--gold);}
+@keyframes tp{0%,100%{transform:translateY(0);opacity:.4}50%{transform:translateY(-4px);opacity:1}}
+
+/* INPUT BAR — floating goal-line pill from landing */
+.inputbar{width:100%;max-width:680px;margin:0 auto;padding:12px 22px calc(18px + env(safe-area-inset-bottom));}
+.input-wrap{display:flex;gap:10px;align-items:center;background:var(--surface);
+  border:1px solid rgba(255,255,255,.13);border-radius:18px;padding:8px 8px 8px 18px;
+  box-shadow:0 14px 50px rgba(0,0,0,.5);transition:border-color .2s,box-shadow .2s;}
+.input-wrap:focus-within{border-color:rgba(245,33,45,.5);box-shadow:0 14px 50px rgba(0,0,0,.5),0 0 0 3px rgba(245,33,45,.12);}
+#user-in{flex:1;background:none;border:none;outline:none;color:var(--text);font-size:15px;font-weight:500;padding:8px 0;}
+#user-in::placeholder{color:var(--faint);}
+.send-btn{width:46px;height:46px;border-radius:14px;background:var(--pulse);color:#fff;font-size:18px;
+  display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(245,33,45,.42);
+  flex-shrink:0;transition:transform .15s,opacity .2s;}
+.send-btn:hover{transform:translateY(-1px);}.send-btn:active{transform:scale(.92);}
+
+/* ── MODAL system ─────────────────────────────────────────────────── */
+.modal{position:fixed;inset:0;z-index:50;display:none;align-items:center;justify-content:center;padding:20px;
+  background:rgba(5,7,13,.75);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);}
+.modal.on{display:flex;animation:fade .3s ease;}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.sheet{width:100%;max-width:440px;max-height:88vh;overflow-y:auto;background:linear-gradient(160deg,var(--surface),var(--bg));
+  border:1px solid var(--border);border-radius:24px;padding:30px 26px;box-shadow:0 40px 100px rgba(0,0,0,.7);
+  animation:pop .4s var(--ease);}
+@keyframes pop{from{opacity:0;transform:translateY(20px) scale(.97)}to{opacity:1;transform:none}}
+.sheet h2{font-family:'Unbounded';font-weight:700;font-size:22px;letter-spacing:-.01em;margin-bottom:6px;}
+.sheet .sd{color:var(--muted);font-size:13.5px;margin-bottom:22px;}
+.field{margin-bottom:16px;}
+.field label{display:block;font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--faint);margin-bottom:7px;}
+.field input,.field select{width:100%;background:var(--surface2);border:1.5px solid var(--border);border-radius:12px;
+  padding:13px 14px;color:var(--text);font-size:14.5px;font-weight:500;outline:none;transition:border-color .2s;}
+.field input:focus,.field select:focus{border-color:rgba(245,33,45,.5);}
+.field select{appearance:none;-webkit-appearance:none;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M0 0l5 6 5-6z' fill='%23F5212D'/></svg>");
+  background-repeat:no-repeat;background-position:right 14px center;}
+.f2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.sheet .save{width:100%;margin-top:10px;background:var(--pulse);color:#fff;font-weight:800;font-size:15.5px;
+  padding:15px;border-radius:14px;box-shadow:0 8px 28px rgba(245,33,45,.4);transition:transform .15s;}
+.sheet .save:hover{transform:translateY(-1px);}
+.sheet .mlink{display:block;width:100%;text-align:center;margin-top:14px;font-size:12.5px;color:var(--muted);font-weight:600;}
+.sheet .mlink:hover{color:var(--text);}
+.sheet .mlink.danger:hover{color:var(--brand);}
+
+/* daily-limit + generic notice */
+.notice-ico{font-size:34px;text-align:center;margin-bottom:14px;}
+
+/* toast */
+#toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%) translateY(20px);z-index:90;
+  background:var(--surface2);border:1px solid var(--border);border-left:3px solid var(--lime);
+  padding:13px 20px;border-radius:14px;font-size:13.5px;font-weight:600;opacity:0;pointer-events:none;
+  transition:opacity .3s,transform .3s;box-shadow:0 14px 40px rgba(0,0,0,.5);max-width:90vw;}
+#toast.on{opacity:1;transform:translateX(-50%) translateY(0);}
+
+@media(max-width:560px){
+  .topbar{padding:14px 16px;}
+  .brand .bs{display:none;}
+  #read-state{font-size:clamp(24px,7vw,34px);}
+  .metric{min-width:64px;padding:9px 12px;}
+  .back-btn{top:54px;}
+  .consult-head{padding:56px 20px 6px;}
+}
+</style>
+</head>
+<body>
+
+<!-- ═══ THE LIVING STAGE ═══ -->
+<div id="stage">
+  <div id="grid"></div>
+  <canvas id="core"></canvas>
+  <div id="vignette"></div>
+  <div id="grain"></div>
+</div>
+
+<!-- ═══ UI LAYER ═══ -->
+<div id="ui">
+  <div class="topbar">
+    <a class="brand" href="/">
+      <img src="/static/logo.png" alt="APEX">
+      <span class="bt"><span class="rd">APEX</span> PULSE<br><span class="bs">Your peak. Your pulse.</span></span>
+    </a>
+    <div class="top-right">
+      <button class="pill live" id="status-pill">LIVE</button>
+      <button class="pill" id="lang-pill" onclick="toggleLang()">EN</button>
+      <button class="pill" id="profile-pill" onclick="openProfile()">⌬ Profile</button>
+    </div>
+  </div>
+
+  <div class="center">
+    <div id="overview">
+      <span class="eyebrow" id="ov-eyebrow">SYSTEM ONLINE</span>
+      <h1 id="read-state">Reading your physiology</h1>
+      <p id="read-sub">Your organism is calibrating to today's signals.</p>
+      <div class="metrics">
+        <div class="metric rec"><span class="mv" id="m-rec">—</span><span class="ml" id="ml-rec">Recovery</span></div>
+        <div class="metric fat"><span class="mv" id="m-fat">—</span><span class="ml" id="ml-fat">Fatigue</span></div>
+        <div class="metric str"><span class="mv" id="m-str">—</span><span class="ml" id="ml-str">Stress</span></div>
+      </div>
+      <button class="cta" onclick="enterConsult()"><span id="cta-label">Begin protocol</span><span class="arr">→</span></button>
+      <button class="ghost-link" id="feedback-link" onclick="openFeedback()">Send feedback</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ CONSULTATION ═══ -->
+<div id="consult">
+  <div class="consult-head">
+    <button class="back-btn" onclick="exitConsult()">← <span id="back-label">Back</span></button>
+    <span class="ch-label" id="ch-label">APEX COACH ENGINE</span>
+  </div>
+  <div id="feed"></div>
+  <div class="inputbar">
+    <div class="input-wrap">
+      <input type="text" id="user-in" placeholder="Describe your goal…" autocomplete="off">
+      <button class="send-btn" onclick="send()">➤</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ PROFILE MODAL ═══ -->
+<div class="modal" id="profile-modal">
+  <div class="sheet">
+    <h2 id="pf-title">Your profile</h2>
+    <p class="sd" id="pf-desc">The coach reads this before every plan. Honest input, honest results.</p>
+    <div class="field"><label id="pf-l-goal">Primary goal</label>
+      <select id="pf-goal">
+        <option value="lose_fat">Lose fat</option>
+        <option value="build_muscle">Build muscle</option>
+        <option value="recomp">Recomposition</option>
+        <option value="strength">Get stronger</option>
+        <option value="start">Start from zero</option>
+        <option value="endurance">Endurance / conditioning</option>
+      </select>
+    </div>
+    <div class="f2">
+      <div class="field"><label id="pf-l-age">Age</label><input type="number" id="pf-age" min="14" max="90" placeholder="28"></div>
+      <div class="field"><label id="pf-l-gender">Sex</label>
+        <select id="pf-gender"><option value="male">Male</option><option value="female">Female</option></select></div>
+    </div>
+    <div class="f2">
+      <div class="field"><label id="pf-l-weight">Weight (kg)</label><input type="number" id="pf-weight" min="35" max="250" placeholder="75"></div>
+      <div class="field"><label id="pf-l-height">Height (cm)</label><input type="number" id="pf-height" min="120" max="230" placeholder="178"></div>
+    </div>
+    <div class="field"><label id="pf-l-level">Training level</label>
+      <select id="pf-level">
+        <option value="beginner">Beginner</option>
+        <option value="intermediate">Intermediate</option>
+        <option value="advanced">Advanced</option>
+      </select>
+    </div>
+    <div class="field"><label id="pf-l-equip">Available equipment</label>
+      <select id="pf-equip">
+        <option value="full_gym">Full gym</option>
+        <option value="home_basic">Home — basic (dumbbells/bands)</option>
+        <option value="bodyweight">Bodyweight only</option>
+      </select>
+    </div>
+    <div class="f2">
+      <div class="field"><label id="pf-l-sleep">Sleep quality</label>
+        <select id="pf-sleep"><option value="good">Good</option><option value="ok">Average</option><option value="poor">Poor</option></select></div>
+      <div class="field"><label id="pf-l-stress">Stress level</label>
+        <select id="pf-stress"><option value="low">Low</option><option value="moderate">Moderate</option><option value="high">High</option></select></div>
+    </div>
+    <button class="save" onclick="saveProfile()" id="pf-save">Save & calibrate</button>
+  </div>
+</div>
+
+<!-- ═══ NOTICE MODAL (limit / feedback) ═══ -->
+<div class="modal" id="notice-modal">
+  <div class="sheet">
+    <div class="notice-ico" id="nt-ico">⏳</div>
+    <h2 id="nt-title"></h2>
+    <p class="sd" id="nt-desc"></p>
+    <div id="nt-extra"></div>
+    <button class="save" onclick="closeNotice()" id="nt-ok">Got it</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════
+   APEX V3 — LIVING ENERGY ORGANISM  (the Biological Core)
+   No fixed shape. Volumetric plasma. Continuous procedural motion.
+   Reacts to physiology in real time. Never loops, never stops.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── value-noise field (smooth, deterministic, cheap) ─────────────── */
+const Noise = (() => {
+  const p = new Uint8Array(512);
+  const perm = [...Array(256).keys()];
+  let s = 1337;
+  const rnd = () => (s = (s*16807)%2147483647)/2147483647;
+  for(let i=255;i>0;i--){const j=(rnd()*(i+1))|0;[perm[i],perm[j]]=[perm[j],perm[i]];}
+  for(let i=0;i<512;i++)p[i]=perm[i&255];
+  const fade=t=>t*t*t*(t*(t*6-15)+10);
+  const lerp=(a,b,t)=>a+(b-a)*t;
+  const grad=(h,x,y)=>{const u=h&1?x:-x,v=h&2?y:-y;return u+v;};
+  return (x,y)=>{
+    const X=Math.floor(x)&255,Y=Math.floor(y)&255;
+    x-=Math.floor(x);y-=Math.floor(y);
+    const u=fade(x),v=fade(y);
+    const A=p[X]+Y,B=p[X+1]+Y;
+    return lerp(lerp(grad(p[A],x,y),grad(p[B],x-1,y),u),
+               lerp(grad(p[A+1],x,y-1),grad(p[B+1],x-1,y-1),u),v);
+  };
+})();
+function fbm(x,y,t){let v=0,a=.5,f=1;for(let i=0;i<4;i++){v+=a*Noise(x*f+t,y*f-t);f*=2;a*=.5;}return v;}
+
+class LivingCore{
+  constructor(canvas){
+    this.cv=canvas; this.ctx=canvas.getContext('2d');
+    this.dpr=Math.min(window.devicePixelRatio||1,2);
+    this.t=0; this.last=performance.now();
+    // physiology drives everything — 0..1
+    this.phys={recovery:.6,fatigue:.35,stress:.3};
+    this.cur ={recovery:.6,fatigue:.35,stress:.3}; // eased
+    // plasma lobes — the organism's shifting body
+    this.lobes=[];
+    const N=7;
+    for(let i=0;i<N;i++){
+      this.lobes.push({
+        ang:(i/N)*Math.PI*2, rad:.32+Math.random()*.18,
+        sz:.5+Math.random()*.5, ph:Math.random()*100, sp:.4+Math.random()*.6
+      });
+    }
+    // neural particles
+    this.parts=[];
+    this.resize(); window.addEventListener('resize',()=>this.resize());
+  }
+  resize(){
+    this.w=this.cv.clientWidth; this.h=this.cv.clientHeight;
+    this.cv.width=this.w*this.dpr; this.cv.height=this.h*this.dpr;
+    this.ctx.setTransform(this.dpr,0,0,this.dpr,0,0);
+    this.cx=this.w/2; this.cy=this.h*0.46; this.R=Math.min(this.w,this.h)*0.30;
+  }
+  setPhysiology(p){ this.phys={...this.phys,...p}; }
+
+  // palette from physiology — recovery bright/cool, fatigue heavy/red, stress erratic/orange
+  palette(){
+    const{recovery:r,fatigue:f,stress:st}=this.cur;
+    // base hue: recovery pulls cyan/lime, fatigue pulls deep red, stress pulls ember
+    const cool=[ [56,224,255],[182,255,60] ];   // cyan, lime
+    const warm=[ [245,33,45],[255,106,60] ];     // brand, ember
+    const mid =[ [255,177,60],[255,106,60] ];    // gold, ember
+    const mix=(a,b,t)=>a.map((v,i)=>v+(b[i]-v)*t);
+    let c1,c2;
+    if(r>0.55){ c1=mix(cool[0],mid[0],1-r); c2=mix(cool[1],mid[1],1-r); }
+    else if(f>0.55){ c1=mix(warm[0],mid[0],1-f); c2=mix(warm[1],mid[1],1-f); }
+    else { c1=mid[0].slice(); c2=mid[1].slice(); }
+    // stress shifts toward ember + adds flicker handled in render
+    if(st>0.4){ c1=mix(c1,warm[1],(st-0.4)*0.8); }
+    return {c1,c2};
+  }
+
+  step(now){
+    const dt=Math.min((now-this.last)/1000,0.05); this.last=now;
+    // ease physiology so transitions feel biological, never snappy
+    for(const k in this.cur) this.cur[k]+=(this.phys[k]-this.cur[k])*Math.min(dt*0.9,1);
+    const{recovery:r,fatigue:f,stress:st}=this.cur;
+    // motion speed: recovery quickens & smooths, fatigue slows, stress jitters
+    const speed=0.18*(0.5+r*0.9-f*0.4);
+    this.t+=dt*speed*(1+st*0.6);
+    // spawn neural particles — rate scales with vitality, bursts under stress
+    const vitality=r*0.7+0.3;
+    const rate=(vitality*2.2 + (st>0.5? Math.random()*st*4:0));
+    this._spawn+= rate*dt;
+    while(this._spawn>1){ this._spawn--; this.emit(); }
+    // advance particles
+    for(let i=this.parts.length-1;i>=0;i--){
+      const pt=this.parts[i];
+      pt.life-=dt; if(pt.life<=0){this.parts.splice(i,1);continue;}
+      const fa=fbm(pt.x*0.003,pt.y*0.003,this.t*0.6);
+      pt.vx+=Math.cos(fa*6.28)*dt*22*(1+st); pt.vy+=Math.sin(fa*6.28)*dt*22*(1+st);
+      pt.vx*=0.97; pt.vy*=0.97;
+      pt.x+=pt.vx*dt*60; pt.y+=pt.vy*dt*60;
+    }
+  }
+  emit(){
+    const a=Math.random()*Math.PI*2, rr=this.R*(0.2+Math.random()*0.5);
+    const out=0.6+Math.random()*1.4;
+    this.parts.push({
+      x:this.cx+Math.cos(a)*rr, y:this.cy+Math.sin(a)*rr,
+      vx:Math.cos(a)*out, vy:Math.sin(a)*out,
+      life:1.6+Math.random()*2.4, max:1.6+2.4, sz:0.7+Math.random()*1.8
+    });
+  }
+
+  render(){
+    const ctx=this.ctx,{recovery:r,fatigue:f,stress:st}=this.cur;
+    ctx.clearRect(0,0,this.w,this.h);
+    const{c1,c2}=this.palette();
+    const breath=0.5+0.5*Math.sin(this.t*2.0*(1-f*0.4));      // density pulse
+    const compress=1-f*0.32;                                   // fatigue compresses
+    const expand=1+r*0.18;
+    // ── ambient nebula base ──
+    ctx.save();
+    const neb=ctx.createRadialGradient(this.cx,this.cy,0,this.cx,this.cy,this.R*3.0);
+    neb.addColorStop(0,`rgba(${c1[0]},${c1[1]},${c1[2]},${0.10+r*0.05})`);
+    neb.addColorStop(0.4,`rgba(${c2[0]},${c2[1]},${c2[2]},0.04)`);
+    neb.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=neb; ctx.fillRect(0,0,this.w,this.h);
+    ctx.restore();
+    // ── plasma body: additive lobes morphing through noise ──
+    ctx.globalCompositeOperation='lighter';
+    const lobeCount=this.lobes.length;
+    for(let i=0;i<lobeCount;i++){
+      const L=this.lobes[i];
+      // stress fragments the body — lobes scatter & flicker
+      const frag = st>0.4 ? (fbm(i*3.1,this.t*1.4,this.t)* st*0.9) : 0;
+      const n=fbm(Math.cos(L.ang)*1.2+i, Math.sin(L.ang)*1.2, this.t*L.sp);
+      const ang=L.ang + this.t*L.sp*0.5 + n*1.2 + frag*2.5;
+      const rad=this.R*(L.rad*expand*compress) * (1 + n*0.35 + breath*0.18 + frag*0.5);
+      const x=this.cx+Math.cos(ang)*rad*(0.7+Math.abs(n)*0.6);
+      const y=this.cy+Math.sin(ang)*rad*(0.7+Math.abs(n)*0.6);
+      const size=this.R*L.sz*(0.55+breath*0.4)*expand*compress*(1-frag*0.3);
+      const flick = st>0.5 ? (0.7+Math.random()*0.6) : 1;
+      const alpha=(0.16+r*0.10-f*0.05)*flick;
+      const g=ctx.createRadialGradient(x,y,0,x,y,Math.max(size,1));
+      g.addColorStop(0,`rgba(${c1[0]},${c1[1]},${c1[2]},${alpha})`);
+      g.addColorStop(0.45,`rgba(${c2[0]},${c2[1]},${c2[2]},${alpha*0.5})`);
+      g.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,Math.max(size,1),0,6.2832); ctx.fill();
+    }
+    // ── dense luminous nucleus ──
+    const nuc=this.R*(0.30+breath*0.10)*compress;
+    const ng=ctx.createRadialGradient(this.cx,this.cy,0,this.cx,this.cy,nuc);
+    const nb=0.5+r*0.4-f*0.2;
+    ng.addColorStop(0,`rgba(255,255,255,${0.5*nb})`);
+    ng.addColorStop(0.3,`rgba(${c1[0]},${c1[1]},${c1[2]},${0.4*nb})`);
+    ng.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=ng; ctx.beginPath(); ctx.arc(this.cx,this.cy,nuc,0,6.2832); ctx.fill();
+    // ── neural particles ──
+    for(const pt of this.parts){
+      const lf=pt.life/pt.max, a=lf*lf*0.8;
+      const pg=ctx.createRadialGradient(pt.x,pt.y,0,pt.x,pt.y,pt.sz*3);
+      pg.addColorStop(0,`rgba(${c1[0]},${c1[1]},${c1[2]},${a})`);
+      pg.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=pg; ctx.beginPath(); ctx.arc(pt.x,pt.y,pt.sz*3,0,6.2832); ctx.fill();
+    }
+    ctx.globalCompositeOperation='source-over';
+  }
+  frame=(now)=>{ this.step(now); this.render(); requestAnimationFrame(this.frame); };
+  start(){ requestAnimationFrame(this.frame); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   PHYSIOLOGY ENGINE — derive recovery / fatigue / stress from profile
+   ═══════════════════════════════════════════════════════════════════ */
+function computePhysiology(){
+  let p={};try{p=JSON.parse(localStorage.getItem('apexProfile')||'{}');}catch(e){}
+  const sleep=(p.sleepQuality||'ok').toLowerCase();
+  const stress=(p.stressLevel||'moderate').toLowerCase();
+  let recovery=0.6, fatigue=0.35, str=0.3;
+  if(sleep==='good'){recovery+=0.22;fatigue-=0.15;}
+  else if(sleep==='poor'){recovery-=0.25;fatigue+=0.25;}
+  if(stress==='low'){str=0.18;recovery+=0.08;}
+  else if(stress==='high'){str=0.72;recovery-=0.12;fatigue+=0.12;}
+  else str=0.4;
+  // recent training load nudges fatigue
+  try{
+    const log=JSON.parse(localStorage.getItem('apexWorkoutLog')||'[]');
+    const recent=log.filter(s=>Date.now()-(s.ts||0)<2*864e5).length;
+    fatigue+=Math.min(recent*0.08,0.24);
+  }catch(e){}
+  const cl=v=>Math.max(0.05,Math.min(0.97,v));
+  return {recovery:cl(recovery),fatigue:cl(fatigue),stress:cl(str)};
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   LOCALIZATION
+   ═══════════════════════════════════════════════════════════════════ */
+const T={
+  en:{
+    eyebrow:'SYSTEM ONLINE', cta:'Begin protocol', back:'Back', live:'LIVE',
+    feedback:'Send feedback', profile:'Profile', chEngine:'APEX COACH ENGINE',
+    placeholder:'Describe your goal…', recovery:'Recovery', fatigue:'Fatigue', stress:'Stress',
+    greetHi:'I read your signals.', greetSub:'Goal on file:',
+    chips:['Workout for today','Nutrition plan','How am I progressing?','I have a question'],
+    pfTitle:'Your profile', pfDesc:'The coach reads this before every plan. Honest input, honest results.',
+    lGoal:'Primary goal', lAge:'Age', lGender:'Sex', lWeight:'Weight (kg)', lHeight:'Height (cm)',
+    lLevel:'Training level', lEquip:'Available equipment', lSleep:'Sleep quality', lStress:'Stress level',
+    pfSave:'Save & calibrate', typing:'CALIBRATING', coach:'APEX',
+    states:{
+      peak:{h:'Peak readiness',s:'Recovery is high. Your nervous system is primed — this is your window to push.'},
+      ready:{h:'Ready to train',s:'Balanced signals. A solid, productive session is well within reach today.'},
+      recover:{h:'Recovery mode',s:'Fatigue is elevated. The smart move today is volume down, quality up.'},
+      strained:{h:'Running hot',s:'Stress is high and recovery is thin. Today is about restoration, not records.'}
+    },
+    saved:'Calibrated to your signals.', limitTitle:"You've hit today's free limit",
+    limitDesc:'Come back in about {h}h — or unlock unlimited coaching anytime.',
+    fbTitle:'Send feedback', fbDesc:'Tell the team what would make APEX better.', fbSend:'Send', fbThanks:'Thank you — received.'
+  },
+  bg:{
+    eyebrow:'СИСТЕМАТА Е АКТИВНА', cta:'Започни протокол', back:'Назад', live:'НА ЖИВО',
+    feedback:'Изпрати обратна връзка', profile:'Профил', chEngine:'APEX ТРЕНЬОРСКО ЯДРО',
+    placeholder:'Опиши целта си…', recovery:'Възстановяване', fatigue:'Умора', stress:'Стрес',
+    greetHi:'Прочетох сигналите ти.', greetSub:'Цел във файла:',
+    chips:['Тренировка за днес','Хранителен план','Как напредвам?','Имам въпрос'],
+    pfTitle:'Твоят профил', pfDesc:'Треньорът чете това преди всеки план. Честни данни, честни резултати.',
+    lGoal:'Основна цел', lAge:'Възраст', lGender:'Пол', lWeight:'Тегло (кг)', lHeight:'Височина (см)',
+    lLevel:'Ниво', lEquip:'Налично оборудване', lSleep:'Качество на съня', lStress:'Ниво на стрес',
+    pfSave:'Запази и калибрирай', typing:'ПРЕСМЯТАМ', coach:'APEX',
+    states:{
+      peak:{h:'Пиково състояние',s:'Възстановяването е високо. Нервната ти система е заредена — това е моментът да натиснеш.'},
+      ready:{h:'Готов за тренировка',s:'Балансирани сигнали. Солидна, продуктивна сесия е напълно постижима днес.'},
+      recover:{h:'Режим възстановяване',s:'Умората е повишена. Умното решение днес е по-малко обем, повече качество.'},
+      strained:{h:'Системата е под напрежение',s:'Стресът е висок, възстановяването — слабо. Днес е за регенерация, не за рекорди.'}
+    },
+    saved:'Калибрирано спрямо сигналите ти.', limitTitle:'Достигна безплатния лимит за днес',
+    limitDesc:'Върни се след около {h}ч — или отключи неограничен достъп по всяко време.',
+    fbTitle:'Обратна връзка', fbDesc:'Кажи на екипа какво би направило APEX по-добър.', fbSend:'Изпрати', fbThanks:'Благодаря — получено.'
+  }
+};
+let lang=(localStorage.getItem('apexLang')||'en').toLowerCase(); if(lang!=='bg'&&lang!=='en')lang='en';
+function tr(){return T[lang];}
+
+const goalLabels={
+  en:{lose_fat:'Lose fat',build_muscle:'Build muscle',recomp:'Recomposition',strength:'Get stronger',start:'Start from zero',endurance:'Endurance'},
+  bg:{lose_fat:'Свали мазнини',build_muscle:'Натрупай мускули',recomp:'Прекомпозиция',strength:'Стани по-силен',start:'Започни от нула',endurance:'Издръжливост'}
+};
+
+/* ═══════════════════════════════════════════════════════════════════
+   STATE READOUT — maps physiology to a human, premium read
+   ═══════════════════════════════════════════════════════════════════ */
+function readoutKey(ph){
+  if(ph.stress>0.6&&ph.recovery<0.5)return 'strained';
+  if(ph.fatigue>0.6)return 'recover';
+  if(ph.recovery>0.7&&ph.fatigue<0.45)return 'peak';
+  return 'ready';
+}
+function applyReadout(){
+  const ph=computePhysiology();
+  core.setPhysiology(ph);
+  const k=readoutKey(ph), s=tr().states[k];
+  document.getElementById('read-state').textContent=s.h;
+  document.getElementById('read-sub').textContent=s.s;
+  document.getElementById('m-rec').textContent=Math.round(ph.recovery*100)+'%';
+  document.getElementById('m-fat').textContent=Math.round(ph.fatigue*100)+'%';
+  document.getElementById('m-str').textContent=Math.round(ph.stress*100)+'%';
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   LOCALIZED STATIC TEXT
+   ═══════════════════════════════════════════════════════════════════ */
+function applyLang(){
+  const t=tr();
+  document.documentElement.lang=lang;
+  document.getElementById('ov-eyebrow').textContent=t.eyebrow;
+  document.getElementById('cta-label').textContent=t.cta;
+  document.getElementById('back-label').textContent=t.back;
+  document.getElementById('status-pill').childNodes[0].nodeValue=t.live;
+  document.getElementById('lang-pill').textContent=lang.toUpperCase();
+  document.getElementById('feedback-link').textContent=t.feedback;
+  document.getElementById('profile-pill').textContent='⌬ '+t.profile;
+  document.getElementById('ch-label').textContent=t.chEngine;
+  document.getElementById('ml-rec').textContent=t.recovery;
+  document.getElementById('ml-fat').textContent=t.fatigue;
+  document.getElementById('ml-str').textContent=t.stress;
+  document.getElementById('user-in').placeholder=t.placeholder;
+  // profile modal
+  document.getElementById('pf-title').textContent=t.pfTitle;
+  document.getElementById('pf-desc').textContent=t.pfDesc;
+  document.getElementById('pf-l-goal').textContent=t.lGoal;
+  document.getElementById('pf-l-age').textContent=t.lAge;
+  document.getElementById('pf-l-gender').textContent=t.lGender;
+  document.getElementById('pf-l-weight').textContent=t.lWeight;
+  document.getElementById('pf-l-height').textContent=t.lHeight;
+  document.getElementById('pf-l-level').textContent=t.lLevel;
+  document.getElementById('pf-l-equip').textContent=t.lEquip;
+  document.getElementById('pf-l-sleep').textContent=t.lSleep;
+  document.getElementById('pf-l-stress').textContent=t.lStress;
+  document.getElementById('pf-save').textContent=t.pfSave;
+  applyReadout();
+}
+function toggleLang(){ lang=lang==='en'?'bg':'en'; localStorage.setItem('apexLang',lang); applyLang(); if(consultOn)resetGreeting(); }
+
+/* ═══════════════════════════════════════════════════════════════════
+   PROFILE
+   ═══════════════════════════════════════════════════════════════════ */
+function pfLoad(){try{return JSON.parse(localStorage.getItem('apexProfile')||'{}');}catch(e){return{};}}
+function openProfile(){
+  const p=pfLoad();
+  if(p.goal)document.getElementById('pf-goal').value=p.goal;
+  if(p.age)document.getElementById('pf-age').value=p.age;
+  if(p.gender)document.getElementById('pf-gender').value=p.gender;
+  if(p.weight)document.getElementById('pf-weight').value=p.weight;
+  if(p.height)document.getElementById('pf-height').value=p.height;
+  if(p.level)document.getElementById('pf-level').value=p.level;
+  if(p.equipment)document.getElementById('pf-equip').value=p.equipment;
+  if(p.sleepQuality)document.getElementById('pf-sleep').value=p.sleepQuality;
+  if(p.stressLevel)document.getElementById('pf-stress').value=p.stressLevel;
+  document.getElementById('profile-modal').classList.add('on');
+}
+function saveProfile(){
+  const goal=document.getElementById('pf-goal').value;
+  const p={
+    goal, goalDetail:goalLabels[lang][goal]||goal,
+    focus:goalLabels.en[goal]||goal,
+    age:document.getElementById('pf-age').value,
+    gender:document.getElementById('pf-gender').value,
+    weight:document.getElementById('pf-weight').value,
+    height:document.getElementById('pf-height').value,
+    level:document.getElementById('pf-level').value,
+    equipment:document.getElementById('pf-equip').value,
+    sleepQuality:document.getElementById('pf-sleep').value,
+    stressLevel:document.getElementById('pf-stress').value
+  };
+  localStorage.setItem('apexProfile',JSON.stringify(p));
+  document.getElementById('profile-modal').classList.remove('on');
+  applyReadout(); toast(tr().saved);
+  if(consultOn)resetGreeting();
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   CONSULTATION — chat surfaces, organism recedes (never disappears)
+   ═══════════════════════════════════════════════════════════════════ */
+let consultOn=false;
+function enterConsult(){
+  consultOn=true;
+  document.getElementById('consult').classList.add('on');
+  document.getElementById('overview').style.opacity='0';
+  document.getElementById('overview').style.transform='translateY(-30px) scale(.96)';
+  document.getElementById('overview').style.pointerEvents='none';
+  // organism settles into the background
+  document.getElementById('vignette').style.background='radial-gradient(ellipse 80% 70% at center 50%,transparent 18%,rgba(7,9,16,.78) 70%,rgba(7,9,16,.96) 100%)';
+  if(!document.getElementById('feed').children.length)resetGreeting();
+  setTimeout(()=>document.getElementById('user-in').focus(),400);
+}
+function exitConsult(){
+  consultOn=false;
+  document.getElementById('consult').classList.remove('on');
+  document.getElementById('overview').style.opacity='1';
+  document.getElementById('overview').style.transform='none';
+  document.getElementById('overview').style.pointerEvents='auto';
+  document.getElementById('vignette').style.background='';
+  applyReadout();
+}
+function resetGreeting(){
+  const t=tr(),feed=document.getElementById('feed'),p=pfLoad();
+  const goalTxt=p.goalDetail||(p.goal?goalLabels[lang][p.goal]:'');
+  feed.innerHTML=
+    '<div class="greet">'+
+      '<h3><span class="grad">'+t.greetHi+'</span></h3>'+
+      (goalTxt?'<p>'+t.greetSub+'</p><div class="goalrow">'+esc(goalTxt)+'</div>':'<p>'+t.greetSub+' —</p>')+
+      '<div class="chips">'+t.chips.map(c=>'<button class="chip" onclick="quickAsk(this)">'+esc(c)+'</button>').join('')+'</div>'+
+    '</div>';
+}
+function quickAsk(btn){ const v=btn.textContent; document.getElementById('user-in').value=v; send(); }
+
+/* ── markdown-lite renderer for AI replies ── */
+function esc(s){return (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+function mdLite(raw){
+  let s=esc(raw);
+  s=s.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+  const lines=s.split('\n'); let out=[],inUl=false;
+  for(let ln of lines){
+    const t=ln.trim();
+    if(/^[-*•]\s+/.test(t)){ if(!inUl){out.push('<ul>');inUl=true;} out.push('<li>'+t.replace(/^[-*•]\s+/,'')+'</li>'); }
+    else if(/^#{1,3}\s+/.test(t)){ if(inUl){out.push('</ul>');inUl=false;} out.push('<h4>'+t.replace(/^#{1,3}\s+/,'')+'</h4>'); }
+    else { if(inUl){out.push('</ul>');inUl=false;} if(t)out.push('<p>'+t+'</p>'); }
+  }
+  if(inUl)out.push('</ul>');
+  return out.join('');
+}
+function appendUser(text){
+  const feed=document.getElementById('feed');
+  const g=feed.querySelector('.greet'); if(g)g.remove();
+  const d=document.createElement('div'); d.className='msg u'; d.textContent=text;
+  feed.appendChild(d); feed.scrollTop=feed.scrollHeight;
+}
+function appendCoach(){
+  const feed=document.getElementById('feed');
+  const d=document.createElement('div'); d.className='msg a';
+  d.innerHTML='<div class="who">'+tr().coach+'</div><div class="body"></div>';
+  feed.appendChild(d); feed.scrollTop=feed.scrollHeight;
+  return d.querySelector('.body');
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   AI ENGINE — streaming chat against the production /chat backend
+   ═══════════════════════════════════════════════════════════════════ */
+function getHistory(){try{return JSON.parse(localStorage.getItem('apexHistory')||'[]');}catch(e){return[];}}
+function saveHistory(role,content){
+  const h=getHistory(); h.push({role,content}); const trimmed=h.slice(-40);
+  localStorage.setItem('apexHistory',JSON.stringify(trimmed));
+}
+let sending=false;
+async function send(){
+  if(sending)return;
+  const inp=document.getElementById('user-in'); const val=inp.value.trim(); if(!val)return;
+  sending=true; inp.value='';
+  appendUser(val);
+  const token=localStorage.getItem('apexToken')||'';
+  const body={message:val,lang:lang};
+  const p=pfLoad(); if(Object.keys(p).length)body.profile=p;
+  if(token){body.token=token;}
+  body.history=getHistory();
+  saveHistory('user',val);
+  // typing indicator
+  const feed=document.getElementById('feed');
+  const ty=document.createElement('div'); ty.className='typing';
+  ty.innerHTML='<span class="tl">'+tr().typing+'</span><i></i><i></i><i></i>';
+  feed.appendChild(ty); feed.scrollTop=feed.scrollHeight;
+  try{
+    const res=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const ctype=res.headers.get('content-type')||'';
+    if(ctype.indexOf('text/event-stream')!==-1){
+      ty.remove(); const target=appendCoach(); let full='';
+      const reader=res.body.getReader(),dec=new TextDecoder(); let buf='';
+      while(true){
+        const{done,value}=await reader.read(); if(done)break;
+        buf+=dec.decode(value,{stream:true});
+        const parts=buf.split('\n\n'); buf=parts.pop();
+        for(const part of parts){
+          const line=part.trim(); if(!line.startsWith('data:'))continue;
+          let obj; try{obj=JSON.parse(line.slice(5).trim());}catch(e){continue;}
+          if(obj.t){full+=obj.t; target.innerHTML=mdLite(full); feed.scrollTop=feed.scrollHeight;}
+          else if(obj.limit_reached){target.closest('.msg').remove(); showLimit(obj.hours_left||24);}
+          else if(obj.error){full+=(obj.reply||''); target.innerHTML=mdLite(full);}
+        }
+      }
+      if(full)saveHistory('assistant',full);
+    }else{
+      const data=await res.json(); ty.remove();
+      if(data.limit_reached){showLimit(data.hours_left||24);}
+      else{const tg=appendCoach(); tg.innerHTML=mdLite(data.reply||''); if(data.reply)saveHistory('assistant',data.reply);}
+    }
+  }catch(e){ ty.remove(); const tg=appendCoach(); tg.innerHTML='<p>Connection interrupted. Try again in a moment.</p>'; }
+  finally{ sending=false; inp.focus(); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   NOTICES — daily limit, feedback
+   ═══════════════════════════════════════════════════════════════════ */
+function showLimit(h){
+  const t=tr();
+  document.getElementById('nt-ico').textContent='⏳';
+  document.getElementById('nt-title').textContent=t.limitTitle;
+  document.getElementById('nt-desc').textContent=t.limitDesc.replace('{h}',h);
+  document.getElementById('nt-extra').innerHTML='';
+  document.getElementById('notice-modal').classList.add('on');
+}
+function openFeedback(){
+  const t=tr();
+  document.getElementById('nt-ico').textContent='✉️';
+  document.getElementById('nt-title').textContent=t.fbTitle;
+  document.getElementById('nt-desc').textContent=t.fbDesc;
+  document.getElementById('nt-extra').innerHTML='<div class="field"><textarea id="fb-text" rows="4" style="width:100%;background:var(--surface2);border:1.5px solid var(--border);border-radius:12px;padding:13px;color:var(--text);font-size:14px;resize:vertical;" placeholder="…"></textarea></div>';
+  const ok=document.getElementById('nt-ok'); ok.textContent=t.fbSend; ok.onclick=sendFeedback;
+  document.getElementById('notice-modal').classList.add('on');
+  setTimeout(()=>{const f=document.getElementById('fb-text');if(f)f.focus();},200);
+}
+async function sendFeedback(){
+  const el=document.getElementById('fb-text'); const txt=el?el.value.trim():'';
+  if(txt){ try{await fetch('/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:txt,lang})});}catch(e){} }
+  closeNotice(); toast(tr().fbThanks);
+}
+function closeNotice(){
+  document.getElementById('notice-modal').classList.remove('on');
+  const ok=document.getElementById('nt-ok'); ok.textContent=tr().fbSend==='Send'?'Got it':'Готово'; ok.onclick=closeNotice;
+}
+
+/* ── toast ── */
+let toastTimer;
+function toast(msg){
+  const el=document.getElementById('toast'); el.textContent=msg; el.classList.add('on');
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove('on'),2600);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   BOOT
+   ═══════════════════════════════════════════════════════════════════ */
+let core;
+document.addEventListener('DOMContentLoaded',()=>{
+  // URL lang override (?lang=bg)
+  try{const u=new URLSearchParams(location.search).get('lang');if(u==='bg'||u==='en'){lang=u;localStorage.setItem('apexLang',lang);}}catch(e){}
+  core=new LivingCore(document.getElementById('core'));
+  core.setPhysiology(computePhysiology());
+  core.start();
+  applyLang();
+  // Enter-to-send
+  document.getElementById('user-in').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();send();}});
+  // first-run onboarding
+  if(!localStorage.getItem('apexProfile')) setTimeout(openProfile,700);
+  // close modals on backdrop click
+  document.querySelectorAll('.modal').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('on');}));
+});
+</script>
+</body>
+</html>

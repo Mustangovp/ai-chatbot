@@ -1089,8 +1089,8 @@ def landing_en():
 
 @app.route("/app")
 def app_chat():
-    """The AI chat interface — minimal, focused on AI conversation."""
-    return render_template("app.html")
+    """APEX V3 — the AI Operating System shell. The landing page, alive."""
+    return render_template("apex.html")
 
 
 @app.route("/chat", methods=["POST"])
