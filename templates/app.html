@@ -7252,6 +7252,10 @@ const ApexBioRenderer = (() => {
       _physApplySignature(_rendSig, _rendState, _mem);
     }
 
+    if (typeof _physSyncLayout === 'function') {
+      _physSyncLayout();
+    }
+
     out._frameMs = performance.now() - t0;
   }
 
@@ -7546,20 +7550,36 @@ function _physSyncLayout() {
       activeSlot = document.getElementById('wo-organism-slot');
     }
   } else if (isConsultation) {
-    activeSlot = document.getElementById('overview-core-slot');
+    activeSlot = document.getElementById('consultation-core-slot') || document.getElementById('overview-core-slot');
   } else {
     activeSlot = document.getElementById('overview-core-slot');
   }
   
+  let rect = null;
   if (activeSlot) {
-    const rect = activeSlot.getBoundingClientRect();
+    const r = activeSlot.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) {
+      rect = r;
+      window._lastValidCoreRect = r;
+    }
+  }
+  
+  if (!rect && window._lastValidCoreRect) {
+    rect = window._lastValidCoreRect;
+  }
+  
+  if (rect) {
     core.style.left = `${rect.left + rect.width / 2}px`;
     core.style.top = `${rect.top + rect.height / 2}px`;
     core.style.width = `${rect.width}px`;
     core.style.height = `${rect.height}px`;
     core.style.opacity = '1';
   } else {
-    core.style.opacity = '0';
+    core.style.left = '50%';
+    core.style.top = '40%';
+    core.style.width = '200px';
+    core.style.height = '200px';
+    core.style.opacity = '1';
   }
 }
 
@@ -7628,7 +7648,7 @@ document.addEventListener('DOMContentLoaded', function() {
     <div class="ci-consult-header">
       <button class="ci-back-btn" onclick="setAppState('overview')" data-key="ci-back">← BACK</button>
       <span class="ci-engine-label">APEX COACH ENGINE</span>
-      <div style="width:80px;"></div>
+      <div id="consultation-core-slot" style="width:40px; height:40px; position:relative; display:flex; justify-content:center; align-items:center;"></div>
     </div>
 
     <!-- Clinical consultation feed -->
