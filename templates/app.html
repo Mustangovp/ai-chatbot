@@ -1520,13 +1520,13 @@ nav{position:sticky;top:0;z-index:50;background:rgba(5,5,12,0.92);backdrop-filte
   --membrane-stroke-opacity: 0.30;
   --color-nucleus-a: rgba(215,250,255,0.95);
   --color-nucleus-b: rgba(56,224,255,0.90);
-  --color-nucleus-c: rgba(28,110,220,0.76);
+  --color-nucleus-c: rgba(255,177,60,0.76);
   --color-nucleus-d: rgba(14,38,118,0.60);
   --color-flow-a: rgba(56,200,255,0.17);
-  --color-flow-b: rgba(30,150,255,0.08);
+  --color-flow-b: rgba(255,177,60,0.08);
   --color-membrane-stroke: rgba(56,224,255,0.30);
   --color-glow-a: rgba(56,224,255,0.40);
-  --color-glow-b: rgba(40,160,255,0.13);
+  --color-glow-b: rgba(255,177,60,0.13);
   --color-ambient-a: rgba(20,52,120,0.30);
   --color-ambient-b: rgba(10,24,68,0.13);
 }
@@ -2041,6 +2041,20 @@ body.state-laboratory .footer-mini{display:none!important;}
 /* ── Footer: gone ────────────────────────────────────────── */
 .footer-mini{display:none!important;}
 
+
+/* SPRINT P0-03: Living Biological Core - Disable all conflicting canned CSS animations on sub-elements
+   so that they can be driven dynamically on every frame by requestAnimationFrame tick. */
+#phys-core #phys-breath-group,
+#phys-core #phys-meta-drift,
+#phys-core #pc-nucleus-drift-wrap,
+#phys-core #pc-nucleus-aura,
+#phys-core #pc-membrane-body,
+#phys-core #pc-membrane-inner-edge,
+#phys-core #pc-glow-layer,
+#phys-core #pc-cortex-layer,
+#phys-core #pc-flow-rotate-group {
+  animation: none !important;
+}
 </style>
 </head>
 <body>
@@ -7031,6 +7045,15 @@ const ApexBioRenderer = (() => {
   // Resolved in start(). null when element absent or reduced-motion active.
   let _glowEl    = null;
   let _glowPhase = 0;   // continuous breath-phase accumulator (radians)
+  let _breathEl = null;
+  let _metaEl = null;
+  let _nucleusWrapEl = null;
+  let _membraneEl = null;
+  let _membraneInnerEl = null;
+  let _cortexEl = null;
+  let _flowEl = null;
+  let _ambientEl = null;
+  let _flowRotatePhase = 0;
 
   // ── INTERNAL ─────────────────────────────────────────────────────────
   let _raf = null, _running = false, _lastTs = 0;
@@ -7072,15 +7095,22 @@ const ApexBioRenderer = (() => {
     _running = true;
     _lastTs  = performance.now();
 
-    // Phase B: resolve glow element once and stop its CSS animation.
-    // Disabled entirely for prefers-reduced-motion users (CSS already handles them).
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (!reducedMotion) {
       _glowEl = document.getElementById('pc-glow-layer');
+      _breathEl = document.getElementById('phys-breath-group');
+      _metaEl = document.getElementById('phys-meta-drift');
+      _nucleusWrapEl = document.getElementById('pc-nucleus-drift-wrap');
+      _membraneEl = document.getElementById('pc-membrane-body');
+      _membraneInnerEl = document.getElementById('pc-membrane-inner-edge');
+      _cortexEl = document.getElementById('pc-cortex-layer');
+      _flowEl = document.getElementById('pc-flow-rotate-group');
+      _ambientEl = document.getElementById('pc-ambient');
+
       if (_glowEl) {
-        _glowEl.style.animationName = 'none';
         _glowPhase = Math.random() * Math.PI * 2;  // unique start phase per session
       }
+      _flowRotatePhase = Math.random() * 360;
     }
 
     _raf = requestAnimationFrame(_tick);
@@ -7238,8 +7268,54 @@ const ApexBioRenderer = (() => {
     // mix-blend-mode:screen and will-change:opacity remain on the CSS rule.
     if (_glowEl) {
       _glowPhase += (_PI2 * dt) / F.bPer.v;
-      // range [0.70–1.00] × luminosity — contained metabolic flicker, not pulse
       _glowEl.style.opacity = (F.lum.v * (0.85 + 0.15 * _sin(_glowPhase))).toFixed(3);
+      const glowScale = 1.0 + (out.breathScale - 1.0) * 1.6;
+      _glowEl.style.transform = 'scale(' + glowScale.toFixed(4) + ')';
+    }
+
+    // Apply breathing scale
+    if (_breathEl) {
+      _breathEl.style.transform = 'scale(' + out.breathScale.toFixed(4) + ')';
+    }
+    
+    // Apply metabolic drift
+    if (_metaEl) {
+      _metaEl.style.transform = 'translate(' + out.metaX.toFixed(2) + 'px, ' + out.metaY.toFixed(2) + 'px)';
+    }
+    
+    // Apply nucleus drift & tremor
+    if (_nucleusWrapEl) {
+      _nucleusWrapEl.style.transform = 'translate(' + out.nucleusX.toFixed(2) + 'px, ' + out.nucleusY.toFixed(2) + 'px)';
+    }
+    
+    // Apply membrane oscillation & deformation
+    const osc = out.membraneOsc;
+    if (_membraneEl) {
+      _membraneEl.setAttribute('rx', (109 + osc * 5).toFixed(2));
+      _membraneEl.setAttribute('ry', (108 - osc * 5).toFixed(2));
+    }
+    if (_membraneInnerEl) {
+      _membraneInnerEl.setAttribute('rx', (106 + osc * 5).toFixed(2));
+      _membraneInnerEl.setAttribute('ry', (105 - osc * 5).toFixed(2));
+    }
+    
+    // Apply flow rotation
+    if (_flowEl) {
+      _flowRotatePhase += (dt * 0.001 * out.flowVelocity / 5000);
+      _flowEl.style.transform = 'rotate(' + _flowRotatePhase.toFixed(2) + 'deg)';
+    }
+    
+    // Apply cortex oscillation
+    if (_cortexEl) {
+      _cortexEl.style.opacity = (out.cortexDepth * (0.90 + 0.10 * _cos(_P.mb))).toFixed(3);
+      _cortexEl.style.transform = 'scale(' + (1.0 + 0.02 * _sin(_P.nc)).toFixed(4) + ')';
+    }
+    
+    // Apply ambient background slow parallax
+    if (_ambientEl) {
+      const ambX = (out.nucleusX * 0.35).toFixed(2);
+      const ambY = (out.nucleusY * 0.35).toFixed(2);
+      _ambientEl.style.transform = 'translate(' + ambX + 'px, ' + ambY + 'px)';
     }
 
     // STEP 9 — Continuous body memory → CSS var evolution (throttled to 3s)
