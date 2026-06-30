@@ -4,7 +4,7 @@
     {
       "name": "apex-flask",
       "runtimeExecutable": "cmd",
-      "runtimeArgs": ["/c", "set OPENAI_API_KEY=sk-stub && set APEX_SECRET=local-render-stub && py app.py"],
+      "runtimeArgs": ["/c", "set OPENAI_API_KEY=sk-stub && set APEX_SECRET=local-render-stub && set FLASK_DEBUG=1 && py app.py"],
       "port": 5000
     }
   ]

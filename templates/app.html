@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="bg" class="dark">
 <head>
 <meta charset="UTF-8">
@@ -2033,6 +2033,9 @@ body.state-consultation #phys-core-stage{display:none!important;}
 body.state-consultation .footer-mini{display:none!important;}
 body.state-consultation #coach-island .ci-overview{display:none!important;}
 body.state-consultation #coach-island .ci-consultation{display:flex!important;}
+/* chat feed is now body-level — show only in consultation */
+body:not(.state-consultation) #chat-box{display:none!important;}
+body:not(.state-consultation) #utility{display:none!important;}
 
 /* laboratory */
 body.state-laboratory #coach-island{display:none!important;}
@@ -2336,7 +2339,935 @@ body.state-consultation #phys-core-stage {
     margin-top: 10px !important;
   }
 }
+
+/* ====================================================
+   APEX PRESENTATION REBUILD: SCI-FI HOLOGRAPHIC OPERATING SYSTEM
+   ==================================================== */
+:root {
+  --font-display: 'Outfit', 'Inter', sans-serif;
+  --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+body {
+  background: #030611 !important;
+  color: #d7e0ff !important;
+  font-family: var(--font-display) !important;
+  overflow: hidden !important; /* Zero vertical scroll for pure OS feel */
+}
+
+/* Nav is always visible — lang/feedback/cancel controls must be accessible in all states */
+body.state-overview .footer-mini {
+  display: none !important;
+}
+
+/* Holographic Stage & Permanent Core slot centering */
+#phys-core-stage {
+  display: grid !important;
+  grid-template-columns: 1fr 280px 1fr !important;
+  grid-template-rows: auto auto auto !important;
+  align-items: center !important;
+  justify-items: center !important;
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: none !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  box-sizing: border-box !important;
+  overflow: visible !important;
+  background: transparent !important;
+  border: none !important;
+  z-index: 10 !important;
+  pointer-events: none !important;
+}
+
+#phys-core-stage * {
+  pointer-events: auto !important;
+}
+
+
+/* Center all core slots in the exact center of viewport */
+#overview-core-slot,
+#consultation-core-slot,
+#cc-core-slot,
+#wo-organism-slot {
+  position: fixed !important;
+  left: 50% !important;
+  top: 40% !important;
+  transform: translate(-50%, -50%) !important;
+  width: 280px !important;
+  height: 280px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  z-index: 10 !important;
+  pointer-events: none !important;
+  background: transparent !important;
+  border: none !important;
+}
+
+#phys-core-stage #phys-core {
+  --core-size: 280px !important;
+  z-index: 100 !important;
+}
+
+#phys-stage-ring {
+  grid-column: 2 !important;
+  grid-row: 2 !important;
+  z-index: 1 !important;
+  width: 340px !important;
+  height: 340px !important;
+  position: absolute !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  opacity: 0.16 !important;
+}
+
+/* Core eyebrow & state labels */
+.core-eyebrow {
+  display: none !important; /* Remove messy fitness eyebrow */
+}
+
+#phys-state-label {
+  grid-column: 1 / span 3 !important;
+  grid-row: 1 !important;
+  position: fixed !important;
+  top: 15vh !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  z-index: 12 !important;
+  font-size: 16px !important;
+  font-weight: 800 !important;
+  letter-spacing: 3px !important;
+  text-transform: uppercase !important;
+  color: var(--cyan) !important;
+  text-shadow: 0 0 15px rgba(0, 240, 255, 0.4) !important;
+}
+
+/* HUD Metrics toggle button */
+.hud-toggle-btn {
+  position: fixed !important;
+  top: 24px !important;
+  right: 24px !important;
+  background: rgba(255, 255, 255, 0.02) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 20px !important;
+  padding: 6px 14px !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  letter-spacing: 1.5px !important;
+  color: var(--text) !important;
+  cursor: pointer !important;
+  z-index: 10000 !important;
+  backdrop-filter: blur(10px) !important;
+  transition: all 0.3s ease !important;
+  text-transform: uppercase !important;
+}
+.hud-toggle-btn:hover {
+  border-color: var(--cyan) !important;
+  box-shadow: 0 0 15px rgba(0, 240, 255, 0.2) !important;
+}
+.hud-toggle-dot {
+  display: inline-block !important;
+  width: 6px !important;
+  height: 6px !important;
+  border-radius: 50% !important;
+  background: rgba(255, 255, 255, 0.3) !important;
+  margin-right: 6px !important;
+  vertical-align: middle !important;
+  transition: background 0.3s ease !important;
+}
+
+/* Holographic Telemetry Cards (hidden by default) */
+.phys-tele-grid {
+  display: contents !important;
+}
+
+.tele-card {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 3px !important;
+  z-index: 10 !important;
+  transition: all 0.5s cubic-bezier(0.25, 1, 0.5, 1) !important;
+  min-width: 120px !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+  transform: scale(0.95) !important;
+}
+
+body.hud-active .tele-card {
+  opacity: 1 !important;
+  transform: scale(1) !important;
+  pointer-events: auto !important;
+}
+
+.tele-card .tc-header {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+.tele-card .tc-dot {
+  width: 6px !important;
+  height: 6px !important;
+}
+.tele-card .tc-label {
+  font-size: 10px !important;
+  font-weight: 600 !important;
+  letter-spacing: 1px !important;
+  color: var(--muted) !important;
+}
+.tele-card .tc-value {
+  font-size: 32px !important;
+  font-weight: 800 !important;
+  color: var(--text) !important;
+  font-family: var(--font-display) !important;
+  margin: 2px 0 !important;
+  text-shadow: 0 0 20px rgba(255, 255, 255, 0.05) !important;
+}
+.tele-card .tc-sub {
+  font-size: 9px !important;
+  color: rgba(139, 147, 167, 0.3) !important;
+  white-space: nowrap !important;
+}
+
+/* Symmetrical desktop hud positioning */
+#card-cns {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  align-self: start !important;
+  justify-self: end !important;
+  text-align: right !important;
+  margin-top: 15vh !important;
+  margin-right: 40px !important;
+}
+#card-cns .tc-header { justify-content: flex-end !important; }
+
+#card-recovery {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  align-self: end !important;
+  justify-self: end !important;
+  text-align: right !important;
+  margin-bottom: 25vh !important;
+  margin-right: 40px !important;
+}
+#card-recovery .tc-header { justify-content: flex-end !important; }
+
+#card-readiness {
+  grid-column: 3 !important;
+  grid-row: 2 !important;
+  align-self: start !important;
+  justify-self: start !important;
+  text-align: left !important;
+  margin-top: 15vh !important;
+  margin-left: 40px !important;
+}
+#card-readiness .tc-header { justify-content: flex-start !important; }
+
+#card-load {
+  grid-column: 3 !important;
+  grid-row: 2 !important;
+  align-self: end !important;
+  justify-self: start !important;
+  text-align: left !important;
+  margin-bottom: 25vh !important;
+  margin-left: 40px !important;
+}
+#card-load .tc-header { justify-content: flex-start !important; }
+
+/* Active Goal Badge in bottom-center row */
+#card-goal {
+  grid-column: 1 / span 3 !important;
+  grid-row: 3 !important;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  background: rgba(255, 255, 255, 0.02) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  border-radius: 20px !important;
+  padding: 6px 16px !important;
+  position: fixed !important;
+  bottom: 25vh !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  min-width: unset !important;
+  z-index: 100 !important;
+}
+#card-goal .tc-value {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  color: var(--cyan) !important;
+  margin: 0 !important;
+  text-transform: uppercase !important;
+}
+#card-goal .tc-sub { display: none !important; }
+
+/* ── COACH ISLAND (Frosted status, fixed bottom center) ── */
+#coach-island {
+  position: fixed !important;
+  bottom: 40px !important;
+  left: 0 !important;
+  right: 0 !important;
+  margin: 0 auto !important;
+  transform: none !important;
+  max-width: 540px !important;
+  width: 90% !important;
+  z-index: 200 !important;
+  background: rgba(5, 7, 18, 0.7) !important;
+  backdrop-filter: blur(25px) !important;
+  -webkit-backdrop-filter: blur(25px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+  border-radius: 24px !important;
+  padding: 20px 24px !important;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6) !important;
+  box-sizing: border-box !important;
+  transition: opacity 1.2s ease !important;
+}
+
+.ci-overview {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 14px !important;
+  padding: 0 !important;
+}
+
+.ci-brief {
+  font-size: 13px !important;
+  line-height: 1.6 !important;
+  color: #b8c5f0 !important;
+  text-align: center !important;
+  margin: 0 !important;
+  font-weight: 400 !important;
+}
+
+.ci-protocol-btn {
+  background: var(--cyan) !important;
+  color: #030611 !important;
+  border: none !important;
+  padding: 10px 24px !important;
+  border-radius: 20px !important;
+  font-size: 11px !important;
+  font-weight: 800 !important;
+  letter-spacing: 2px !important;
+  text-transform: uppercase !important;
+  cursor: pointer !important;
+  align-self: center !important;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
+  box-shadow: 0 0 20px rgba(0, 240, 255, 0.3) !important;
+}
+.ci-protocol-btn:hover {
+  transform: translateY(-1px) scale(1.02) !important;
+  box-shadow: 0 0 30px rgba(0, 240, 255, 0.5) !important;
+}
+
+/* ── SCI-FI HOLO CHAT OVERLAY ── */
+#consultation-screen {
+  background: transparent !important;
+  position: fixed !important;
+  inset: 0 !important;
+  pointer-events: none !important;
+  display: flex !important;
+  z-index: 500 !important;
+}
+#consultation-screen * {
+  pointer-events: auto !important;
+}
+
+/* The transparent scrolling conversation floats on the left side of the Core */
+#chat-box {
+  position: fixed !important;
+  top: 10vh !important;
+  left: 6vw !important;
+  bottom: 120px !important;
+  width: min(440px, 36vw) !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 10px !important;
+  overflow-y: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 16px !important;
+}
+
+#chat-box::-webkit-scrollbar {
+  width: 3px !important;
+}
+#chat-box::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-radius: 2px !important;
+}
+
+/* Glowing transparent msg bubbles */
+.msg-a, .msg-u {
+  background: rgba(255, 255, 255, 0.02) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  border-radius: 16px !important;
+  padding: 12px 16px !important;
+  font-size: 12.5px !important;
+  line-height: 1.5 !important;
+  color: #d2daff !important;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2) !important;
+  max-width: 90% !important;
+}
+.msg-u {
+  border-color: rgba(0, 240, 255, 0.15) !important;
+  background: rgba(0, 240, 255, 0.02) !important;
+  align-self: flex-end !important;
+}
+
+/* Consultation input floating wrapper at bottom center */
+.ci-consultation {
+  position: fixed !important;
+  bottom: 30px !important;
+  left: 0 !important;
+  right: 0 !important;
+  margin: 0 auto !important;
+  transform: none !important;
+  width: min(600px, 88vw) !important;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  background: rgba(5, 7, 18, 0.75) !important;
+  backdrop-filter: blur(25px) !important;
+  -webkit-backdrop-filter: blur(25px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 30px !important;
+  padding: 6px 6px 6px 18px !important;
+  box-sizing: border-box !important;
+  box-shadow: 0 10px 45px rgba(0, 0, 0, 0.6) !important;
+  z-index: 1000 !important;
+}
+
+#user-in {
+  flex: 1 !important;
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  color: var(--text) !important;
+  font-size: 13px !important;
+  padding: 8px 0 !important;
+}
+
+.ci-send-btn {
+  background: var(--cyan) !important;
+  color: #030611 !important;
+  border: none !important;
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 50% !important;
+  font-weight: 800 !important;
+  cursor: pointer !important;
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.3) !important;
+}
+.ci-send-btn:hover {
+  transform: scale(1.05) !important;
+  box-shadow: 0 0 15px rgba(0, 240, 255, 0.5) !important;
+}
+
+/* Consultation back button top-left */
+.ci-back-btn {
+  position: fixed !important;
+  top: 24px !important;
+  left: 24px !important;
+  background: rgba(255, 255, 255, 0.02) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 20px !important;
+  padding: 6px 14px !important;
+  font-size: 10px !important;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: var(--text) !important;
+  cursor: pointer !important;
+  z-index: 10000 !important;
+  backdrop-filter: blur(10px) !important;
+  text-transform: uppercase !important;
+}
+.ci-back-btn:hover {
+  border-color: var(--red) !important;
+  color: var(--red) !important;
+}
+
+/* Quick action chips — visible, enable click-to-submit workflow */
+
+/* ── SCI-FI WORKOUT MODE: Floating HUD cards ── */
+#workout-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  border: none !important;
+  z-index: 900 !important;
+  display: none;
+}
+#workout-overlay.active {
+  display: block !important;
+}
+
+#workout-overlay .wo-header {
+  background: transparent !important;
+  border: none !important;
+  position: fixed !important;
+  top: 15px !important;
+  left: 20px !important;
+  right: 20px !important;
+  z-index: 1000 !important;
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+}
+#workout-overlay .wo-header-title {
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  letter-spacing: 2px !important;
+  text-transform: uppercase !important;
+  color: var(--cyan) !important;
+}
+#workout-overlay .wo-close {
+  background: rgba(255, 255, 255, 0.02) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  color: var(--text) !important;
+  padding: 6px 12px !important;
+  border-radius: 50% !important;
+  cursor: pointer !important;
+}
+
+#workout-overlay .wo-prog-bar {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: 3px !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  z-index: 1000 !important;
+}
+#workout-overlay .wo-prog-fill {
+  background: var(--cyan) !important;
+  box-shadow: 0 0 10px var(--cyan) !important;
+}
+
+#wo-body {
+  position: fixed !important;
+  inset: 0 !important;
+  pointer-events: none !important;
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+}
+#wo-body * {
+  pointer-events: auto !important;
+}
+
+/* Floating Coach Card grid flanking the centered organism */
+#wo-body .cc-card {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: none !important;
+  display: grid !important;
+  grid-template-columns: 1fr 320px 1fr !important;
+  grid-template-rows: auto auto auto !important;
+  align-items: center !important;
+  justify-items: center !important;
+  gap: 12px !important;
+  padding: 0 40px !important;
+  box-sizing: border-box !important;
+  pointer-events: none !important;
+}
+
+#wo-body .cc-card * {
+  pointer-events: auto !important;
+}
+
+.cc-card .cc-hero {
+  grid-column: 1 / span 3 !important;
+  grid-row: 1 !important;
+  align-self: end !important;
+  margin-bottom: 10px !important;
+  text-align: center !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 4px !important;
+}
+.cc-card .cc-title {
+  font-size: 24px !important;
+  font-weight: 800 !important;
+  letter-spacing: 2px !important;
+  text-transform: uppercase !important;
+  color: var(--text) !important;
+  text-shadow: 0 0 20px rgba(255, 255, 255, 0.1) !important;
+}
+.cc-card .cc-phase {
+  font-size: 9px !important;
+  font-weight: 700 !important;
+  letter-spacing: 2px !important;
+  color: var(--cyan) !important;
+  text-transform: uppercase !important;
+}
+
+.cc-card .cc-core-slot {
+  display: none !important; /* Centered permanently in viewport */
+}
+
+.cc-card .cc-info-row {
+  display: contents !important;
+}
+
+/* Technique/Instructions float on the left */
+.cc-card .cc-muscle-wrap,
+.cc-card .cc-notes,
+.cc-card .cc-instruction {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  justify-self: end !important;
+  text-align: right !important;
+  max-width: 280px !important;
+  background: rgba(5, 7, 18, 0.6) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  border-radius: 16px !important;
+  padding: 12px !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3) !important;
+  box-sizing: border-box !important;
+}
+
+/* Reps / Target load floats on the right */
+.cc-card .cc-stats-column,
+.cc-card .cc-fields {
+  grid-column: 3 !important;
+  grid-row: 2 !important;
+  justify-self: start !important;
+  text-align: left !important;
+  max-width: 280px !important;
+  width: 100% !important;
+  background: rgba(5, 7, 18, 0.6) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  border-radius: 16px !important;
+  padding: 12px !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  box-sizing: border-box !important;
+}
+
+/* CC Form detail layout */
+.cc-info-row .cc-info-col {
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+.cc-info-row .cc-lbl {
+  font-size: 9px !important;
+  letter-spacing: 1px !important;
+  color: var(--muted) !important;
+}
+
+.cc-info-row .cc-val {
+  font-size: 26px !important;
+  font-weight: 800 !important;
+  color: var(--text) !important;
+}
+
+/* Make tip-row display contents to let children align to columns */
+.cc-card .cc-tip-row {
+  display: contents !important;
+}
+
+.cc-card .cc-tip-row .cc-panel:first-child {
+  grid-column: 1 !important;
+  grid-row: 3 !important;
+  justify-self: end !important;
+  text-align: right !important;
+  max-width: 280px !important;
+  width: 100% !important;
+  background: rgba(5, 7, 18, 0.6) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  border-radius: 16px !important;
+  padding: 12px !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3) !important;
+  box-sizing: border-box !important;
+}
+
+.cc-card .cc-tip-row .cc-panel:last-child {
+  grid-column: 3 !important;
+  grid-row: 3 !important;
+  justify-self: start !important;
+  text-align: left !important;
+  max-width: 280px !important;
+  width: 100% !important;
+  background: rgba(5, 7, 18, 0.6) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  border-radius: 16px !important;
+  padding: 12px !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3) !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+}
+
+
+/* Rest card / Feedback card centered overlay sitting below core */
+.wo-rest-card,
+.wo-feedback-card,
+.wo-resolve-card,
+.wo-complete-card {
+  grid-column: 1 / span 3 !important;
+  grid-row: 2 / span 2 !important;
+  position: fixed !important;
+  left: 50% !important;
+  top: 52vh !important;
+  transform: translateX(-50%) !important;
+  max-width: 420px !important;
+  width: 90% !important;
+  background: rgba(5, 7, 18, 0.75) !important;
+  backdrop-filter: blur(25px) !important;
+  -webkit-backdrop-filter: blur(25px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 20px !important;
+  padding: 24px !important;
+  text-align: center !important;
+  z-index: 1000 !important;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.6) !important;
+  box-sizing: border-box !important;
+}
+
+/* Clean sci-fi typography for workout stats */
+.wo-rest-val {
+  font-size: 54px !important;
+  font-weight: 800 !important;
+  font-family: var(--font-display) !important;
+  color: var(--cyan) !important;
+  text-shadow: 0 0 30px rgba(0,240,255,0.4) !important;
+}
+
+.wo-body .btn,
+.wo-feedback-card .wo-btn {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: var(--text) !important;
+  border-radius: 20px !important;
+  padding: 10px 20px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 1px !important;
+  cursor: pointer !important;
+  transition: all 0.3s ease !important;
+}
+.wo-body .btn:hover,
+.wo-feedback-card .wo-btn:hover {
+  background: var(--cyan) !important;
+  color: #030611 !important;
+  border-color: var(--cyan) !important;
+  box-shadow: 0 0 15px rgba(0,240,255,0.3) !important;
+}
+
+/* Mobile HUD scaling */
+@media (max-width: 768px) {
+  #phys-core-stage {
+    grid-template-columns: 1fr 1fr !important;
+    grid-template-rows: auto auto auto auto !important;
+  }
+  #overview-core-slot,
+  #consultation-core-slot,
+  #cc-core-slot,
+  #wo-organism-slot {
+    width: 200px !important;
+    height: 200px !important;
+    top: 35% !important;
+  }
+  #phys-core-stage #phys-core {
+    --core-size: 200px !important;
+  }
+  #phys-state-label {
+    top: 12vh !important;
+  }
+  
+  /* Stack telemetry card grid below core */
+  .phys-tele-grid {
+    display: grid !important;
+    grid-column: 1 / span 2 !important;
+    grid-row: 4 !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 12px !important;
+    position: fixed !important;
+    top: 52vh !important;
+    left: 5% !important;
+    width: 90% !important;
+    z-index: 100 !important;
+  }
+  .tele-card {
+    text-align: center !important;
+    align-items: center !important;
+    justify-self: stretch !important;
+    margin: 0 !important;
+  }
+  .tele-card .tc-header { justify-content: center !important; }
+  .tele-card .tc-value { font-size: 26px !important; }
+  
+  #card-goal {
+    bottom: 120px !important;
+  }
+  
+  /* Mobile Consultation: Stack conversation above input */
+  #chat-box {
+    left: 4vw !important;
+    width: 92vw !important;
+    top: 15vh !important;
+    bottom: 90px !important;
+  }
+  
+  /* Mobile Workout: stack left and right cards */
+  #wo-body .cc-card {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: auto auto auto !important;
+    padding: 0 16px !important;
+  }
+  .cc-card .cc-muscle-wrap,
+  .cc-card .cc-notes,
+  .cc-card .cc-instruction {
+    grid-column: 1 !important;
+    grid-row: 2 !important;
+    justify-self: center !important;
+    text-align: center !important;
+    width: 100% !important;
+    max-width: 320px !important;
+  }
+  .cc-card .cc-stats-column,
+  .cc-card .cc-fields {
+    grid-column: 1 !important;
+    grid-row: 3 !important;
+    justify-self: center !important;
+    text-align: center !important;
+    width: 100% !important;
+    max-width: 320px !important;
+  }
+  .cc-card .cc-actions {
+    bottom: 20px !important;
+  }
+  
+  .wo-rest-card,
+  .wo-feedback-card,
+  .wo-resolve-card,
+  .wo-complete-card {
+    top: 50vh !important;
+  }
+}
+
+/* Scifi Coach Card Grid Panel Placements */
+.cc-card .cc-tip-row {
+  display: contents !important;
+}
+
+/* Tip panel (first cc-panel in tip-row) goes to column 1 */
+.cc-card .cc-tip-row .cc-panel:first-child {
+  grid-column: 1 !important;
+  grid-row: 3 !important;
+  justify-self: end !important;
+  text-align: right !important;
+  max-width: 320px !important;
+  width: 100% !important;
+  background: rgba(5, 7, 18, 0.5) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  border-radius: 16px !important;
+  padding: 16px !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3) !important;
+  box-sizing: border-box !important;
+}
+
+/* Done button & progress panel (second cc-panel in tip-row) goes to column 3 */
+.cc-card .cc-tip-row .cc-panel:last-child {
+  grid-column: 3 !important;
+  grid-row: 3 !important;
+  justify-self: start !important;
+  text-align: left !important;
+  max-width: 320px !important;
+  width: 100% !important;
+  background: rgba(5, 7, 18, 0.5) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  border-radius: 16px !important;
+  padding: 16px !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3) !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+}
+
+.cc-card .cc-metrics {
+  grid-column: 1 / span 3 !important;
+  grid-row: 4 !important;
+  display: flex !important;
+  justify-content: center !important;
+  gap: 40px !important;
+  margin-top: 20px !important;
+}
+
+.cc-card .cc-metric {
+  background: rgba(255, 255, 255, 0.02) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  border-radius: 12px !important;
+  padding: 8px 16px !important;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 12px !important;
+}
+.cc-card .cc-metric-lbl {
+  font-size: 9px !important;
+  letter-spacing: 1px !important;
+  color: var(--muted) !important;
+}
+.cc-card .cc-metric-val {
+  font-size: 16px !important;
+  font-weight: 800 !important;
+}
+
+.wo-done-btn {
+  background: var(--cyan) !important;
+  color: #030611 !important;
+  border: none !important;
+  border-radius: 20px !important;
+  padding: 10px 20px !important;
+  font-size: 11px !important;
+  font-weight: 800 !important;
+  letter-spacing: 1.5px !important;
+  text-transform: uppercase !important;
+  box-shadow: 0 0 15px rgba(0, 240, 255, 0.3) !important;
+  cursor: pointer !important;
+  transition: all 0.3s ease !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+.wo-done-btn:hover {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 0 25px rgba(0, 240, 255, 0.5) !important;
+}
 </style>
+
+
 
 </head>
 <body>
@@ -2399,6 +3330,7 @@ body.state-consultation #phys-core-stage {
      GPU layers: breath-group, flow-rotate, glow, core-div = 4 promoted
      ════════════════════════════════════════════════════════════════════ -->
 <div id="phys-core-stage">
+  <button class="hud-toggle-btn" onclick="toggleHud()"><span class="hud-toggle-dot"></span> <span data-key="hud-toggle-lbl">HUD: HIDDEN</span></button>
   <div class="core-eyebrow eyebrow">
     <span class="dot"></span>
     <span id="core-eyebrow-text" data-key="core-eyebrow-text">PHYSIOLOGICAL STATUS</span>
@@ -2958,9 +3890,11 @@ const T={
     'tele-load-sub': 'Показатели за натоварване',
     'tele-goal': 'ТЕКУЩА ЦЕЛ',
     'tele-goal-sub': 'Цел на програмата',
+    'hud-toggle-lbl': 'HUD: СКРИТ',
     'core-eyebrow-text': 'ФИЗИОЛОГИЧЕН СТАТУС',
     'ci-engine-label': 'APEX AI ТРЕНЬОР',
     'ci-protocol-btn': 'СТАРТИРАЙ ПРОТОКОЛ',
+    'ci-consult-link': 'Отвори консултацията →',
     'footer-copyright': '© 2026 APEX PULSE PRO · СИГУРНИ ПЛАЩАНИЯ ЧРЕЗ STRIPE',
     'ci-back': '← НАЗАД',
     'state-peak': 'ПИК',
@@ -3099,9 +4033,11 @@ const T={
     'tele-load-sub': 'Exertion metrics',
     'tele-goal': 'ACTIVE GOAL',
     'tele-goal-sub': 'Target objective',
+      'hud-toggle-lbl': 'HUD: HIDDEN',
     'core-eyebrow-text': 'PHYSIOLOGICAL STATUS',
     'ci-engine-label': 'APEX COACH ENGINE',
     'ci-protocol-btn': 'START PROTOCOL',
+    'ci-consult-link': 'Open consultation →',
     'footer-copyright': '© 2026 APEX PULSE PRO · SECURE PAYMENTS BY STRIPE',
     'ci-back': '← BACK',
     'state-peak': 'PEAK',
@@ -4500,8 +5436,10 @@ function _ccCalloutLabels(callouts){
 </div>`).join('');
 }
 
-// ── Body illustration: Push-Up (inline SVG, 250×300 viewport) ─────────────────
-function _ccPushupSvg(){
+// ── [REMOVED: legacy push-up SVG illustration — replaced by biological core in cc-core-slot] ──
+
+/* REMOVED_PUSHUP_PLACEHOLDER */
+function _ccPushupSvg_REMOVED_DO_NOT_USE(){
   return`<svg class="cc-body-svg" viewBox="0 0 250 300" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMax meet">
 <defs>
   <!-- Cyan edge glow -->
@@ -8105,6 +9043,47 @@ function _physSyncLayout() {
   }
 }
 
+function toggleHud() {
+  const body = document.body;
+  body.classList.toggle('hud-active');
+  const isActive = body.classList.contains('hud-active');
+  
+  const lbl = document.querySelector('[data-key="hud-toggle-lbl"]');
+  if (lbl) {
+    const currentLang = window.apexLang || 'bg';
+    if (isActive) {
+      lbl.textContent = currentLang === 'bg' ? 'HUD: АКТИВЕН' : 'HUD: ACTIVE';
+      const dot = document.querySelector('.hud-toggle-dot');
+      if (dot) dot.style.background = 'var(--cyan)';
+    } else {
+      lbl.textContent = currentLang === 'bg' ? 'HUD: СКРИТ' : 'HUD: HIDDEN';
+      const dot = document.querySelector('.hud-toggle-dot');
+      if (dot) dot.style.background = 'rgba(255,255,255,0.3)';
+    }
+  }
+}
+window.toggleHud = toggleHud;
+
+// Bind core click listener to open chat
+document.addEventListener('DOMContentLoaded', () => {
+  const coreEl = document.getElementById('phys-core');
+  if (coreEl) {
+    coreEl.addEventListener('click', () => {
+      const isConsultation = document.body.classList.contains('state-consultation');
+      const overlay = document.getElementById('workout-overlay');
+      const isWorkout = overlay && overlay.classList.contains('active');
+      
+      if (!isConsultation && !isWorkout) {
+        setAppState('consultation');
+        setTimeout(() => {
+          const inp = document.getElementById('user-in');
+          if (inp) inp.focus();
+        }, 100);
+      }
+    });
+  }
+});
+
 function runBootSequence() {
   const stage = document.getElementById('phys-core-stage');
   const cards = document.querySelectorAll('.tele-card');
@@ -8178,6 +9157,7 @@ document.addEventListener('DOMContentLoaded', function() {
   if(_inpEl) _inpEl.addEventListener('keydown',e=>{if(e.key==='Enter')send();});
 
   // V2: set initial shell state, then surface BSE answers into Coach Island
+  applyStaticLang();
   setAppState('overview');
   _ciShowTelemetry();
   _ciUpdateState();
@@ -8210,7 +9190,7 @@ document.addEventListener('DOMContentLoaded', function() {
     <div class="ci-brief" id="ci-brief-text">Reading biological signature…</div>
     <!-- Q3: What is the single best next action? -->
     <button class="ci-protocol-btn" id="ci-protocol-btn" onclick="ciStartProtocol()" data-key="ci-protocol-btn">START PROTOCOL</button>
-    <button class="ci-consult-link" onclick="setAppState('consultation');setTimeout(()=>document.getElementById('user-in').focus(),80);">Open consultation →</button>
+    <button class="ci-consult-link" data-key="ci-consult-link" onclick="setAppState('consultation');setTimeout(()=>document.getElementById('user-in').focus(),80);">Отвори консултацията →</button>
   </div>
 
   <!-- ── CONSULTATION MODE ───────────────────────────────────── -->
@@ -8221,15 +9201,6 @@ document.addEventListener('DOMContentLoaded', function() {
       <button class="ci-back-btn" onclick="setAppState('overview')" data-key="ci-back">← BACK</button>
       <span class="ci-engine-label" data-key="ci-engine-label">APEX COACH ENGINE</span>
       <div id="consultation-core-slot" style="width:40px; height:40px; position:relative; display:flex; justify-content:center; align-items:center;"></div>
-    </div>
-
-    <!-- Clinical consultation feed -->
-    <div class="ci-feed-wrap">
-      <div id="chat-box"></div>
-      <div id="utility" style="padding:8px 0;">
-        <button class="util-btn" onclick="copyPlan()">📋 <span data-key="copy">Копирай плана</span></button>
-        <button class="util-btn" onclick="savePDF()">💾 <span data-key="pdf">Запази PDF</span></button>
-      </div>
     </div>
 
     <!-- Input — Landing goal-line style -->
@@ -8244,6 +9215,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
   </div>
 
+</div>
+
+<!-- CHAT FEED — body-level so backdrop-filter on coach-island cannot trap it -->
+<div id="chat-box"></div>
+<div id="utility" style="padding:8px 0;">
+  <button class="util-btn" onclick="copyPlan()">📋 <span data-key="copy">Копирай плана</span></button>
+  <button class="util-btn" onclick="savePDF()">💾 <span data-key="pdf">Запази PDF</span></button>
 </div>
 
 </body>
