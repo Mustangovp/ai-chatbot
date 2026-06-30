@@ -2756,9 +2756,9 @@ function applyStaticLang(){
 }
 
 let count=parseInt(localStorage.getItem('apexCount')||'0',10);
+let box;
 
 function showGreeting(){
-  const box=document.getElementById('chat-box');
   if(!box)return;
   box.innerHTML='';
   const d=T[lang];
@@ -5218,7 +5218,6 @@ function lockChatInput(){
 
 function showDailyLimit(hoursLeft){
   track('daily_limit_reached',{});
-  const box=document.getElementById('chat-box');
   if(!box)return;
   // Dedup by UNIQUE ID — never by class (the lead-capture box shares the
   // styling class, and matching on class silently blocked this screen).
@@ -5270,7 +5269,6 @@ function maybeShowLeadCapture(){
     if(u.count !== FREE_DAILY_LIMIT-2)return; // exactly at "2 left"
     localStorage.setItem('apexLeadShown','true');
     track('lead_capture_shown',{});
-    const box=document.getElementById('chat-box');
     if(!box)return;
     const note=document.createElement('div');
     note.className='msg-a daily-limit-note';
@@ -7293,6 +7291,7 @@ function _ciShowTelemetry(){
 /* ─────────────────────────────────────────────────────────────── */
 
 document.addEventListener('DOMContentLoaded', function() {
+  box = document.getElementById('chat-box');
   physCoreSetState('peak');
   _physSyncLattice();
 
