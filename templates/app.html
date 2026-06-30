@@ -2055,7 +2055,289 @@ body.state-laboratory .footer-mini{display:none!important;}
 #phys-core #pc-flow-rotate-group {
   animation: none !important;
 }
+
+/* ==========================================
+   SPRINT P0: HIGH-END BIOLOGICAL HUD LAYOUT
+   ========================================== */
+#phys-core-stage {
+  display: grid !important;
+  grid-template-columns: 1fr 280px 1fr !important;
+  grid-template-rows: auto auto auto !important;
+  align-items: center !important;
+  justify-items: center !important;
+  position: relative !important;
+  width: 100% !important;
+  max-width: 900px !important;
+  min-height: 48vh !important;
+  margin: 10px auto 30px !important;
+  padding: 10px 20px !important;
+  box-sizing: border-box !important;
+  overflow: visible !important;
+  background: transparent !important;
+  border: none !important;
+}
+
+#phys-core-stage::before {
+  mask-image: radial-gradient(ellipse at center, #000 40%, transparent 80%) !important;
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 40%, transparent 80%) !important;
+}
+
+.core-eyebrow {
+  grid-column: 1 / span 3 !important;
+  grid-row: 1 !important;
+  margin-bottom: 5px !important;
+  z-index: 12 !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  padding: 5px 12px !important;
+  border-radius: 12px !important;
+}
+
+#phys-state-label {
+  grid-column: 1 / span 3 !important;
+  grid-row: 1 !important;
+  position: static !important;
+  transform: none !important;
+  margin-top: 50px !important;
+  margin-bottom: 10px !important;
+  z-index: 12 !important;
+  font-size: 14px !important;
+  font-weight: 800 !important;
+  letter-spacing: 2px !important;
+  text-transform: uppercase !important;
+  color: var(--text) !important;
+  text-shadow: 0 0 15px rgba(255, 255, 255, 0.1) !important;
+  transition: all 0.5s ease !important;
+}
+
+#overview-core-slot {
+  grid-column: 2 !important;
+  grid-row: 2 !important;
+  width: 270px !important;
+  height: 270px !important;
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  position: relative !important;
+  z-index: 10 !important;
+}
+
+#phys-core-stage #phys-core {
+  --core-size: 270px !important;
+}
+
+#phys-stage-ring {
+  grid-column: 2 !important;
+  grid-row: 2 !important;
+  z-index: 1 !important;
+  width: 320px !important;
+  height: 320px !important;
+  position: absolute !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  opacity: 0.16 !important;
+}
+
+.phys-tele-grid {
+  display: contents !important;
+}
+
+.tele-card {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 3px !important;
+  z-index: 10 !important;
+  transition: all 0.4s cubic-bezier(0.25, 1, 0.5, 1) !important;
+  min-width: 120px !important;
+}
+
+.tele-card .tc-header {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+
+.tele-card .tc-dot {
+  width: 6px !important;
+  height: 6px !important;
+}
+
+.tele-card .tc-label {
+  font-size: 10px !important;
+  font-weight: 600 !important;
+  letter-spacing: 1px !important;
+  color: var(--muted) !important;
+}
+
+.tele-card .tc-value {
+  font-size: 32px !important;
+  font-weight: 800 !important;
+  color: var(--text) !important;
+  font-family: 'Outfit', sans-serif !important;
+  margin: 2px 0 !important;
+  text-shadow: 0 0 20px rgba(255, 255, 255, 0.05) !important;
+}
+
+.tele-card .tc-sub {
+  font-size: 9px !important;
+  color: rgba(139, 147, 167, 0.4) !important;
+  white-space: nowrap !important;
+}
+
+#card-cns {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  align-self: start !important;
+  justify-self: end !important;
+  text-align: right !important;
+  margin-top: 30px !important;
+}
+#card-cns .tc-header {
+  justify-content: flex-end !important;
+}
+
+#card-recovery {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  align-self: end !important;
+  justify-self: end !important;
+  text-align: right !important;
+  margin-bottom: 30px !important;
+}
+#card-recovery .tc-header {
+  justify-content: flex-end !important;
+}
+
+#card-readiness {
+  grid-column: 3 !important;
+  grid-row: 2 !important;
+  align-self: start !important;
+  justify-self: start !important;
+  text-align: left !important;
+  margin-top: 30px !important;
+}
+#card-readiness .tc-header {
+  justify-content: flex-start !important;
+}
+
+#card-load {
+  grid-column: 3 !important;
+  grid-row: 2 !important;
+  align-self: end !important;
+  justify-self: start !important;
+  text-align: left !important;
+  margin-bottom: 30px !important;
+}
+#card-load .tc-header {
+  justify-content: flex-start !important;
+}
+
+#card-goal {
+  grid-column: 1 / span 3 !important;
+  grid-row: 3 !important;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  background: rgba(255, 255, 255, 0.02) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  border-radius: 20px !important;
+  padding: 6px 16px !important;
+  margin-top: 25px !important;
+  min-width: unset !important;
+  align-self: center !important;
+  justify-self: center !important;
+}
+#card-goal .tc-header {
+  display: flex !important;
+  align-items: center !important;
+}
+#card-goal .tc-value {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  color: var(--cyan) !important;
+  margin: 0 !important;
+  text-transform: uppercase !important;
+}
+#card-goal .tc-sub {
+  display: none !important;
+}
+
+body.state-consultation #phys-core-stage {
+  display: none !important;
+}
+
+@media (max-width: 768px) {
+  #phys-core-stage {
+    grid-template-columns: 1fr 1fr !important;
+    grid-template-rows: auto auto auto auto !important;
+    gap: 12px !important;
+    padding: 10px !important;
+    margin: 10px auto 15px !important;
+  }
+  .core-eyebrow {
+    grid-column: 1 / span 2 !important;
+    grid-row: 1 !important;
+  }
+  #phys-state-label {
+    grid-column: 1 / span 2 !important;
+    grid-row: 2 !important;
+    margin-top: 15px !important;
+    margin-bottom: 5px !important;
+  }
+  #overview-core-slot {
+    grid-column: 1 / span 2 !important;
+    grid-row: 3 !important;
+    width: 220px !important;
+    height: 220px !important;
+    margin: 10px auto !important;
+  }
+  #phys-core-stage #phys-core {
+    --core-size: 220px !important;
+  }
+  #phys-stage-ring {
+    grid-column: 1 / span 2 !important;
+    grid-row: 3 !important;
+    width: 260px !important;
+    height: 260px !important;
+  }
+  .phys-tele-grid {
+    display: grid !important;
+    grid-column: 1 / span 2 !important;
+    grid-row: 4 !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 12px !important;
+    width: 100% !important;
+    margin-top: 10px !important;
+  }
+  .tele-card {
+    text-align: center !important;
+    align-items: center !important;
+    justify-self: stretch !important;
+    margin: 0 !important;
+  }
+  .tele-card .tc-header {
+    justify-content: center !important;
+  }
+  .tele-card .tc-value {
+    font-size: 26px !important;
+  }
+  #card-goal {
+    grid-column: 1 / span 2 !important;
+    margin-top: 10px !important;
+  }
+}
 </style>
+
 </head>
 <body>
 
@@ -2121,9 +2403,11 @@ body.state-laboratory .footer-mini{display:none!important;}
     <span class="dot"></span>
     <span id="core-eyebrow-text" data-key="core-eyebrow-text">PHYSIOLOGICAL STATUS</span>
   </div>
+  
+  <div id="phys-state-label">PEAK READINESS</div>
+  
   <div id="phys-stage-ring"></div>
   <div id="overview-core-slot"></div>
-  <div id="phys-state-label"></div>
   
   <div class="phys-tele-grid" id="phys-tele-grid">
     <!-- CNS Output Card -->
@@ -2324,6 +2608,8 @@ body.state-laboratory .footer-mini{display:none!important;}
           <ellipse id="pc-glow-layer" cx="150" cy="152" rx="109" ry="108" fill="url(#pcg-glow)" filter="url(#pcf-glow)" opacity="0.28"/>
         </g>
       </g>
+          <!-- SPRINT P0: Emit living particles -->
+      <g id="pc-particles-layer"></g>
     </svg>
   </div>
 </div>
@@ -7097,6 +7383,10 @@ const ApexBioRenderer = (() => {
   let _flowEl = null;
   let _ambientEl = null;
   let _flowRotatePhase = 0;
+  let _particles = [];
+  const _maxParticles = 24;
+  let _heartbeatActive = false;
+  let _heartbeatTime = 0;
 
   // ── INTERNAL ─────────────────────────────────────────────────────────
   let _raf = null, _running = false, _lastTs = 0;
@@ -7157,6 +7447,11 @@ const ApexBioRenderer = (() => {
     }
 
     _raf = requestAnimationFrame(_tick);
+  }
+
+  function triggerHeartbeat() {
+    _heartbeatActive = true;
+    _heartbeatTime = performance.now();
   }
 
   // ── TICK ──────────────────────────────────────────────────────────────
@@ -7361,6 +7656,70 @@ const ApexBioRenderer = (() => {
       _ambientEl.style.transform = 'translate(' + ambX + 'px, ' + ambY + 'px)';
     }
 
+    // SPRINT P0: Heartbeat double pulse modulation
+    if (_heartbeatActive) {
+      const elapsed = ts - _heartbeatTime;
+      if (elapsed > 1000) {
+        _heartbeatActive = false;
+      } else {
+        const p1 = Math.exp(-Math.pow((elapsed - 200) / 100, 2)) * 0.18;
+        const p2 = Math.exp(-Math.pow((elapsed - 500) / 100, 2)) * 0.14;
+        out.breathScale += (p1 + p2);
+        if (_breathEl) {
+          _breathEl.style.transform = 'scale(' + out.breathScale.toFixed(4) + ')';
+        }
+        if (_glowEl) {
+          const glowScale = 1.0 + (out.breathScale - 1.0) * 1.6;
+          _glowEl.style.transform = 'scale(' + glowScale.toFixed(4) + ')';
+        }
+      }
+    }
+
+    // SPRINT P0: Emit and update living particles
+    try {
+      const paletteMap = {
+        peak: ['#38e0ff', '#ffb13c', '#d7faff'],
+        training: ['#32ff78', '#14b450', '#dcffdc'],
+        recovery: ['#64beff', '#3282dc', '#dcf0ff'],
+        fatigue: ['#ffa032', '#b46414', '#ffebc8'],
+        pain: ['#ff323c', '#b4141e', '#ffd2d2']
+      };
+      const activeState = (window.apexBrain && window.apexBrain.intent && window.apexBrain.intent.state) || 'peak';
+      const colors = paletteMap[activeState] || paletteMap.peak;
+      
+      const pContainer = document.getElementById('pc-particles-layer');
+      if (pContainer) {
+        if (_particles.length < _maxParticles && Math.random() < 0.15) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = 25 + Math.random() * 35;
+          _particles.push({
+            x: 150,
+            y: 152,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            life: 1.0,
+            decay: 0.6 + Math.random() * 0.7,
+            r: 1.0 + Math.random() * 1.6,
+            color: colors[Math.floor(Math.random() * colors.length)]
+          });
+        }
+        
+        let html = '';
+        for (let i = _particles.length - 1; i >= 0; i--) {
+          const p = _particles[i];
+          p.x += p.vx * dt * 0.001;
+          p.y += p.vy * dt * 0.001;
+          p.life -= dt * 0.001 * p.decay;
+          if (p.life <= 0) {
+            _particles.splice(i, 1);
+            continue;
+          }
+          html += `<circle cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" r="${p.r.toFixed(2)}" fill="${p.color}" opacity="${(p.life * 0.7).toFixed(2)}" style="mix-blend-mode: screen;" />`;
+        }
+        pContainer.innerHTML = html;
+      }
+    } catch(pe) {}
+
     // STEP 9 — Continuous body memory → CSS var evolution (throttled to 3s)
     // Fires between Brain events so the organism evolves without user interaction.
     // _rendSig / _rendState are module-scope vars set by the intent bridge.
@@ -7389,7 +7748,7 @@ const ApexBioRenderer = (() => {
     }
   });
 
-  return { setIntent, loadDNA, start, out };
+  return { setIntent, loadDNA, start, out, triggerHeartbeat };
 })();
 
 // ── BSE → Renderer Bridge: state-blind translation ──────────────────────
@@ -7414,6 +7773,13 @@ function _bioTranslate(sig) {
 // ── Singletons ─────────────────────────────────────────────────────────
 const apexBrain = new ApexBiologicalBrain();
 const apexBSE   = new ApexBiologicalSignatureEngine();
+function physCoreTriggerHeartbeat() {
+  try {
+    if (window.ApexBioRenderer && typeof window.ApexBioRenderer.triggerHeartbeat === 'function') {
+      window.ApexBioRenderer.triggerHeartbeat();
+    }
+  } catch(e) {}
+}
 const BiologicalCore = apexBSE;
 window.BiologicalCore = BiologicalCore;
 
@@ -7739,6 +8105,53 @@ function _physSyncLayout() {
   }
 }
 
+function runBootSequence() {
+  const stage = document.getElementById('phys-core-stage');
+  const cards = document.querySelectorAll('.tele-card');
+  const island = document.getElementById('coach-island');
+  
+  if (stage) {
+    stage.style.opacity = '0';
+    stage.style.transition = 'opacity 1.5s cubic-bezier(0.25, 1, 0.5, 1)';
+  }
+  cards.forEach(c => {
+    c.style.opacity = '0';
+    c.style.transform = 'translateY(16px)';
+    c.style.transition = 'opacity 0.8s cubic-bezier(0.25, 1, 0.5, 1), transform 0.8s cubic-bezier(0.25, 1, 0.5, 1)';
+  });
+  if (island) {
+    island.style.opacity = '0';
+    island.style.transition = 'opacity 1.2s ease';
+  }
+  
+  // 1. Darkness -> Core Ignition
+  setTimeout(() => {
+    if (stage) stage.style.opacity = '1';
+    _physSyncLayout();
+  }, 100);
+  
+  // 2. Heartbeat (lub-dub pulse)
+  setTimeout(() => {
+    physCoreTriggerHeartbeat();
+  }, 900);
+  
+  // 3. Energy expansion & Telemetry appears
+  setTimeout(() => {
+    physCoreTriggerHeartbeat();
+    cards.forEach((c, idx) => {
+      setTimeout(() => {
+        c.style.opacity = '1';
+        c.style.transform = 'translateY(0)';
+      }, idx * 100);
+    });
+  }, 1700);
+  
+  // 4. Coach directive fades in
+  setTimeout(() => {
+    if (island) island.style.opacity = '1';
+  }, 2500);
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   box = document.getElementById('chat-box');
   physCoreSetState('peak');
@@ -7769,6 +8182,7 @@ document.addEventListener('DOMContentLoaded', function() {
   _ciShowTelemetry();
   _ciUpdateState();
   _physSyncLayout();
+  runBootSequence();
   setTimeout(()=>{ _ciShowTelemetry(); _ciUpdateState(); _physSyncLayout(); }, 1200);
 
   // Set layout sync listeners
