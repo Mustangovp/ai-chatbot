@@ -2628,7 +2628,7 @@ body.state-laboratory .footer-mini{display:none!important;}
     <a onclick="showLegal('medical')" data-key="medical">Медицинско</a>
     <a onclick="showLegal('contact')" data-key="contact">Контакт</a>
   </div>
-  <div class="footer-copyright">© 2026 APEX PULSE PRO · SECURE PAYMENTS BY STRIPE</div>
+  <div class="footer-copyright" data-key="footer-copyright">© 2026 APEX PULSE PRO · SECURE PAYMENTS BY STRIPE</div>
 </footer>
 
 <script>
@@ -2673,6 +2673,9 @@ const T={
     'tele-goal': 'ТЕКУЩА ЦЕЛ',
     'tele-goal-sub': 'Цел на програмата',
     'core-eyebrow-text': 'ФИЗИОЛОГИЧЕН СТАТУС',
+    'ci-engine-label': 'APEX AI ТРЕНЬОР',
+    'ci-protocol-btn': 'СТАРТИРАЙ ПРОТОКОЛ',
+    'footer-copyright': '© 2026 APEX PULSE PRO · СИГУРНИ ПЛАЩАНИЯ ЧРЕЗ STRIPE',
     'ci-back': '← НАЗАД',
     'state-peak': 'ПИК',
     'state-training': 'ТРЕНИРОВКА',
@@ -2811,6 +2814,9 @@ const T={
     'tele-goal': 'ACTIVE GOAL',
     'tele-goal-sub': 'Target objective',
     'core-eyebrow-text': 'PHYSIOLOGICAL STATUS',
+    'ci-engine-label': 'APEX COACH ENGINE',
+    'ci-protocol-btn': 'START PROTOCOL',
+    'footer-copyright': '© 2026 APEX PULSE PRO · SECURE PAYMENTS BY STRIPE',
     'ci-back': '← BACK',
     'state-peak': 'PEAK',
     'state-ready': 'READY',
@@ -4348,23 +4354,52 @@ function _ccBodyIllustration(key){
 
 function _ccCard(ex,meta,reps,si,totalSets,key){
   const en=lang==='en';
+  
+  // Determine if muscle data exists for the exercise
+  const hasMuscles = meta.muscles && meta.muscles.length > 0;
+  
   const tech=meta.technique.map(t=>`<div class="cc-tech-item"><span class="cc-tech-chk">&#10003;</span><span class="cc-tech-txt">${en?t.en:t.bg}</span></div>`).join('');
-  const mrows=meta.muscles.map(m=>`<div class="cc-mrow"><span class="cc-mdot" style="background:${m.color}"></span><span class="cc-mname">${en?m.nameEN:m.name}</span><span class="cc-mpct">${m.pct}%</span></div>`).join('');
+  
+  let mrows = '';
+  if (hasMuscles) {
+    mrows=meta.muscles.map(m=>`<div class="cc-mrow"><span class="cc-mdot" style="background:${m.color}"></span><span class="cc-mrow-lbl">${en?m.nameEN:m.name}</span><span class="cc-mrow-val">${m.pct}%</span></div>`).join('');
+  }
+  
   const pcts=[100,85,65,40];
   const dots=Array.from({length:totalSets},(_,i)=>{
     const state=i<si?'done':i===si?'active':'upcoming';
     const conn=i<totalSets-1?`<div class="cc-prog-conn${i<si?' done':''}"></div>`:'';
-    return`<div class="cc-prog-step"><div class="cc-prog-dot ${state}">${i+1}</div><span class="cc-prog-setlbl">${en?'SET':'СЕТ'}</span><span class="cc-prog-pct">${pcts[i]||''}%</span></div>${conn}`;
+    return`<div class="cc-prog-step"><div class="cc-prog-dot ${state}">${i+1}</div><span class="cc-prog-setlbl">${en?'SET':'СЕТ'}</span>${conn}</div>`;
   }).join('');
   const bpm=_wo.lastBpm||'—';
   const cal=_ccCalories()||'—';
   const tut=_wo.tut||0;
   const ipt=_ccIntensity()||78;
+  
+  const mpanelHtml = hasMuscles ? `
+  <div class="cc-mpanel">
+    <div class="cc-mpanel-lbl">${en?'MUSCLE ACTIVITY':'АКТИВНОСТ НА МУСКУЛИТЕ'}</div>
+    ${mrows}
+    <div class="cc-ring-wrap">${_ccRing(meta.activation)}<div class="cc-ring-sublbl">${en?'MUSCLE\nACTIVATION':'МУСКУЛНА\nАКТИВАЦИЯ'}</div></div>
+  </div>
+  ` : '';
+
+  const mmapHtml = hasMuscles ? `
+  <div class="cc-panel cc-mmap">
+    <span class="cc-plbl">${en?'MUSCLE MAP':'МУСКУЛНА КАРТА'}</span>
+    <div class="cc-mmap-bodies">${_ccBodySvg('front',meta.muscleMap.front)}${_ccBodySvg('back',meta.muscleMap.back)}</div>
+    <div class="cc-mmap-legend">
+      <div class="cc-mmap-leg-item"><span class="cc-mmap-ldot" style="background:var(--ccCyan)"></span>${en?'Primary load':'Основно'}</div>
+      <div class="cc-mmap-leg-item"><span class="cc-mmap-ldot" style="background:var(--ccPurple)"></span>${en?'Secondary load':'Вторично'}</div>
+    </div>
+  </div>
+  ` : '';
+
   return`<div class="cc-root">
 <div class="cc-nav">
   <button class="cc-nav-back" onclick="closeWorkout()">&#8592;</button>
   <div class="cc-nav-logo"><div class="cc-nav-apex">APEX</div><div class="cc-nav-sub">AI COACH</div></div>
-  <button class="cc-nav-save">&#9734; ${en?'Save':'&#1047;&#1072;&#1087;&#1072;&#1079;&#1080;'}</button>
+  <button class="cc-nav-save">&#9734; ${en?'Save':'Запази'}</button>
 </div>
 <div class="cc-hero">
   <div id="cc-core-slot" class="cc-core-slot"></div>
@@ -4373,69 +4408,57 @@ function _ccCard(ex,meta,reps,si,totalSets,key){
     <div class="cc-ex-name-en">${meta.nameEN}</div>
     <div class="cc-badge">&#9889; ${en?meta.difficulty.en:meta.difficulty.bg}</div>
   </div>
-  <div class="cc-mpanel">
-    <div class="cc-mpanel-lbl">${en?'MUSCLE ACTIVITY':'&#1040;&#1050;&#1058;&#1048;&#1042;&#1053;&#1054;&#1057;&#1058; &#1053;&#1040; &#1052;&#1059;&#1057;&#1050;&#1059;&#1051;&#1048;&#1058;&#1045;'}</div>
-    ${mrows}
-    <div class="cc-ring-wrap">${_ccRing(meta.activation)}<div class="cc-ring-sublbl">${en?'MUSCLE\nACTIVATION':'&#1052;&#1059;&#1057;&#1050;&#1059;&#1051;&#1053;&#1040;\n&#1040;&#1050;&#1058;&#1048;&#1042;&#1040;&#1062;&#1048;&#1071;'}</div></div>
-  </div>
+  ${mpanelHtml}
 </div>
-<div class="cc-info-row">
+<div class="cc-info-row" style="${hasMuscles ? '' : 'grid-template-columns: 1fr 1fr;'}">
   <div class="cc-panel">
-    <span class="cc-plbl">${en?'TECHNIQUE':'&#1058;&#1045;&#1061;&#1053;&#1048;&#1050;&#1040;'}</span>
+    <span class="cc-plbl">${en?'TECHNIQUE':'ТЕХНИКА'}</span>
     ${tech}
   </div>
   <div class="cc-panel">
-    <span class="cc-plbl">${en?'SETS &amp; REPS':'&#1057;&#1045;&#1056;&#1048;&#1048; &#1048; &#1055;&#1054;&#1042;&#1058;&#1054;&#1056;&#1045;&#1053;&#1048;&#1071;'}</span>
+    <span class="cc-plbl">${en?'SETS &amp; REPS':'СЕРИИ И ПОВТОРЕНИЯ'}</span>
     <div class="cc-sets-nums">
-      <div class="cc-sets-col"><span class="cc-sets-num">${totalSets}</span><span class="cc-sets-sub">${en?'SETS':'&#1057;&#1045;&#1056;&#1048;&#1048;'}</span></div>
-      <div class="cc-sets-col"><span class="cc-sets-num">${reps}</span><span class="cc-sets-sub">${en?'REPS':'&#1055;&#1054;&#1042;&#1058;&#1054;&#1056;&#1045;&#1053;&#1048;&#1071;'}</span></div>
+      <div class="cc-sets-col"><span class="cc-sets-num">${totalSets}</span><span class="cc-sets-sub">${en?'SETS':'СЕРИИ'}</span></div>
+      <div class="cc-sets-col"><span class="cc-sets-num">${reps}</span><span class="cc-sets-sub">${en?'REPS':'ПОВТОРЕНИЯ'}</span></div>
     </div>
     <div class="cc-rest-row">
-      <span class="cc-rest-lbl">${en?'REST':'&#1055;&#1054;&#1063;&#1048;&#1042;&#1050;&#1040;'}</span>
+      <span class="cc-rest-lbl">${en?'REST':'ПОЧИВКА'}</span>
       <span class="cc-rest-val">&#9711; ${en?meta.restEN:meta.rest}</span>
     </div>
   </div>
-  <div class="cc-panel cc-mmap">
-    <span class="cc-plbl">${en?'MUSCLE MAP':'&#1052;&#1059;&#1057;&#1050;&#1059;&#1051;&#1053;&#1040; &#1050;&#1040;&#1056;&#1058;&#1040;'}</span>
-    <div class="cc-mmap-bodies">${_ccBodySvg('front',meta.muscleMap.front)}${_ccBodySvg('back',meta.muscleMap.back)}</div>
-    <div class="cc-mmap-legend">
-      <div class="cc-mmap-leg-item"><span class="cc-mmap-ldot" style="background:var(--ccCyan)"></span>${en?'Primary load':'&#1054;&#1089;&#1085;&#1086;&#1074;&#1085;&#1086; &#1085;&#1072;&#1090;&#1086;&#1074;&#1072;&#1088;&#1074;&#1072;&#1085;&#1077;'}</div>
-      <div class="cc-mmap-leg-item"><span class="cc-mmap-ldot" style="background:var(--ccPurple)"></span>${en?'Secondary load':'&#1042;&#1090;&#1086;&#1088;&#1080;&#1095;&#1085;&#1086; &#1085;&#1072;&#1090;&#1086;&#1074;&#1072;&#1088;&#1074;&#1072;&#1085;&#1077;'}</div>
-    </div>
-  </div>
+  ${mmapHtml}
 </div>
 <div class="cc-tip-row">
   <div class="cc-panel">
     <div class="cc-tip-card">${_ccHex()}<div><div class="cc-tip-hdr">APEX COACH TIP</div><div class="cc-tip-txt">${en?meta.tip.en:meta.tip.bg}</div></div></div>
   </div>
   <div class="cc-panel">
-    <span class="cc-prog-lbl">${en?'WORKOUT PROGRESS':'&#1055;&#1056;&#1054;&#1043;&#1056;&#1045;&#1057; &#1042; &#1058;&#1056;&#1045;&#1053;&#1048;&#1056;&#1054;&#1042;&#1050;&#1040;&#1058;&#1040;'}</span>
+    <span class="cc-prog-lbl">${en?'WORKOUT PROGRESS':'ПРОГРЕС В ТРЕНИРОВКАТА'}</span>
     <div class="cc-prog-track">${dots}</div>
-    <div style="margin-top:14px;"><button class="wo-done-btn" style="margin:0;width:100%;" onclick="_woDone()">&#10003; ${en?'Done':'&#1043;&#1086;&#1090;&#1086;&#1074;&#1086;'}</button></div>
+    <div style="margin-top:14px;"><button class="wo-done-btn" style="margin:0;width:100%;" onclick="_woDone()">&#10003; ${en?'Done':'Готово'}</button></div>
   </div>
 </div>
 <div class="cc-metrics">
   <div class="cc-metric">
-    <span class="cc-metric-lbl">${en?'PULSE':'&#1055;&#1059;&#1051;&#1057;'}</span>
+    <span class="cc-metric-lbl">${en?'PULSE':'ПУЛС'}</span>
     <div class="cc-metric-val"><span class="cc-metric-num">${bpm}</span>${typeof bpm==='number'?'<span class="cc-metric-unit">BPM</span>':''}</div>
     ${_ccWave()}
   </div>
   <div class="cc-metric">
-    <span class="cc-metric-lbl">${en?'CALORIES':'&#1050;&#1040;&#1051;&#1054;&#1056;&#1048;&#1048;'}</span>
+    <span class="cc-metric-lbl">${en?'CALORIES':'КАЛОРИИ'}</span>
     <div class="cc-metric-val"><span class="cc-metric-num">${cal}</span>${typeof cal==='number'?'<span class="cc-metric-unit">kcal</span>':''}</div>
   </div>
   <div class="cc-metric">
-    <span class="cc-metric-lbl">${en?'TUT':'&#1053;&#1040;&#1055;&#1056;&#1045;&#1046;&#1045;&#1053;&#1048;&#1045;'}</span>
-    <div class="cc-metric-val"><span class="cc-metric-num">${tut||'—'}</span>${tut?'<span class="cc-metric-unit">&#1089;&#1077;&#1082;</span>':''}</div>
+    <span class="cc-metric-lbl">${en?'TUT':'НАПРЕЖЕНИЕ'}</span>
+    <div class="cc-metric-val"><span class="cc-metric-num">${tut||'—'}</span>${tut?'<span class="cc-metric-unit">сек</span>':''}</div>
   </div>
   <div class="cc-metric">
-    <span class="cc-metric-lbl">${en?'INTENSITY':'&#1048;&#1053;&#1058;&#1045;&#1053;&#1047;&#1048;&#1042;&#1053;&#1054;&#1057;&#1058;'}</span>
+    <span class="cc-metric-lbl">${en?'INTENSITY':'ИНТЕНЗИВНОСТ'}</span>
     <div class="cc-metric-val"><span class="cc-metric-num">${ipt}</span><span class="cc-metric-unit">%</span></div>
     <div class="cc-metric-bar"><div class="cc-metric-bar-fill" style="width:${ipt}%"></div></div>
   </div>
 </div>
-<div class="cc-footer">${en?'TRAIN SMART. PROGRESS EVERY DAY.':'&#1058;&#1056;&#1045;&#1053;&#1048;&#1056;&#1040;&#1049; &#1059;&#1052;&#1053;&#1054;. &#1055;&#1056;&#1054;&#1043;&#1056;&#1045;&#1057;&#1048;&#1056;&#1040;&#1049; &#1042;&#1057;&#1045;&#1050;&#1048; &#1044;&#1045;&#1053;.'}</div>
-</div>`;
+<div class="cc-footer">${en?'TRAIN SMART. PROGRESS EVERY DAY.':'ТРЕНИРАЙ УМНО. НАПРЕДВАЙ ВСЕКИ ДЕН.'}</div>`;
 }
 
 function _woResolveRenderer(ex){
@@ -4443,7 +4466,27 @@ function _woResolveRenderer(ex){
   if(key&&CC_META[key]){
     return {type:'coach_card',key:key,meta:CC_META[key]};
   }
-  return {type:'legacy'};
+  
+  // SPRINT P0: Unified exercise rendering pipeline
+  // Generate a clean basic meta structure for the exercise
+  const basicMeta = {
+    nameBG: ex.name,
+    nameEN: ex.name,
+    difficulty: { bg: 'Индивидуална', en: 'Individual' },
+    muscles: [], // empty muscles list
+    activation: 0,
+    technique: ex.note ? [{ bg: ex.note, en: ex.note }] : (lang==='en'?[{bg:'Maintain proper form.',en:'Maintain proper form.'}]:[{bg:'Поддържай правилна форма.',en:'Maintain proper form.'}]),
+    rest: '60 – 90 сек',
+    restEN: '60 – 90 sec',
+    tip: { 
+      bg: ex.note || 'Поддържай правилна форма и контролирай темпото.', 
+      en: ex.note || 'Maintain proper form and control the tempo.' 
+    },
+    callouts: [],
+    muscleMap: { front: {}, back: {} }
+  };
+  
+  return {type:'coach_card',key:'basic',meta:basicMeta};
 }
 
 function _woRenderLegacyEx(ex){
@@ -7371,6 +7414,8 @@ function _bioTranslate(sig) {
 // ── Singletons ─────────────────────────────────────────────────────────
 const apexBrain = new ApexBiologicalBrain();
 const apexBSE   = new ApexBiologicalSignatureEngine();
+const BiologicalCore = apexBSE;
+window.BiologicalCore = BiologicalCore;
 
 // ── Renderer Bridge — Dynamic State Evolution ──────────────────────────
 // Pipeline: Brain → BSE.tick → [transition buffer] → physCoreSetState → _physApplySignature
@@ -7565,25 +7610,60 @@ function _ciUpdateBrief(){
   if(raw.length>6)el.textContent=raw.length>120?raw.slice(0,118)+'…':raw;
 }
 
+function _ciCalculateTodayLoad() {
+  let load = 0;
+  try {
+    const log = JSON.parse(localStorage.getItem('apexWorkoutLog') || '[]');
+    const todayStr = new Date().toDateString();
+    log.forEach(entry => {
+      const entryDate = new Date(entry.ts || Date.now()).toDateString();
+      if (entryDate === todayStr) {
+        if (entry.exs) {
+          entry.exs.forEach(ex => {
+            const sets = ex.s || 0;
+            const reps = (ex.r && ex.r.reduce((a, b) => a + b, 0)) || 0;
+            load += sets * reps * 0.15;
+          });
+        }
+      }
+    });
+  } catch (e) {}
+  
+  if (load === 0 && window._wo && _wo.exLog) {
+    _wo.exLog.forEach(le => {
+      if (le && le.r) {
+        load += le.r.reduce((a, b) => a + b, 0) * 1.2;
+      }
+    });
+  }
+  return Math.round(load);
+}
+
 function _ciShowTelemetry(){
   try{
-    const sig=apexBSE.getSignature();
-    if(sig){
-      const recov = Math.round((1-(sig.flowViscosity||.45))*100);
+    const sig = apexBSE.getSignature();
+    if (sig) {
+      // SPRINT P0: Calculate scores dynamically from the single Biological Core signature
+      const recovery = Math.round((1 - (sig.flowViscosity || 0.45)) * 100);
+      const cns = Math.round((sig.cellularActivity * 0.4 + (1 - sig.flowViscosity) * 0.6) * 100);
+      const readiness = Math.round(((1 - sig.flowViscosity) * 0.7 + sig.pulseAmplitude * 0.3) * 100);
+      
+      const fatigueFactor = sig.flowViscosity || 0.45;
+      const rawLoad = _ciCalculateTodayLoad();
+      const load = rawLoad + Math.round(fatigueFactor * 25);
+
       const recValEl = document.getElementById('card-recovery-val');
-      if (recValEl) recValEl.textContent = recov + '%';
+      if (recValEl) recValEl.textContent = recovery + '%';
+
+      const cnsValEl = document.getElementById('card-cns-val');
+      if (cnsValEl) cnsValEl.textContent = cns + '%';
+
+      const readinessValEl = document.getElementById('card-readiness-val');
+      if (readinessValEl) readinessValEl.textContent = readiness + '%';
+
+      const loadValEl = document.getElementById('card-load-val');
+      if (loadValEl) loadValEl.textContent = load;
     }
-    
-    // CNS and Readiness show "—"
-    const cnsValEl = document.getElementById('card-cns-val');
-    if (cnsValEl) cnsValEl.textContent = '—';
-    
-    const readinessValEl = document.getElementById('card-readiness-val');
-    if (readinessValEl) readinessValEl.textContent = '—';
-    
-    // Today's Load shows "—"
-    const loadValEl = document.getElementById('card-load-val');
-    if (loadValEl) loadValEl.textContent = '—';
     
     // Goal drives from profile
     let pf={};
@@ -7686,6 +7766,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // V2: set initial shell state, then surface BSE answers into Coach Island
   setAppState('overview');
+  _ciShowTelemetry();
+  _ciUpdateState();
   _physSyncLayout();
   setTimeout(()=>{ _ciShowTelemetry(); _ciUpdateState(); _physSyncLayout(); }, 1200);
 
@@ -7713,7 +7795,7 @@ document.addEventListener('DOMContentLoaded', function() {
     <!-- Q2: What does APEX recommend right now? -->
     <div class="ci-brief" id="ci-brief-text">Reading biological signature…</div>
     <!-- Q3: What is the single best next action? -->
-    <button class="ci-protocol-btn" id="ci-protocol-btn" onclick="ciStartProtocol()">START PROTOCOL</button>
+    <button class="ci-protocol-btn" id="ci-protocol-btn" onclick="ciStartProtocol()" data-key="ci-protocol-btn">START PROTOCOL</button>
     <button class="ci-consult-link" onclick="setAppState('consultation');setTimeout(()=>document.getElementById('user-in').focus(),80);">Open consultation →</button>
   </div>
 
@@ -7723,7 +7805,7 @@ document.addEventListener('DOMContentLoaded', function() {
     <!-- Header bar -->
     <div class="ci-consult-header">
       <button class="ci-back-btn" onclick="setAppState('overview')" data-key="ci-back">← BACK</button>
-      <span class="ci-engine-label">APEX COACH ENGINE</span>
+      <span class="ci-engine-label" data-key="ci-engine-label">APEX COACH ENGINE</span>
       <div id="consultation-core-slot" style="width:40px; height:40px; position:relative; display:flex; justify-content:center; align-items:center;"></div>
     </div>
 

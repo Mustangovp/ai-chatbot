@@ -80,15 +80,15 @@ test.describe('APEX V2 Coach Card Rendering Pipeline & Legacy Fallback', () => {
     await expect(page.locator('.wo-rest')).toBeVisible();
     await page.locator('.wo-skip-btn').click();
 
-    // ── STEP 7: Squats (next exercise) Renders using Legacy Renderer ──
+    // ── STEP 7: Squats (next exercise) Renders using Unified Renderer ──
     await expect(overlay).toHaveClass(/active/);
-    await expect(overlay).not.toHaveClass(/cc-active/); // cc-active must be removed
+    await expect(overlay).toHaveClass(/cc-active/); // unified rendering pipeline
 
     // Verify simple legacy element layout
-    await expect(page.locator('.wo-ex-name')).toHaveText('Squats');
+    await expect(page.locator('.cc-ex-name-en')).toHaveText('Squats');
     
-    // Core must be mapped to #wo-organism-slot in background
-    const coreSlotLegacy = await verifyCoreMount(page, '#wo-organism-slot');
+    // Core must be mapped to #cc-core-slot
+    const coreSlotLegacy = await verifyCoreMount(page, '#cc-core-slot');
     expect(coreSlotLegacy).toBe(true);
 
     // Complete Squats Set 1
