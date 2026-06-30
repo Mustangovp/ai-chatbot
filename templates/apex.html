@@ -566,41 +566,37 @@ class LivingCore{
     const g=this.octx,{recovery:r,fatigue:f,stress:st}=this.cur,{c1,c2}=this.palette();
     // smoke persistence — fade previous frame instead of clearing → volumetric trails
     g.globalCompositeOperation='source-over';
-    g.fillStyle='rgba(7,9,16,'+(0.12+st*0.05)+')'; g.fillRect(0,0,this.ow,this.oh);
-    const breath=.5+.5*Math.sin(this.t*1.3);                 // slow organic breathing
-    const compress=1-f*.30, expand=1+r*.16;
+    g.fillStyle='rgba(7,9,16,'+(0.10+st*0.04)+')'; g.fillRect(0,0,this.ow,this.oh);
+    const breath=.5+.5*Math.sin(this.t*0.85);                // slow organic breathing
+    const compress=1-f*.26, expand=1+r*.14;
     g.globalCompositeOperation='lighter';
-    // ambient nebula
-    const neb=g.createRadialGradient(this.cx,this.cy,0,this.cx,this.cy,this.R*2.6);
-    neb.addColorStop(0,`rgba(${c1[0]},${c1[1]},${c1[2]},${0.05+r*0.03})`);
-    neb.addColorStop(.5,`rgba(${c2[0]},${c2[1]},${c2[2]},0.02)`);
+    // faint ambient nebula — wide, soft, never a spotlight
+    const neb=g.createRadialGradient(this.cx,this.cy,this.R*0.3,this.cx,this.cy,this.R*2.8);
+    neb.addColorStop(0,`rgba(${c1[0]},${c1[1]},${c1[2]},${0.030+r*0.018})`);
+    neb.addColorStop(.55,`rgba(${c2[0]},${c2[1]},${c2[2]},0.014)`);
     neb.addColorStop(1,'rgba(0,0,0,0)');
     g.fillStyle=neb; g.fillRect(0,0,this.ow,this.oh);
-    // plasma lobes — smooth flow via domain-warped noise, soft & overlapping
+    // plasma lobes — distributed soft smoke orbiting a ring, NOT piled at centre
     for(let i=0;i<this.lobes.length;i++){
       const L=this.lobes[i];
       const n1=fbm(Math.cos(L.seed)*1.1, Math.sin(L.seed)*1.1, this.t*L.sp+L.seed);
       const n2=fbm(L.seed*.6+5, this.t*L.sp*.8, this.t*L.sp);
-      const turb=st*0.9;
-      const ang=L.seed + this.t*L.sp*0.6 + n1*1.4 + n2*turb;
-      const rad=this.R*(L.rad*expand*compress)*(0.7+Math.abs(n1)*0.7+breath*0.16);
-      const x=this.cx+Math.cos(ang)*rad*(1+n2*0.3*turb);
-      const y=this.cy+Math.sin(ang)*rad*(1+n1*0.3*turb);
-      const size=this.R*L.sz*(0.6+breath*0.3)*expand*compress;
-      const alpha=0.05+r*0.03-f*0.015;
+      const turb=st*0.8;
+      const ang=L.seed + this.t*L.sp*0.45 + n1*1.1 + n2*turb;
+      // base orbit keeps each lobe off-centre → volumetric cloud, no central star
+      const orbit=this.R*(0.55+L.rad)*expand*compress*(0.9+breath*0.12);
+      const drift=this.R*(0.18+Math.abs(n1)*0.30);
+      const x=this.cx+Math.cos(ang)*orbit + Math.cos(ang*1.7+n2*3)*drift*(1+turb*0.4);
+      const y=this.cy+Math.sin(ang)*orbit + Math.sin(ang*1.7+n1*3)*drift*(1+turb*0.4);
+      const size=this.R*(L.sz*0.95)*(0.7+breath*0.25)*expand*compress;
+      const alpha=0.034+r*0.020-f*0.010;                     // soft; no blown highlights
       const rg=g.createRadialGradient(x,y,0,x,y,Math.max(size,1));
       rg.addColorStop(0,`rgba(${c1[0]},${c1[1]},${c1[2]},${alpha})`);
-      rg.addColorStop(.5,`rgba(${c2[0]},${c2[1]},${c2[2]},${alpha*0.4})`);
+      rg.addColorStop(.5,`rgba(${c2[0]},${c2[1]},${c2[2]},${alpha*0.45})`);
       rg.addColorStop(1,'rgba(0,0,0,0)');
       g.fillStyle=rg; g.beginPath(); g.arc(x,y,Math.max(size,1),0,6.2832); g.fill();
     }
-    // luminous nucleus — calm centre so overlaid copy stays legible
-    const nuc=this.R*(0.40+breath*0.08)*compress, nb=0.5+r*0.32-f*0.18;
-    const ng=g.createRadialGradient(this.cx,this.cy,0,this.cx,this.cy,nuc);
-    ng.addColorStop(0,`rgba(255,255,255,${0.10*nb})`);
-    ng.addColorStop(.4,`rgba(${c1[0]},${c1[1]},${c1[2]},${0.12*nb})`);
-    ng.addColorStop(1,'rgba(0,0,0,0)');
-    g.fillStyle=ng; g.beginPath(); g.arc(this.cx,this.cy,nuc,0,6.2832); g.fill();
+    // NO white nucleus — the organism is plasma/smoke, never a spotlight
     g.globalCompositeOperation='source-over';
     // upscale to main canvas — smoothing gives the final soft, cinematic blur
     const c=this.ctx; c.imageSmoothingEnabled=true; c.imageSmoothingQuality='high';
@@ -674,7 +670,7 @@ const T={
     feedback:'Send feedback',profile:'Profile',chEngine:'APEX COACH ENGINE',placeholder:'Describe your goal…',
     recovery:'Recovery',fatigue:'Fatigue',stress:'Stress',coach:'APEX',typing:'CALIBRATING',
     greetHi:'I read your signals.',greetSub:'Goal on file:',
-    chips:['Workout for today','Nutrition plan','How am I progressing?','I have a question'],
+    chips:[{label:"Today's Workout",q:'Make me a workout for today'},{label:'Nutrition Plan',q:'Make me a nutrition plan'},{label:'Progress',q:'How am I progressing?'},{label:'Ask APEX',q:null}],
     states:{peak:{h:'Peak readiness',s:'Recovery is high. Your nervous system is primed — this is your window to push.'},
       ready:{h:'Ready to train',s:'Balanced signals. A solid, productive session is well within reach today.'},
       recover:{h:'Recovery mode',s:'Fatigue is elevated. The smart move today is volume down, quality up.'},
@@ -710,7 +706,7 @@ const T={
     feedback:'Изпрати обратна връзка',profile:'Профил',chEngine:'APEX ТРЕНЬОРСКО ЯДРО',placeholder:'Опиши целта си…',
     recovery:'Възстановяване',fatigue:'Умора',stress:'Стрес',coach:'APEX',typing:'ПРЕСМЯТАМ',
     greetHi:'Прочетох сигналите ти.',greetSub:'Цел във файла:',
-    chips:['Тренировка за днес','Хранителен план','Как напредвам?','Имам въпрос'],
+    chips:[{label:'Тренировка за днес',q:'Направи ми тренировка за днес'},{label:'Хранителен план',q:'Направи ми хранителен план'},{label:'Прогрес',q:'Как напредвам?'},{label:'Попитай APEX',q:null}],
     states:{peak:{h:'Пиково състояние',s:'Възстановяването е високо. Нервната ти система е заредена — това е моментът да натиснеш.'},
       ready:{h:'Готов за тренировка',s:'Балансирани сигнали. Солидна, продуктивна сесия е напълно постижима днес.'},
       recover:{h:'Режим възстановяване',s:'Умората е повишена. Умното решение днес е по-малко обем, повече качество.'},
@@ -871,9 +867,13 @@ function resetGreeting(){
   const goalTxt=p.goalDetail||(p.goal?tr().wiz.opt.goal[p.goal]:'');
   feed.innerHTML='<div class="greet"><h3><span class="grad">'+t.greetHi+'</span></h3>'+
     (goalTxt?'<p>'+t.greetSub+'</p><div class="goalrow">'+esc(goalTxt)+'</div>':'<p>'+t.greetSub+' —</p>')+
-    '<div class="chips">'+t.chips.map(c=>'<button class="chip" onclick="quickAsk(this)">'+esc(c)+'</button>').join('')+'</div></div>';
+    '<div class="chips">'+t.chips.map((c,k)=>'<button class="chip" data-k="'+k+'" onclick="quickChip('+k+')">'+esc(c.label)+'</button>').join('')+'</div></div>';
 }
-function quickAsk(btn){document.getElementById('user-in').value=btn.textContent;send();}
+function quickChip(k){
+  const c=tr().chips[k]; if(!c)return;
+  if(c.q){document.getElementById('user-in').value=c.q;send();}
+  else{document.getElementById('user-in').focus();}   // "Ask APEX" → free question
+}
 
 /* ═══════════════════════════════════════════════════════════════════
    MARKDOWN RENDERER — full markdown → beautiful HTML
@@ -886,6 +886,15 @@ function inlineMd(s){
   s=s.replace(/(^|[^*])\*([^*]+)\*(?!\*)/g,'$1<em>$2</em>');
   s=s.replace(/__([^_]+)__/g,'<strong>$1</strong>');
   return s;
+}
+// Lightweight render used DURING streaming only — cheap, O(n), no table parsing
+// or card building. Hides in-progress pipe-table rows so raw "|" never shows;
+// the final renderMarkdown() call replaces this with Exercise/Nutrition cards.
+function streamRender(s){
+  return s.split('\n').filter(l=>!l.includes('|')).join('\n')
+    .replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))
+    .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')
+    .replace(/\n{2,}/g,'<br><br>').replace(/\n/g,'<br>');
 }
 function parseTable(lines){
   const rows=lines.map(l=>l.trim().replace(/^\||\|$/g,'').split('|').map(c=>c.trim()));
@@ -1149,18 +1158,23 @@ async function send(){
     const res=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const ct=res.headers.get('content-type')||'';
     if(ct.indexOf('text/event-stream')!==-1){
-      ty.remove(); const target=appendCoach(); let full='';
+      ty.remove(); const target=appendCoach(); let full='',aborted=false;
       const reader=res.body.getReader(),dec=new TextDecoder();let buf='';
+      // STREAMING: paint a CHEAP lightweight render, throttled to ≤20fps, so the
+      // main thread stays free and the tab never freezes. The expensive component
+      // renderer (Exercise/Nutrition cards) runs ONCE when streaming completes.
+      let lastPaint=0;
       while(true){const{done,value}=await reader.read();if(done)break;
         buf+=dec.decode(value,{stream:true});const parts=buf.split('\n\n');buf=parts.pop();
         for(const part of parts){const line=part.trim();if(!line.startsWith('data:'))continue;
           let o;try{o=JSON.parse(line.slice(5).trim());}catch(e){continue;}
-          if(o.t){full+=o.t;target.innerHTML=renderMarkdown(full);feed.scrollTop=feed.scrollHeight;}
-          else if(o.limit_reached){const m=target.closest('.msg');if(m)m.remove();showLimit(o.hours_left||24);}
-          else if(o.error){full+=(o.reply||'');target.innerHTML=renderMarkdown(full);}
+          if(o.t){full+=o.t;const now=performance.now();if(now-lastPaint>55){target.innerHTML=streamRender(full);feed.scrollTop=feed.scrollHeight;lastPaint=now;}}
+          else if(o.limit_reached){const m=target.closest('.msg');if(m)m.remove();showLimit(o.hours_left||24);aborted=true;}
+          else if(o.error){full+=(o.reply||'');}
         }
       }
-      if(full){saveHistory('assistant',full);afterReply(full);}
+      // FINAL render — full component renderer → cards, no raw markdown
+      if(full&&!aborted){target.innerHTML=renderMarkdown(full);feed.scrollTop=feed.scrollHeight;saveHistory('assistant',full);afterReply(full);}
     } else {
       const data=await res.json();ty.remove();
       if(data.limit_reached)showLimit(data.hours_left||24);
