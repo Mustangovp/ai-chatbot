@@ -141,6 +141,26 @@ If no profile: "I don't have enough information for a personalised recommendatio
 If partial profile: ask only for the specific missing field.
 
 ═══════════════════════════════════════════════════════════
+ПЕРСОНАЛИЗИРАНИ ЧИСЛА — НИКОГА ГЕНЕРИЧНИ
+═══════════════════════════════════════════════════════════
+
+ЗАБРАНЕНО е да даваш общи, фиксирани препоръки като "пий 2 литра вода", "спи 8 часа", "яж 2 г протеин".
+ВСЯКО количество (хидратация, протеин, калории, сън, кардио, почивка) се ИЗЧИСЛЯВА от данните на клиента.
+Използвай инжектираните таргети (Калориен/Протеин/Хидратация таргет) от профилния блок — те са изчислени за ТОЗИ човек.
+Примери за правилен тон:
+- "Хидратацията ти за днес е ~[X] л (33 мл/кг при [тегло] кг + тренировка)."
+- "След днешната тренировка изпий допълнителни ~700 мл в следващите 2 часа."
+- "При [тегло] кг целта ти е минимум [X] г протеин — това е [Y] г на хранене при 4 хранения."
+Ако липсват данни за изчисление — поискай конкретното липсващо поле, не давай генерично число.
+
+EN: NEVER give generic fixed advice ("drink 2 litres", "sleep 8 hours"). EVERY quantity (hydration,
+protein, calories, sleep, cardio, rest) is CALCULATED from the client's data. Use the injected targets
+(Calorie/Protein/Hydration target) from the profile block — they are computed for THIS person.
+Correct tone: "Today's hydration target is ~[X] L (33 ml/kg at [weight] kg + training)."
+"After today's session, drink an additional ~700 ml over the next 2 hours." If data is missing to
+calculate, ask for the specific missing field — do not fall back to a generic number.
+
+═══════════════════════════════════════════════════════════
 ОБЯСНЯВАЙ ЗАЩО — ЗА ВСЯКА ПРЕПОРЪКА
 ═══════════════════════════════════════════════════════════
 
@@ -504,9 +524,10 @@ def _build_profile_block(profile: dict, lang: str = 'bg') -> str:
     stress_label = STRESS_LBL.get(stress_raw, stress_raw)
     food_labels  = [FOOD.get(f.strip(), f.strip()) for f in food_raw.split(',') if f.strip()]
 
-    # ── TDEE + protein targets ────────────────────────────────────────────────
+    # ── TDEE + protein + hydration targets ────────────────────────────────────
     tdee_line = ''
     protein_line = ''
+    hydration_line = ''
     try:
         w = float(weight_raw)
         h = float(height_raw)
@@ -526,6 +547,10 @@ def _build_profile_block(profile: dict, lang: str = 'bg') -> str:
                     kcal = f"{tdee} kcal (maintenance)"
                 tdee_line    = f"  Calorie target: {kcal}"
                 protein_line = f"  Protein target: minimum {prot}g/day"
+                hyd_base = w * 0.033
+                hyd_active = hyd_base + (0.5 if activity_raw in ('active','very_active') else 0.25)
+                hydration_line = (f"  Hydration target: ~{hyd_base:.1f} L/day baseline, "
+                                  f"~{hyd_active:.1f} L on training days (+500–700 ml per training hour)")
             else:
                 if goal_raw == 'fat_loss':
                     kcal = f"{tdee - 450} ккал (дефицит −450 под TDEE {tdee})"
@@ -535,6 +560,10 @@ def _build_profile_block(profile: dict, lang: str = 'bg') -> str:
                     kcal = f"{tdee} ккал (поддръжка)"
                 tdee_line    = f"  Калориен таргет: {kcal}"
                 protein_line = f"  Протеин таргет: минимум {prot}г/ден"
+                hyd_base = w * 0.033
+                hyd_active = hyd_base + (0.5 if activity_raw in ('active','very_active') else 0.25)
+                hydration_line = (f"  Хидратация таргет: ~{hyd_base:.1f} л/ден база, "
+                                  f"~{hyd_active:.1f} л в тренировъчни дни (+500–700 мл на час тренировка)")
     except (TypeError, ValueError):
         pass
 
@@ -565,6 +594,7 @@ def _build_profile_block(profile: dict, lang: str = 'bg') -> str:
     if goal_detail:  goal_lines.append(f"  \"{goal_detail}\"")
     if tdee_line:    goal_lines.append(tdee_line)
     if protein_line: goal_lines.append(protein_line)
+    if hydration_line: goal_lines.append(hydration_line)
     if goal_lines:
         sections.append(LBL['goal_t'] + "\n" + "\n".join(goal_lines))
 
@@ -1376,7 +1406,15 @@ def verify_token_endpoint():
     token = str(data.get('token', ''))
     is_valid, plan = verify_token(token)
     is_dev = bool(DEV_TOKEN) and token == DEV_TOKEN
-    return jsonify({'valid': is_valid, 'isDev': is_dev, 'plan': plan or 'free'})
+    # Decode expiry so the Subscription page can show the access-until date.
+    expiry = 0
+    if is_valid and not is_dev:
+        try:
+            padded = token + "=" * (-len(token) % 4)
+            expiry = int(base64.urlsafe_b64decode(padded).decode().split(".")[0])
+        except Exception:
+            expiry = 0
+    return jsonify({'valid': is_valid, 'isDev': is_dev, 'plan': plan or 'free', 'expiry': expiry})
 
 
 # ═══════════════════════════════════════════════════════════

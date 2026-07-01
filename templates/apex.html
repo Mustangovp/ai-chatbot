@@ -36,6 +36,7 @@ body{
 }
 button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit;}
 input,textarea,select{font-family:inherit;}
+a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/purple link color */
 ::selection{background:rgba(245,33,45,.3);}
 
 /* ── THE STAGE: one continuous cinematic space ───────────────────── */
@@ -59,10 +60,66 @@ input,textarea,select{font-family:inherit;}
 .topbar{display:flex;align-items:center;justify-content:space-between;padding:18px 24px;gap:12px;}
 .brand{display:flex;align-items:center;gap:11px;text-decoration:none;}
 .brand img{width:32px;height:32px;filter:drop-shadow(0 0 10px rgba(245,33,45,.55));}
-.brand .bt{font-family:'Unbounded';font-weight:700;font-size:14px;letter-spacing:.5px;line-height:1.1;}
-.brand .bt .rd{color:var(--brand);}
-.brand .bs{font-size:8.5px;font-weight:700;letter-spacing:1.6px;color:var(--faint);text-transform:uppercase;}
+/* Official brand lockup — matches landing exactly. Explicit colors, no link inheritance. */
+.brand .bt{font-family:'Unbounded';font-weight:700;font-size:14px;letter-spacing:.5px;line-height:1.1;color:#F2F5FA;}
+.brand .bt .rd{color:#F5212D;}
+.brand .bs{font-size:8.5px;font-weight:700;letter-spacing:1.6px;color:#5A6276;text-transform:uppercase;}
 .top-right{display:flex;align-items:center;gap:8px;}
+/* Hamburger */
+.menu-btn{display:flex;flex-direction:column;justify-content:center;gap:4px;width:42px;height:36px;
+  border:1px solid var(--border);border-radius:12px;background:rgba(18,23,36,.55);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  padding:0 11px;transition:border-color .2s,transform .15s;}
+.menu-btn:hover{border-color:var(--border2);transform:translateY(-1px);}
+.menu-btn span{display:block;height:2px;border-radius:2px;background:var(--text);transition:.25s;}
+.menu-btn span:nth-child(2){width:70%;}
+/* Slide-out drawer */
+#drawer-scrim{position:fixed;inset:0;z-index:60;background:rgba(5,7,13,.6);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);opacity:0;pointer-events:none;transition:opacity .3s;}
+#drawer-scrim.on{opacity:1;pointer-events:auto;}
+#drawer{position:fixed;top:0;right:0;bottom:0;z-index:61;width:min(320px,86vw);transform:translateX(105%);
+  transition:transform .34s var(--ease);background:linear-gradient(160deg,var(--surface),var(--bg-deep));
+  border-left:1px solid var(--border);box-shadow:-30px 0 80px rgba(0,0,0,.6);display:flex;flex-direction:column;padding:calc(18px + env(safe-area-inset-top)) 0 18px;}
+#drawer.on{transform:translateX(0);}
+.drawer-head{display:flex;align-items:center;justify-content:space-between;padding:4px 20px 14px;border-bottom:1px solid var(--border);margin-bottom:8px;}
+.drawer-head .dh-t{font-family:'Unbounded';font-weight:700;font-size:13px;letter-spacing:1px;}
+.drawer-head .dh-t .rd{color:#F5212D;}
+.drawer-close{width:32px;height:32px;border-radius:10px;border:1px solid var(--border);color:var(--muted);font-size:15px;display:flex;align-items:center;justify-content:center;transition:.2s;}
+.drawer-close:hover{color:var(--text);border-color:var(--border2);}
+.drawer-nav{flex:1;overflow-y:auto;padding:6px 12px;}
+.drawer-nav::-webkit-scrollbar{width:4px;}.drawer-nav::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:3px;}
+.mi{display:flex;align-items:center;gap:13px;width:100%;text-align:left;padding:12px 14px;border-radius:12px;
+  font-size:14px;font-weight:600;color:var(--text);transition:background .15s,transform .1s;}
+.mi:hover{background:rgba(255,255,255,.05);}.mi:active{transform:scale(.98);}
+.mi .mi-ico{width:22px;text-align:center;font-size:16px;flex-shrink:0;}
+.mi .mi-val{margin-left:auto;font-size:11px;font-weight:700;color:var(--faint);letter-spacing:.5px;}
+.mi.accent{color:var(--brand);} .mi.accent .mi-ico{filter:none;}
+.drawer-sep{height:1px;background:var(--border);margin:8px 14px;}
+.drawer-foot{padding:12px 20px 0;font-size:10.5px;color:var(--faint);letter-spacing:.4px;}
+/* Jump-to-latest */
+#jump-latest{position:absolute;left:50%;bottom:96px;transform:translateX(-50%) translateY(10px);z-index:12;
+  display:none;align-items:center;gap:7px;font-size:12px;font-weight:700;color:var(--text);
+  background:rgba(26,33,51,.92);border:1px solid var(--border2);border-radius:30px;padding:9px 16px;
+  box-shadow:0 8px 24px rgba(0,0,0,.5);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);cursor:pointer;opacity:0;transition:opacity .25s,transform .25s;}
+#jump-latest.on{display:inline-flex;opacity:1;transform:translateX(-50%) translateY(0);}
+/* Subscription / info panels reuse .sheet */
+.panel-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:13px 0;border-top:1px solid var(--border);font-size:14px;}
+.panel-row:first-of-type{border-top:none;}
+.panel-row .pr-l{color:var(--muted);font-weight:600;} .panel-row .pr-v{font-weight:700;text-align:right;}
+.plan-badge{display:inline-flex;align-items:center;gap:6px;font-family:'Unbounded';font-weight:700;font-size:12px;letter-spacing:.5px;padding:6px 13px;border-radius:20px;}
+.plan-badge.pro{color:var(--gold);background:rgba(255,177,60,.12);border:1px solid rgba(255,177,60,.3);}
+.plan-badge.core{color:var(--cyan);background:rgba(56,224,255,.1);border:1px solid rgba(56,224,255,.3);}
+.plan-badge.free{color:var(--muted);background:rgba(255,255,255,.05);border:1px solid var(--border);}
+.eu-note{margin:16px 0 4px;font-size:11.5px;color:var(--faint);line-height:1.5;background:rgba(56,224,255,.05);border:1px solid rgba(56,224,255,.15);border-radius:10px;padding:11px 13px;}
+.cancel-btn{width:100%;margin-top:14px;background:rgba(245,33,45,.12);border:1px solid rgba(245,33,45,.4);color:#ff6b6b;font-weight:800;font-size:14.5px;padding:14px;border-radius:14px;transition:.2s;}
+.cancel-btn:hover{background:rgba(245,33,45,.2);}
+.info-body{font-size:13.5px;line-height:1.6;color:#cdd4e2;}
+.info-body h4{font-family:'Unbounded';font-weight:600;font-size:13px;color:var(--gold);margin:14px 0 6px;}
+.info-body p{margin:8px 0;} .info-body ul{margin:8px 0 8px 4px;list-style:none;} .info-body li{padding:4px 0 4px 16px;position:relative;}
+.info-body li::before{content:'';position:absolute;left:0;top:11px;width:5px;height:5px;border-radius:50%;background:var(--ember);}
+.hist-item{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--border);}
+.hist-item:first-child{border-top:none;}
+.hist-ico{width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:19px;background:rgba(255,255,255,.04);border:1px solid var(--border);flex-shrink:0;}
+.hist-b{flex:1;min-width:0;} .hist-t{font-weight:700;font-size:13.5px;} .hist-s{font-size:11.5px;color:var(--muted);margin-top:2px;}
+.hist-empty{text-align:center;color:var(--faint);font-size:13px;padding:24px 0;}
 .pill{display:inline-flex;align-items:center;gap:7px;font-family:'Unbounded';font-weight:700;
   font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);
   background:rgba(18,23,36,.55);border:1px solid var(--border);
@@ -114,7 +171,7 @@ input,textarea,select{font-family:inherit;}
 .back-btn:hover{color:var(--text);border-color:var(--border2);}
 
 #feed{flex:1;overflow-y:auto;overflow-x:hidden;width:100%;max-width:720px;margin:0 auto;
-  padding:18px 22px 8px;display:flex;flex-direction:column;gap:18px;scroll-behavior:smooth;}
+  padding:18px 22px 8px;display:flex;flex-direction:column;gap:18px;overscroll-behavior:contain;}
 #feed::-webkit-scrollbar{width:5px;}
 #feed::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:3px;}
 .msg{max-width:92%;font-size:14.5px;line-height:1.62;animation:rise .5s var(--ease) both;}
@@ -143,7 +200,9 @@ input,textarea,select{font-family:inherit;}
 .md pre{margin:10px 0;padding:13px 15px;background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:12px;overflow-x:auto;}
 .md pre code{background:none;border:none;padding:0;color:#dbe2f0;line-height:1.5;}
 .md hr{border:none;border-top:1px solid var(--border);margin:14px 0;}
-.md table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px;border-radius:12px;overflow:hidden;border:1px solid var(--border);}
+.md .table-wrap{overflow-x:auto;margin:12px 0;border-radius:12px;-webkit-overflow-scrolling:touch;}
+.md .table-wrap::-webkit-scrollbar{height:5px;}.md .table-wrap::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:3px;}
+.md table{width:100%;border-collapse:collapse;font-size:13px;border-radius:12px;overflow:hidden;border:1px solid var(--border);min-width:340px;}
 .md th{background:rgba(245,33,45,.14);font-family:'Unbounded';font-weight:600;font-size:11px;letter-spacing:.4px;text-align:left;padding:10px 12px;color:#fff;}
 .md td{padding:9px 12px;border-top:1px solid var(--border);}
 .md tr:nth-child(even) td{background:rgba(255,255,255,.02);}
@@ -220,6 +279,10 @@ input,textarea,select{font-family:inherit;}
   font-family:'Unbounded';font-weight:700;font-size:15px;color:var(--muted);transition:.2s;}
 .set-dot.done{background:var(--pulse);border-color:transparent;color:#fff;box-shadow:0 6px 18px rgba(245,33,45,.4);}
 .set-dot.current{border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 0 3px rgba(56,224,255,.15);}
+.wo-weight{display:flex;align-items:center;gap:8px;justify-content:center;margin-bottom:20px;}
+.wo-weight input{width:110px;text-align:center;background:var(--surface2);border:1.5px solid var(--border);border-radius:12px;padding:10px 12px;color:var(--text);font-size:15px;font-weight:600;outline:none;}
+.wo-weight input:focus{border-color:rgba(56,224,255,.5);}
+.wo-weight span{font-size:11.5px;color:var(--faint);font-weight:600;}
 .wo-controls{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;}
 .wo-btn{font-weight:800;font-size:15px;padding:15px 32px;border-radius:40px;transition:transform .15s;height:52px;display:inline-flex;align-items:center;gap:8px;}
 .wo-btn.primary{background:var(--pulse);color:#fff;box-shadow:0 10px 30px rgba(245,33,45,.42);}
@@ -326,7 +389,7 @@ input,textarea,select{font-family:inherit;}
 
 @media(max-width:560px){
   .topbar{padding:14px 16px;} .brand .bs{display:none;}
-  .pill{padding:8px 11px;} #profile-pill .ptxt{display:none;}
+  .pill{padding:8px 11px;}
   #read-state{font-size:clamp(24px,7vw,34px);}
   .metric{min-width:64px;padding:9px 12px;}
   .back-btn{top:54px;} .consult-head{padding:54px 18px 6px;}
@@ -349,13 +412,12 @@ input,textarea,select{font-family:inherit;}
 <div id="ui">
   <div class="topbar">
     <a class="brand" href="/">
-      <img src="/static/logo.png" alt="APEX">
-      <span class="bt"><span class="rd">APEX</span> PULSE<br><span class="bs">Your peak. Your pulse.</span></span>
+      <img src="/static/logo.png" alt="APEX PULSE PRO">
+      <span class="bt"><span class="rd">APEX</span> PULSE PRO<br><span class="bs">Your peak. Your pulse.</span></span>
     </a>
     <div class="top-right">
       <button class="pill live" id="status-pill">LIVE</button>
-      <button class="pill" id="lang-pill" onclick="toggleLang()">EN</button>
-      <button class="pill" id="profile-pill" onclick="openProfile()">⌬ <span class="ptxt">Profile</span></button>
+      <button class="menu-btn" id="menu-btn" onclick="openMenu()" aria-label="Menu"><span></span><span></span><span></span></button>
     </div>
   </div>
 
@@ -373,7 +435,6 @@ input,textarea,select{font-family:inherit;}
         <button class="cta" onclick="intentTrain()"><span id="cta-train">Start training</span><span class="arr">→</span></button>
         <button class="cta ghost" onclick="enterConsult()"><span id="cta-consult">Consult</span></button>
       </div>
-      <button class="ghost-link" id="feedback-link" onclick="openFeedback()">Send feedback</button>
     </div>
   </div>
 </div>
@@ -384,6 +445,7 @@ input,textarea,select{font-family:inherit;}
     <span class="ch-label" id="ch-label">APEX COACH ENGINE</span>
   </div>
   <div id="feed"></div>
+  <button id="jump-latest" onclick="jumpToLatest()">↓ <span id="jump-label">Jump to latest</span></button>
   <div class="inputbar">
     <div class="input-wrap">
       <input type="text" id="user-in" placeholder="Describe your goal…" autocomplete="off">
@@ -478,13 +540,41 @@ input,textarea,select{font-family:inherit;}
         <div class="field"><label id="l-caffeine">Caffeine</label>
           <select id="pf-caffeine"><option value="">—</option><option value="none">None</option><option value="moderate">Moderate</option><option value="high">High</option></select></div>
       </div>
-      <div class="field"><label id="l-meds">Medications / Supplements</label><input type="text" id="pf-meds" placeholder="e.g. whey, creatine, vitamin D"></div>
-      <div class="field"><label id="l-injuries">Past injuries / limitations / surgeries</label><textarea id="pf-injuries" placeholder="e.g. left knee, lower back…"></textarea></div>
-      <div class="field"><label id="l-notes">Important notes</label><input type="text" id="pf-notes" placeholder="anything the coach should know"></div>
-      <div class="safety-note" id="safety-note">This is coaching context only — not a medical diagnosis. APEX never diagnoses or prescribes.</div>
+      <div class="f2">
+        <div class="field"><label id="l-meds">Medications</label><input type="text" id="pf-meds" placeholder="e.g. blood pressure"></div>
+        <div class="field"><label id="l-supps">Supplements</label><input type="text" id="pf-supps" placeholder="e.g. whey, creatine, D3"></div>
+      </div>
+      <div class="field"><label id="l-injuries">Previous injuries</label><input type="text" id="pf-injuries" placeholder="e.g. left knee, lower back"></div>
+      <div class="f2">
+        <div class="field"><label id="l-surgeries">Surgeries</label><input type="text" id="pf-surgeries" placeholder="e.g. shoulder 2021"></div>
+        <div class="field"><label id="l-limits">Physical limitations</label><input type="text" id="pf-limits" placeholder="e.g. limited ankle ROM"></div>
+      </div>
+      <div class="field"><label id="l-notes">Additional notes</label><input type="text" id="pf-notes" placeholder="anything the coach should know"></div>
+      <div class="safety-note" id="safety-note">This information is used only to personalize coaching. APEX does not diagnose, prescribe or replace medical professionals.</div>
       <div class="wiz-nav"><button class="prev" onclick="wizGo(1)" id="w3-prev">←</button><button class="next" onclick="saveProfile()" id="w3-save">Save & calibrate</button></div>
       <button class="mlink danger" id="cancel-sub" onclick="cancelSub()" style="display:none">Cancel subscription</button>
     </div>
+  </div>
+</div>
+
+<!-- ═══ SLIDE-OUT MENU ═══ -->
+<div id="drawer-scrim" onclick="closeMenu()"></div>
+<nav id="drawer" aria-label="Main menu">
+  <div class="drawer-head">
+    <span class="dh-t"><span class="rd">APEX</span> PULSE PRO</span>
+    <button class="drawer-close" onclick="closeMenu()">✕</button>
+  </div>
+  <div class="drawer-nav" id="drawer-nav"></div>
+  <div class="drawer-foot" id="drawer-foot">APEX PULSE PRO · v3.3</div>
+</nav>
+
+<!-- ═══ GENERIC PANEL (subscription / history / settings / privacy / about) ═══ -->
+<div class="modal" id="panel-modal">
+  <div class="sheet">
+    <h2 id="panel-title"></h2>
+    <p class="sd" id="panel-desc" style="display:none"></p>
+    <div id="panel-body"></div>
+    <button class="mlink" onclick="closePanel()" id="panel-close">Close</button>
   </div>
 </div>
 
@@ -637,7 +727,7 @@ function logWorkout(session){
   m.totalWorkouts=(m.totalWorkouts||0)+1;
   m.exerciseHistory=m.exerciseHistory||{};
   (session.exercises||[]).forEach(ex=>{
-    const k=ex.name; (m.exerciseHistory[k]=m.exerciseHistory[k]||[]).push({date:session.date,sets:ex.sets,reps:ex.reps});
+    const k=ex.name; (m.exerciseHistory[k]=m.exerciseHistory[k]||[]).push({date:session.date,sets:ex.sets,reps:ex.reps,weight:ex.weight||''});
     m.exerciseHistory[k]=m.exerciseHistory[k].slice(-12);
   });
   memSave(m);
@@ -654,7 +744,7 @@ function buildWorkoutContext(en){
   L.push((en?'  Completed sessions: ':'  Завършени сесии: ')+log.length);
   L.push((en?'  Frequency (7d): ':'  Честота (7д): ')+wk7+(en?'/week':'/седмица'));
   if(last){
-    const exs=(last.exercises||[]).map(e=>`${e.name} ${e.sets}×${e.reps}`).join(', ');
+    const exs=(last.exercises||[]).map(e=>`${e.name} ${e.sets}×${e.reps}${e.weight?(' @'+e.weight+'kg'):''}`).join(', ');
     L.push((en?'  Last session: ':'  Последна сесия: ')+last.date+' — '+(last.type||'training')+(exs?(' ('+exs+')'):''));
   }
   if(justDone)L.push(en?'  ⚡ POST-WORKOUT — finished within the last 2 hours. Acknowledge it; do NOT prescribe a new workout.':'  ⚡ СЛЕД ТРЕНИРОВКА — завършена в последните 2 часа. Признай я; НЕ предлагай нова тренировка.');
@@ -683,9 +773,9 @@ const T={
       goal:'Primary goal',age:'Age',weight:'Weight (kg)',height:'Height (cm)',gender:'Sex',level:'Experience',
       equip:'Available equipment',sleep:'Sleep quality',stress:'Stress level',recovery:'Recovery feel',
       activity:'Daily activity',freq:'Training frequency (per week)',smoking:'Smoking',alcohol:'Alcohol',
-      nicotine:'Nicotine',caffeine:'Caffeine',meds:'Medications / Supplements',injuries:'Past injuries / limitations / surgeries',
-      notes:'Important notes',cont:'Continue →',save:'Save & calibrate',
-      safety:'This is coaching context only — not a medical diagnosis. APEX never diagnoses or prescribes.',
+      nicotine:'Nicotine',caffeine:'Caffeine',meds:'Medications',supps:'Supplements',injuries:'Previous injuries',
+      surgeries:'Surgeries',limits:'Physical limitations',notes:'Additional notes',cont:'Continue →',save:'Save & calibrate',
+      safety:'This information is used only to personalize coaching. APEX does not diagnose, prescribe or replace medical professionals.',
       opt:{goal:{fat_loss:'Lose fat',muscle_gain:'Build muscle',strength:'Get stronger',endurance:'Endurance',general:'General fitness'},
         gender:{male:'Male',female:'Female'},level:{beginner:'Beginner',intermediate:'Intermediate',advanced:'Advanced'},
         equip:{gym:'Full gym',home:'Home (dumbbells / bar)',none:'Bodyweight only'},
@@ -701,7 +791,23 @@ const T={
     woStart:'Start session',woEx:'Exercise',woRest:'Rest',woNext:'Next',woDone:'Complete set',woFinish:'Finish',
     woExit:'Exit',woSkip:'Skip rest',woResume:'Begin',woComplete:'Session complete',woGreat:'Logged. Recovery starts now.',
     woSummary:{ex:'Exercises',sets:'Sets',time:'Minutes'},todayWO:'Build me a workout for today',
-    nutriTotal:'Daily totals',sec:'sec'},
+    nutriTotal:'Daily totals',sec:'sec',jumpLatest:'Jump to latest',
+    menu:{home:'Home',consult:'Consultation',workouts:'My Workouts',nutrition:'Nutrition',progress:'Progress',
+      history:'History',profile:'Profile',feedback:'Feedback',subscription:'Subscription',language:'Language',
+      settings:'Settings',privacy:'Privacy & Safety',about:'About APEX'},
+    seed:{workouts:'Build me a workout for today',nutrition:'Build me a nutrition plan',progress:'How am I progressing? Analyze my training.'},
+    sub:{title:'Subscription',plan:'Current plan',billing:'Next billing date',method:'Payment method',
+      history:'Billing history',cancel:'Cancel subscription',free:'Free',card:'Card on file',none:'—',
+      freeDesc:'You are on the free plan. Upgrade anytime from the pricing page.',upgrade:'View plans →',
+      access:'Access until',oneTime:'One-time 30-day pass (not a recurring subscription)',
+      eu:'EU right of withdrawal: a full refund is available within 14 days if you have not started using the digital content. A 7-day money-back guarantee also applies. Cancellation is never hidden.',
+      confirmCancel:'Cancel your subscription and request a refund? This cannot be undone.'},
+    hist:{title:'History',desc:'Your completed sessions and coaching activity.',empty:'No completed workouts yet. Finish a session and it appears here.',
+      sets:'sets',exercises:'exercises'},
+    settings:{title:'Settings',lang:'Language',theme:'Theme',dark:'Dark (default)',reset:'Reset local data',
+      resetDesc:'Clears profile, memory and history on this device.',resetConfirm:'Erase all local APEX data on this device?',reset2:'Local data cleared.'},
+    priv:{title:'Privacy & Safety',b:'<h4>Your data</h4><p>Your profile, memory and history are stored locally in your browser. Coaching context is sent to the AI only to generate your plans.</p><h4>Medical safety</h4><p>APEX is a coaching tool. It does not diagnose, prescribe, or replace medical professionals. For pain, symptoms or medical conditions, consult a doctor.</p><h4>Never shared</h4><p>Your data is never sold or shared with third parties.</p>'},
+    about:{title:'About APEX',b:'<p><strong>APEX PULSE PRO</strong> is a living AI biological operating system — a personal coach that reads your physiology and adapts every plan to you.</p><h4>What it does</h4><ul><li>Personalized training & nutrition</li><li>Recovery-aware coaching</li><li>Persistent coaching memory</li></ul><p style="color:var(--faint);margin-top:12px">Version 3.3 · Your peak. Your pulse.</p>'}},
   bg:{eyebrow:'СИСТЕМАТА Е АКТИВНА',ctaTrain:'Започни тренировка',ctaConsult:'Консултация',back:'Назад',live:'НА ЖИВО',
     feedback:'Изпрати обратна връзка',profile:'Профил',chEngine:'APEX ТРЕНЬОРСКО ЯДРО',placeholder:'Опиши целта си…',
     recovery:'Възстановяване',fatigue:'Умора',stress:'Стрес',coach:'APEX',typing:'ПРЕСМЯТАМ',
@@ -719,9 +825,9 @@ const T={
       goal:'Основна цел',age:'Възраст',weight:'Тегло (кг)',height:'Височина (см)',gender:'Пол',level:'Опит',
       equip:'Налично оборудване',sleep:'Качество на съня',stress:'Ниво на стрес',recovery:'Усещане за възстановяване',
       activity:'Дневна активност',freq:'Тренировки седмично',smoking:'Пушене',alcohol:'Алкохол',
-      nicotine:'Никотин',caffeine:'Кофеин',meds:'Лекарства / Добавки',injuries:'Минали травми / ограничения / операции',
-      notes:'Важни бележки',cont:'Продължи →',save:'Запази и калибрирай',
-      safety:'Това е само треньорски контекст — не е медицинска диагноза. APEX никога не диагностицира и не предписва.',
+      nicotine:'Никотин',caffeine:'Кофеин',meds:'Лекарства',supps:'Добавки',injuries:'Предишни травми',
+      surgeries:'Операции',limits:'Физически ограничения',notes:'Допълнителни бележки',cont:'Продължи →',save:'Запази и калибрирай',
+      safety:'Тази информация се използва само за персонализиране на треньорството. APEX не диагностицира, не предписва и не замества медицински специалисти.',
       opt:{goal:{fat_loss:'Свали мазнини',muscle_gain:'Натрупай мускули',strength:'Стани по-силен',endurance:'Издръжливост',general:'Общ тонус'},
         gender:{male:'Мъж',female:'Жена'},level:{beginner:'Начинаещ',intermediate:'Среден',advanced:'Напреднал'},
         equip:{gym:'Пълна зала',home:'Вкъщи (дъмбели / турник)',none:'Само телесно тегло'},
@@ -737,7 +843,23 @@ const T={
     woStart:'Започни сесия',woEx:'Упражнение',woRest:'Почивка',woNext:'Следва',woDone:'Завърши серия',woFinish:'Завърши',
     woExit:'Изход',woSkip:'Пропусни почивката',woResume:'Започни',woComplete:'Сесията завърши',woGreat:'Записано. Възстановяването започва сега.',
     woSummary:{ex:'Упражнения',sets:'Серии',time:'Минути'},todayWO:'Направи ми тренировка за днес',
-    nutriTotal:'Дневни общо',sec:'сек'}
+    nutriTotal:'Дневни общо',sec:'сек',jumpLatest:'Към последното',
+    menu:{home:'Начало',consult:'Консултация',workouts:'Моите тренировки',nutrition:'Хранене',progress:'Прогрес',
+      history:'История',profile:'Профил',feedback:'Обратна връзка',subscription:'Абонамент',language:'Език',
+      settings:'Настройки',privacy:'Поверителност и безопасност',about:'За APEX'},
+    seed:{workouts:'Направи ми тренировка за днес',nutrition:'Направи ми хранителен план',progress:'Как напредвам? Анализирай тренировките ми.'},
+    sub:{title:'Абонамент',plan:'Текущ план',billing:'Следваща дата на плащане',method:'Метод на плащане',
+      history:'История на плащанията',cancel:'Откажи абонамента',free:'Безплатен',card:'Записана карта',none:'—',
+      freeDesc:'Ти си на безплатния план. Надгради по всяко време от страницата с цени.',upgrade:'Виж плановете →',
+      access:'Достъп до',oneTime:'Еднократен 30-дневен достъп (не е повтарящ се абонамент)',
+      eu:'Право на отказ (ЕС): пълно възстановяване в рамките на 14 дни, ако не си започнал да ползваш дигиталното съдържание. Важи и 7-дневна гаранция за връщане на парите. Отказът никога не е скрит.',
+      confirmCancel:'Да откажа абонамента и да поискам възстановяване? Това е необратимо.'},
+    hist:{title:'История',desc:'Твоите завършени сесии и треньорска активност.',empty:'Още няма завършени тренировки. Завърши сесия и тя ще се появи тук.',
+      sets:'серии',exercises:'упражнения'},
+    settings:{title:'Настройки',lang:'Език',theme:'Тема',dark:'Тъмна (по подразбиране)',reset:'Изчисти локалните данни',
+      resetDesc:'Изтрива профил, памет и история на това устройство.',resetConfirm:'Да изтрия всички локални данни на APEX на това устройство?',reset2:'Локалните данни са изчистени.'},
+    priv:{title:'Поверителност и безопасност',b:'<h4>Твоите данни</h4><p>Профилът, паметта и историята ти се съхраняват локално в браузъра ти. Треньорският контекст се изпраща до AI само за да генерира плановете ти.</p><h4>Медицинска безопасност</h4><p>APEX е треньорски инструмент. Не диагностицира, не предписва и не замества медицински специалисти. При болка, симптоми или заболявания се консултирай с лекар.</p><h4>Никога не се споделя</h4><p>Данните ти никога не се продават или споделят с трети страни.</p>'},
+    about:{title:'За APEX',b:'<p><strong>APEX PULSE PRO</strong> е жива AI биологична операционна система — личен треньор, който чете физиологията ти и адаптира всеки план за теб.</p><h4>Какво прави</h4><ul><li>Персонализирани тренировки и хранене</li><li>Треньорство спрямо възстановяването</li><li>Постоянна треньорска памет</li></ul><p style="color:var(--faint);margin-top:12px">Версия 3.3 · Your peak. Your pulse.</p>'}}
 };
 let lang=(localStorage.getItem('apexLang')||'en').toLowerCase(); if(lang!=='bg'&&lang!=='en')lang='en';
 function tr(){return T[lang];}
@@ -770,10 +892,10 @@ function applyLang(){
   const t=tr(),w=t.wiz; document.documentElement.lang=lang;
   txt('ov-eyebrow',t.eyebrow); txt('cta-train',t.ctaTrain); txt('cta-consult',t.ctaConsult);
   txt('back-label',t.back); document.getElementById('status-pill').childNodes[0].nodeValue=t.live;
-  document.getElementById('lang-pill').textContent=lang.toUpperCase();
-  txt('feedback-link',t.feedback); document.querySelector('#profile-pill .ptxt').textContent=t.profile;
   txt('ch-label',t.chEngine); txt('ml-rec',t.recovery); txt('ml-fat',t.fatigue); txt('ml-str',t.stress);
+  txt('jump-label',t.jumpLatest);
   document.getElementById('user-in').placeholder=t.placeholder;
+  buildMenu();
   // wizard chrome
   txt('w1-cat',w.c1);txt('w2-cat',w.c2);txt('w3-cat',w.c3);
   txt('w1-title',w.t1);txt('w2-title',w.t2);txt('w3-title',w.t3);
@@ -781,7 +903,8 @@ function applyLang(){
   txt('l-goal',w.goal);txt('l-age',w.age);txt('l-weight',w.weight);txt('l-height',w.height);txt('l-gender',w.gender);
   txt('l-level',w.level);txt('l-equip',w.equip);txt('l-sleep',w.sleep);txt('l-stress',w.stress);txt('l-recovery',w.recovery);
   txt('l-activity',w.activity);txt('l-freq',w.freq);txt('l-smoking',w.smoking);txt('l-alcohol',w.alcohol);txt('l-nicotine',w.nicotine);
-  txt('l-caffeine',w.caffeine);txt('l-meds',w.meds);txt('l-injuries',w.injuries);txt('l-notes',w.notes);
+  txt('l-caffeine',w.caffeine);txt('l-meds',w.meds);txt('l-supps',w.supps);txt('l-injuries',w.injuries);
+  txt('l-surgeries',w.surgeries);txt('l-limits',w.limits);txt('l-notes',w.notes);
   txt('w1-next',w.cont);txt('w2-next',w.cont);txt('w3-save',w.save);txt('safety-note',w.safety);
   txt('cancel-sub',t.cancelSub);
   setOpts('pf-goal',w.opt.goal);setOpts('pf-gender',w.opt.gender);setOpts('pf-level',w.opt.level);setOpts('pf-equip',w.opt.equip);
@@ -810,33 +933,145 @@ function openProfile(jump){
   set('pf-level',p.level);set('pf-equip',p.equipment);set('pf-sleep',p.sleepQuality);set('pf-stress',p.stressLevel);
   set('pf-recovery',p.recoveryFeel);set('pf-activity',p.activityLevel);set('pf-freq',p.frequency);
   set('pf-smoking',p.smoking);set('pf-alcohol',p.alcohol);set('pf-nicotine',p.nicotine);set('pf-caffeine',p.caffeine);
-  set('pf-meds',p.medications);set('pf-injuries',p.injuries);set('pf-notes',p.notes);
+  set('pf-meds',p.medications);set('pf-supps',p.supplements);set('pf-injuries',p.injuries);
+  set('pf-surgeries',p.surgeries);set('pf-limits',p.limitations);set('pf-notes',p.notes);
   document.getElementById('cancel-sub').style.display=localStorage.getItem('apexToken')?'block':'none';
   wizGo(jump||0);
   document.getElementById('profile-modal').classList.add('on');
 }
 function saveProfile(){
   const v=id=>{const e=document.getElementById(id);return e?e.value.trim():'';};
-  const goal=v('pf-goal'), injuries=v('pf-injuries'), meds=v('pf-meds'), notes=v('pf-notes');
-  const healthBits=[injuries,notes].filter(Boolean).join('. ');
+  const goal=v('pf-goal'), injuries=v('pf-injuries'), meds=v('pf-meds'), supps=v('pf-supps'),
+        surgeries=v('pf-surgeries'), limits=v('pf-limits'), notes=v('pf-notes');
+  // Compose everything the coach must never violate into healthNotes (backend reads it)
+  const hb=[]; if(injuries)hb.push((lang==='bg'?'Травми: ':'Injuries: ')+injuries);
+  if(surgeries)hb.push((lang==='bg'?'Операции: ':'Surgeries: ')+surgeries);
+  if(limits)hb.push((lang==='bg'?'Ограничения: ':'Limitations: ')+limits);
+  if(meds)hb.push((lang==='bg'?'Лекарства: ':'Medications: ')+meds);
+  if(notes)hb.push(notes);
   const p={
     goal, goalDetail:tr().wiz.opt.goal[goal]||goal, focus:T.en.wiz.opt.goal[goal]||goal,
     age:v('pf-age'),weight:v('pf-weight'),height:v('pf-height'),gender:v('pf-gender'),level:v('pf-level'),
     equipment:v('pf-equip'),sleepQuality:v('pf-sleep'),stressLevel:v('pf-stress'),recoveryFeel:v('pf-recovery'),
     activityLevel:v('pf-activity'),frequency:v('pf-freq'),smoking:v('pf-smoking'),alcohol:v('pf-alcohol'),
-    nicotine:v('pf-nicotine'),caffeine:v('pf-caffeine'),medications:meds,injuries,notes,
-    healthNotes:healthBits  // backend reads healthNotes for constraints
+    nicotine:v('pf-nicotine'),caffeine:v('pf-caffeine'),medications:meds,supplements:supps,
+    injuries,surgeries,limitations:limits,notes,
+    healthNotes:hb.join('. ')  // backend reads healthNotes for constraints
   };
   localStorage.setItem('apexProfile',JSON.stringify(p));
   const m=memLoad(); m.goals=p.goalDetail; memSave(m);
   document.getElementById('profile-modal').classList.remove('on');
   applyReadout(); toast(tr().saved); if(consultOn)resetGreeting();
 }
-function cancelSub(){
-  const token=localStorage.getItem('apexToken'); if(!token){toast(tr().cancelSub);return;}
-  if(!confirm(lang==='bg'?'Сигурен ли си, че искаш да откажеш абонамента?':'Are you sure you want to cancel your subscription?'))return;
+function cancelSub(){ doWithdraw(tr().sub.confirmCancel); }
+function doWithdraw(confirmMsg){
+  const token=localStorage.getItem('apexToken'); if(!token){toast(tr().sub.free);return;}
+  if(!confirm(confirmMsg))return;
   fetch('/withdraw',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token,lang})})
     .then(r=>r.json()).then(d=>{toast(d.message||(lang==='bg'?'Заявката е приета.':'Request received.'));}).catch(()=>toast('—'));
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SLIDE-OUT MENU  (Hero stays minimal; everything lives here)
+   ═══════════════════════════════════════════════════════════════════ */
+const MENU=[
+  {k:'home',ico:'🏠'},{k:'consult',ico:'💬'},{k:'workouts',ico:'💪'},{k:'nutrition',ico:'🍽'},
+  {k:'progress',ico:'📈'},{k:'history',ico:'📝'},{k:'profile',ico:'👤'},{k:'feedback',ico:'⭐'},
+  {sep:true},
+  {k:'subscription',ico:'💳'},{k:'language',ico:'🌐',val:()=>lang.toUpperCase()},{k:'settings',ico:'⚙'},
+  {k:'privacy',ico:'🔒'},{k:'about',ico:'ℹ️'}
+];
+function buildMenu(){
+  const nav=document.getElementById('drawer-nav'); if(!nav)return; const m=tr().menu;
+  nav.innerHTML=MENU.map(it=>it.sep?'<div class="drawer-sep"></div>':
+    '<button class="mi" onclick="menuAction(\''+it.k+'\')"><span class="mi-ico">'+it.ico+'</span><span>'+m[it.k]+'</span>'+
+    (it.val?'<span class="mi-val">'+it.val()+'</span>':'')+'</button>').join('');
+}
+function openMenu(){ buildMenu(); document.getElementById('drawer').classList.add('on'); document.getElementById('drawer-scrim').classList.add('on'); }
+function closeMenu(){ document.getElementById('drawer').classList.remove('on'); document.getElementById('drawer-scrim').classList.remove('on'); }
+function menuAction(k){
+  closeMenu();
+  const seed=tr().seed;
+  switch(k){
+    case 'home': exitConsult(); break;
+    case 'consult': enterConsult(); break;
+    case 'workouts': enterConsult(seed.workouts); break;
+    case 'nutrition': enterConsult(seed.nutrition); break;
+    case 'progress': enterConsult(seed.progress); break;
+    case 'history': showHistory(); break;
+    case 'profile': openProfile(0); break;
+    case 'feedback': openFeedback(); break;
+    case 'subscription': showSubscription(); break;
+    case 'language': toggleLang(); break;
+    case 'settings': showSettings(); break;
+    case 'privacy': showPanel(tr().priv.title,'<div class="info-body">'+tr().priv.b+'</div>'); break;
+    case 'about': showPanel(tr().about.title,'<div class="info-body">'+tr().about.b+'</div>'); break;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   PANELS  (subscription / history / settings / privacy / about)
+   ═══════════════════════════════════════════════════════════════════ */
+function showPanel(title,bodyHtml){
+  document.getElementById('panel-title').textContent=title;
+  document.getElementById('panel-desc').style.display='none';
+  document.getElementById('panel-body').innerHTML=bodyHtml;
+  document.getElementById('panel-close').textContent=(lang==='bg'?'Затвори':'Close');
+  document.getElementById('panel-modal').classList.add('on');
+}
+function closePanel(){ document.getElementById('panel-modal').classList.remove('on'); }
+function fmtDate(ts){ try{return new Date(ts*1000).toLocaleDateString(lang==='bg'?'bg-BG':'en-GB',{day:'numeric',month:'short',year:'numeric'});}catch(e){return '—';} }
+function showSubscription(){
+  const s=tr().sub; const token=localStorage.getItem('apexToken')||'';
+  const render=(plan,expiry)=>{
+    const paid=plan&&plan!=='free';
+    const badge=paid?'<span class="plan-badge '+plan+'">'+plan.toUpperCase()+'</span>':'<span class="plan-badge free">'+s.free+'</span>';
+    let body='<div class="panel-row"><span class="pr-l">'+s.plan+'</span><span class="pr-v">'+badge+'</span></div>';
+    if(paid){
+      body+='<div class="panel-row"><span class="pr-l">'+s.access+'</span><span class="pr-v">'+(expiry?fmtDate(expiry):s.none)+'</span></div>';
+      body+='<div class="panel-row"><span class="pr-l">'+s.method+'</span><span class="pr-v">'+s.card+'</span></div>';
+      body+='<div class="panel-row"><span class="pr-l">'+s.history+'</span><span class="pr-v">'+(expiry?fmtDate(expiry-30*86400):s.none)+' · '+(plan==='pro'?'€14.99':'€9.99')+'</span></div>';
+      body+='<div class="eu-note">'+s.oneTime+'<br><br>'+s.eu+'</div>';
+      body+='<button class="cancel-btn" onclick="doWithdraw(tr().sub.confirmCancel)">'+s.cancel+'</button>';
+    } else {
+      body+='<div class="eu-note">'+s.freeDesc+'</div>';
+      body+='<button class="save" onclick="location.href=\'/'+(lang==='en'?'en':'')+'#pricing\'">'+s.upgrade+'</button>';
+    }
+    showPanel(s.title,body);
+  };
+  if(!token){ render('free',0); return; }
+  fetch('/verify-token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})})
+    .then(r=>r.json()).then(d=>{ if(!d.valid){localStorage.removeItem('apexToken');render('free',0);} else render(d.plan||'core',d.expiry||0); })
+    .catch(()=>render('free',0));
+}
+function showHistory(){
+  const h=tr().hist; let log=[];try{log=JSON.parse(localStorage.getItem('apexWorkoutLog')||'[]');}catch(e){}
+  let body='<p class="sd" style="margin-bottom:16px">'+h.desc+'</p>';
+  if(!log.length){ body+='<div class="hist-empty">'+h.empty+'</div>'; }
+  else{
+    body+=log.slice().reverse().map(s=>{
+      const mu=inferMuscle((s.exercises&&s.exercises[0]&&s.exercises[0].name)||'');
+      const nEx=(s.exercises||[]).length, nSets=(s.exercises||[]).reduce((a,e)=>a+(parseInt(e.sets)||0),0);
+      return '<div class="hist-item"><div class="hist-ico">'+mu.e+'</div><div class="hist-b">'+
+        '<div class="hist-t">'+esc(s.type||'training')+'</div>'+
+        '<div class="hist-s">'+esc(s.date||'')+' · '+nEx+' '+h.exercises+' · '+nSets+' '+h.sets+'</div></div></div>';
+    }).join('');
+  }
+  showPanel(h.title,body);
+}
+function showSettings(){
+  const st=tr().settings;
+  const body='<div class="panel-row"><span class="pr-l">'+st.lang+'</span><span class="pr-v">'+
+    '<button class="pill" style="height:32px" onclick="toggleLang();closePanel();">'+lang.toUpperCase()+'</button></span></div>'+
+    '<div class="panel-row"><span class="pr-l">'+st.theme+'</span><span class="pr-v">'+st.dark+'</span></div>'+
+    '<div class="eu-note">'+st.resetDesc+'</div>'+
+    '<button class="cancel-btn" onclick="resetLocal()">'+st.reset+'</button>';
+  showPanel(st.title,body);
+}
+function resetLocal(){
+  const st=tr().settings; if(!confirm(st.resetConfirm))return;
+  ['apexProfile','apexHistory','apexWorkoutLog','apexCoachMemory'].forEach(k=>localStorage.removeItem(k));
+  closePanel(); applyReadout(); toast(st.reset2); setTimeout(()=>openProfile(0),400);
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -951,9 +1186,9 @@ function renderMarkdown(raw){
   return html;
 }
 function renderGenericTable(header,body){
-  let h='<table><thead><tr>'+header.map(c=>'<th>'+inlineMd(c)+'</th>').join('')+'</tr></thead><tbody>';
+  let h='<div class="table-wrap"><table><thead><tr>'+header.map(c=>'<th>'+inlineMd(c)+'</th>').join('')+'</tr></thead><tbody>';
   h+=body.map(r=>'<tr>'+r.map(c=>'<td>'+inlineMd(c)+'</td>').join('')+'</tr>').join('');
-  return h+'</tbody></table>';
+  return h+'</tbody></table></div>';
 }
 
 /* ── NUTRITION RENDERER — meal cards + macro badges + totals ── */
@@ -1078,6 +1313,7 @@ function renderWO(){
       '<div class="wo-ex-name">'+esc(e.name)+'</div>'+
       '<div class="wo-ex-target">'+esc(e.reps)+' '+(lang==='bg'?'повторения':'reps')+'</div>'+
       '<div class="wo-ex-meta">'+mu.m+' · '+(lang==='bg'?'темп':'tempo')+' 2-0-2'+(e.note?(' · '+esc(e.note)):'')+'</div>'+
+      '<div class="wo-weight"><input type="number" id="wo-weight-in" inputmode="decimal" placeholder="'+(lang==='bg'?'кг (по избор)':'kg (optional)')+'" value="'+(e.weight||'')+'" oninput="WO.ex[WO.i].weight=this.value"><span>'+(lang==='bg'?'кг × серия':'kg / set')+'</span></div>'+
       '<div class="set-dots">'+dots+'</div>'+
       '<div class="wo-controls"><button class="wo-btn primary" onclick="completeSet()">'+t.woDone+' →</button>'+
       (WO.i>0||WO.set>0?'<button class="wo-btn ghost" onclick="skipExercise()">'+(lang==='bg'?'Следващо':'Next')+' »</button>':'')+'</div>'+
@@ -1114,7 +1350,7 @@ function finishWorkout(){
   const t=tr(),dur=Math.round((Date.now()-sessionStart)/60000);
   const totalSets=WO.ex.reduce((a,e)=>a+(parseInt(e.sets)||3),0);
   const session={ts:Date.now(),date:new Date().toLocaleDateString(),type:inferMuscle(WO.ex[0].name).m,
-    exercises:WO.ex.map(e=>({name:e.name,sets:e.sets,reps:e.reps})),diff:'medium',completion:100};
+    exercises:WO.ex.map(e=>({name:e.name,sets:e.sets,reps:e.reps,weight:e.weight||''})),diff:'medium',completion:100};
   logWorkout(session);
   document.getElementById('wo-stage').innerHTML='<div class="wo-summary"><div class="wo-step">✓ '+t.woComplete+'</div>'+
     '<div class="wo-ex-glyph" style="background:radial-gradient(circle at 50% 35%,#B6FF3C44,rgba(18,23,36,.7));margin:0 auto 20px">🏁</div>'+
@@ -1133,11 +1369,21 @@ function finishToCoach(){
 
 /* ═══════════════════════════════════════════════════════════════════
    CHAT MESSAGES + AI ENGINE
+   Scroll is user-owned: we only auto-follow when the user is already at the
+   bottom. If they scroll up to read, we never yank them — we show "Jump to
+   latest" instead. (Premium assistant streaming behaviour.)
    ═══════════════════════════════════════════════════════════════════ */
+let stickBottom=true;
+function feedNearBottom(){const f=document.getElementById('feed');return f.scrollHeight-f.scrollTop-f.clientHeight<90;}
+function smartScroll(){const f=document.getElementById('feed');if(stickBottom){f.scrollTop=f.scrollHeight;hideJump();}else showJump();}
+function hardScroll(){const f=document.getElementById('feed');f.scrollTop=f.scrollHeight;stickBottom=true;hideJump();}
+function showJump(){document.getElementById('jump-latest').classList.add('on');}
+function hideJump(){document.getElementById('jump-latest').classList.remove('on');}
+function jumpToLatest(){hardScroll();}
 function appendUser(text){const feed=document.getElementById('feed');const g=feed.querySelector('.greet');if(g)g.remove();
-  const d=document.createElement('div');d.className='msg u';d.textContent=text;feed.appendChild(d);feed.scrollTop=feed.scrollHeight;}
+  const d=document.createElement('div');d.className='msg u';d.textContent=text;feed.appendChild(d);hardScroll();}
 function appendCoach(){const feed=document.getElementById('feed');const d=document.createElement('div');d.className='msg a';
-  d.innerHTML='<div class="who">'+tr().coach+'</div><div class="body md"></div>';feed.appendChild(d);feed.scrollTop=feed.scrollHeight;return d.querySelector('.body');}
+  d.innerHTML='<div class="who">'+tr().coach+'</div><div class="body md"></div>';feed.appendChild(d);smartScroll();return d.querySelector('.body');}
 function getHistory(){try{return JSON.parse(localStorage.getItem('apexHistory')||'[]');}catch(e){return[];}}
 function saveHistory(role,content){const h=getHistory();h.push({role,content});localStorage.setItem('apexHistory',JSON.stringify(h.slice(-40)));}
 let sending=false;
@@ -1153,7 +1399,7 @@ async function send(){
   body.history=getHistory(); saveHistory('user',val);
   const feed=document.getElementById('feed');
   const ty=document.createElement('div');ty.className='typing';ty.innerHTML='<span class="tl">'+tr().typing+'</span><i></i><i></i><i></i>';
-  feed.appendChild(ty);feed.scrollTop=feed.scrollHeight;
+  feed.appendChild(ty);smartScroll();
   try{
     const res=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const ct=res.headers.get('content-type')||'';
@@ -1168,13 +1414,13 @@ async function send(){
         buf+=dec.decode(value,{stream:true});const parts=buf.split('\n\n');buf=parts.pop();
         for(const part of parts){const line=part.trim();if(!line.startsWith('data:'))continue;
           let o;try{o=JSON.parse(line.slice(5).trim());}catch(e){continue;}
-          if(o.t){full+=o.t;const now=performance.now();if(now-lastPaint>55){target.innerHTML=streamRender(full);feed.scrollTop=feed.scrollHeight;lastPaint=now;}}
+          if(o.t){full+=o.t;const now=performance.now();if(now-lastPaint>80){target.innerHTML=streamRender(full);smartScroll();lastPaint=now;}}
           else if(o.limit_reached){const m=target.closest('.msg');if(m)m.remove();showLimit(o.hours_left||24);aborted=true;}
           else if(o.error){full+=(o.reply||'');}
         }
       }
       // FINAL render — full component renderer → cards, no raw markdown
-      if(full&&!aborted){target.innerHTML=renderMarkdown(full);feed.scrollTop=feed.scrollHeight;saveHistory('assistant',full);afterReply(full);}
+      if(full&&!aborted){target.innerHTML=renderMarkdown(full);smartScroll();saveHistory('assistant',full);afterReply(full);}
     } else {
       const data=await res.json();ty.remove();
       if(data.limit_reached)showLimit(data.hours_left||24);
@@ -1253,6 +1499,11 @@ document.addEventListener('DOMContentLoaded',()=>{
   applyLang();
   document.getElementById('user-in').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();send();}});
   document.querySelectorAll('.modal').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('on');}));
+  // scroll ownership: user scrolling up releases auto-follow + offers "Jump to latest";
+  // reaching the bottom re-arms auto-follow and hides the button.
+  document.getElementById('feed').addEventListener('scroll',()=>{stickBottom=feedNearBottom();if(stickBottom)hideJump();else showJump();},{passive:true});
+  // Esc closes drawer/panels
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeMenu();closePanel();}});
   // first-run onboarding
   const hasProfile=!!localStorage.getItem('apexProfile');
   if(!hasProfile){setTimeout(()=>openProfile(0),700);}
