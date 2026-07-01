@@ -1133,6 +1133,7 @@ async function syncFromAccount(){
     const cache={};
     try{cache.profile=JSON.parse(localStorage.getItem('apexProfile')||'null');}catch(e){}
     try{cache.workoutLog=JSON.parse(localStorage.getItem('apexWorkoutLog')||'[]');}catch(e){}
+    try{cache.chatHistory=JSON.parse(localStorage.getItem('apexHistory')||'[]');}catch(e){}
     const r=await fetch('/api/sync',{method:'POST',headers:{'Content-Type':'application/json'},
       credentials:'same-origin',body:JSON.stringify(cache)});
     const d=await r.json();
@@ -1142,6 +1143,11 @@ async function syncFromAccount(){
       const log=d.workouts.map(w=>({ts:Date.parse(w.occurred_at)||Date.now(),date:(w.occurred_at||'').slice(0,10),
         type:w.type,exercises:w.exercises||[],diff:w.difficulty,completion:w.completion})).reverse();
       if(log.length) localStorage.setItem('apexWorkoutLog',JSON.stringify(log));
+    }
+    // Chat transcript from the account (server truth) → cache, so the coach
+    // continues the previous conversation on any device.
+    if(d&&Array.isArray(d.conversations)&&d.conversations.length){
+      localStorage.setItem('apexHistory',JSON.stringify(d.conversations.slice(-40)));
     }
     applyReadout();
   }catch(e){ console.debug('sync failed',e); }

@@ -128,7 +128,7 @@ profiles = Table("profiles", metadata,
     Column("updated_at", DateTime(timezone=True), server_default=func.now(), onupdate=func.now()),
 )
 
-workouts = Table("workouts", metadata,
+workout_history = Table("workout_history", metadata,
     _uuid_col(),
     Column("user_id", Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
     Column("coach_id", Uuid(as_uuid=True)),     # future: multiple AI coaches
@@ -139,19 +139,21 @@ workouts = Table("workouts", metadata,
     Column("difficulty", String(24)),
     Column("completion", Integer),
     Column("created_at", DateTime(timezone=True), server_default=func.now()),
+    Index("ix_workout_user_occurred", "user_id", "occurred_at"),
 )
 
-nutrition_plans = Table("nutrition_plans", metadata,
+nutrition_history = Table("nutrition_history", metadata,
     _uuid_col(),
     Column("user_id", Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
     Column("coach_id", Uuid(as_uuid=True)),
     Column("content", JSON),                    # rendered meals / raw text
     Column("macros", JSON),                     # {protein,carbs,fat,kcal}
     Column("created_at", DateTime(timezone=True), server_default=func.now()),
+    Index("ix_nutrition_user_created", "user_id", "created_at"),
 )
 
-# The coaching timeline / long-term memory. One row per meaningful event.
-memory_events = Table("memory_events", metadata,
+# Durable long-term coaching memory — the timeline. One row per meaningful event.
+coach_memory = Table("coach_memory", metadata,
     _uuid_col(),
     Column("user_id", Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
     Column("coach_id", Uuid(as_uuid=True)),
@@ -162,8 +164,46 @@ memory_events = Table("memory_events", metadata,
     Index("ix_memory_user_created", "user_id", "created_at"),
 )
 
-def init_db():
+# Full chat transcript, account-owned. Loads on any device so the coach continues.
+conversations = Table("conversations", metadata,
+    _uuid_col(),
+    Column("user_id", Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+    Column("coach_id", Uuid(as_uuid=True)),
+    Column("role", String(16), nullable=False), # 'user' | 'assistant'
+    Column("content", JSON),                    # message text
+    Column("lang", String(4)),
+    Column("created_at", DateTime(timezone=True), server_default=func.now()),
+    Index("ix_conv_user_created", "user_id", "created_at"),
+)
+
+schema_version = Table("schema_version", metadata,
+    Column("version", Integer, primary_key=True),
+    Column("applied_at", DateTime(timezone=True), server_default=func.now()),
+)
+
+# Ordered, idempotent migrations. create_all() builds the base schema; each numbered
+# step below runs once (recorded in schema_version) so future ALTERs deploy cleanly
+# without dropping data. Add new steps by appending — never edit an applied one.
+_MIGRATIONS = [
+    # (version, callable(connection) -> None)
+    (1, lambda c: None),  # baseline: tables created by metadata.create_all()
+]
+
+def run_migrations():
+    """Create the base schema, then apply any pending versioned migrations."""
     metadata.create_all(engine)
+    with engine.begin() as c:
+        applied = {r[0] for r in c.execute(select(schema_version.c.version)).all()}
+        for version, fn in _MIGRATIONS:
+            if version in applied:
+                continue
+            fn(c)
+            c.execute(insert(schema_version).values(version=version))
+    print(f"[db] migrations up to v{_MIGRATIONS[-1][0]} applied")
+
+# Backwards-compatible alias.
+def init_db():
+    run_migrations()
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def _now():
@@ -380,33 +420,62 @@ def save_profile(user_id, data: dict):
         else:
             c.execute(insert(profiles).values(id=uuid.uuid4(), user_id=_as_uuid(user_id), data=data))
 
-# ── Workouts / nutrition / memory (the timeline) ──────────────────────────────
+# ── Workout / nutrition / conversation / memory (the account timeline) ────────
 def log_workout(user_id, session: dict):
     wid = uuid.uuid4()
     with engine.begin() as c:
-        c.execute(insert(workouts).values(
+        c.execute(insert(workout_history).values(
             id=wid, user_id=_as_uuid(user_id), type=session.get("type"),
             exercises=session.get("exercises"), difficulty=session.get("diff"),
             completion=session.get("completion"), source="app"))
-        c.execute(insert(memory_events).values(id=uuid.uuid4(), user_id=_as_uuid(user_id),
+        c.execute(insert(coach_memory).values(id=uuid.uuid4(), user_id=_as_uuid(user_id),
             kind="workout", source="app", payload=session))
     return str(wid)
 
 def add_memory_event(user_id, kind, payload, source="app"):
     with engine.begin() as c:
-        c.execute(insert(memory_events).values(id=uuid.uuid4(), user_id=_as_uuid(user_id),
+        c.execute(insert(coach_memory).values(id=uuid.uuid4(), user_id=_as_uuid(user_id),
             kind=kind, payload=payload, source=source))
+
+def save_nutrition(user_id, content, macros=None):
+    nid = uuid.uuid4()
+    with engine.begin() as c:
+        c.execute(insert(nutrition_history).values(id=nid, user_id=_as_uuid(user_id),
+            content=content, macros=macros))
+        c.execute(insert(coach_memory).values(id=uuid.uuid4(), user_id=_as_uuid(user_id),
+            kind="nutrition", source="app", payload={"macros": macros}))
+    return str(nid)
+
+def list_nutrition(user_id, limit=30):
+    with engine.begin() as c:
+        rows = c.execute(select(nutrition_history).where(nutrition_history.c.user_id == _as_uuid(user_id))
+                         .order_by(nutrition_history.c.created_at.desc()).limit(limit)).mappings().all()
+    return [_serial(r) for r in rows]
+
+def add_conversation(user_id, role, content, lang=None):
+    with engine.begin() as c:
+        c.execute(insert(conversations).values(id=uuid.uuid4(), user_id=_as_uuid(user_id),
+            role=role, content=content, lang=lang))
+
+def list_conversation(user_id, limit=40):
+    """Most recent messages, returned oldest→newest for prompt/context replay."""
+    with engine.begin() as c:
+        rows = c.execute(select(conversations).where(conversations.c.user_id == _as_uuid(user_id))
+                         .order_by(conversations.c.created_at.desc()).limit(limit)).mappings().all()
+    out = [{"role": r["role"], "content": r["content"]} for r in rows]
+    out.reverse()
+    return out
 
 def list_workouts(user_id, limit=60):
     with engine.begin() as c:
-        rows = c.execute(select(workouts).where(workouts.c.user_id == _as_uuid(user_id))
-                         .order_by(workouts.c.occurred_at.desc()).limit(limit)).mappings().all()
+        rows = c.execute(select(workout_history).where(workout_history.c.user_id == _as_uuid(user_id))
+                         .order_by(workout_history.c.occurred_at.desc()).limit(limit)).mappings().all()
     return [_serial(r) for r in rows]
 
 def list_timeline(user_id, limit=100):
     with engine.begin() as c:
-        rows = c.execute(select(memory_events).where(memory_events.c.user_id == _as_uuid(user_id))
-                         .order_by(memory_events.c.created_at.desc()).limit(limit)).mappings().all()
+        rows = c.execute(select(coach_memory).where(coach_memory.c.user_id == _as_uuid(user_id))
+                         .order_by(coach_memory.c.created_at.desc()).limit(limit)).mappings().all()
     return [_serial(r) for r in rows]
 
 def _serial(row):

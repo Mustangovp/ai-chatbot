@@ -1290,7 +1290,24 @@ def api_history():
     u = _require_user()
     if not u:
         return jsonify({"error": "unauthenticated"}), 401
-    return jsonify({"workouts": store.list_workouts(u["id"]), "timeline": store.list_timeline(u["id"])})
+    return jsonify({
+        "workouts": store.list_workouts(u["id"]),
+        "nutrition": store.list_nutrition(u["id"]),
+        "timeline": store.list_timeline(u["id"]),
+    })
+
+
+@app.route("/api/conversations")
+def api_conversations():
+    """Cross-device chat history load — the account's transcript."""
+    u = _require_user()
+    if not u:
+        return jsonify({"error": "unauthenticated"}), 401
+    try:
+        limit = min(int(request.args.get("limit", 60)), 200)
+    except Exception:
+        limit = 60
+    return jsonify({"messages": store.list_conversation(u["id"], limit=limit)})
 
 
 @app.route("/api/memory", methods=["POST"])
@@ -1322,8 +1339,17 @@ def api_sync():
             if isinstance(s, dict):
                 try: store.log_workout(u["id"], s)
                 except Exception: pass
-    return jsonify({"ok": True, "profile": store.get_profile(u["id"]),
-                    "workouts": store.list_workouts(u["id"])})
+    # Migrate cached chat transcript once (only if the account has none yet).
+    conv = data.get("chatHistory")
+    if isinstance(conv, list) and not store.list_conversation(u["id"], limit=1):
+        for m in conv[-40:]:
+            if isinstance(m, dict) and m.get("role") in ("user", "assistant") and m.get("content"):
+                try: store.add_conversation(u["id"], m["role"], str(m["content"])[:4000])
+                except Exception: pass
+    return jsonify({"ok": True,
+                    "profile": store.get_profile(u["id"]),
+                    "workouts": store.list_workouts(u["id"]),
+                    "conversations": store.list_conversation(u["id"], limit=60)})
 
 
 @app.route("/chat", methods=["POST"])
@@ -1364,30 +1390,39 @@ def chat():
             if not q["allowed"]:
                 return jsonify({"limit_reached": True, "hours_left": q["hours_left"], "remaining": 0}), 200
 
-        # For logged-in accounts the DATABASE is the source of truth for profile and
-        # coaching memory — the AI remembers the person, not the browser.
-        if g.get("user"):
-            db_profile = store.get_profile(g.user["id"])
+        # For logged-in accounts the DATABASE is the source of truth for profile,
+        # coaching memory AND conversation history — the AI remembers the person
+        # across devices, not the browser.
+        chat_uid = str(g.user["id"]) if g.get("user") else None
+        if chat_uid:
+            db_profile = store.get_profile(chat_uid)
             if db_profile:
                 profile = db_profile
             try:
-                mem = store.build_memory_context(g.user["id"], en=(lang == "en"))
+                mem = store.build_memory_context(chat_uid, en=(lang == "en"))
                 if mem:
                     profile = dict(profile or {})
                     profile["workoutContext"] = mem
             except Exception as _me:
                 print(f"[chat] memory build failed: {_me}")
 
-        profile_block = _build_profile_block(profile, lang) if isinstance(profile, dict) else ""
-        system_content = (profile_block + "\n\n" + SYSTEM_INSTRUCTIONS) if profile_block else SYSTEM_INSTRUCTIONS
-        messages = [{"role": "system", "content": system_content}]
-
-        # Memory cap based on plan (from signed token):
-        # - PRO → 60 messages, CORE → 10, FREE → 12 (plan + follow-up questions fit)
+        # Memory cap based on plan.
         if is_elite:
             memory_cap = 60 if is_pro else 10
         else:
             memory_cap = 12
+
+        # Conversation history: DB (server truth, cross-device) for accounts,
+        # else the client-sent cache for anonymous users.
+        if chat_uid:
+            try:
+                history = store.list_conversation(chat_uid, limit=memory_cap)
+            except Exception as _ce:
+                print(f"[chat] conversation load failed: {_ce}")
+
+        profile_block = _build_profile_block(profile, lang) if isinstance(profile, dict) else ""
+        system_content = (profile_block + "\n\n" + SYSTEM_INSTRUCTIONS) if profile_block else SYSTEM_INSTRUCTIONS
+        messages = [{"role": "system", "content": system_content}]
 
         if isinstance(history, list):
             safe_history = history[-memory_cap:]
@@ -1419,6 +1454,25 @@ def chat():
         def sse(obj):
             return "data: " + _json.dumps(obj, ensure_ascii=False) + "\n\n"
 
+        # Captured for post-stream persistence (no request context inside generator).
+        persist_uid = chat_uid
+        persist_user_msg = user_message
+        persist_lang = lang
+
+        def _persist_reply(reply_text):
+            """Store the exchange to the account so the coach remembers it across
+            devices; save any nutrition plan to nutrition_history."""
+            if not persist_uid or not reply_text:
+                return
+            try:
+                store.add_conversation(persist_uid, "user", persist_user_msg, persist_lang)
+                store.add_conversation(persist_uid, "assistant", reply_text, persist_lang)
+                low = reply_text.lower()
+                if "|" in reply_text and any(k in low for k in ("ккал", "kcal", "калории", "protein", "протеин", "въглехидрати", "carb")):
+                    store.save_nutrition(persist_uid, reply_text, None)
+            except Exception as _pe:
+                print(f"[chat] persist failed: {_pe}")
+
         def generate():
             full = []
             try:
@@ -1436,12 +1490,14 @@ def chat():
                         full.append(delta)
                         yield sse({"t": delta})
                 _bump_plans_today()  # honest landing counter: +1 real AI plan
+                _persist_reply("".join(full))
                 yield sse({"done": True})
             except Exception as openai_error:
                 print(f"[chat] OpenAI error: {openai_error}")
                 if full:
                     # Потребителят вече получи почти всичко — завършваме чисто
                     _bump_plans_today()
+                    _persist_reply("".join(full))
                     yield sse({"done": True})
                 else:
                     # Нищо не е стигнало → връщаме съобщението в лимита му (DB refund)
