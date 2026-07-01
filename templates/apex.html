@@ -650,7 +650,10 @@ class LivingCore{
     for(const k in this.cur)this.cur[k]+=(this.phys[k]-this.cur[k])*Math.min(dt*.7,1);
     const{recovery:r,fatigue:f}=this.cur;
     // motion: recovery quickens & smooths, fatigue slows. Always gentle.
-    this.t+=dt*(.10+r*.10-f*.05);
+    // 1.35× time-scale — uniform +35% liveliness (cinematic screensaver feel).
+    // Colours, plasma, lighting, composition, amplitude and per-frame cost are
+    // unchanged — only the rate at which the existing motion advances.
+    this.t+=dt*(.10+r*.10-f*.05)*1.35;
   }
   render(){
     const g=this.octx,{recovery:r,fatigue:f,stress:st}=this.cur,{c1,c2}=this.palette();
@@ -1477,17 +1480,21 @@ function finishToCoach(){
 
 /* ═══════════════════════════════════════════════════════════════════
    CHAT MESSAGES + AI ENGINE
-   Scroll is user-owned: we only auto-follow when the user is already at the
-   bottom. If they scroll up to read, we never yank them — we show "Jump to
-   latest" instead. (Premium assistant streaming behaviour.)
+   Scroll ownership belongs to the USER. Arriving tokens NEVER scroll the feed
+   — no scrollTop=scrollHeight, no scrollIntoView, no bottom-snapping during
+   streaming. The assistant keeps streaming while the reader stays wherever they
+   are; "Jump to latest" is the only way to catch up. The single allowed snap is
+   when the user themselves sends a message (so they see it appear).
    ═══════════════════════════════════════════════════════════════════ */
-let stickBottom=true;
-function feedNearBottom(){const f=document.getElementById('feed');return f.scrollHeight-f.scrollTop-f.clientHeight<90;}
-function smartScroll(){const f=document.getElementById('feed');if(stickBottom){f.scrollTop=f.scrollHeight;hideJump();}else showJump();}
-function hardScroll(){const f=document.getElementById('feed');f.scrollTop=f.scrollHeight;stickBottom=true;hideJump();}
+function feedNearBottom(){const f=document.getElementById('feed');return f.scrollHeight-f.scrollTop-f.clientHeight<40;}
 function showJump(){document.getElementById('jump-latest').classList.add('on');}
 function hideJump(){document.getElementById('jump-latest').classList.remove('on');}
-function jumpToLatest(){hardScroll();}
+// Called during streaming: read-only. Only toggles the "Jump to latest" affordance
+// when new content sits below the fold. Never moves the scroll position.
+function smartScroll(){ feedNearBottom() ? hideJump() : showJump(); }
+// One-time snap to bottom — user-initiated only (sending a message / pressing Jump).
+function hardScroll(){ const f=document.getElementById('feed'); f.scrollTop=f.scrollHeight; hideJump(); }
+function jumpToLatest(){ hardScroll(); }
 function appendUser(text){const feed=document.getElementById('feed');const g=feed.querySelector('.greet');if(g)g.remove();
   const d=document.createElement('div');d.className='msg u';d.textContent=text;feed.appendChild(d);hardScroll();}
 function appendCoach(){const feed=document.getElementById('feed');const d=document.createElement('div');d.className='msg a';
@@ -1621,7 +1628,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   document.querySelectorAll('.modal').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('on');}));
   // scroll ownership: user scrolling up releases auto-follow + offers "Jump to latest";
   // reaching the bottom re-arms auto-follow and hides the button.
-  document.getElementById('feed').addEventListener('scroll',()=>{stickBottom=feedNearBottom();if(stickBottom)hideJump();else showJump();},{passive:true});
+  document.getElementById('feed').addEventListener('scroll',()=>{ feedNearBottom()?hideJump():showJump(); },{passive:true});
   // Esc closes drawer/panels
   document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeMenu();closePanel();}});
   // ── Server-authoritative session on every load ──
