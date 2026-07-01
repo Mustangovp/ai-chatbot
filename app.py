@@ -29,6 +29,7 @@ stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 # Runs on Postgres in production (DATABASE_URL) and SQLite locally.
 # ═══════════════════════════════════════════════════════════
 import db as store
+import personality
 import secrets as _secrets
 import uuid as _uuid
 from flask import g
@@ -1394,6 +1395,7 @@ def chat():
         # coaching memory AND conversation history — the AI remembers the person
         # across devices, not the browser.
         chat_uid = str(g.user["id"]) if g.get("user") else None
+        pers_workouts = []   # behavioural data for the Personality Engine (accounts only)
         if chat_uid:
             db_profile = store.get_profile(chat_uid)
             if db_profile:
@@ -1405,6 +1407,10 @@ def chat():
                     profile["workoutContext"] = mem
             except Exception as _me:
                 print(f"[chat] memory build failed: {_me}")
+            try:
+                pers_workouts = store.list_workouts(chat_uid, limit=40)
+            except Exception as _we:
+                print(f"[chat] workout load failed: {_we}")
 
         # Memory cap based on plan.
         if is_elite:
@@ -1420,8 +1426,22 @@ def chat():
             except Exception as _ce:
                 print(f"[chat] conversation load failed: {_ce}")
 
+        # ── PERSONALITY ENGINE ──────────────────────────────────────────────
+        # Assemble the fixed APEX identity + data-driven tone + a true observation.
+        # This makes every reply read as the same coach. The model composes the
+        # words; this layer guarantees the voice. Degrades safely to the core
+        # identity if anything is missing (never blocks a reply).
+        try:
+            personality_block = personality.compose(
+                lang=lang, profile=profile if isinstance(profile, dict) else {},
+                workouts=pers_workouts, message=user_message, conversation=history)
+        except Exception as _pe:
+            print(f"[chat] personality compose failed: {_pe}")
+            personality_block = ""
+
         profile_block = _build_profile_block(profile, lang) if isinstance(profile, dict) else ""
-        system_content = (profile_block + "\n\n" + SYSTEM_INSTRUCTIONS) if profile_block else SYSTEM_INSTRUCTIONS
+        base = (profile_block + "\n\n" + SYSTEM_INSTRUCTIONS) if profile_block else SYSTEM_INSTRUCTIONS
+        system_content = (personality_block + "\n\n" + base) if personality_block else base
         messages = [{"role": "system", "content": system_content}]
 
         if isinstance(history, list):
