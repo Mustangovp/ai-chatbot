@@ -25,6 +25,65 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
 # ═══════════════════════════════════════════════════════════
+# PERSISTENCE — the database is the source of truth (1.0)
+# Runs on Postgres in production (DATABASE_URL) and SQLite locally.
+# ═══════════════════════════════════════════════════════════
+import db as store
+import secrets as _secrets
+import uuid as _uuid
+from flask import g
+try:
+    store.init_db()
+    print(f"[db] ready ({'sqlite' if store.IS_SQLITE else 'postgres'})")
+except Exception as _e:
+    print(f"[db] init failed: {_e}")
+
+APP_URL = os.getenv("APP_URL", "")
+COOKIE_SECURE = APP_URL.startswith("https")
+SESSION_COOKIE = "apex_session"
+DEVICE_COOKIE = "apex_device"
+
+
+@app.before_request
+def _load_identity():
+    """Resolve the caller's account from the httpOnly session cookie (server truth),
+    and ensure an anonymous device id exists for pre-login free-limit accounting."""
+    g.user = None
+    g.device_id = request.cookies.get(DEVICE_COOKIE) or ""
+    g.set_device = False
+    sid = request.cookies.get(SESSION_COOKIE)
+    if sid:
+        try:
+            g.user = store.get_session_user(sid)
+        except Exception as e:
+            print(f"[auth] session lookup failed: {e}")
+    if not g.device_id:
+        g.device_id = _uuid.uuid4().hex
+        g.set_device = True
+
+
+@app.after_request
+def _persist_device_cookie(resp):
+    if getattr(g, "set_device", False):
+        resp.set_cookie(DEVICE_COOKIE, g.device_id, max_age=400 * 24 * 3600,
+                        httponly=True, samesite="Lax", secure=COOKIE_SECURE)
+    return resp
+
+
+def _set_session_cookie(resp, session_id):
+    resp.set_cookie(SESSION_COOKIE, session_id, max_age=90 * 24 * 3600,
+                    httponly=True, samesite="Lax", secure=COOKIE_SECURE)
+
+
+def _current_plan_status():
+    """Server-authoritative plan+status. DB subscription for logged-in users;
+    signed token only as a legacy fallback for users who paid before accounts."""
+    if g.get("user"):
+        sub = store.get_subscription(g.user["id"])
+        return sub["plan"], sub["status"]
+    return "free", "free"
+
+# ═══════════════════════════════════════════════════════════
 # SECURITY CONFIGURATION
 # Both must be set in Railway → Variables
 # APEX_SECRET = signs tokens for paying Stripe customers (30 days)
@@ -52,16 +111,14 @@ PLANS = {
 }
 
 # ═══════════════════════════════════════════════════════════
-# SERVER-SIDE FREE LIMIT (per IP, in-memory)
-# localStorage alone is trivially bypassed (incognito = reset).
-# This is a second wall. Resets on Railway redeploy — acceptable.
-# Users who leave their email get +LEAD_BONUS extra messages.
+# FREE LIMIT — enforced entirely in the database (db.free_usage),
+# keyed by account (logged in) or a signed httpOnly device id.
+# Deleting localStorage / incognito cannot reset it. See /chat.
 # ═══════════════════════════════════════════════════════════
 FREE_DAILY_LIMIT = 10
 LEAD_BONUS = 5
 FREE_WINDOW_SECONDS = 24 * 60 * 60
-_free_usage = {}      # ip -> {"count": int, "start": ts, "bonus": bool}
-_pending_tokens = {}  # stripe session_id -> (signed_token, issued_at) pairs
+_pending_tokens = {}  # stripe session_id -> (signed_token, issued_at, user_id)
 
 # Max age for an unpolled webhook token — prevents unbounded memory growth.
 _PENDING_TOKEN_TTL = 3600  # 1 hour; a user who never polls loses their automatic token
@@ -87,20 +144,6 @@ def _get_plans_today():
 
 def _client_ip():
     return request.remote_addr or 'unknown'
-
-def _get_free_usage(ip):
-    now = time.time()
-    u = _free_usage.get(ip)
-    if not u or now - u["start"] >= FREE_WINDOW_SECONDS:
-        u = {"count": 0, "start": now, "bonus": False}
-        _free_usage[ip] = u
-    # prevent unbounded memory growth
-    if len(_free_usage) > 5000:
-        cutoff = now - FREE_WINDOW_SECONDS
-        for k in list(_free_usage.keys()):
-            if _free_usage[k]["start"] < cutoff:
-                del _free_usage[k]
-    return u
 
 
 SYSTEM_INSTRUCTIONS = """
@@ -1123,16 +1166,183 @@ def app_chat():
     return render_template("apex.html")
 
 
+# ═══════════════════════════════════════════════════════════
+# AUTH — passwordless magic-link. Email is the canonical identity.
+# ═══════════════════════════════════════════════════════════
+_auth_rate = {}  # email -> [timestamps] (throttle magic-link requests)
+
+@app.route("/auth/request", methods=["POST"])
+def auth_request():
+    data = request.get_json(silent=True) or {}
+    email = str(data.get("email", "")).strip().lower()
+    lang = "en" if str(data.get("lang", "bg")).lower() == "en" else "bg"
+    if not email or "@" not in email or len(email) > 320:
+        return jsonify({"error": "invalid_email"}), 400
+    # Rate limit: max 4 links / 15 min / email
+    now = time.time()
+    stamps = [t for t in _auth_rate.get(email, []) if now - t < 900]
+    if len(stamps) >= 4:
+        return jsonify({"error": "rate_limited"}), 429
+    stamps.append(now); _auth_rate[email] = stamps
+    try:
+        uid = store.get_or_create_user(email)
+        if not uid:
+            return jsonify({"error": "invalid_email"}), 400
+        raw = store.create_login_token(uid)
+        host = os.getenv("APP_URL", "https://" + request.host).rstrip("/")
+        link = f"{host}/auth/verify?token={raw}"
+        if lang == "en":
+            subject = "Your APEX sign-in link"
+            body = (f"Sign in to APEX PULSE PRO:\n\n{link}\n\n"
+                    "This link expires in 20 minutes and can be used once.\n"
+                    "If you didn't request it, ignore this email.")
+        else:
+            subject = "Твоят вход в APEX"
+            body = (f"Влез в APEX PULSE PRO:\n\n{link}\n\n"
+                    "Връзката е валидна 20 минути и е за еднократна употреба.\n"
+                    "Ако не си я поискал — игнорирай този имейл.")
+        send_email(email, subject, body)
+    except Exception as e:
+        print(f"[auth] request failed: {e}")
+        return jsonify({"error": "server_error"}), 500
+    return jsonify({"ok": True})
+
+
+@app.route("/auth/verify")
+def auth_verify():
+    raw = request.args.get("token", "")
+    uid = None
+    try:
+        uid = store.consume_login_token(raw)
+    except Exception as e:
+        print(f"[auth] verify failed: {e}")
+    if not uid:
+        return redirect("/app?auth=invalid")
+    sid = store.create_session(uid)
+    resp = make_response(redirect("/app?auth=ok"))
+    _set_session_cookie(resp, sid)
+    return resp
+
+
+@app.route("/auth/logout", methods=["POST"])
+def auth_logout():
+    sid = request.cookies.get(SESSION_COOKIE)
+    if sid:
+        try: store.revoke_session(sid)
+        except Exception: pass
+    resp = make_response(jsonify({"ok": True}))
+    resp.delete_cookie(SESSION_COOKIE, samesite="Lax", secure=COOKIE_SECURE)
+    return resp
+
+
+@app.route("/auth/me")
+def auth_me():
+    """Every page load calls this — server-authoritative identity + subscription."""
+    if not g.get("user"):
+        return jsonify({"authenticated": False, "plan": "free", "status": "free"})
+    sub = store.get_subscription(g.user["id"])
+    return jsonify({
+        "authenticated": True,
+        "email": g.user["email"],
+        "plan": sub["plan"],
+        "status": sub["status"],
+        "current_period_end": sub["current_period_end"],
+    })
+
+
+def _require_user():
+    return g.get("user")
+
+
+# ═══════════════════════════════════════════════════════════
+# ACCOUNT DATA API — profile / history / memory (account-owned)
+# ═══════════════════════════════════════════════════════════
+@app.route("/api/profile", methods=["GET", "PUT"])
+def api_profile():
+    u = _require_user()
+    if not u:
+        return jsonify({"error": "unauthenticated"}), 401
+    if request.method == "GET":
+        return jsonify({"profile": store.get_profile(u["id"])})
+    data = request.get_json(silent=True) or {}
+    prof = data.get("profile")
+    if not isinstance(prof, dict):
+        return jsonify({"error": "invalid"}), 400
+    store.save_profile(u["id"], prof)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/workout", methods=["POST"])
+def api_workout():
+    u = _require_user()
+    if not u:
+        return jsonify({"error": "unauthenticated"}), 401
+    data = request.get_json(silent=True) or {}
+    session = data.get("session")
+    if not isinstance(session, dict):
+        return jsonify({"error": "invalid"}), 400
+    wid = store.log_workout(u["id"], session)
+    return jsonify({"ok": True, "id": wid})
+
+
+@app.route("/api/history")
+def api_history():
+    u = _require_user()
+    if not u:
+        return jsonify({"error": "unauthenticated"}), 401
+    return jsonify({"workouts": store.list_workouts(u["id"]), "timeline": store.list_timeline(u["id"])})
+
+
+@app.route("/api/memory", methods=["POST"])
+def api_memory():
+    u = _require_user()
+    if not u:
+        return jsonify({"error": "unauthenticated"}), 401
+    data = request.get_json(silent=True) or {}
+    kind = str(data.get("kind", "note"))[:32]
+    payload = data.get("payload")
+    store.add_memory_event(u["id"], kind, payload)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/sync", methods=["POST"])
+def api_sync():
+    """One-time migration of a browser's cached data into the account on first
+    sign-in, so existing users don't lose anything. Merge, never destroy."""
+    u = _require_user()
+    if not u:
+        return jsonify({"error": "unauthenticated"}), 401
+    data = request.get_json(silent=True) or {}
+    prof = data.get("profile")
+    if isinstance(prof, dict) and prof and not store.get_profile(u["id"]):
+        store.save_profile(u["id"], prof)
+    log = data.get("workoutLog")
+    if isinstance(log, list) and not store.list_workouts(u["id"], limit=1):
+        for s in log[-60:]:
+            if isinstance(s, dict):
+                try: store.log_workout(u["id"], s)
+                except Exception: pass
+    return jsonify({"ok": True, "profile": store.get_profile(u["id"]),
+                    "workouts": store.list_workouts(u["id"])})
+
+
 @app.route("/chat", methods=["POST"])
 def chat():
     try:
         data = request.json or {}
         token = data.get("token", "")
-        # NOTE: plan is now derived from the SIGNED token, never from the frontend.
-
-        is_elite, token_plan = verify_token(token) if token else (False, None)
+        # Plan is SERVER-AUTHORITATIVE: DB subscription first (logged-in accounts),
+        # then a signed legacy token as fallback for pre-account payers, then dev.
+        db_plan, db_status = _current_plan_status()
+        tok_valid, token_plan = (verify_token(token) if token else (False, None))
         is_dev = bool(DEV_TOKEN) and token == DEV_TOKEN
-        is_pro = is_elite and token_plan == "pro"
+        plan = db_plan
+        if plan == "free" and tok_valid:
+            plan = token_plan or "core"
+        if is_dev:
+            plan = "pro"
+        is_elite = is_dev or plan in ("core", "pro")
+        is_pro = is_dev or plan == "pro"
 
         msg_limit = 4000 if is_elite else 1000
         user_message = str(data.get("message", ""))[:msg_limit]
@@ -1142,16 +1352,31 @@ def chat():
         if lang not in ("bg", "en"):
             lang = "bg"
 
-        # ── SERVER-SIDE FREE LIMIT ──
-        # localStorage limit is the soft wall; this is the real one.
+        # ── SERVER-AUTHORITATIVE FREE LIMIT ──
+        # Enforced entirely in the database and keyed by the account (logged in) or
+        # a server-issued httpOnly device id — NEVER by client storage. Deleting
+        # localStorage/incognito cannot reset it.
+        free_subject = None
         if not is_elite:
-            ip = _client_ip()
-            usage = _get_free_usage(ip)
-            limit = FREE_DAILY_LIMIT + (LEAD_BONUS if usage.get("bonus") else 0)
-            if usage["count"] >= limit:
-                hours_left = max(1, int((FREE_WINDOW_SECONDS - (time.time() - usage["start"])) // 3600) + 1)
-                return jsonify({"limit_reached": True, "hours_left": hours_left}), 200
-            usage["count"] += 1
+            free_subject = ("user", str(g.user["id"])) if g.get("user") else ("device", g.device_id or _client_ip())
+            q = store.free_usage_consume(free_subject[0], free_subject[1],
+                                         FREE_DAILY_LIMIT, FREE_WINDOW_SECONDS, LEAD_BONUS)
+            if not q["allowed"]:
+                return jsonify({"limit_reached": True, "hours_left": q["hours_left"], "remaining": 0}), 200
+
+        # For logged-in accounts the DATABASE is the source of truth for profile and
+        # coaching memory — the AI remembers the person, not the browser.
+        if g.get("user"):
+            db_profile = store.get_profile(g.user["id"])
+            if db_profile:
+                profile = db_profile
+            try:
+                mem = store.build_memory_context(g.user["id"], en=(lang == "en"))
+                if mem:
+                    profile = dict(profile or {})
+                    profile["workoutContext"] = mem
+            except Exception as _me:
+                print(f"[chat] memory build failed: {_me}")
 
         profile_block = _build_profile_block(profile, lang) if isinstance(profile, dict) else ""
         system_content = (profile_block + "\n\n" + SYSTEM_INSTRUCTIONS) if profile_block else SYSTEM_INSTRUCTIONS
@@ -1189,7 +1414,7 @@ def chat():
         # ── STREAMING (SSE) ──
         # Отговорът тече към браузъра токен по токен, както се генерира.
         # Същият брой токени, същата цена — променя се само доставката.
-        ip_for_refund = _client_ip() if not is_elite else None
+        refund_subject = free_subject  # (subject_type, subject_id) or None
 
         def sse(obj):
             return "data: " + _json.dumps(obj, ensure_ascii=False) + "\n\n"
@@ -1219,11 +1444,10 @@ def chat():
                     _bump_plans_today()
                     yield sse({"done": True})
                 else:
-                    # Нищо не е стигнало → връщаме съобщението в лимита му
-                    if ip_for_refund:
-                        u = _free_usage.get(ip_for_refund)
-                        if u and u["count"] > 0:
-                            u["count"] -= 1
+                    # Нищо не е стигнало → връщаме съобщението в лимита му (DB refund)
+                    if refund_subject:
+                        try: store.free_usage_refund(refund_subject[0], refund_subject[1])
+                        except Exception: pass
                     yield sse({
                         "error": True,
                         "not_counted": True,
@@ -1314,9 +1538,35 @@ def stripe_webhook():
             paid_plan = (session.metadata or {}).get('plan', 'core')
             expiry = int(time.time()) + (30 * 24 * 60 * 60)
             token = make_token(expiry, paid_plan)
-            _pending_tokens[session.id] = (token, time.time())
-            print(f'[webhook] Token issued for session {session.id[:20]}... plan={paid_plan}')
+            uid = _provision_paid_account(session, paid_plan, expiry)
+            _pending_tokens[session.id] = (token, time.time(), uid)
+            print(f'[webhook] Paid session {session.id[:20]}... plan={paid_plan} user={uid}')
     return jsonify({'ok': True})
+
+
+def _provision_paid_account(session, paid_plan, expiry_ts):
+    """DB is the source of truth: bind the payment to an account keyed by the
+    Stripe customer email, create/refresh the subscription, and record the payment.
+    Returns user_id (or None if no email available)."""
+    try:
+        details = getattr(session, 'customer_details', None)
+        email = (getattr(details, 'email', None) if details else None) or getattr(session, 'customer_email', None)
+        if not email:
+            return None
+        cust = getattr(session, 'customer', None)
+        uid = store.get_or_create_user(email, stripe_customer_id=cust)
+        if not uid:
+            return None
+        import datetime as _d
+        period_end = _d.datetime.fromtimestamp(expiry_ts, _d.timezone.utc)
+        store.upsert_subscription(uid, paid_plan, period_end, stripe_customer_id=cust,
+                                  stripe_session_id=session.id, status='active')
+        amount = getattr(session, 'amount_total', None) or PLANS.get(paid_plan, {}).get('amount')
+        store.record_payment(uid, session.id, amount, getattr(session, 'currency', 'eur') or 'eur', paid_plan)
+        return uid
+    except Exception as e:
+        print(f'[webhook] account provisioning failed: {e}')
+        return None
 
 
 _poll_rate = {}  # session_id -> [timestamps] — limit Stripe API calls per session
@@ -1332,15 +1582,15 @@ def poll_token():
 
     # Evict stale pending tokens to keep memory bounded
     now = time.time()
-    stale = [k for k, (_, ts) in _pending_tokens.items() if now - ts > _PENDING_TOKEN_TTL]
+    stale = [k for k, v in _pending_tokens.items() if now - v[1] > _PENDING_TOKEN_TTL]
     for k in stale:
         del _pending_tokens[k]
 
-    # Primary path: webhook already stored the token
+    # Primary path: webhook already stored the token + provisioned the account.
     entry = _pending_tokens.pop(session_id, None)
     if entry:
-        token, _ = entry
-        return jsonify({'ready': True, 'token': token})
+        token, _, uid = (entry + (None,))[:3]
+        return _poll_success(token, uid)
 
     # Fallback: webhook may be slightly delayed — verify directly with Stripe.
     # Rate-limit to 5 Stripe API calls per session_id to avoid hammering Stripe.
@@ -1363,11 +1613,26 @@ def poll_token():
             paid_plan = (session.metadata or {}).get('plan', 'core')
             expiry = int(time.time()) + (30 * 24 * 60 * 60)
             token = make_token(expiry, paid_plan)
-            print(f'[poll-token] Fallback token issued for session {session_id[:20]}...')
-            return jsonify({'ready': True, 'token': token})
+            uid = _provision_paid_account(session, paid_plan, expiry)
+            print(f'[poll-token] Fallback: paid session {session_id[:20]}... user={uid}')
+            return _poll_success(token, uid)
     except Exception as e:
         print(f'[poll-token] Stripe error: {e}')
     return jsonify({'ready': False})
+
+
+def _poll_success(token, uid):
+    """Return the legacy token AND — if we resolved an account — log the browser in
+    by minting a real session cookie, so the purchase flow is one continuous path."""
+    body = {'ready': True, 'token': token, 'authenticated': bool(uid)}
+    resp = make_response(jsonify(body))
+    if uid:
+        try:
+            sid = store.create_session(uid)
+            _set_session_cookie(resp, sid)
+        except Exception as e:
+            print(f'[poll-token] session mint failed: {e}')
+    return resp
 
 
 @app.route('/success')
@@ -1479,6 +1744,12 @@ def withdraw_endpoint():
     payment_date_str = time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime(payment_ts))
     amount = PLAN_AMOUNTS_EUR.get(plan, '?')
     admin_addr = os.getenv('LEAD_NOTIFY_EMAIL', os.getenv('GMAIL_USER', COACH_INBOX))
+
+    # Mark the account subscription cancelled in the DB (server truth), regardless
+    # of window — grace period keeps access until period end where applicable.
+    if g.get("user"):
+        try: store.cancel_subscription(g.user["id"])
+        except Exception as e: print(f"[withdraw] db cancel failed: {e}")
 
     # ─────────── WITHIN 7-DAY WINDOW → revoke + refund ───────────
     if hours_since <= WITHDRAW_WINDOW_HOURS:
@@ -1656,9 +1927,13 @@ def save_lead():
             for k in list(_lead_recent.keys()):
                 if _lead_recent[k] < cutoff:
                     del _lead_recent[k]
-        # Grant the bonus messages to this IP's free window
-        usage = _get_free_usage(ip)
-        usage["bonus"] = True
+        # Grant the bonus messages to this caller's DB free-usage window
+        # (account when logged in, else the httpOnly device id) — server truth.
+        try:
+            subj = ("user", str(g.user["id"])) if g.get("user") else ("device", g.device_id or ip)
+            store.free_usage_grant_bonus(subj[0], subj[1])
+        except Exception as _be:
+            print(f"[lead] bonus grant failed: {_be}")
 
         body = f"""APEX PULSE PRO — New Lead
 

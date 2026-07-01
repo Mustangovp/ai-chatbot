@@ -46,3 +46,6 @@ test_*.py
 
 # Anthropic / Claude artifacts
 /mnt/user-data/
+
+# local dev database (prod uses Postgres via DATABASE_URL)
+data/*.db

@@ -722,6 +722,7 @@ function memSave(m){localStorage.setItem('apexCoachMemory',JSON.stringify(m));}
 function logWorkout(session){
   let log=[];try{log=JSON.parse(localStorage.getItem('apexWorkoutLog')||'[]');}catch(e){}
   log.push(session); localStorage.setItem('apexWorkoutLog',JSON.stringify(log.slice(-60)));
+  accountLogWorkout(session);         // → account timeline (server truth) when signed in
   const m=memLoad();
   m.lastWorkout=session; m.lastWorkoutAt=session.ts;
   m.totalWorkouts=(m.totalWorkouts||0)+1;
@@ -786,7 +787,12 @@ const T={
         nicotine:{'':'—',no:'No',yes:'Yes'},caffeine:{'':'—',none:'None',moderate:'Moderate',high:'High'},
         freq:{'2':'2 days','3':'3 days','4':'4 days','5':'5 days','6':'6 days'}}},
     saved:'Calibrated to your signals.',cancelSub:'Cancel subscription',
-    limitTitle:"You've hit today's free limit",limitDesc:'Come back in about {h}h — or unlock unlimited coaching anytime.',
+    limitTitle:"You've hit today's free limit",limitDesc:'Come back in about {h}h — or unlock unlimited coaching anytime.',unlock:'Unlock Unlimited →',
+    auth:{signin:'Sign in',signout:'Sign out',title:'Sign in to APEX',desc:'Enter your email — we send a one-time sign-in link. No password.',
+      email:'you@email.com',send:'Send link',sent:'Check your inbox — we sent a sign-in link to <strong>{email}</strong>. It expires in 20 minutes.',
+      rate:'Too many requests. Try again in a few minutes.',err:'Something went wrong. Try again.',
+      welcome:'Signed in ✓ Your coach remembers you.',loggedOut:'Signed out.',linkBad:'That sign-in link is invalid or expired.',
+      haveAccount:'Already a member? Sign in'},
     fbTitle:'Send feedback',fbDesc:'Tell the team what would make APEX better.',fbSend:'Send',fbThanks:'Thank you — received.',
     woStart:'Start session',woEx:'Exercise',woRest:'Rest',woNext:'Next',woDone:'Complete set',woFinish:'Finish',
     woExit:'Exit',woSkip:'Skip rest',woResume:'Begin',woComplete:'Session complete',woGreat:'Logged. Recovery starts now.',
@@ -798,7 +804,9 @@ const T={
     seed:{workouts:'Build me a workout for today',nutrition:'Build me a nutrition plan',progress:'How am I progressing? Analyze my training.'},
     sub:{title:'Subscription',plan:'Current plan',billing:'Next billing date',method:'Payment method',
       history:'Billing history',cancel:'Cancel subscription',free:'Free',card:'Card on file',none:'—',
-      freeDesc:'You are on the free plan. Upgrade anytime from the pricing page.',upgrade:'View plans →',
+      statusL:'Status',statuses:{active:'Active',grace:'Active (cancels at period end)',cancelled:'Cancelled',expired:'Expired',free:'Free'},
+      freeDesc:'You are on the free plan. Unlock unlimited coaching, deeper memory and the PRO model.',
+      upgrade:'View plans →',upgradePro:'Go PRO — €14.99 / 30 days',upgradeCore:'Get CORE — €9.99 / 30 days',checkoutErr:'Checkout unavailable. Try again.',
       access:'Access until',oneTime:'One-time 30-day pass (not a recurring subscription)',
       eu:'EU right of withdrawal: a full refund is available within 14 days if you have not started using the digital content. A 7-day money-back guarantee also applies. Cancellation is never hidden.',
       confirmCancel:'Cancel your subscription and request a refund? This cannot be undone.'},
@@ -838,7 +846,12 @@ const T={
         nicotine:{'':'—',no:'Не',yes:'Да'},caffeine:{'':'—',none:'Никакъв',moderate:'Умерен',high:'Висок'},
         freq:{'2':'2 дни','3':'3 дни','4':'4 дни','5':'5 дни','6':'6 дни'}}},
     saved:'Калибрирано спрямо сигналите ти.',cancelSub:'Откажи абонамента',
-    limitTitle:'Достигна безплатния лимит за днес',limitDesc:'Върни се след около {h}ч — или отключи неограничен достъп по всяко време.',
+    limitTitle:'Достигна безплатния лимит за днес',limitDesc:'Върни се след около {h}ч — или отключи неограничен достъп по всяко време.',unlock:'Отключи неограничено →',
+    auth:{signin:'Вход',signout:'Изход',title:'Вход в APEX',desc:'Въведи имейла си — изпращаме еднократна връзка за вход. Без парола.',
+      email:'ти@имейл.com',send:'Изпрати връзка',sent:'Провери пощата си — изпратихме връзка за вход до <strong>{email}</strong>. Валидна е 20 минути.',
+      rate:'Твърде много заявки. Опитай отново след няколко минути.',err:'Нещо се обърка. Опитай отново.',
+      welcome:'Влезе ✓ Треньорът те помни.',loggedOut:'Излезе от профила.',linkBad:'Връзката за вход е невалидна или изтекла.',
+      haveAccount:'Вече имаш профил? Влез'},
     fbTitle:'Обратна връзка',fbDesc:'Кажи на екипа какво би направило APEX по-добър.',fbSend:'Изпрати',fbThanks:'Благодаря — получено.',
     woStart:'Започни сесия',woEx:'Упражнение',woRest:'Почивка',woNext:'Следва',woDone:'Завърши серия',woFinish:'Завърши',
     woExit:'Изход',woSkip:'Пропусни почивката',woResume:'Започни',woComplete:'Сесията завърши',woGreat:'Записано. Възстановяването започва сега.',
@@ -850,7 +863,9 @@ const T={
     seed:{workouts:'Направи ми тренировка за днес',nutrition:'Направи ми хранителен план',progress:'Как напредвам? Анализирай тренировките ми.'},
     sub:{title:'Абонамент',plan:'Текущ план',billing:'Следваща дата на плащане',method:'Метод на плащане',
       history:'История на плащанията',cancel:'Откажи абонамента',free:'Безплатен',card:'Записана карта',none:'—',
-      freeDesc:'Ти си на безплатния план. Надгради по всяко време от страницата с цени.',upgrade:'Виж плановете →',
+      statusL:'Статус',statuses:{active:'Активен',grace:'Активен (спира в края на периода)',cancelled:'Отказан',expired:'Изтекъл',free:'Безплатен'},
+      freeDesc:'Ти си на безплатния план. Отключи неограничено треньорство, по-дълбока памет и PRO модела.',
+      upgrade:'Виж плановете →',upgradePro:'Към PRO — €14.99 / 30 дни',upgradeCore:'Вземи CORE — €9.99 / 30 дни',checkoutErr:'Плащането е недостъпно. Опитай пак.',
       access:'Достъп до',oneTime:'Еднократен 30-дневен достъп (не е повтарящ се абонамент)',
       eu:'Право на отказ (ЕС): пълно възстановяване в рамките на 14 дни, ако не си започнал да ползваш дигиталното съдържание. Важи и 7-дневна гаранция за връщане на парите. Отказът никога не е скрит.',
       confirmCancel:'Да откажа абонамента и да поискам възстановяване? Това е необратимо.'},
@@ -959,16 +974,18 @@ function saveProfile(){
     healthNotes:hb.join('. ')  // backend reads healthNotes for constraints
   };
   localStorage.setItem('apexProfile',JSON.stringify(p));
+  accountSaveProfile(p);              // → account (server truth) when signed in
   const m=memLoad(); m.goals=p.goalDetail; memSave(m);
   document.getElementById('profile-modal').classList.remove('on');
   applyReadout(); toast(tr().saved); if(consultOn)resetGreeting();
 }
 function cancelSub(){ doWithdraw(tr().sub.confirmCancel); }
 function doWithdraw(confirmMsg){
-  const token=localStorage.getItem('apexToken'); if(!token){toast(tr().sub.free);return;}
+  const token=localStorage.getItem('apexToken')||'';
+  if(!token && !SESSION.authenticated){toast(tr().sub.free);return;}
   if(!confirm(confirmMsg))return;
-  fetch('/withdraw',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token,lang})})
-    .then(r=>r.json()).then(d=>{toast(d.message||(lang==='bg'?'Заявката е приета.':'Request received.'));}).catch(()=>toast('—'));
+  fetch('/withdraw',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({token,lang})})
+    .then(r=>r.json()).then(d=>{toast(d.message||(lang==='bg'?'Заявката е приета.':'Request received.'));closePanel();loadSession();}).catch(()=>toast('—'));
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -983,9 +1000,18 @@ const MENU=[
 ];
 function buildMenu(){
   const nav=document.getElementById('drawer-nav'); if(!nav)return; const m=tr().menu;
-  nav.innerHTML=MENU.map(it=>it.sep?'<div class="drawer-sep"></div>':
+  let html=MENU.map(it=>it.sep?'<div class="drawer-sep"></div>':
     '<button class="mi" onclick="menuAction(\''+it.k+'\')"><span class="mi-ico">'+it.ico+'</span><span>'+m[it.k]+'</span>'+
     (it.val?'<span class="mi-val">'+it.val()+'</span>':'')+'</button>').join('');
+  // Auth row reflects server-verified session state.
+  html+='<div class="drawer-sep"></div>';
+  if(SESSION.authenticated){
+    html+='<button class="mi" onclick="menuAction(\'logout\')"><span class="mi-ico">🚪</span><span>'+tr().auth.signout+'</span>'+
+      '<span class="mi-val" style="max-width:120px;overflow:hidden;text-overflow:ellipsis">'+esc(SESSION.email||'')+'</span></button>';
+  } else {
+    html+='<button class="mi accent" onclick="menuAction(\'login\')"><span class="mi-ico">✨</span><span>'+tr().auth.signin+'</span></button>';
+  }
+  nav.innerHTML=html;
 }
 function openMenu(){ buildMenu(); document.getElementById('drawer').classList.add('on'); document.getElementById('drawer-scrim').classList.add('on'); }
 function closeMenu(){ document.getElementById('drawer').classList.remove('on'); document.getElementById('drawer-scrim').classList.remove('on'); }
@@ -1006,6 +1032,8 @@ function menuAction(k){
     case 'settings': showSettings(); break;
     case 'privacy': showPanel(tr().priv.title,'<div class="info-body">'+tr().priv.b+'</div>'); break;
     case 'about': showPanel(tr().about.title,'<div class="info-body">'+tr().about.b+'</div>'); break;
+    case 'login': showLogin(); break;
+    case 'logout': logout(); break;
   }
 }
 
@@ -1021,28 +1049,36 @@ function showPanel(title,bodyHtml){
 }
 function closePanel(){ document.getElementById('panel-modal').classList.remove('on'); }
 function fmtDate(ts){ try{return new Date(ts*1000).toLocaleDateString(lang==='bg'?'bg-BG':'en-GB',{day:'numeric',month:'short',year:'numeric'});}catch(e){return '—';} }
-function showSubscription(){
-  const s=tr().sub; const token=localStorage.getItem('apexToken')||'';
-  const render=(plan,expiry)=>{
-    const paid=plan&&plan!=='free';
-    const badge=paid?'<span class="plan-badge '+plan+'">'+plan.toUpperCase()+'</span>':'<span class="plan-badge free">'+s.free+'</span>';
-    let body='<div class="panel-row"><span class="pr-l">'+s.plan+'</span><span class="pr-v">'+badge+'</span></div>';
-    if(paid){
-      body+='<div class="panel-row"><span class="pr-l">'+s.access+'</span><span class="pr-v">'+(expiry?fmtDate(expiry):s.none)+'</span></div>';
-      body+='<div class="panel-row"><span class="pr-l">'+s.method+'</span><span class="pr-v">'+s.card+'</span></div>';
-      body+='<div class="panel-row"><span class="pr-l">'+s.history+'</span><span class="pr-v">'+(expiry?fmtDate(expiry-30*86400):s.none)+' · '+(plan==='pro'?'€14.99':'€9.99')+'</span></div>';
-      body+='<div class="eu-note">'+s.oneTime+'<br><br>'+s.eu+'</div>';
-      body+='<button class="cancel-btn" onclick="doWithdraw(tr().sub.confirmCancel)">'+s.cancel+'</button>';
-    } else {
-      body+='<div class="eu-note">'+s.freeDesc+'</div>';
-      body+='<button class="save" onclick="location.href=\'/'+(lang==='en'?'en':'')+'#pricing\'">'+s.upgrade+'</button>';
-    }
-    showPanel(s.title,body);
-  };
-  if(!token){ render('free',0); return; }
-  fetch('/verify-token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})})
-    .then(r=>r.json()).then(d=>{ if(!d.valid){localStorage.removeItem('apexToken');render('free',0);} else render(d.plan||'core',d.expiry||0); })
-    .catch(()=>render('free',0));
+async function showSubscription(){
+  const s=tr().sub, a=tr().auth;
+  // Always re-verify against the server before showing anything.
+  await loadSession();
+  const plan=SESSION.plan, status=SESSION.status, paid=isElite();
+  const expiry=SESSION.current_period_end?Date.parse(SESSION.current_period_end)/1000:0;
+  const badge=paid?'<span class="plan-badge '+plan+'">'+plan.toUpperCase()+'</span>':'<span class="plan-badge free">'+s.free+'</span>';
+  let body='<div class="panel-row"><span class="pr-l">'+s.plan+'</span><span class="pr-v">'+badge+'</span></div>';
+  if(paid){
+    body+='<div class="panel-row"><span class="pr-l">'+s.statusL+'</span><span class="pr-v">'+(s.statuses[status]||status)+'</span></div>';
+    body+='<div class="panel-row"><span class="pr-l">'+s.access+'</span><span class="pr-v">'+(expiry?fmtDate(expiry):s.none)+'</span></div>';
+    body+='<div class="panel-row"><span class="pr-l">'+s.method+'</span><span class="pr-v">'+s.card+'</span></div>';
+    body+='<div class="panel-row"><span class="pr-l">'+s.history+'</span><span class="pr-v">'+(expiry?fmtDate(expiry-30*86400):s.none)+' · '+(plan==='pro'?'€14.99':'€9.99')+'</span></div>';
+    body+='<div class="eu-note">'+s.oneTime+'<br><br>'+s.eu+'</div>';
+    if(status!=='cancelled') body+='<button class="cancel-btn" onclick="doWithdraw(tr().sub.confirmCancel)">'+s.cancel+'</button>';
+  } else {
+    body+='<div class="eu-note">'+s.freeDesc+'</div>';
+    body+='<button class="save" onclick="goCheckout(\'pro\')">'+s.upgradePro+'</button>';
+    body+='<button class="save" style="margin-top:10px;background:rgba(56,224,255,.12);border:1px solid rgba(56,224,255,.35);color:var(--cyan)" onclick="goCheckout(\'core\')">'+s.upgradeCore+'</button>';
+    if(!SESSION.authenticated) body+='<button class="mlink" onclick="showLogin()">'+a.haveAccount+'</button>';
+  }
+  showPanel(s.title,body);
+}
+// One continuous purchase path — go straight to Stripe Checkout.
+async function goCheckout(plan){
+  try{
+    const r=await fetch('/create-checkout-session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plan})});
+    const d=await r.json();
+    if(d&&d.url){ location.href=d.url; } else { toast(tr().sub.checkoutErr); }
+  }catch(e){ toast(tr().sub.checkoutErr); }
 }
 function showHistory(){
   const h=tr().hist; let log=[];try{log=JSON.parse(localStorage.getItem('apexWorkoutLog')||'[]');}catch(e){}
@@ -1072,6 +1108,72 @@ function resetLocal(){
   const st=tr().settings; if(!confirm(st.resetConfirm))return;
   ['apexProfile','apexHistory','apexWorkoutLog','apexCoachMemory'].forEach(k=>localStorage.removeItem(k));
   closePanel(); applyReadout(); toast(st.reset2); setTimeout(()=>openProfile(0),400);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SESSION / IDENTITY — the server is the source of truth.
+   Every load asks /auth/me. localStorage is only a UI cache.
+   ═══════════════════════════════════════════════════════════════════ */
+let SESSION={authenticated:false,plan:'free',status:'free',email:null,expiry:null};
+let sendLocked=false;
+async function loadSession(){
+  try{
+    const r=await fetch('/auth/me',{credentials:'same-origin'});
+    SESSION=Object.assign({authenticated:false,plan:'free',status:'free'},await r.json());
+  }catch(e){ SESSION={authenticated:false,plan:'free',status:'free',email:null}; }
+  // If just signed in, pull the account's canonical data down (DB → cache) once.
+  if(SESSION.authenticated){ await syncFromAccount(); }
+  buildMenu();
+  return SESSION;
+}
+function isElite(){ return SESSION.plan==='core'||SESSION.plan==='pro'; }
+async function syncFromAccount(){
+  // First migrate any local cache up to the account, then read account truth down.
+  try{
+    const cache={};
+    try{cache.profile=JSON.parse(localStorage.getItem('apexProfile')||'null');}catch(e){}
+    try{cache.workoutLog=JSON.parse(localStorage.getItem('apexWorkoutLog')||'[]');}catch(e){}
+    const r=await fetch('/api/sync',{method:'POST',headers:{'Content-Type':'application/json'},
+      credentials:'same-origin',body:JSON.stringify(cache)});
+    const d=await r.json();
+    if(d&&d.profile&&Object.keys(d.profile).length){ localStorage.setItem('apexProfile',JSON.stringify(d.profile)); }
+    if(d&&Array.isArray(d.workouts)){
+      // account timeline → local cache (newest first from API; store oldest→newest)
+      const log=d.workouts.map(w=>({ts:Date.parse(w.occurred_at)||Date.now(),date:(w.occurred_at||'').slice(0,10),
+        type:w.type,exercises:w.exercises||[],diff:w.difficulty,completion:w.completion})).reverse();
+      if(log.length) localStorage.setItem('apexWorkoutLog',JSON.stringify(log));
+    }
+    applyReadout();
+  }catch(e){ console.debug('sync failed',e); }
+}
+// Persist to the account whenever logged in (fire-and-forget; cache stays as fallback).
+function accountSaveProfile(p){ if(SESSION.authenticated){ fetch('/api/profile',{method:'PUT',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({profile:p})}).catch(()=>{}); } }
+function accountLogWorkout(s){ if(SESSION.authenticated){ fetch('/api/workout',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({session:s})}).catch(()=>{}); } }
+
+/* ── Passwordless login (magic link) ── */
+function showLogin(){
+  const t=tr().auth;
+  const body='<p class="sd">'+t.desc+'</p>'+
+    '<div class="field"><input type="email" id="login-email" inputmode="email" autocomplete="email" placeholder="'+t.email+'"></div>'+
+    '<button class="save" id="login-send" onclick="sendMagicLink()">'+t.send+'</button>';
+  showPanel(t.title,body);
+  setTimeout(()=>{const e=document.getElementById('login-email');if(e)e.focus();},150);
+}
+async function sendMagicLink(){
+  const el=document.getElementById('login-email'); const email=el?el.value.trim():'';
+  const t=tr().auth;
+  if(!email||email.indexOf('@')<0){ el&&el.focus(); return; }
+  const btn=document.getElementById('login-send'); if(btn){btn.disabled=true;btn.textContent='…';}
+  try{
+    const r=await fetch('/auth/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,lang})});
+    if(r.ok){ document.getElementById('panel-body').innerHTML='<div class="info-body"><p>'+t.sent.replace('{email}',esc(email))+'</p></div>'; }
+    else { const d=await r.json(); toast(d.error==='rate_limited'?t.rate:t.err); if(btn){btn.disabled=false;btn.textContent=t.send;} }
+  }catch(e){ toast(t.err); if(btn){btn.disabled=false;btn.textContent=t.send;} }
+}
+async function logout(){
+  try{ await fetch('/auth/logout',{method:'POST',credentials:'same-origin'}); }catch(e){}
+  SESSION={authenticated:false,plan:'free',status:'free',email:null};
+  localStorage.removeItem('apexToken'); buildMenu(); closePanel(); toast(tr().auth.loggedOut);
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -1388,7 +1490,9 @@ function getHistory(){try{return JSON.parse(localStorage.getItem('apexHistory')|
 function saveHistory(role,content){const h=getHistory();h.push({role,content});localStorage.setItem('apexHistory',JSON.stringify(h.slice(-40)));}
 let sending=false;
 async function send(){
-  if(sending)return; const inp=document.getElementById('user-in');const val=inp.value.trim();if(!val)return;
+  if(sending)return;
+  if(sendLocked){ showLimit(); return; }   // limit reached → route to unlock, never a dead end
+  const inp=document.getElementById('user-in');const val=inp.value.trim();if(!val)return;
   sending=true; inp.value=''; appendUser(val);
   const token=localStorage.getItem('apexToken')||'';
   const body={message:val,lang:lang};
@@ -1401,7 +1505,7 @@ async function send(){
   const ty=document.createElement('div');ty.className='typing';ty.innerHTML='<span class="tl">'+tr().typing+'</span><i></i><i></i><i></i>';
   feed.appendChild(ty);smartScroll();
   try{
-    const res=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const res=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body)});
     const ct=res.headers.get('content-type')||'';
     if(ct.indexOf('text/event-stream')!==-1){
       ty.remove(); const target=appendCoach(); let full='',aborted=false;
@@ -1438,11 +1542,21 @@ function afterReply(text){
 /* ═══════════════════════════════════════════════════════════════════
    NOTICES + FEEDBACK
    ═══════════════════════════════════════════════════════════════════ */
-function showLimit(h){const t=tr();document.getElementById('nt-ico').textContent='⏳';
+function lockSending(on){
+  sendLocked=on;
+  const inp=document.getElementById('user-in'), btn=document.querySelector('.send-btn');
+  if(inp){inp.disabled=on;inp.style.opacity=on?'0.5':'';}
+  if(btn){btn.style.opacity=on?'0.5':'';}
+}
+function showLimit(h){const t=tr();
+  lockSending(true);                    // disable sending only — nav, menu, profile, history stay live
+  document.getElementById('nt-ico').textContent='⏳';
   document.getElementById('nt-title').textContent=t.limitTitle;
-  document.getElementById('nt-desc').textContent=t.limitDesc.replace('{h}',h);
-  document.getElementById('nt-extra').innerHTML='';
-  const ok=document.getElementById('nt-ok');ok.textContent=lang==='bg'?'Разбрах':'Got it';ok.onclick=closeNotice;
+  document.getElementById('nt-desc').textContent=t.limitDesc.replace('{h}',h||24);
+  // Primary action goes straight to the unlock path — never back to a dead chat.
+  document.getElementById('nt-extra').innerHTML=
+    '<button class="save" onclick="closeNotice();showSubscription();">'+t.unlock+'</button>';
+  const ok=document.getElementById('nt-ok');ok.textContent=lang==='bg'?'Разгледай по-късно':'Maybe later';ok.onclick=closeNotice;
   document.getElementById('notice-modal').classList.add('on');}
 let fbRating=0;
 function openFeedback(){const t=tr();document.getElementById('nt-ico').textContent='✦';
@@ -1504,9 +1618,16 @@ document.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('feed').addEventListener('scroll',()=>{stickBottom=feedNearBottom();if(stickBottom)hideJump();else showJump();},{passive:true});
   // Esc closes drawer/panels
   document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeMenu();closePanel();}});
-  // first-run onboarding
+  // ── Server-authoritative session on every load ──
+  const q=new URLSearchParams(location.search);
+  if(q.get('auth')==='ok'){ toast(tr().auth.welcome); }
+  else if(q.get('auth')==='invalid'){ toast(tr().auth.linkBad); }
+  loadSession().then(()=>{
+    if(location.search.match(/auth=/)) history.replaceState(null,'',location.pathname);
+  });
+  // first-run onboarding (skip if the account already has a profile after sync)
   const hasProfile=!!localStorage.getItem('apexProfile');
-  if(!hasProfile){setTimeout(()=>openProfile(0),700);}
+  if(!hasProfile){setTimeout(()=>{if(!localStorage.getItem('apexProfile'))openProfile(0);},900);}
   // intent routing — landing → app continuity
   const planSeed={fat_loss:lang==='bg'?'Направи ми план за сваляне на мазнини':'Build me a fat-loss plan',
     muscle_gain:lang==='bg'?'Направи ми план за мускулна маса':'Build me a muscle-building plan',

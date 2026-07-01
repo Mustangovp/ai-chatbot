@@ -3,3 +3,5 @@ flask-cors
 openai
 stripe
 gunicorn
+SQLAlchemy>=2.0
+psycopg[binary]>=3.1
