@@ -19,6 +19,7 @@ from sqlalchemy import (
     DateTime, JSON, ForeignKey, UniqueConstraint, Index, func, select, update, insert, delete
 )
 from sqlalchemy.types import Uuid
+from sqlalchemy.exc import IntegrityError
 
 # ── Engine ────────────────────────────────────────────────────────────────────
 def _normalize_url(url: str) -> str:
@@ -297,9 +298,17 @@ def revoke_session(session_id):
         c.execute(update(sessions).where(sessions.c.id == sid).values(revoked_at=_now()))
 
 # ── Subscriptions (server truth) ──────────────────────────────────────────────
+_FREE_SUB = {"plan": "free", "status": "free", "current_period_end": None}
+
 def get_subscription(user_id):
-    with engine.begin() as c:
-        row = c.execute(select(subscriptions).where(subscriptions.c.user_id == _as_uuid(user_id))).mappings().first()
+    # RV-3: never raise. If the database is momentarily unavailable, degrade to FREE
+    # so the app keeps working (no 500, no broken UI) until the DB recovers.
+    try:
+        with engine.begin() as c:
+            row = c.execute(select(subscriptions).where(subscriptions.c.user_id == _as_uuid(user_id))).mappings().first()
+    except Exception as e:
+        print(f"[db] get_subscription degraded to FREE (DB unavailable): {e}")
+        return dict(_FREE_SUB)
     if not row:
         return {"plan": "free", "status": "free", "current_period_end": None}
     plan, status, cpe = row["plan"], row["status"], row["current_period_end"]
@@ -350,28 +359,42 @@ def free_usage_state(subject_type, subject_id, limit, window_seconds, bonus_extr
 
 def free_usage_consume(subject_type, subject_id, limit, window_seconds, bonus_extra=0):
     """Atomically roll the window if expired, enforce the limit, and consume one
-    message if allowed. Returns {allowed, count, remaining, reset_in, limit}."""
-    with engine.begin() as c:
-        row = c.execute(select(free_usage).where(
-            (free_usage.c.subject_type == subject_type) & (free_usage.c.subject_id == subject_id))
-            .with_for_update() if not IS_SQLITE else select(free_usage).where(
-            (free_usage.c.subject_type == subject_type) & (free_usage.c.subject_id == subject_id))).mappings().first()
-        now = _now()
-        if row is None:
-            c.execute(insert(free_usage).values(id=uuid.uuid4(), subject_type=subject_type,
-                subject_id=subject_id, count=1, window_start=now, bonus=False))
-            return _quota(1, limit + (bonus_extra if False else 0), window_seconds, now)
-        start = _aware(row["window_start"]) if row["window_start"] else now
-        eff_limit = limit + (bonus_extra if row["bonus"] else 0)
-        # Window expired → reset.
-        if (now - start).total_seconds() >= window_seconds:
-            c.execute(update(free_usage).where(free_usage.c.id == row["id"]).values(count=1, window_start=now))
-            return _quota(1, eff_limit, window_seconds, now)
-        count = row["count"] or 0
-        if count >= eff_limit:
-            return _quota(count, eff_limit, window_seconds, start, allowed=False)
-        c.execute(update(free_usage).where(free_usage.c.id == row["id"]).values(count=count + 1))
-        return _quota(count + 1, eff_limit, window_seconds, start)
+    message if allowed. Returns {allowed, count, remaining, reset_in, limit}.
+
+    Concurrency-safe: an existing row is locked (SELECT ... FOR UPDATE on Postgres)
+    so parallel updates serialize; a concurrent FIRST insert that loses the unique
+    race raises IntegrityError, which we swallow and retry on the now-existing row
+    (read/update path). A user must never see a 500 from double-clicks or retries.
+    """
+    for _attempt in range(4):
+        try:
+            with engine.begin() as c:
+                sel = select(free_usage).where(
+                    (free_usage.c.subject_type == subject_type) & (free_usage.c.subject_id == subject_id))
+                if not IS_SQLITE:
+                    sel = sel.with_for_update()
+                row = c.execute(sel).mappings().first()
+                now = _now()
+                if row is None:
+                    c.execute(insert(free_usage).values(id=uuid.uuid4(), subject_type=subject_type,
+                        subject_id=subject_id, count=1, window_start=now, bonus=False))
+                    return _quota(1, limit, window_seconds, now)
+                start = _aware(row["window_start"]) if row["window_start"] else now
+                eff_limit = limit + (bonus_extra if row["bonus"] else 0)
+                # Window expired → reset.
+                if (now - start).total_seconds() >= window_seconds:
+                    c.execute(update(free_usage).where(free_usage.c.id == row["id"]).values(count=1, window_start=now))
+                    return _quota(1, eff_limit, window_seconds, now)
+                count = row["count"] or 0
+                if count >= eff_limit:
+                    return _quota(count, eff_limit, window_seconds, start, allowed=False)
+                c.execute(update(free_usage).where(free_usage.c.id == row["id"]).values(count=count + 1))
+                return _quota(count + 1, eff_limit, window_seconds, start)
+        except IntegrityError:
+            # A concurrent first-insert won the race; loop re-reads the existing row.
+            continue
+    # Should never reach here; fail OPEN (allow) rather than error the user.
+    return _quota(1, limit, window_seconds, _now())
 
 def free_usage_grant_bonus(subject_type, subject_id):
     with engine.begin() as c:
