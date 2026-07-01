@@ -650,10 +650,11 @@ class LivingCore{
     for(const k in this.cur)this.cur[k]+=(this.phys[k]-this.cur[k])*Math.min(dt*.7,1);
     const{recovery:r,fatigue:f}=this.cur;
     // motion: recovery quickens & smooths, fatigue slows. Always gentle.
-    // 1.35× time-scale — uniform +35% liveliness (cinematic screensaver feel).
-    // Colours, plasma, lighting, composition, amplitude and per-frame cost are
-    // unchanged — only the rate at which the existing motion advances.
-    this.t+=dt*(.10+r*.10-f*.05)*1.35;
+    // 5× time-scale — brings the breath cycle from a glacial ~38s down to ~10s and
+    // feature drift from ~9px/s to ~32px/s: clearly, immediately alive yet calm.
+    // ONLY the rate the existing motion advances changes — colours, plasma,
+    // lighting, composition, brightness, amplitude and per-frame cost are identical.
+    this.t+=dt*(.10+r*.10-f*.05)*5.0;
   }
   render(){
     const g=this.octx,{recovery:r,fatigue:f,stress:st}=this.cur,{c1,c2}=this.palette();
