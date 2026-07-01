@@ -448,7 +448,7 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
   <button id="jump-latest" onclick="jumpToLatest()">↓ <span id="jump-label">Jump to latest</span></button>
   <div class="inputbar">
     <div class="input-wrap">
-      <input type="text" id="user-in" placeholder="Describe your goal…" autocomplete="off">
+      <input type="text" id="user-in" placeholder="Describe your goal…" aria-label="Describe your goal" autocomplete="off">
       <button class="send-btn" onclick="send()">➤</button>
     </div>
   </div>
@@ -477,7 +477,7 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
       <div class="wiz-cat" id="w1-cat">Identity</div>
       <h2 id="w1-title">Who you are</h2>
       <p class="sd" id="w1-desc">The coach builds every plan around these. Honest input, honest results.</p>
-      <div class="field"><label id="l-goal">Primary goal</label>
+      <div class="field"><label id="l-goal" for="pf-goal">Primary goal</label>
         <select id="pf-goal">
           <option value="fat_loss">Lose fat</option>
           <option value="muscle_gain">Build muscle</option>
@@ -486,17 +486,17 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
           <option value="general">General fitness</option>
         </select></div>
       <div class="f3">
-        <div class="field"><label id="l-age">Age</label><input type="number" id="pf-age" min="14" max="90" placeholder="28"></div>
-        <div class="field"><label id="l-weight">Weight</label><input type="number" id="pf-weight" min="35" max="250" placeholder="78"></div>
-        <div class="field"><label id="l-height">Height</label><input type="number" id="pf-height" min="120" max="230" placeholder="180"></div>
+        <div class="field"><label id="l-age" for="pf-age">Age</label><input type="number" id="pf-age" min="14" max="90" placeholder="28"></div>
+        <div class="field"><label id="l-weight" for="pf-weight">Weight</label><input type="number" id="pf-weight" min="35" max="250" placeholder="78"></div>
+        <div class="field"><label id="l-height" for="pf-height">Height</label><input type="number" id="pf-height" min="120" max="230" placeholder="180"></div>
       </div>
       <div class="f2">
-        <div class="field"><label id="l-gender">Sex</label>
+        <div class="field"><label id="l-gender" for="pf-gender">Sex</label>
           <select id="pf-gender"><option value="male">Male</option><option value="female">Female</option></select></div>
-        <div class="field"><label id="l-level">Experience</label>
+        <div class="field"><label id="l-level" for="pf-level">Experience</label>
           <select id="pf-level"><option value="beginner">Beginner</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select></div>
       </div>
-      <div class="field"><label id="l-equip">Available equipment</label>
+      <div class="field"><label id="l-equip" for="pf-equip">Available equipment</label>
         <select id="pf-equip"><option value="gym">Full gym</option><option value="home">Home (dumbbells / bar)</option><option value="none">Bodyweight only</option></select></div>
       <div class="wiz-nav"><button class="next" onclick="wizGo(1)" id="w1-next">Continue →</button></div>
     </div>
@@ -507,18 +507,18 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
       <h2 id="w2-title">Your recovery signals</h2>
       <p class="sd" id="w2-desc">These drive the living organism and how hard the coach pushes today.</p>
       <div class="f2">
-        <div class="field"><label id="l-sleep">Sleep quality</label>
+        <div class="field"><label id="l-sleep" for="pf-sleep">Sleep quality</label>
           <select id="pf-sleep"><option value="good">Good</option><option value="average">Average</option><option value="poor">Poor</option></select></div>
-        <div class="field"><label id="l-stress">Stress level</label>
+        <div class="field"><label id="l-stress" for="pf-stress">Stress level</label>
           <select id="pf-stress"><option value="low">Low</option><option value="moderate">Moderate</option><option value="high">High</option></select></div>
       </div>
       <div class="f2">
-        <div class="field"><label id="l-recovery">Recovery feel</label>
+        <div class="field"><label id="l-recovery" for="pf-recovery">Recovery feel</label>
           <select id="pf-recovery"><option value="fresh">Fresh</option><option value="ok">Okay</option><option value="tired">Tired</option></select></div>
-        <div class="field"><label id="l-activity">Daily activity</label>
+        <div class="field"><label id="l-activity" for="pf-activity">Daily activity</label>
           <select id="pf-activity"><option value="sedentary">Sedentary</option><option value="moderate">Moderate</option><option value="active">Active</option><option value="very_active">Very active</option></select></div>
       </div>
-      <div class="field"><label id="l-freq">Training frequency (per week)</label>
+      <div class="field"><label id="l-freq" for="pf-freq">Training frequency (per week)</label>
         <select id="pf-freq"><option value="2">2 days</option><option value="3" selected>3 days</option><option value="4">4 days</option><option value="5">5 days</option><option value="6">6 days</option></select></div>
       <div class="wiz-nav"><button class="prev" onclick="wizGo(0)" id="w2-prev">←</button><button class="next" onclick="wizGo(2)" id="w2-next">Continue →</button></div>
     </div>
@@ -529,27 +529,27 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
       <h2 id="w3-title">Context that shapes the plan</h2>
       <p class="sd" id="w3-desc">All optional. The more the coach knows, the safer and sharper the plan.</p>
       <div class="f2">
-        <div class="field"><label id="l-smoking">Smoking</label>
+        <div class="field"><label id="l-smoking" for="pf-smoking">Smoking</label>
           <select id="pf-smoking"><option value="">—</option><option value="no">No</option><option value="occasional">Occasional</option><option value="yes">Yes</option></select></div>
-        <div class="field"><label id="l-alcohol">Alcohol</label>
+        <div class="field"><label id="l-alcohol" for="pf-alcohol">Alcohol</label>
           <select id="pf-alcohol"><option value="">—</option><option value="none">None</option><option value="social">Social</option><option value="regular">Regular</option></select></div>
       </div>
       <div class="f2">
-        <div class="field"><label id="l-nicotine">Nicotine</label>
+        <div class="field"><label id="l-nicotine" for="pf-nicotine">Nicotine</label>
           <select id="pf-nicotine"><option value="">—</option><option value="no">No</option><option value="yes">Yes</option></select></div>
-        <div class="field"><label id="l-caffeine">Caffeine</label>
+        <div class="field"><label id="l-caffeine" for="pf-caffeine">Caffeine</label>
           <select id="pf-caffeine"><option value="">—</option><option value="none">None</option><option value="moderate">Moderate</option><option value="high">High</option></select></div>
       </div>
       <div class="f2">
-        <div class="field"><label id="l-meds">Medications</label><input type="text" id="pf-meds" placeholder="e.g. blood pressure"></div>
-        <div class="field"><label id="l-supps">Supplements</label><input type="text" id="pf-supps" placeholder="e.g. whey, creatine, D3"></div>
+        <div class="field"><label id="l-meds" for="pf-meds">Medications</label><input type="text" id="pf-meds" placeholder="e.g. blood pressure"></div>
+        <div class="field"><label id="l-supps" for="pf-supps">Supplements</label><input type="text" id="pf-supps" placeholder="e.g. whey, creatine, D3"></div>
       </div>
-      <div class="field"><label id="l-injuries">Previous injuries</label><input type="text" id="pf-injuries" placeholder="e.g. left knee, lower back"></div>
+      <div class="field"><label id="l-injuries" for="pf-injuries">Previous injuries</label><input type="text" id="pf-injuries" placeholder="e.g. left knee, lower back"></div>
       <div class="f2">
-        <div class="field"><label id="l-surgeries">Surgeries</label><input type="text" id="pf-surgeries" placeholder="e.g. shoulder 2021"></div>
-        <div class="field"><label id="l-limits">Physical limitations</label><input type="text" id="pf-limits" placeholder="e.g. limited ankle ROM"></div>
+        <div class="field"><label id="l-surgeries" for="pf-surgeries">Surgeries</label><input type="text" id="pf-surgeries" placeholder="e.g. shoulder 2021"></div>
+        <div class="field"><label id="l-limits" for="pf-limits">Physical limitations</label><input type="text" id="pf-limits" placeholder="e.g. limited ankle ROM"></div>
       </div>
-      <div class="field"><label id="l-notes">Additional notes</label><input type="text" id="pf-notes" placeholder="anything the coach should know"></div>
+      <div class="field"><label id="l-notes" for="pf-notes">Additional notes</label><input type="text" id="pf-notes" placeholder="anything the coach should know"></div>
       <div class="safety-note" id="safety-note">This information is used only to personalize coaching. APEX does not diagnose, prescribe or replace medical professionals.</div>
       <div class="wiz-nav"><button class="prev" onclick="wizGo(1)" id="w3-prev">←</button><button class="next" onclick="saveProfile()" id="w3-save">Save & calibrate</button></div>
       <button class="mlink danger" id="cancel-sub" onclick="cancelSub()" style="display:none">Cancel subscription</button>
@@ -913,7 +913,7 @@ function applyLang(){
   txt('back-label',t.back); document.getElementById('status-pill').childNodes[0].nodeValue=t.live;
   txt('ch-label',t.chEngine); txt('ml-rec',t.recovery); txt('ml-fat',t.fatigue); txt('ml-str',t.stress);
   txt('jump-label',t.jumpLatest);
-  document.getElementById('user-in').placeholder=t.placeholder;
+  const _ui=document.getElementById('user-in'); _ui.placeholder=t.placeholder; _ui.setAttribute('aria-label',t.placeholder);
   buildMenu();
   // wizard chrome
   txt('w1-cat',w.c1);txt('w2-cat',w.c2);txt('w3-cat',w.c3);
@@ -1518,8 +1518,13 @@ async function send(){
   const feed=document.getElementById('feed');
   const ty=document.createElement('div');ty.className='typing';ty.innerHTML='<span class="tl">'+tr().typing+'</span><i></i><i></i><i></i>';
   feed.appendChild(ty);smartScroll();
+  // M-1: watchdog aborts a stalled request after 75s of inactivity so the UI is
+  // never stuck. Each token resets it, so a long but active stream is never cut.
+  const ac=new AbortController();
+  let watchdog=setTimeout(()=>ac.abort(),75000);
+  const kick=()=>{clearTimeout(watchdog);watchdog=setTimeout(()=>ac.abort(),75000);};
   try{
-    const res=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body)});
+    const res=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',signal:ac.signal,body:JSON.stringify(body)});
     const ct=res.headers.get('content-type')||'';
     if(ct.indexOf('text/event-stream')!==-1){
       ty.remove(); const target=appendCoach(); let full='',aborted=false;
@@ -1532,7 +1537,7 @@ async function send(){
         buf+=dec.decode(value,{stream:true});const parts=buf.split('\n\n');buf=parts.pop();
         for(const part of parts){const line=part.trim();if(!line.startsWith('data:'))continue;
           let o;try{o=JSON.parse(line.slice(5).trim());}catch(e){continue;}
-          if(o.t){full+=o.t;const now=performance.now();if(now-lastPaint>80){target.innerHTML=streamRender(full);smartScroll();lastPaint=now;}}
+          if(o.t){kick();full+=o.t;const now=performance.now();if(now-lastPaint>80){target.innerHTML=streamRender(full);smartScroll();lastPaint=now;}}
           else if(o.limit_reached){const m=target.closest('.msg');if(m)m.remove();showLimit(o.hours_left||24);aborted=true;}
           else if(o.error){full+=(o.reply||'');}
         }
@@ -1544,8 +1549,13 @@ async function send(){
       if(data.limit_reached)showLimit(data.hours_left||24);
       else{const tg=appendCoach();tg.innerHTML=renderMarkdown(data.reply||'');if(data.reply){saveHistory('assistant',data.reply);afterReply(data.reply);}}
     }
-  }catch(e){ty.remove();const tg=appendCoach();tg.innerHTML='<p>'+(lang==='bg'?'Връзката прекъсна. Опитай отново.':'Connection interrupted. Try again.')+'</p>';}
-  finally{sending=false;inp.focus();}
+  }catch(e){
+    if(ty&&ty.parentNode)ty.remove();
+    const tg=appendCoach();
+    tg.innerHTML='<p>'+(lang==='bg'?'Връзката прекъсна. Моля, опитай отново.':'Connection interrupted. Please try again.')+'</p>';
+    inp.value=val;   // retry supported — restore the message for a one-tap resend
+  }
+  finally{clearTimeout(watchdog);sending=false;inp.focus();}
 }
 function afterReply(text){
   const m=memLoad();

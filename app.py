@@ -1726,12 +1726,21 @@ def stats_endpoint():
     return jsonify({'plans_today': _get_plans_today()})
 
 
+def _safe_next(url, fallback='/'):
+    """L-1: only allow internal application routes as redirect targets.
+    Rejects absolute URLs, scheme-relative (//host), backslashes and any scheme —
+    never redirect off-site."""
+    if not url or not url.startswith('/') or url.startswith('//') or '://' in url or '\\' in url:
+        return fallback
+    return url
+
+
 @app.route('/owner-mode')
 def owner_mode():
     """Sets a long-lived cookie that suppresses GA4 tracking on this device.
     Visit /owner-mode to activate, /owner-mode?off=1 to deactivate."""
     turning_off = request.args.get('off') == '1'
-    next_url = request.args.get('next', '/')
+    next_url = _safe_next(request.args.get('next', '/'))
     resp = make_response(redirect(next_url))
     if turning_off:
         resp.delete_cookie('apexOwner')
