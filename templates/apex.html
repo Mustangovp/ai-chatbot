@@ -1691,6 +1691,7 @@ function renderWorkout(header,body){
 let WO=null,restTimer=null,sessionStart=0;
 function startWorkout(){
   if(!pendingWorkout||!pendingWorkout.length)return;
+  organism('notice');   // the session begins — witnessed, not announced
   WO={ex:JSON.parse(JSON.stringify(pendingWorkout)),i:0,set:0,phase:'work',startMs:Date.now()};
   sessionStart=Date.now();
   document.getElementById('workout').classList.add('on');
