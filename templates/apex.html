@@ -733,12 +733,15 @@ class PresenceEngine{
       case 'touch':     this.touches.push({x:pl.x,y:pl.y,t0:now}); if(this.touches.length>4)this.touches.shift();
                         this.attention.point(pl.x,pl.y,0.7); this._pointerAt=now; this._wake(); break;
       case 'typing':    this._typingUntil=now+4000; this.attention.point(0,0.8,0.55);
-                        this._request('listening'); break;
+                        this._wake(); this._request('listening'); break;
       case 'thinking':  this._streaming=true; this.attention.point(0,0.05,0.5); this._request('thinking'); break;
       case 'answering': this._streaming=true; this._request('answering'); break;
       case 'cadence':   this.breath.impulse(0.012); break;
       case 'answerDone':this._streaming=false;
-                        if(this.base==='answering'||this.base==='thinking')this._request('waiting'); break;
+                        if(this.base==='answering'||this.base==='thinking')this._request('waiting');
+                        // a stream that finished within one breath leaves no stale pose behind
+                        else if(this.pending==='answering'||this.pending==='thinking')this.pending='waiting';
+                        break;
       case 'restStart': this.recovery=0; this._request('recovering'); break;
       case 'restProgress': this.recovery=Math.max(this.recovery,Math.min(1,pl.p||0)); break; // monotonic by law
       case 'restEnd':   if(this.base==='recovering')this._request('waiting'); break;
@@ -751,7 +754,10 @@ class PresenceEngine{
       case 'wake':      this._wake(); break;
     }
   }
-  _wake(){if(this.base==='resting'||this.base==='goodbye')this._request('waiting');}
+  _wake(){
+    if(this.pending==='goodbye')this.pending=null;   // a cancelled departure is not a departure
+    if(this.base==='resting'||this.base==='goodbye')this._request('waiting');
+  }
   _request(name){
     if(name===this.base){this.pending=null;return;}
     // higher precedence replaces pending; base always yields upward
@@ -984,6 +990,10 @@ class LivingCore{
     if(now-(this._lr||0)>=budget){this.render();this._lr=now;}requestAnimationFrame(this.frame);};
   start(){requestAnimationFrame(this.frame);}
 }
+
+// The single door from the app into the organism. A presence failure must
+// never break chat, workouts, or payments — the coach survives its body.
+function organism(ev,payload){try{if(window.core&&core.presence)core.presence.on(ev,payload);}catch(e){}}
 
 /* ═══════════════════════════════════════════════════════════════════
    PHYSIOLOGY
@@ -1265,6 +1275,7 @@ function saveProfile(){
   const m=memLoad(); m.goals=p.goalDetail; memSave(m);
   document.getElementById('profile-modal').classList.remove('on');
   applyReadout(); toast(tr().saved); if(consultOn)resetGreeting();
+  organism('learning');   // the coach was changed by you — permanently, visibly
 }
 function cancelSub(){ doWithdraw(tr().sub.confirmCancel); }
 function doWithdraw(confirmMsg){
@@ -1368,6 +1379,7 @@ async function goCheckout(plan){
   }catch(e){ toast(tr().sub.checkoutErr); }
 }
 function showHistory(){
+  organism('remembering');   // the gaze into the middle distance
   const h=tr().hist; let log=[];try{log=JSON.parse(localStorage.getItem('apexWorkoutLog')||'[]');}catch(e){}
   let body='<p class="sd" style="margin-bottom:16px">'+h.desc+'</p>';
   if(!log.length){ body+='<div class="hist-empty">'+h.empty+'</div>'; }
@@ -1475,6 +1487,7 @@ async function logout(){
 let consultOn=false;
 function enterConsult(seed){
   consultOn=true;
+  organism('notice');
   document.getElementById('consult').classList.add('on');
   const ov=document.getElementById('overview');
   ov.style.opacity='0';ov.style.transform='translateY(-30px) scale(.96)';ov.style.pointerEvents='none';
@@ -1684,7 +1697,7 @@ function startWorkout(){
   document.getElementById('wo-quit-btn').textContent='✕ '+tr().woExit;
   renderWO();
 }
-function quitWorkout(){clearInterval(restTimer);document.getElementById('workout').classList.remove('on');WO=null;}
+function quitWorkout(){clearInterval(restTimer);organism('restEnd');document.getElementById('workout').classList.remove('on');WO=null;}
 function woEstRemaining(){
   let sec=0; for(let k=WO.i;k<WO.ex.length;k++){const e=WO.ex[k];const sets=parseInt(e.sets)||3;const rest=parseInt((e.rest+'').replace(/[^\d]/g,''))||60;
     const remSets=k===WO.i?sets-WO.set:sets; sec+=remSets*(40+rest);} return Math.max(1,Math.round(sec/60));
@@ -1724,24 +1737,29 @@ function renderWO(){
   }
 }
 function completeSet(){
+  organism('notice');   // the flicker of perception — work was witnessed
   const sets=parseInt(WO.ex[WO.i].sets)||3; WO.set++;
   if(WO.set>=sets){ // exercise done → advance or finish
     if(WO.i+1>=WO.ex.length){finishWorkout();return;}
     WO.i++;WO.set=0;WO.phase='rest';renderWO();
   } else {WO.phase='rest';renderWO();}
 }
-function skipExercise(){clearInterval(restTimer);if(WO.i+1>=WO.ex.length){finishWorkout();return;}WO.i++;WO.set=0;WO.phase='work';renderWO();}
-function endRest(){clearInterval(restTimer);WO.phase='work';renderWO();}
+function skipExercise(){clearInterval(restTimer);organism('restEnd');if(WO.i+1>=WO.ex.length){finishWorkout();return;}WO.i++;WO.set=0;WO.phase='work';renderWO();}
+function endRest(){clearInterval(restTimer);organism('restEnd');WO.phase='work';renderWO();}
 function runRest(sec){
   clearInterval(restTimer); let left=sec; const C=578; const fill=document.getElementById('rt-fill'),numEl=document.getElementById('rt-n');
+  organism('restStart');   // the set cost something; the refill begins
   restTimer=setInterval(()=>{
     left--; if(numEl)numEl.textContent=Math.max(0,left);
     if(fill)fill.style.strokeDashoffset=C*(1-left/sec);
+    organism('restProgress',{p:1-left/sec});   // monotonic — recovery has a direction
     if(left<=0){clearInterval(restTimer);endRest();}
   },1000);
 }
 function finishWorkout(){
   clearInterval(restTimer);
+  organism('restEnd');
+  organism('celebrate');   // one full breath — a coach's single nod, never confetti
   const t=tr(),dur=Math.round((Date.now()-sessionStart)/60000);
   const totalSets=WO.ex.reduce((a,e)=>a+(parseInt(e.sets)||3),0);
   const session={ts:Date.now(),date:new Date().toLocaleDateString(),type:inferMuscle(WO.ex[0].name).m,
@@ -1801,6 +1819,7 @@ async function send(){
   const feed=document.getElementById('feed');
   const ty=document.createElement('div');ty.className='typing';ty.innerHTML='<span class="tl">'+tr().typing+'</span><i></i><i></i><i></i>';
   feed.appendChild(ty);smartScroll();
+  organism('thinking');   // the organism gathers inward — considering
   // M-1: watchdog aborts a stalled request after 75s of inactivity so the UI is
   // never stuck. Each token resets it, so a long but active stream is never cut.
   const ac=new AbortController();
@@ -1820,7 +1839,7 @@ async function send(){
         buf+=dec.decode(value,{stream:true});const parts=buf.split('\n\n');buf=parts.pop();
         for(const part of parts){const line=part.trim();if(!line.startsWith('data:'))continue;
           let o;try{o=JSON.parse(line.slice(5).trim());}catch(e){continue;}
-          if(o.t){kick();full+=o.t;const now=performance.now();if(now-lastPaint>80){target.innerHTML=streamRender(full);smartScroll();lastPaint=now;}}
+          if(o.t){kick();if(!full)organism('answering');full+=o.t;const now=performance.now();if(now-lastPaint>80){target.innerHTML=streamRender(full);smartScroll();organism('cadence');lastPaint=now;}}
           else if(o.limit_reached){const m=target.closest('.msg');if(m)m.remove();showLimit(o.hours_left||24);aborted=true;}
           else if(o.error){full+=(o.reply||'');}
         }
@@ -1838,11 +1857,11 @@ async function send(){
     tg.innerHTML='<p>'+(lang==='bg'?'Връзката прекъсна. Моля, опитай отново.':'Connection interrupted. Please try again.')+'</p>';
     inp.value=val;   // retry supported — restore the message for a one-tap resend
   }
-  finally{clearTimeout(watchdog);sending=false;inp.focus();}
+  finally{clearTimeout(watchdog);sending=false;inp.focus();organism('answerDone');}
 }
 function afterReply(text){
   const m=memLoad();
-  if(/ккал|kcal|калории|protein|протеин/i.test(text)&&/\|/.test(text)){m.lastNutritionAt=Date.now();}
+  if(/ккал|kcal|калории|protein|протеин/i.test(text)&&/\|/.test(text)){m.lastNutritionAt=Date.now();organism('learning');}
   m.lastConsultationAt=Date.now(); memSave(m);
 }
 
@@ -1916,9 +1935,42 @@ let core;
 document.addEventListener('DOMContentLoaded',()=>{
   core=new LivingCore(document.getElementById('core'));
   core.setPhysiology(computePhysiology()); core.start();
+
+  // ── PRESENCE: wire the world to the organism ──────────────────────────
+  // Normalized coords: organism-radius units, centered on the body.
+  const orgNorm=e=>{const w=innerWidth,h=innerHeight,R=Math.min(w,h)*0.34;
+    return {x:(e.clientX-w/2)/R, y:(e.clientY-h*0.46)/R};};
+  // Hover = attention only (the lean). Continuous dimension — instant, breath-free.
+  window.addEventListener('pointermove',e=>organism('pointer',orgNorm(e)),{passive:true});
+  // Deliberate touch = the signature (part, then gather). Never on interactive
+  // surfaces and never fighting a scroll — the organism yields to the interface.
+  window.addEventListener('pointerdown',e=>{
+    if(e.target.closest('button,a,input,select,textarea,label,.modal,.sheet,#drawer,#drawer-scrim,.chip,.msg,.inputbar,#jump-latest,#workout,#feed,nav'))return;
+    organism('touch',orgNorm(e));
+  },{passive:true});
+  // Goodbye / welcome-back: presence across absences.
+  const seen=()=>{try{localStorage.setItem('apexLastSeen',String(Date.now()));}catch(e){}};
+  document.addEventListener('visibilitychange',()=>{
+    if(document.hidden){organism('goodbye');seen();}
+    else{const gap=Date.now()-(+localStorage.getItem('apexLastSeen')||Date.now());
+      if(gap>30*60000)organism('welcome',{days:gap/864e5});else organism('wake');}
+  });
+  window.addEventListener('pagehide',seen);
+  setInterval(seen,60000);
+  try{ // arriving after a real absence: found resting, then one slow welcome breath
+    const last=+localStorage.getItem('apexLastSeen')||0;
+    if(last&&Date.now()-last>6*3600e3){
+      core.presence.base='resting';
+      setTimeout(()=>organism('welcome',{days:(Date.now()-last)/864e5}),1200);
+    }
+  }catch(e){}
+  seen();
+
   const intent=applyIntent();
   applyLang();
-  document.getElementById('user-in').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();send();}});
+  const _uin=document.getElementById('user-in');
+  _uin.addEventListener('keydown',e=>{organism('typing');if(e.key==='Enter'){e.preventDefault();send();}});
+  _uin.addEventListener('focus',()=>organism('typing'));
   document.querySelectorAll('.modal').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('on');}));
   // scroll ownership: user scrolling up releases auto-follow + offers "Jump to latest";
   // reaching the bottom re-arms auto-follow and hides the button.
