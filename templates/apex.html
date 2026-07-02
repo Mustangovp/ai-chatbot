@@ -611,6 +611,237 @@ const Noise=(()=>{const p=new Uint8Array(512),perm=[...Array(256).keys()];let s=
     return lerp(lerp(grad(p[A],x,y),grad(p[B],x-1,y),u),lerp(grad(p[A+1],x,y-1),grad(p[B+1],x-1,y-1),u),v);};})();
 function fbm(x,y,t){let v=0,a=.5,f=1;for(let i=0;i<3;i++){v+=a*Noise(x*f+t*.4,y*f-t*.3);f*=2;a*=.5;}return v;}
 
+/* ═══════════════════════════════════════════════════════════════════
+   PRESENCE ENGINE — the organism's nervous system.
+   Implements the frozen Behavioral Language: 12 behaviors, 6 dimensions,
+   8 laws. Architecture:
+     BreathEngine    — the one constant; ALL state transitions ride it
+                       (a state may only begin on an exhale).
+     AttentionEngine — orientation is a CONTINUOUS dimension, so the lean
+                       responds within a frame while states wait for breath.
+     PresenceEngine  — FSM (bases) + transient gestures + parameter physics.
+   The canvas only renders; every behavioral decision lives here.
+   ═══════════════════════════════════════════════════════════════════ */
+
+class BreathEngine{
+  // Asymmetric respiration: inhale 42% of the cycle, exhale 58%.
+  // Base period 10.4s at rate=1 — matches the approved organism exactly.
+  constructor(){
+    this.phase=Math.random()*0.4;      // start mid-inhale, never at a boundary
+    this.rate=1; this._rateT=1;
+    this.depth=1; this._depthT=1;
+    this.value=0.5; this.raw=0.5;
+    this._impulse=0;                    // cadence micro-breaths (Answering)
+    this._exhaleCbs=[];
+    this.IN=0.42;                       // inhale→exhale boundary
+  }
+  onExhale(cb){this._exhaleCbs.push(cb);}
+  target(rate,depth){this._rateT=rate;this._depthT=depth;}
+  impulse(a){this._impulse=Math.min(this._impulse+a,0.06);}
+  update(dt){
+    // Law 2/3: rate & depth ease — the breath itself is never interrupted.
+    const k=Math.min(dt*0.8,1);
+    this.rate+=(this._rateT-this.rate)*k;
+    this.depth+=(this._depthT-this.depth)*k;
+    const period=10.4/Math.max(this.rate,0.05);
+    const prev=this.phase;
+    this.phase=(this.phase+dt/period)%1;
+    // exhale begins at IN — the only moment a state change may execute.
+    // Per-frame increments are tiny, so a simple crossing test is exact.
+    if(prev<this.IN&&this.phase>=this.IN){for(const cb of this._exhaleCbs)cb();}
+    const ss=t=>t*t*(3-2*t);
+    this.raw=this.phase<this.IN?ss(this.phase/this.IN):1-ss((this.phase-this.IN)/(1-this.IN));
+    this._impulse*=Math.max(0,1-dt*3.5);
+    this.value=0.5+(this.raw-0.5)*this.depth+this._impulse;
+  }
+}
+
+class AttentionEngine{
+  // Where the organism's center drifts. Continuous — never gated on breath —
+  // which is how the lean can answer a touch in one frame without breaking
+  // the exhale rule (orientation is a dimension, not a state).
+  constructor(){
+    this.x=0;this.y=0;this.strength=0.25;
+    this._tx=0;this._ty=0;this._sT=0;
+    this._wander=Math.random()*100;
+  }
+  point(nx,ny,strength){this._tx=Math.max(-1,Math.min(1,nx));this._ty=Math.max(-1,Math.min(1,ny));this._sT=strength;}
+  release(){this._sT=0;}
+  update(dt){
+    // idle wander: where the gaze rests when nothing calls it (Waiting)
+    this._wander+=dt*0.045;
+    const gx=this._sT>0.01?this._tx:fbm(this._wander,0.7,0)*0.5;
+    const gy=this._sT>0.01?this._ty:fbm(0.3,this._wander,0)*0.35;
+    const k=Math.min(dt*1.4,1);
+    this.x+=(gx-this.x)*k; this.y+=(gy-this.y)*k;
+    this.strength+=((this._sT>0.01?this._sT:0.25)-this.strength)*k;
+    this._sT*=Math.max(0,1-dt*0.35);   // pointed attention relaxes on its own
+  }
+}
+
+class PresenceEngine{
+  constructor(){
+    this.breath=new BreathEngine();
+    this.attention=new AttentionEngine();
+    this.reduced=(typeof matchMedia!=='undefined')&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // ── Base states: the 6-dimension configurations (Behavioral Language §III).
+    // waiting is calibrated to reproduce the approved organism exactly.
+    this.S={
+      waiting:   {rate:1.00,depth:1.00,density:0.45,tempo:1.00,coherence:0.00,warmth:0.55},
+      listening: {rate:0.90,depth:0.55,density:0.55,tempo:0.40,coherence:0.55,warmth:0.55},
+      thinking:  {rate:0.80,depth:0.85,density:0.78,tempo:0.55,coherence:0.80,warmth:0.50},
+      answering: {rate:0.95,depth:0.75,density:0.52,tempo:0.75,coherence:0.45,warmth:0.48},
+      resting:   {rate:0.70,depth:0.80,density:0.32,tempo:0.25,coherence:0.20,warmth:0.44},
+      recovering:{rate:1.50,depth:0.45,density:0.85,tempo:0.45,coherence:0.60,warmth:0.38},
+      goodbye:   {rate:0.75,depth:0.95,density:0.40,tempo:0.30,coherence:0.40,warmth:0.44},
+    };
+    // Precedence (canon: attention to the human outranks internal states)
+    this.PRI={goodbye:6,listening:5,recovering:4,thinking:3,answering:3,resting:1,waiting:1};
+    // ── Transient gestures: envelopes blended over the base, exhale-gated,
+    // with expiry (a stale notice is no notice) and cooldowns (never twice).
+    this.T={
+      noticing:   {dur:1.8,expiry:6, cooldown:2.5,mods:{depth:0.35,density:0.10}},
+      celebrating:{dur:3.4,expiry:99,cooldown:8,  mods:{depth:0.45,warmth:0.18,tempo:-0.25}},
+      learning:   {dur:2.6,expiry:10,cooldown:5,  mods:{density:0.22,coherence:0.30},rearrange:true},
+      remembering:{dur:4.0,expiry:10,cooldown:6,  mods:{tempo:-0.35,warmth:0.08,coherence:0.20},gaze:'off'},
+      welcome:    {dur:3.2,expiry:20,cooldown:30, mods:{depth:0.35,warmth:0.15},gaze:'user'},
+    };
+    this.base='waiting'; this.pending=null;
+    this.transient=null; this.pendingTransient=null;
+    this._cool={};                       // per-gesture cooldown clocks
+    this.recovery=0;                     // 0..1, drives the recovering pose
+    this.lastInteraction=performance.now();
+    this._typingUntil=0;
+    this.touches=[];                     // physical contact points (render consumes)
+    this._now=performance.now();
+    // 6D eased parameters (breath rate/depth live in BreathEngine)
+    this.p={density:0.45,tempo:1.0,coherence:0.0,warmth:0.55,attX:0,attY:0,attStrength:0.25};
+    // All transitions ride the breath (Behavioral Language §IV)
+    this.breath.onExhale(()=>this._onExhale());
+    this._rearrangeCb=null;
+  }
+  onRearrange(cb){this._rearrangeCb=cb;}     // Learning's permanent imprint
+
+  // ── Event API — the only door in. Failures here must never break the app.
+  on(type,payload){
+    try{this._on(type,payload||{});}catch(e){}
+  }
+  _on(type,pl){
+    const now=performance.now(); this.lastInteraction=now;
+    switch(type){
+      case 'pointer':   this.attention.point(pl.x,pl.y,0.45); this._pointerAt=now; this._wake(); break;
+      case 'touch':     this.touches.push({x:pl.x,y:pl.y,t0:now}); if(this.touches.length>4)this.touches.shift();
+                        this.attention.point(pl.x,pl.y,0.7); this._pointerAt=now; this._wake(); break;
+      case 'typing':    this._typingUntil=now+4000; this.attention.point(0,0.8,0.55);
+                        this._request('listening'); break;
+      case 'thinking':  this._streaming=true; this.attention.point(0,0.05,0.5); this._request('thinking'); break;
+      case 'answering': this._streaming=true; this._request('answering'); break;
+      case 'cadence':   this.breath.impulse(0.012); break;
+      case 'answerDone':this._streaming=false;
+                        if(this.base==='answering'||this.base==='thinking')this._request('waiting'); break;
+      case 'restStart': this.recovery=0; this._request('recovering'); break;
+      case 'restProgress': this.recovery=Math.max(this.recovery,Math.min(1,pl.p||0)); break; // monotonic by law
+      case 'restEnd':   if(this.base==='recovering')this._request('waiting'); break;
+      case 'celebrate': this._gesture('celebrating'); break;
+      case 'notice':    this._gesture('noticing'); break;
+      case 'learning':  this._gesture('learning'); break;
+      case 'remembering':this._gesture('remembering'); break;
+      case 'welcome':   this._welcomeScale=Math.min(1,(pl.days||0)/30); this._gesture('welcome'); break;
+      case 'goodbye':   this._request('goodbye'); break;
+      case 'wake':      this._wake(); break;
+    }
+  }
+  _wake(){if(this.base==='resting'||this.base==='goodbye')this._request('waiting');}
+  _request(name){
+    if(name===this.base){this.pending=null;return;}
+    // higher precedence replaces pending; base always yields upward
+    if(!this.pending||this.PRI[name]>=this.PRI[this.pending])this.pending=name;
+  }
+  _gesture(name){
+    const now=performance.now(), def=this.T[name];
+    if(!def)return;
+    if(this._cool[name]&&now-this._cool[name]<def.cooldown*1000)return;   // never twice
+    if(this.transient&&this.transient.name===name)return;
+    this.pendingTransient={name,queuedAt:now};
+    // the fractional turn may happen now — orientation is continuous
+    if(def.gaze==='off')this.attention.point(-0.45,-0.2,0.4);
+    if(def.gaze==='user')this.attention.point(0,0.25,0.5);
+  }
+  _onExhale(){
+    // The only moment state may change (Behavioral Language: the Breath Rule).
+    if(this.pending){this.base=this.pending;this.pending=null;}
+    if(this.pendingTransient){
+      const q=this.pendingTransient, def=this.T[q.name];
+      this.pendingTransient=null;
+      if(performance.now()-q.queuedAt<=def.expiry*1000){
+        this.transient={name:q.name,t0:performance.now(),def};
+        this._cool[q.name]=performance.now();
+        if(def.rearrange&&this._rearrangeCb)this._rearrangeCb();
+      }
+    }
+  }
+  update(dt){
+    const now=performance.now(); this._now=now;
+    // listening releases itself when the typing stops (return rides the breath);
+    // if the coach is mid-stream it returns to answering, not to waiting
+    if(this.base==='listening'&&now>this._typingUntil)this._request(this._streaming?'answering':'waiting');
+    // idle: 90s of stillness → resting; any event wakes it (via _wake)
+    if(this.base==='waiting'&&now-this.lastInteraction>90000)this._request('resting');
+    this.breath.update(dt);
+    this.attention.update(dt);
+    // ── compose targets: base pose, recovery interpolation, transient blend
+    let s=this.S[this.base];
+    let tgt={rate:s.rate,depth:s.depth,density:s.density,tempo:s.tempo,coherence:s.coherence,warmth:s.warmth};
+    if(this.base==='recovering'){
+      // the only state with a direction: compressed+dim → refilled (monotonic)
+      const q=this.recovery*this.recovery*(3-2*this.recovery);
+      tgt.rate=1.5-q*0.5; tgt.depth=0.45+q*0.45; tgt.density=0.85-q*0.35; tgt.warmth=0.38+q*0.24;
+    }
+    if(this.base==='thinking'&&this._thinkT0){
+      // long thoughts deepen rather than loop (honest "hard question")
+      tgt.density=Math.min(0.86,tgt.density+Math.min((now-this._thinkT0)/10000,1)*0.08);
+    }
+    this._thinkT0=this.base==='thinking'?(this._thinkT0||now):null;
+    if(this.transient){
+      const tr=this.transient, age=(now-tr.t0)/1000, u=age/tr.def.dur;
+      if(u>=1){this.transient=null;}
+      else{
+        const env=Math.sin(Math.min(u,1)*Math.PI);            // smooth in-out
+        const m=tr.def.mods, scale=this.transient.name==='welcome'?(0.8+(this._welcomeScale||0)*0.4):1;
+        if(m.depth)tgt.depth+=m.depth*env*scale;
+        if(m.density)tgt.density+=m.density*env;
+        if(m.warmth)tgt.warmth+=m.warmth*env*scale;
+        if(m.tempo)tgt.tempo=Math.max(0.1,tgt.tempo+m.tempo*env);
+        if(m.coherence)tgt.coherence=Math.min(1,tgt.coherence+m.coherence*env);
+      }
+    }
+    if(this.reduced){tgt.tempo*=0.5;}
+    // warmth floor — it never goes dark (Law 5 / §V)
+    tgt.warmth=Math.max(0.34,tgt.warmth);
+    this.breath.target(tgt.rate,tgt.depth);
+    const k=Math.min(dt*0.9,1);
+    this.p.density+=(tgt.density-this.p.density)*k;
+    this.p.tempo+=(tgt.tempo-this.p.tempo)*k;
+    this.p.coherence+=(tgt.coherence-this.p.coherence)*k;
+    this.p.warmth+=(tgt.warmth-this.p.warmth)*k;
+    this.p.attX=this.attention.x; this.p.attY=this.attention.y; this.p.attStrength=this.attention.strength;
+    // prune expired touches
+    this.touches=this.touches.filter(t=>now-t.t0<1900);
+  }
+  pointerFresh(now){return this._pointerAt&&now-this._pointerAt<1200;}
+  // Touch physics: yield first (the field parts), then the lean-in (it gathers
+  // toward the finger). Signed magnitude: negative = away, positive = toward.
+  touchInfluence(age){
+    if(this.reduced)return 0;
+    const a=age/1000;
+    if(a<0.10)return -(a/0.10)*1.0;             // ramp into the yield — no snap
+    if(a<0.38)return -1.0;                       // parted
+    if(a<0.62)return -1.0+((a-0.38)/0.24)*1.9;   // crossfade: yield → approach
+    if(a<1.15)return 0.9;                        // gathered toward the finger
+    return Math.max(0,0.9*(1-(a-1.15)/0.75));    // release, fade to stillness
+  }
+}
+
 class LivingCore{
   constructor(canvas){
     this.cv=canvas; this.ctx=canvas.getContext('2d');
@@ -618,10 +849,33 @@ class LivingCore{
     this.off=document.createElement('canvas'); this.octx=this.off.getContext('2d');
     this.t=0; this.last=performance.now();
     this.phys={recovery:.6,fatigue:.35,stress:.3}; this.cur={recovery:.6,fatigue:.35,stress:.3};
-    // flow lobes — the organism's drifting body (no discrete particles)
+    this.presence=new PresenceEngine();
+    this.presence.onRearrange(()=>this.rearrange());
+    // flow lobes — the organism's drifting body (no discrete particles).
+    // Angle & noise-time are ACCUMULATED per lobe so speed changes (tempo,
+    // coherence) are continuous — the body can never teleport (Law 1).
     this.lobes=[]; const N=9;
-    for(let i=0;i<N;i++)this.lobes.push({seed:i*7.3+Math.random()*3, rad:.30+Math.random()*.20, sz:.7+Math.random()*.5, sp:.18+Math.random()*.22});
+    for(let i=0;i<N;i++){
+      const seed=i*7.3+Math.random()*3;
+      this.lobes.push({seed, seedT:seed, phase:seed, nt:seed, rad:.30+Math.random()*.20, sz:.7+Math.random()*.5, sp:.18+Math.random()*.22});
+    }
+    // Learning's permanent imprint persists across sessions (deterministic drift)
+    this.drift=0;
+    try{this.drift=parseInt(localStorage.getItem('apexOrganismDrift')||'0',10)||0;}catch(e){}
+    for(let d=1;d<=Math.min(this.drift,200);d++)
+      for(let i=0;i<this.lobes.length;i++){
+        this.lobes[i].seed+=Math.sin(i*7.31+d*13.7)*0.35;
+        this.lobes[i].seedT=this.lobes[i].seed;
+      }
     this.resize(); window.addEventListener('resize',()=>this.resize());
+  }
+  // Learning: a subtle, PERMANENT rearrangement of the internal flow —
+  // eased in over seconds (continuous), persisted across sessions.
+  rearrange(){
+    this.drift=Math.min(this.drift+1,200);
+    try{localStorage.setItem('apexOrganismDrift',String(this.drift));}catch(e){}
+    for(let i=0;i<this.lobes.length;i++)
+      this.lobes[i].seedT=this.lobes[i].seed+Math.sin(i*7.31+this.drift*13.7)*0.35;
   }
   resize(){
     this.w=this.cv.clientWidth; this.h=this.cv.clientHeight;
@@ -648,42 +902,68 @@ class LivingCore{
   step(now){
     const dt=Math.min((now-this.last)/1000,.05); this.last=now;
     for(const k in this.cur)this.cur[k]+=(this.phys[k]-this.cur[k])*Math.min(dt*.7,1);
-    const{recovery:r,fatigue:f}=this.cur;
-    // motion: recovery quickens & smooths, fatigue slows. Always gentle.
-    // 5× time-scale — brings the breath cycle from a glacial ~38s down to ~10s and
-    // feature drift from ~9px/s to ~32px/s: clearly, immediately alive yet calm.
-    // ONLY the rate the existing motion advances changes — colours, plasma,
-    // lighting, composition, brightness, amplitude and per-frame cost are identical.
-    this.t+=dt*(.10+r*.10-f*.05)*5.0;
+    this.presence.update(dt);
+    const{recovery:r,fatigue:f}=this.cur, ps=this.presence.p;
+    // 5× time-scale = the approved "visibly alive" pace; presence tempo scales it
+    // per state (waiting tempo = 1.0 reproduces the approved organism exactly).
+    const dtT=dt*(.10+r*.10-f*.05)*5.0*ps.tempo;
+    this.t+=dtT;
+    // Per-lobe accumulation: coherence blends individual speeds toward the mean
+    // WITHOUT ever moving a lobe discontinuously — speed changes, position flows.
+    const mean=0.29; // midpoint of the lobe speed range
+    for(const L of this.lobes){
+      const eff=L.sp+(mean-L.sp)*ps.coherence;
+      L.nt+=dtT*eff; L.phase+=dtT*eff*0.45;
+      // Learning's rearrangement eases in — a slow, permanent change of flow
+      L.seed+=(L.seedT-L.seed)*Math.min(dt*0.3,1);
+    }
   }
   render(){
     const g=this.octx,{recovery:r,fatigue:f,stress:st}=this.cur,{c1,c2}=this.palette();
+    const ps=this.presence.p, now=this.presence._now;
     // smoke persistence — fade previous frame instead of clearing → volumetric trails
     g.globalCompositeOperation='source-over';
     g.fillStyle='rgba(7,9,16,'+(0.10+st*0.04)+')'; g.fillRect(0,0,this.ow,this.oh);
-    const breath=.5+.5*Math.sin(this.t*0.85);                // slow organic breathing
+    const breath=this.presence.breath.value;                 // the one constant
     const compress=1-f*.26, expand=1+r*.14;
+    // density: gathered ↔ diffuse (waiting 0.45 = scale 1.0, the approved look)
+    const gather=1-(ps.density-0.45)*0.55;
+    // warmth: luminance envelope; floored upstream — the organism never goes dark
+    const lum=0.55+ps.warmth*0.82;
+    // orientation: the lean — attention offsets the body's center, smoothly
+    const acx=this.cx+ps.attX*this.R*0.14*ps.attStrength;
+    const acy=this.cy+ps.attY*this.R*0.10*ps.attStrength;
     g.globalCompositeOperation='lighter';
     // faint ambient nebula — wide, soft, never a spotlight
-    const neb=g.createRadialGradient(this.cx,this.cy,this.R*0.3,this.cx,this.cy,this.R*2.8);
-    neb.addColorStop(0,`rgba(${c1[0]},${c1[1]},${c1[2]},${0.030+r*0.018})`);
-    neb.addColorStop(.55,`rgba(${c2[0]},${c2[1]},${c2[2]},0.014)`);
+    const neb=g.createRadialGradient(acx,acy,this.R*0.3,acx,acy,this.R*2.8);
+    neb.addColorStop(0,`rgba(${c1[0]},${c1[1]},${c1[2]},${(0.030+r*0.018)*lum})`);
+    neb.addColorStop(.55,`rgba(${c2[0]},${c2[1]},${c2[2]},${0.014*lum})`);
     neb.addColorStop(1,'rgba(0,0,0,0)');
     g.fillStyle=neb; g.fillRect(0,0,this.ow,this.oh);
     // plasma lobes — distributed soft smoke orbiting a ring, NOT piled at centre
+    const touches=this.presence.touches;
     for(let i=0;i<this.lobes.length;i++){
       const L=this.lobes[i];
-      const n1=fbm(Math.cos(L.seed)*1.1, Math.sin(L.seed)*1.1, this.t*L.sp+L.seed);
-      const n2=fbm(L.seed*.6+5, this.t*L.sp*.8, this.t*L.sp);
+      const n1=fbm(Math.cos(L.seed)*1.1, Math.sin(L.seed)*1.1, L.nt);
+      const n2=fbm(L.seed*.6+5, L.nt*0.8, L.nt);
       const turb=st*0.8;
-      const ang=L.seed + this.t*L.sp*0.45 + n1*1.1 + n2*turb;
-      // base orbit keeps each lobe off-centre → volumetric cloud, no central star
-      const orbit=this.R*(0.55+L.rad)*expand*compress*(0.9+breath*0.12);
-      const drift=this.R*(0.18+Math.abs(n1)*0.30);
-      const x=this.cx+Math.cos(ang)*orbit + Math.cos(ang*1.7+n2*3)*drift*(1+turb*0.4);
-      const y=this.cy+Math.sin(ang)*orbit + Math.sin(ang*1.7+n1*3)*drift*(1+turb*0.4);
-      const size=this.R*(L.sz*0.95)*(0.7+breath*0.25)*expand*compress;
-      const alpha=0.034+r*0.020-f*0.010;                     // soft; no blown highlights
+      const ang=L.phase + n1*1.1 + n2*turb;
+      const orbit=this.R*(0.55+L.rad)*expand*compress*gather*(0.9+breath*0.12);
+      const drift=this.R*(0.18+Math.abs(n1)*0.30)*gather;
+      let x=acx+Math.cos(ang)*orbit + Math.cos(ang*1.7+n2*3)*drift*(1+turb*0.4);
+      let y=acy+Math.sin(ang)*orbit + Math.sin(ang*1.7+n1*3)*drift*(1+turb*0.4);
+      // Touch physics: the field parts around contact, then gathers toward it —
+      // the signature reversal. A displacement of the SAME body, never particles.
+      for(const tp of touches){
+        const tx=this.cx+tp.x*this.R, ty=this.cy+tp.y*this.R;
+        const dx=x-tx, dy=y-ty, d=Math.hypot(dx,dy), reach=this.R*0.95;
+        if(d<reach&&d>0.001){
+          const inf=this.presence.touchInfluence(now-tp.t0)*(1-d/reach);
+          x-=(dx/d)*inf*this.R*0.055; y-=(dy/d)*inf*this.R*0.055;
+        }
+      }
+      const size=this.R*(L.sz*0.95)*(0.7+breath*0.25)*expand*compress*(1+(ps.density-0.45)*0.18);
+      const alpha=(0.034+r*0.020-f*0.010)*lum;               // soft; no blown highlights
       const rg=g.createRadialGradient(x,y,0,x,y,Math.max(size,1));
       rg.addColorStop(0,`rgba(${c1[0]},${c1[1]},${c1[2]},${alpha})`);
       rg.addColorStop(.5,`rgba(${c2[0]},${c2[1]},${c2[2]},${alpha*0.45})`);
@@ -697,8 +977,11 @@ class LivingCore{
     c.clearRect(0,0,this.w,this.h);
     c.drawImage(this.off,0,0,this.ow,this.oh,0,0,this.w,this.h);
   }
-  // step physics every frame (cheap); throttle GPU render to ~45fps for headroom
-  frame=(now)=>{this.step(now);if(now-(this._lr||0)>=22){this.render();this._lr=now;}requestAnimationFrame(this.frame);};
+  // Step runs every frame (cheap). Render budget is adaptive: ~45fps at rest for
+  // battery headroom, 60fps while the user is in physical contact — the one
+  // moment that earns it (Presence decision memo).
+  frame=(now)=>{this.step(now);const budget=this.presence.pointerFresh(now)?15:22;
+    if(now-(this._lr||0)>=budget){this.render();this._lr=now;}requestAnimationFrame(this.frame);};
   start(){requestAnimationFrame(this.frame);}
 }
 
