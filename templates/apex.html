@@ -679,8 +679,78 @@ class AttentionEngine{
   }
 }
 
-class PresenceEngine{
+class AthleteModel{
+  // ── THE NERVOUS SYSTEM ──────────────────────────────────────────────
+  // Continuous internal state about the athlete and the dyad, derived from
+  // witnessed FACTS. The interface reports what happened; the model decides
+  // what it means; the body (PresenceEngine) reads state and nothing else.
+  // Typing is not a cause — attention is. A finished workout is not a cause —
+  // accomplishment is. Mouse movement is not a cause — curiosity is.
   constructor(){
+    // somatic picture (from the profile — drives the palette)
+    this.physiology={recovery:.6,fatigue:.35,stress:.3};
+    // dyad state — real variables with real dynamics, not event flags
+    this.presence=0.6;     // the human is here          (fades over ~100s of stillness)
+    this.attention=0;      // the human is addressing us (fades over ~4s)
+    this.curiosity=0;      // exploratory interest — the hand near the body (~6s)
+    this.exchange='none';  // the coach's own mind: none | composing | speaking
+    this.speechPulse=0;    // speech energy while answering (breath consumes it)
+    this.away=false;       // the human left the room
+    // physiological session state
+    this.sessionLoad=0;    // accumulated effort, lingers (~10min half-life)
+    this.restActive=false; this.recoveryFill=0;   // monotonic within an interval
+    // internal shifts worth a gesture — monotonic counters the body consumes
+    this.counters={salience:0,accomplishment:0,novelty:0,retrieval:0,reunion:0};
+    this.reunionScale=0;
+    // physical world state
+    this.contacts=[];      // real touches on the body
+    this.pointer=null;     // where the human's hand is (normalized)
+    this._pointerAt=0;
+  }
+  setPhysiology(p){this.physiology={...this.physiology,...p};}
+  // ── Facts in. Vocabulary is the world's, never the organism's.
+  observe(fact,pl){
+    const now=performance.now(); pl=pl||{};
+    switch(fact){
+      case 'pointer':      this.pointer={x:pl.x,y:pl.y}; this._pointerAt=now; this.presence=1;
+                           this.curiosity=Math.min(1,this.curiosity+0.08); break;
+      case 'contact':      this.contacts.push({x:pl.x,y:pl.y,t0:now});
+                           if(this.contacts.length>4)this.contacts.shift();
+                           this._pointerAt=now; this.curiosity=1; this.presence=1; break;
+      case 'keystroke':    this.attention=1; this.presence=1; break;
+      case 'exchangeOpened': this.exchange='composing'; this.presence=1; break;
+      case 'replyToken':   this.exchange='speaking'; this.speechPulse=Math.min(this.speechPulse+0.25,1); break;
+      case 'exchangeClosed': this.exchange='none'; this.speechPulse=0; break;
+      case 'sessionBegan': this.counters.salience++; this.presence=1; break;
+      case 'setCompleted': this.sessionLoad=Math.min(1,this.sessionLoad+0.15); this.counters.salience++; break;
+      case 'restBegan':    this.restActive=true; this.recoveryFill=0; break;
+      case 'restProgress': if(this.restActive)this.recoveryFill=Math.max(this.recoveryFill,Math.min(1,pl.p||0)); break;
+      case 'restEnded':    this.restActive=false; break;
+      case 'sessionCompleted': this.restActive=false; this.counters.accomplishment++; this.sessionLoad*=0.5; break;
+      case 'modelChanged': this.counters.novelty++; break;      // the coach was changed by you
+      case 'historyOpened':this.counters.retrieval++; break;    // shared past is being touched
+      case 'consultOpened':this.counters.salience++; this.presence=1; break;
+      case 'visibility':   this.away=!!pl.hidden; if(!pl.hidden)this.presence=1; break;
+      case 'returned':     this.counters.reunion++; this.reunionScale=Math.min(1,(pl.days||0)/30); this.presence=1; break;
+    }
+  }
+  update(dt,now){
+    now=now||performance.now();
+    // State persists and fades like state — never like an event. Attention
+    // memory (~8s) deliberately outlasts a thinking-pause while composing, and
+    // spans the breath gate — a single stray keystroke still under-reacts.
+    this.attention*=Math.max(0,1-dt/8);
+    this.curiosity*=Math.max(0,1-dt/6);
+    this.speechPulse*=Math.max(0,1-dt*2.2);
+    this.sessionLoad*=Math.max(0,1-dt/600);
+    if(!this.away)this.presence*=Math.max(0,1-dt/35);   // ~100s of stillness → resting
+    this.contacts=this.contacts.filter(c=>now-c.t0<1900);
+  }
+}
+
+class PresenceEngine{
+  constructor(athlete){
+    this.athlete=athlete;   // the body reads the nervous system — nothing else
     this.breath=new BreathEngine();
     this.attention=new AttentionEngine();
     this.reduced=(typeof matchMedia!=='undefined')&&matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -695,8 +765,8 @@ class PresenceEngine{
       recovering:{rate:1.50,depth:0.45,density:0.85,tempo:0.45,coherence:0.60,warmth:0.38},
       goodbye:   {rate:0.75,depth:0.95,density:0.40,tempo:0.30,coherence:0.40,warmth:0.44},
     };
-    // Precedence (canon: attention to the human outranks internal states)
-    this.PRI={goodbye:6,listening:5,recovering:4,thinking:3,answering:3,resting:1,waiting:1};
+    // No precedence table: the canon's precedence IS the derivation order in
+    // _derive() — a single if/else chain over real internal state.
     // ── Transient gestures: envelopes blended over the base, exhale-gated,
     // with expiry (a stale notice is no notice) and cooldowns (never twice).
     this.T={
@@ -709,10 +779,8 @@ class PresenceEngine{
     this.base='waiting'; this.pending=null;
     this.transient=null; this.pendingTransient=null;
     this._cool={};                       // per-gesture cooldown clocks
-    this.recovery=0;                     // 0..1, drives the recovering pose
-    this.lastInteraction=performance.now();
-    this._typingUntil=0;
-    this.touches=[];                     // physical contact points (render consumes)
+    // gesture consumption ledger — the body notices each internal shift once
+    this._consumed={salience:0,accomplishment:0,novelty:0,retrieval:0,reunion:0};
     this._now=performance.now();
     // 6D eased parameters (breath rate/depth live in BreathEngine)
     this.p={density:0.45,tempo:1.0,coherence:0.0,warmth:0.55,attX:0,attY:0,attStrength:0.25};
@@ -722,46 +790,37 @@ class PresenceEngine{
   }
   onRearrange(cb){this._rearrangeCb=cb;}     // Learning's permanent imprint
 
-  // ── Event API — the only door in. Failures here must never break the app.
-  on(type,payload){
-    try{this._on(type,payload||{});}catch(e){}
-  }
-  _on(type,pl){
-    const now=performance.now(); this.lastInteraction=now;
-    switch(type){
-      case 'pointer':   this.attention.point(pl.x,pl.y,0.45); this._pointerAt=now; this._wake(); break;
-      case 'touch':     this.touches.push({x:pl.x,y:pl.y,t0:now}); if(this.touches.length>4)this.touches.shift();
-                        this.attention.point(pl.x,pl.y,0.7); this._pointerAt=now; this._wake(); break;
-      case 'typing':    this._typingUntil=now+4000; this.attention.point(0,0.8,0.55);
-                        this._wake(); this._request('listening'); break;
-      case 'thinking':  this._streaming=true; this.attention.point(0,0.05,0.5); this._request('thinking'); break;
-      case 'answering': this._streaming=true; this._request('answering'); break;
-      case 'cadence':   this.breath.impulse(0.012); break;
-      case 'answerDone':this._streaming=false;
-                        if(this.base==='answering'||this.base==='thinking')this._request('waiting');
-                        // a stream that finished within one breath leaves no stale pose behind
-                        else if(this.pending==='answering'||this.pending==='thinking')this.pending='waiting';
-                        break;
-      case 'restStart': this.recovery=0; this._request('recovering'); break;
-      case 'restProgress': this.recovery=Math.max(this.recovery,Math.min(1,pl.p||0)); break; // monotonic by law
-      case 'restEnd':   if(this.base==='recovering')this._request('waiting'); break;
-      case 'celebrate': this._gesture('celebrating'); break;
-      case 'notice':    this._gesture('noticing'); break;
-      case 'learning':  this._gesture('learning'); break;
-      case 'remembering':this._gesture('remembering'); break;
-      case 'welcome':   this._welcomeScale=Math.min(1,(pl.days||0)/30); this._gesture('welcome'); break;
-      case 'goodbye':   this._request('goodbye'); break;
-      case 'wake':      this._wake(); break;
-    }
-  }
-  _wake(){
-    if(this.pending==='goodbye')this.pending=null;   // a cancelled departure is not a departure
-    if(this.base==='resting'||this.base==='goodbye')this._request('waiting');
-  }
-  _request(name){
-    if(name===this.base){this.pending=null;return;}
-    // higher precedence replaces pending; base always yields upward
-    if(!this.pending||this.PRI[name]>=this.PRI[this.pending])this.pending=name;
+  // ── DERIVATION — the body perceives the nervous system. No events arrive
+  // here, ever: every behavior below is a reading of real internal state.
+  // The canon's precedence is not a table; it is the order of this chain.
+  _derive(){
+    const A=this.athlete;
+    // Base state: a pure function of the dyad's condition.
+    let want;
+    if(A.away)                          want='goodbye';    // the human left the room
+    else if(A.attention>0.5)            want='listening';  // we are being addressed
+    else if(A.exchange==='composing')   want='thinking';   // our own mind is working
+    else if(A.exchange==='speaking')    want='answering';  // our own voice is out
+    else if(A.restActive)               want='recovering'; // the body is refilling
+    else if(A.presence<0.05)            want='resting';    // long stillness — no one here
+    else                                want='waiting';
+    // Because this is re-derived every frame from truth, stale pendings are
+    // impossible by construction: a cancelled departure simply stops deriving.
+    this.pending = want===this.base ? null : want;
+    // Gestures: internal SHIFTS in the model, each consumed exactly once.
+    const C=A.counters, seen=this._consumed;
+    if(C.accomplishment>seen.accomplishment){seen.accomplishment=C.accomplishment;this._gesture('celebrating');}
+    if(C.novelty>seen.novelty)          {seen.novelty=C.novelty;          this._gesture('learning');}
+    if(C.retrieval>seen.retrieval)      {seen.retrieval=C.retrieval;      this._gesture('remembering');}
+    if(C.reunion>seen.reunion)          {seen.reunion=C.reunion; this._welcomeScale=A.reunionScale; this._gesture('welcome');}
+    if(C.salience>seen.salience)        {seen.salience=C.salience;        this._gesture('noticing');}
+    // Orientation: derived from what the dyad is doing, not from any event.
+    if(A.attention>0.4)                 this.attention.point(0,0.8,0.4+A.attention*0.2);   // toward the human's words
+    else if(A.exchange==='composing')   this.attention.point(0,0.05,0.5);                  // inward — thought is private
+    else if(A.curiosity>0.25&&A.pointer)this.attention.point(A.pointer.x,A.pointer.y,0.3+A.curiosity*0.35); // curiosity follows the hand
+    // else: the idle wander — where the gaze rests when nothing calls it
+    // Speech: the chest movement of answering derives from speech energy.
+    if(A.speechPulse>0.05)this.breath.impulse(A.speechPulse*0.012);
   }
   _gesture(name){
     const now=performance.now(), def=this.T[name];
@@ -788,19 +847,21 @@ class PresenceEngine{
   }
   update(dt){
     const now=performance.now(); this._now=now;
-    // listening releases itself when the typing stops (return rides the breath);
-    // if the coach is mid-stream it returns to answering, not to waiting
-    if(this.base==='listening'&&now>this._typingUntil)this._request(this._streaming?'answering':'waiting');
-    // idle: 90s of stillness → resting; any event wakes it (via _wake)
-    if(this.base==='waiting'&&now-this.lastInteraction>90000)this._request('resting');
+    // The body perceives the nervous system, continuously. Listening ends when
+    // attention fades; resting begins when presence fades; answering resumes
+    // after an interruption — all for free, because state is re-derived from
+    // truth every frame instead of being commanded by events.
+    this._derive();
     this.breath.update(dt);
     this.attention.update(dt);
     // ── compose targets: base pose, recovery interpolation, transient blend
     let s=this.S[this.base];
     let tgt={rate:s.rate,depth:s.depth,density:s.density,tempo:s.tempo,coherence:s.coherence,warmth:s.warmth};
     if(this.base==='recovering'){
-      // the only state with a direction: compressed+dim → refilled (monotonic)
-      const q=this.recovery*this.recovery*(3-2*this.recovery);
+      // the only state with a direction: compressed+dim → refilled — driven by
+      // the model's recovery fill (monotonic in the nervous system, by law)
+      const rec=this.athlete.recoveryFill;
+      const q=rec*rec*(3-2*rec);
       tgt.rate=1.5-q*0.5; tgt.depth=0.45+q*0.45; tgt.density=0.85-q*0.35; tgt.warmth=0.38+q*0.24;
     }
     if(this.base==='thinking'&&this._thinkT0){
@@ -831,10 +892,9 @@ class PresenceEngine{
     this.p.coherence+=(tgt.coherence-this.p.coherence)*k;
     this.p.warmth+=(tgt.warmth-this.p.warmth)*k;
     this.p.attX=this.attention.x; this.p.attY=this.attention.y; this.p.attStrength=this.attention.strength;
-    // prune expired touches
-    this.touches=this.touches.filter(t=>now-t.t0<1900);
   }
-  pointerFresh(now){return this._pointerAt&&now-this._pointerAt<1200;}
+  get touches(){return this.athlete.contacts;}   // physical facts live in the model
+  pointerFresh(now){return this.athlete._pointerAt&&now-this.athlete._pointerAt<1200;}
   // Touch physics: yield first (the field parts), then the lean-in (it gathers
   // toward the finger). Signed magnitude: negative = away, positive = toward.
   touchInfluence(age){
@@ -854,8 +914,10 @@ class LivingCore{
     this.dpr=Math.min(window.devicePixelRatio||1,2);
     this.off=document.createElement('canvas'); this.octx=this.off.getContext('2d');
     this.t=0; this.last=performance.now();
-    this.phys={recovery:.6,fatigue:.35,stress:.3}; this.cur={recovery:.6,fatigue:.35,stress:.3};
-    this.presence=new PresenceEngine();
+    this.cur={recovery:.6,fatigue:.35,stress:.3};
+    // Nervous system first; the body is built around it and only reads it.
+    this.athlete=new AthleteModel();
+    this.presence=new PresenceEngine(this.athlete);
     this.presence.onRearrange(()=>this.rearrange());
     // flow lobes — the organism's drifting body (no discrete particles).
     // Angle & noise-time are ACCUMULATED per lobe so speed changes (tempo,
@@ -893,7 +955,7 @@ class LivingCore{
     this.octx.fillStyle='#070910'; this.octx.fillRect(0,0,this.ow,this.oh);
     this.cx=this.ow/2; this.cy=this.oh*.46; this.R=Math.min(this.ow,this.oh)*.34;
   }
-  setPhysiology(p){this.phys={...this.phys,...p};}
+  setPhysiology(p){this.athlete.setPhysiology(p);}   // somatic state lives in the model
   palette(){
     const{recovery:r,fatigue:f,stress:st}=this.cur;
     const mix=(a,b,t)=>a.map((v,i)=>v+(b[i]-v)*t);
@@ -906,8 +968,10 @@ class LivingCore{
     return{c1,c2};
   }
   step(now){
-    const dt=Math.min((now-this.last)/1000,.05); this.last=now;
-    for(const k in this.cur)this.cur[k]+=(this.phys[k]-this.cur[k])*Math.min(dt*.7,1);
+    const dt=Math.min(Math.max((now-this.last)/1000,0),.05); this.last=now;
+    // nervous system advances first; the body then perceives and expresses it
+    this.athlete.update(dt,now);
+    for(const k in this.cur)this.cur[k]+=(this.athlete.physiology[k]-this.cur[k])*Math.min(dt*.7,1);
     this.presence.update(dt);
     const{recovery:r,fatigue:f}=this.cur, ps=this.presence.p;
     // 5× time-scale = the approved "visibly alive" pace; presence tempo scales it
@@ -991,9 +1055,11 @@ class LivingCore{
   start(){requestAnimationFrame(this.frame);}
 }
 
-// The single door from the app into the organism. A presence failure must
-// never break chat, workouts, or payments — the coach survives its body.
-function organism(ev,payload){try{if(window.core&&core.presence)core.presence.on(ev,payload);}catch(e){}}
+// The interface never speaks to the organism. It reports FACTS to the nervous
+// system — in the world's vocabulary, not the body's — and the body derives
+// everything from state. A model failure must never break chat, workouts, or
+// payments: the coach survives its body.
+function witness(fact,payload){try{if(window.core&&core.athlete)core.athlete.observe(fact,payload);}catch(e){}}
 
 /* ═══════════════════════════════════════════════════════════════════
    PHYSIOLOGY
@@ -1275,7 +1341,7 @@ function saveProfile(){
   const m=memLoad(); m.goals=p.goalDetail; memSave(m);
   document.getElementById('profile-modal').classList.remove('on');
   applyReadout(); toast(tr().saved); if(consultOn)resetGreeting();
-  organism('learning');   // the coach was changed by you — permanently, visibly
+  witness('modelChanged');   // fact: the coach's model of you changed
 }
 function cancelSub(){ doWithdraw(tr().sub.confirmCancel); }
 function doWithdraw(confirmMsg){
@@ -1379,7 +1445,7 @@ async function goCheckout(plan){
   }catch(e){ toast(tr().sub.checkoutErr); }
 }
 function showHistory(){
-  organism('remembering');   // the gaze into the middle distance
+  witness('historyOpened');   // fact: the shared past is being touched
   const h=tr().hist; let log=[];try{log=JSON.parse(localStorage.getItem('apexWorkoutLog')||'[]');}catch(e){}
   let body='<p class="sd" style="margin-bottom:16px">'+h.desc+'</p>';
   if(!log.length){ body+='<div class="hist-empty">'+h.empty+'</div>'; }
@@ -1487,7 +1553,7 @@ async function logout(){
 let consultOn=false;
 function enterConsult(seed){
   consultOn=true;
-  organism('notice');
+  witness('consultOpened');
   document.getElementById('consult').classList.add('on');
   const ov=document.getElementById('overview');
   ov.style.opacity='0';ov.style.transform='translateY(-30px) scale(.96)';ov.style.pointerEvents='none';
@@ -1691,14 +1757,14 @@ function renderWorkout(header,body){
 let WO=null,restTimer=null,sessionStart=0;
 function startWorkout(){
   if(!pendingWorkout||!pendingWorkout.length)return;
-  organism('notice');   // the session begins — witnessed, not announced
+  witness('sessionBegan');
   WO={ex:JSON.parse(JSON.stringify(pendingWorkout)),i:0,set:0,phase:'work',startMs:Date.now()};
   sessionStart=Date.now();
   document.getElementById('workout').classList.add('on');
   document.getElementById('wo-quit-btn').textContent='✕ '+tr().woExit;
   renderWO();
 }
-function quitWorkout(){clearInterval(restTimer);organism('restEnd');document.getElementById('workout').classList.remove('on');WO=null;}
+function quitWorkout(){clearInterval(restTimer);witness('restEnded');document.getElementById('workout').classList.remove('on');WO=null;}
 function woEstRemaining(){
   let sec=0; for(let k=WO.i;k<WO.ex.length;k++){const e=WO.ex[k];const sets=parseInt(e.sets)||3;const rest=parseInt((e.rest+'').replace(/[^\d]/g,''))||60;
     const remSets=k===WO.i?sets-WO.set:sets; sec+=remSets*(40+rest);} return Math.max(1,Math.round(sec/60));
@@ -1738,29 +1804,30 @@ function renderWO(){
   }
 }
 function completeSet(){
-  organism('notice');   // the flicker of perception — work was witnessed
+  witness('setCompleted');   // fact: effort happened (model accrues load + salience)
   const sets=parseInt(WO.ex[WO.i].sets)||3; WO.set++;
   if(WO.set>=sets){ // exercise done → advance or finish
     if(WO.i+1>=WO.ex.length){finishWorkout();return;}
     WO.i++;WO.set=0;WO.phase='rest';renderWO();
   } else {WO.phase='rest';renderWO();}
 }
-function skipExercise(){clearInterval(restTimer);organism('restEnd');if(WO.i+1>=WO.ex.length){finishWorkout();return;}WO.i++;WO.set=0;WO.phase='work';renderWO();}
-function endRest(){clearInterval(restTimer);organism('restEnd');WO.phase='work';renderWO();}
+function skipExercise(){clearInterval(restTimer);witness('restEnded');if(WO.i+1>=WO.ex.length){finishWorkout();return;}WO.i++;WO.set=0;WO.phase='work';renderWO();}
+function endRest(){clearInterval(restTimer);witness('restEnded');WO.phase='work';renderWO();}
 function runRest(sec){
   clearInterval(restTimer); let left=sec; const C=578; const fill=document.getElementById('rt-fill'),numEl=document.getElementById('rt-n');
-  organism('restStart');   // the set cost something; the refill begins
+  witness('restBegan');   // fact: a rest interval opened
   restTimer=setInterval(()=>{
     left--; if(numEl)numEl.textContent=Math.max(0,left);
     if(fill)fill.style.strokeDashoffset=C*(1-left/sec);
-    organism('restProgress',{p:1-left/sec});   // monotonic — recovery has a direction
+    witness('restProgress',{p:1-left/sec});   // fact: interval elapsed (model keeps it monotonic)
     if(left<=0){clearInterval(restTimer);endRest();}
   },1000);
 }
 function finishWorkout(){
   clearInterval(restTimer);
-  organism('restEnd');
-  organism('celebrate');   // one full breath — a coach's single nod, never confetti
+  // Fact only: the session completed. Whether that becomes a celebration is the
+  // model's judgment (accomplishment), not the interface's command.
+  witness('sessionCompleted');
   const t=tr(),dur=Math.round((Date.now()-sessionStart)/60000);
   const totalSets=WO.ex.reduce((a,e)=>a+(parseInt(e.sets)||3),0);
   const session={ts:Date.now(),date:new Date().toLocaleDateString(),type:inferMuscle(WO.ex[0].name).m,
@@ -1820,7 +1887,7 @@ async function send(){
   const feed=document.getElementById('feed');
   const ty=document.createElement('div');ty.className='typing';ty.innerHTML='<span class="tl">'+tr().typing+'</span><i></i><i></i><i></i>';
   feed.appendChild(ty);smartScroll();
-  organism('thinking');   // the organism gathers inward — considering
+  witness('exchangeOpened');   // fact: a question is now with the coach
   // M-1: watchdog aborts a stalled request after 75s of inactivity so the UI is
   // never stuck. Each token resets it, so a long but active stream is never cut.
   const ac=new AbortController();
@@ -1840,7 +1907,7 @@ async function send(){
         buf+=dec.decode(value,{stream:true});const parts=buf.split('\n\n');buf=parts.pop();
         for(const part of parts){const line=part.trim();if(!line.startsWith('data:'))continue;
           let o;try{o=JSON.parse(line.slice(5).trim());}catch(e){continue;}
-          if(o.t){kick();if(!full)organism('answering');full+=o.t;const now=performance.now();if(now-lastPaint>80){target.innerHTML=streamRender(full);smartScroll();organism('cadence');lastPaint=now;}}
+          if(o.t){kick();witness('replyToken');full+=o.t;const now=performance.now();if(now-lastPaint>80){target.innerHTML=streamRender(full);smartScroll();lastPaint=now;}}
           else if(o.limit_reached){const m=target.closest('.msg');if(m)m.remove();showLimit(o.hours_left||24);aborted=true;}
           else if(o.error){full+=(o.reply||'');}
         }
@@ -1858,11 +1925,11 @@ async function send(){
     tg.innerHTML='<p>'+(lang==='bg'?'Връзката прекъсна. Моля, опитай отново.':'Connection interrupted. Please try again.')+'</p>';
     inp.value=val;   // retry supported — restore the message for a one-tap resend
   }
-  finally{clearTimeout(watchdog);sending=false;inp.focus();organism('answerDone');}
+  finally{clearTimeout(watchdog);sending=false;inp.focus();witness('exchangeClosed');}
 }
 function afterReply(text){
   const m=memLoad();
-  if(/ккал|kcal|калории|protein|протеин/i.test(text)&&/\|/.test(text)){m.lastNutritionAt=Date.now();organism('learning');}
+  if(/ккал|kcal|калории|protein|протеин/i.test(text)&&/\|/.test(text)){m.lastNutritionAt=Date.now();witness('modelChanged');}
   m.lastConsultationAt=Date.now(); memSave(m);
 }
 
@@ -1937,32 +2004,34 @@ document.addEventListener('DOMContentLoaded',()=>{
   core=new LivingCore(document.getElementById('core'));
   core.setPhysiology(computePhysiology()); core.start();
 
-  // ── PRESENCE: wire the world to the organism ──────────────────────────
-  // Normalized coords: organism-radius units, centered on the body.
+  // ── SENSES: the interface reports FACTS to the nervous system. It never
+  // commands the body. Typing is not a cause — attention is. Movement is not
+  // a cause — curiosity is. The model decides what everything means.
   const orgNorm=e=>{const w=innerWidth,h=innerHeight,R=Math.min(w,h)*0.34;
     return {x:(e.clientX-w/2)/R, y:(e.clientY-h*0.46)/R};};
-  // Hover = attention only (the lean). Continuous dimension — instant, breath-free.
-  window.addEventListener('pointermove',e=>organism('pointer',orgNorm(e)),{passive:true});
-  // Deliberate touch = the signature (part, then gather). Never on interactive
-  // surfaces and never fighting a scroll — the organism yields to the interface.
+  window.addEventListener('pointermove',e=>witness('pointer',orgNorm(e)),{passive:true});
+  // Physical contact — a fact about the world touching the body. Never reported
+  // from interactive surfaces or scroll containers: the body yields to the UI.
   window.addEventListener('pointerdown',e=>{
     if(e.target.closest('button,a,input,select,textarea,label,.modal,.sheet,#drawer,#drawer-scrim,.chip,.msg,.inputbar,#jump-latest,#workout,#feed,nav'))return;
-    organism('touch',orgNorm(e));
+    witness('contact',orgNorm(e));
   },{passive:true});
-  // Goodbye / welcome-back: presence across absences.
+  // Absence and return are facts; goodbye and welcome are the model's readings.
   const seen=()=>{try{localStorage.setItem('apexLastSeen',String(Date.now()));}catch(e){}};
   document.addEventListener('visibilitychange',()=>{
-    if(document.hidden){organism('goodbye');seen();}
+    witness('visibility',{hidden:document.hidden});
+    if(document.hidden)seen();
     else{const gap=Date.now()-(+localStorage.getItem('apexLastSeen')||Date.now());
-      if(gap>30*60000)organism('welcome',{days:gap/864e5});else organism('wake');}
+      if(gap>30*60000)witness('returned',{days:gap/864e5});}
   });
   window.addEventListener('pagehide',seen);
   setInterval(seen,60000);
-  try{ // arriving after a real absence: found resting, then one slow welcome breath
+  try{ // arriving after a real absence: found resting, then the reunion registers
     const last=+localStorage.getItem('apexLastSeen')||0;
     if(last&&Date.now()-last>6*3600e3){
+      core.athlete.presence=0.02;          // initial condition: no one was here
       core.presence.base='resting';
-      setTimeout(()=>organism('welcome',{days:(Date.now()-last)/864e5}),1200);
+      setTimeout(()=>witness('returned',{days:(Date.now()-last)/864e5}),1200);
     }
   }catch(e){}
   seen();
@@ -1970,8 +2039,8 @@ document.addEventListener('DOMContentLoaded',()=>{
   const intent=applyIntent();
   applyLang();
   const _uin=document.getElementById('user-in');
-  _uin.addEventListener('keydown',e=>{organism('typing');if(e.key==='Enter'){e.preventDefault();send();}});
-  _uin.addEventListener('focus',()=>organism('typing'));
+  _uin.addEventListener('keydown',e=>{witness('keystroke');if(e.key==='Enter'){e.preventDefault();send();}});
+  _uin.addEventListener('focus',()=>witness('keystroke'));
   document.querySelectorAll('.modal').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('on');}));
   // scroll ownership: user scrolling up releases auto-follow + offers "Jump to latest";
   // reaching the bottom re-arms auto-follow and hides the button.
