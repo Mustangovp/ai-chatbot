@@ -177,6 +177,35 @@ conversations = Table("conversations", metadata,
     Index("ix_conv_user_created", "user_id", "created_at"),
 )
 
+# ── Brain substrate (M0) ──────────────────────────────────────────────────────
+# The Athlete Model state, one row per account. The browser is only a cache;
+# this row is the source of truth the Brain reads. Additive — nothing else moves.
+athlete_models = Table("athlete_models", metadata,
+    _uuid_col(),
+    Column("user_id", Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"),
+           nullable=False, unique=True),
+    Column("schema", String(32), nullable=False),
+    Column("state", JSON, nullable=False, default=dict),
+    Column("created_at", DateTime(timezone=True), server_default=func.now()),
+    Column("updated_at", DateTime(timezone=True), server_default=func.now(), onupdate=func.now()),
+)
+
+# Append-only decision ledger (Event Ledger). Created inert in M0; first written
+# in M1. user_id nullable so anonymous decisions can be recorded later.
+brain_decisions = Table("brain_decisions", metadata,
+    _uuid_col(),
+    Column("user_id", Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE")),
+    Column("verdict", String(16)),               # GO|MODIFY|NOT_YET|NO_TRAIN
+    Column("intervention", String(32)),
+    Column("urgency", String(16)),               # EMERGENCY_now|URGENT_soon|ROUTINE_mention|null
+    Column("enforced", Boolean, default=False),  # shadow vs authoritative
+    Column("out_of_mandate", Boolean, default=False),
+    Column("trace", JSON),                        # per-station reasoning (never user-facing)
+    Column("message_hash", String(64)),           # sha256 of the message; no raw text
+    Column("created_at", DateTime(timezone=True), server_default=func.now()),
+    Index("ix_brain_user_created", "user_id", "created_at"),
+)
+
 schema_version = Table("schema_version", metadata,
     Column("version", Integer, primary_key=True),
     Column("applied_at", DateTime(timezone=True), server_default=func.now()),
@@ -188,6 +217,8 @@ schema_version = Table("schema_version", metadata,
 _MIGRATIONS = [
     # (version, callable(connection) -> None)
     (1, lambda c: None),  # baseline: tables created by metadata.create_all()
+    (2, lambda c: None),  # M0: athlete_models table (created by create_all)
+    (3, lambda c: None),  # M0: brain_decisions ledger (created by create_all)
 ]
 
 def run_migrations():
@@ -547,3 +578,39 @@ def build_memory_context(user_id, en=True):
                  if en else
                  "  ⚡ СЛЕД ТРЕНИРОВКА — завършена в последните 2 часа. Признай я; НЕ предлагай нова тренировка.")
     return "\n".join(L)
+
+# ── Brain substrate persistence (M0) ─────────────────────────────────────────
+def get_athlete_state(user_id):
+    """Return the stored Athlete Model state dict, or None if none exists yet."""
+    with engine.begin() as c:
+        row = c.execute(select(athlete_models).where(
+            athlete_models.c.user_id == _as_uuid(user_id))).mappings().first()
+    return dict(row["state"]) if row and row["state"] else None
+
+def save_athlete_state(user_id, state: dict):
+    """Upsert the Athlete Model state for a user. Concurrency-safe on Postgres via
+    SELECT … FOR UPDATE (the same pattern as free_usage); a no-op lock on SQLite."""
+    state = state or {}
+    schema = str(state.get("schema", "athlete-model-v1"))[:32]
+    with engine.begin() as c:
+        sel = select(athlete_models.c.id).where(athlete_models.c.user_id == _as_uuid(user_id))
+        if not IS_SQLITE:
+            sel = sel.with_for_update()
+        exists = c.execute(sel).first()
+        if exists:
+            c.execute(update(athlete_models).where(
+                athlete_models.c.user_id == _as_uuid(user_id)).values(state=state, schema=schema))
+        else:
+            c.execute(insert(athlete_models).values(
+                id=uuid.uuid4(), user_id=_as_uuid(user_id), schema=schema, state=state))
+
+def log_decision(user_id, verdict=None, intervention=None, urgency=None,
+                 enforced=False, out_of_mandate=False, trace=None, message_hash=None):
+    """Append one decision record to the ledger. Inert in M0 (no caller yet)."""
+    with engine.begin() as c:
+        c.execute(insert(brain_decisions).values(
+            id=uuid.uuid4(),
+            user_id=(_as_uuid(user_id) if user_id else None),
+            verdict=verdict, intervention=intervention, urgency=urgency,
+            enforced=bool(enforced), out_of_mandate=bool(out_of_mandate),
+            trace=trace, message_hash=message_hash))
