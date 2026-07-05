@@ -31,6 +31,10 @@ stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 import db as store
 import personality
 import athlete_store  # M0: Athlete Model substrate (failure-isolated observe wiring)
+import brain.config as brain_config             # M1: Brain shadow flags (default OFF)
+import brain.s1_constraints as s1_constraints   # M1: S1 Somatic Constraint Model
+import brain.constraint_library as constraint_library
+import brain.ledger as brain_ledger             # M1: shadow decision ledger
 import secrets as _secrets
 import uuid as _uuid
 from flask import g
@@ -1485,6 +1489,7 @@ def chat():
         persist_uid = chat_uid
         persist_user_msg = user_message
         persist_lang = lang
+        persist_profile = profile if isinstance(profile, dict) else {}
 
         def _persist_reply(reply_text):
             """Store the exchange to the account so the coach remembers it across
@@ -1504,6 +1509,50 @@ def chat():
             # M0: exchange evidence — account-only (persist_uid is non-None past the guard above).
             athlete_store.observe(persist_uid, "exchange", {})
 
+        def _shadow_s1_log():
+            """M1 SHADOW: compute S1 (ConstraintSet + CapacityEnvelope) and write a
+            fully-traceable record to the decision ledger. Gated by BRAIN_SHADOW
+            (OFF by default) and failure-isolated — zero effect on prompt, generation,
+            response, or the user. Reads the profile only; writes only brain_decisions.
+            No enforcement, no routing, no S2–S6."""
+            if not brain_config.brain_shadow():
+                return
+            try:
+                cset, env = s1_constraints.build(persist_profile)
+                hn = str(persist_profile.get("healthNotes") or persist_profile.get("injuries") or "")
+                trace = {
+                    "station": "S1",
+                    "library_version": constraint_library.LIBRARY_VERSION,
+                    "computed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "source_evidence": {
+                        "health_notes_present": bool(hn.strip()),
+                        "health_notes_hash": (hashlib.sha256(hn.encode("utf-8")).hexdigest()
+                                              if hn.strip() else None),
+                        "profile_fields_present": sorted(
+                            k for k in ("age", "gender", "level", "activityLevel",
+                                        "equipment", "goal", "healthNotes", "injuries")
+                            if str(persist_profile.get(k) or "").strip()),
+                    },
+                    "detected_conditions": sorted(constraint_library.detect_conditions(hn)),
+                    "constraints": [{"movement": c.movement, "tier": c.tier.value,
+                                     "reason_key": c.reason_key} for c in cset.items],
+                    "envelope": {
+                        "intensity_ceiling": env.intensity_ceiling,
+                        "complexity_ceiling": env.complexity_ceiling,
+                        "volume_ceiling": env.volume_ceiling,
+                        "supported": env.supported,
+                        "confidence": env.confidence,
+                    },
+                    "confidence": env.confidence,
+                }
+                mh = (hashlib.sha256(persist_user_msg.encode("utf-8")).hexdigest()
+                      if persist_user_msg else None)
+                brain_ledger.log_decision(persist_uid, verdict=None, intervention=None,
+                                          urgency=None, enforced=False, out_of_mandate=False,
+                                          trace=trace, message_hash=mh)
+            except Exception as _se:
+                print(f"[shadow] S1 log failed: {_se}")
+
         def generate():
             full = []
             try:
@@ -1522,6 +1571,7 @@ def chat():
                         yield sse({"t": delta})
                 _bump_plans_today()  # honest landing counter: +1 real AI plan
                 _persist_reply("".join(full))
+                _shadow_s1_log()     # M1 SHADOW (BRAIN_SHADOW off by default; no-op in prod)
                 yield sse({"done": True})
             except Exception as openai_error:
                 print(f"[chat] OpenAI error: {openai_error}")
@@ -1529,6 +1579,7 @@ def chat():
                     # Потребителят вече получи почти всичко — завършваме чисто
                     _bump_plans_today()
                     _persist_reply("".join(full))
+                    _shadow_s1_log()  # M1 SHADOW (BRAIN_SHADOW off by default; no-op in prod)
                     yield sse({"done": True})
                 else:
                     # Нищо не е стигнало → връщаме съобщението в лимита му (DB refund)
