@@ -30,6 +30,7 @@ stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 # ═══════════════════════════════════════════════════════════
 import db as store
 import personality
+import athlete_store  # M0: Athlete Model substrate (failure-isolated observe wiring)
 import secrets as _secrets
 import uuid as _uuid
 from flask import g
@@ -1270,6 +1271,10 @@ def api_profile():
     if not isinstance(prof, dict):
         return jsonify({"error": "invalid"}), 400
     store.save_profile(u["id"], prof)
+    # M0: self-report evidence for the Athlete Model (only the consumed fields).
+    _sr = {k: prof[k] for k in ("sleepQuality", "stressLevel", "recoveryFeel", "frequency") if k in prof}
+    if _sr:
+        athlete_store.observe(u["id"], "self_report", _sr)
     return jsonify({"ok": True})
 
 
@@ -1283,6 +1288,8 @@ def api_workout():
     if not isinstance(session, dict):
         return jsonify({"error": "invalid"}), 400
     wid = store.log_workout(u["id"], session)
+    # M0: workout evidence for the Athlete Model (failure-isolated).
+    athlete_store.observe(u["id"], "workout_completed", session)
     return jsonify({"ok": True, "id": wid})
 
 
@@ -1490,8 +1497,12 @@ def chat():
                 low = reply_text.lower()
                 if "|" in reply_text and any(k in low for k in ("ккал", "kcal", "калории", "protein", "протеин", "въглехидрати", "carb")):
                     store.save_nutrition(persist_uid, reply_text, None)
+                    # M0: nutrition-plan evidence (inferred tier; stays low until real intake).
+                    athlete_store.observe(persist_uid, "nutrition_plan_issued", {})
             except Exception as _pe:
                 print(f"[chat] persist failed: {_pe}")
+            # M0: exchange evidence — account-only (persist_uid is non-None past the guard above).
+            athlete_store.observe(persist_uid, "exchange", {})
 
         def generate():
             full = []
