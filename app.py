@@ -34,6 +34,7 @@ import athlete_store  # M0: Athlete Model substrate (failure-isolated observe wi
 import brain.config as brain_config             # M1: Brain shadow flags (default OFF)
 import brain.ledger as brain_ledger             # M1: shadow decision ledger
 import brain.inspector as brain_inspector       # M1/Commit3: Brain Inspector (observability)
+import brain.replay as brain_replay             # M1/Commit4: Replay & Regression Harness
 import secrets as _secrets
 import uuid as _uuid
 from flask import g
@@ -2229,6 +2230,33 @@ def debug_brain_replay():
     if not isinstance(profile, dict):
         return jsonify({"error": "invalid_profile"}), 400
     return jsonify(brain_inspector.inspect(profile, model=data.get("model")))
+
+@app.route("/debug/brain/replay-compare", methods=["POST"])
+def debug_brain_replay_compare():
+    """Replay evidence against a baseline trace → classification + deltas."""
+    if not _brain_debug_on():
+        return jsonify({"error": "not_found"}), 404
+    data = request.get_json(silent=True) or {}
+    evidence = data.get("evidence") or {}
+    baseline = data.get("baseline")
+    if not isinstance(evidence, dict) or not isinstance(baseline, dict):
+        return jsonify({"error": "invalid_input"}), 400
+    return jsonify(brain_replay.replay(evidence, baseline, model=data.get("model")))
+
+@app.route("/debug/brain/regression", methods=["POST"])
+def debug_brain_regression():
+    """Regression report over cases vs baselines (suitable for the 140-persona
+    corpus). If `baselines` is omitted, returns freshly-snapshotted baselines."""
+    if not _brain_debug_on():
+        return jsonify({"error": "not_found"}), 404
+    data = request.get_json(silent=True) or {}
+    cases = data.get("cases") or []
+    if not isinstance(cases, list):
+        return jsonify({"error": "invalid_cases"}), 400
+    baselines = data.get("baselines")
+    if not isinstance(baselines, dict):
+        return jsonify({"baselines": brain_replay.snapshot(cases, model=data.get("model"))})
+    return jsonify(brain_replay.replay_corpus(cases, baselines, model=data.get("model")))
 
 
 @app.route('/robots.txt')
