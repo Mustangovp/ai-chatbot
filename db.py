@@ -605,12 +605,24 @@ def save_athlete_state(user_id, state: dict):
                 id=uuid.uuid4(), user_id=_as_uuid(user_id), schema=schema, state=state))
 
 def log_decision(user_id, verdict=None, intervention=None, urgency=None,
-                 enforced=False, out_of_mandate=False, trace=None, message_hash=None):
-    """Append one decision record to the ledger. Inert in M0 (no caller yet)."""
+                 enforced=False, out_of_mandate=False, trace=None, message_hash=None,
+                 decision_id=None):
+    """Append one decision record to the ledger. `decision_id` sets a stable id
+    (so the trace's decision_id == the row id); generated if not supplied."""
     with engine.begin() as c:
         c.execute(insert(brain_decisions).values(
-            id=uuid.uuid4(),
+            id=(_as_uuid(decision_id) if decision_id else uuid.uuid4()),
             user_id=(_as_uuid(user_id) if user_id else None),
             verdict=verdict, intervention=intervention, urgency=urgency,
             enforced=bool(enforced), out_of_mandate=bool(out_of_mandate),
             trace=trace, message_hash=message_hash))
+
+def get_brain_decision(decision_id):
+    """Fetch one decision record (serialized) by id, for the debug inspector."""
+    try:
+        did = _as_uuid(decision_id)
+    except Exception:
+        return None
+    with engine.begin() as c:
+        row = c.execute(select(brain_decisions).where(brain_decisions.c.id == did)).mappings().first()
+    return _serial(dict(row)) if row else None

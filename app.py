@@ -32,9 +32,8 @@ import db as store
 import personality
 import athlete_store  # M0: Athlete Model substrate (failure-isolated observe wiring)
 import brain.config as brain_config             # M1: Brain shadow flags (default OFF)
-import brain.s1_constraints as s1_constraints   # M1: S1 Somatic Constraint Model
-import brain.constraint_library as constraint_library
 import brain.ledger as brain_ledger             # M1: shadow decision ledger
+import brain.inspector as brain_inspector       # M1/Commit3: Brain Inspector (observability)
 import secrets as _secrets
 import uuid as _uuid
 from flask import g
@@ -1518,38 +1517,13 @@ def chat():
             if not brain_config.brain_shadow():
                 return
             try:
-                cset, env = s1_constraints.build(persist_profile)
-                hn = str(persist_profile.get("healthNotes") or persist_profile.get("injuries") or "")
-                trace = {
-                    "station": "S1",
-                    "library_version": constraint_library.LIBRARY_VERSION,
-                    "computed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                    "source_evidence": {
-                        "health_notes_present": bool(hn.strip()),
-                        "health_notes_hash": (hashlib.sha256(hn.encode("utf-8")).hexdigest()
-                                              if hn.strip() else None),
-                        "profile_fields_present": sorted(
-                            k for k in ("age", "gender", "level", "activityLevel",
-                                        "equipment", "goal", "healthNotes", "injuries")
-                            if str(persist_profile.get(k) or "").strip()),
-                    },
-                    "detected_conditions": sorted(constraint_library.detect_conditions(hn)),
-                    "constraints": [{"movement": c.movement, "tier": c.tier.value,
-                                     "reason_key": c.reason_key} for c in cset.items],
-                    "envelope": {
-                        "intensity_ceiling": env.intensity_ceiling,
-                        "complexity_ceiling": env.complexity_ceiling,
-                        "volume_ceiling": env.volume_ceiling,
-                        "supported": env.supported,
-                        "confidence": env.confidence,
-                    },
-                    "confidence": env.confidence,
-                }
+                did = str(_uuid.uuid4())
+                trace = brain_inspector.inspect(persist_profile, model=model_to_use, decision_id=did)
                 mh = (hashlib.sha256(persist_user_msg.encode("utf-8")).hexdigest()
                       if persist_user_msg else None)
                 brain_ledger.log_decision(persist_uid, verdict=None, intervention=None,
                                           urgency=None, enforced=False, out_of_mandate=False,
-                                          trace=trace, message_hash=mh)
+                                          trace=trace, message_hash=mh, decision_id=did)
             except Exception as _se:
                 print(f"[shadow] S1 log failed: {_se}")
 
@@ -2227,6 +2201,35 @@ Sent automatically from apexpulse.pro feedback widget
 # SEO ROUTES — must be at root level, not in /static/
 # Search engines look for these at exact paths
 # ═══════════════════════════════════════════════════════════
+
+# ── Brain Inspector — developer-only inspection endpoints ─────────────────────
+# 404 unless BRAIN_DEBUG is explicitly set → never exposed in production.
+def _brain_debug_on():
+    return brain_config.brain_debug()
+
+@app.route("/debug/brain/decision/<decision_id>")
+def debug_brain_decision(decision_id):
+    """Inspect one stored shadow decision by its stable Decision ID."""
+    if not _brain_debug_on():
+        return jsonify({"error": "not_found"}), 404
+    row = store.get_brain_decision(decision_id)
+    if not row:
+        return jsonify({"error": "not_found"}), 404
+    return jsonify(row)
+
+@app.route("/debug/brain/replay", methods=["POST"])
+def debug_brain_replay():
+    """Replay the Brain over supplied evidence and return the full trace.
+    (Raw evidence is not persisted in the ledger by design, so replay runs on
+    the profile you provide.)"""
+    if not _brain_debug_on():
+        return jsonify({"error": "not_found"}), 404
+    data = request.get_json(silent=True) or {}
+    profile = data.get("profile") or {}
+    if not isinstance(profile, dict):
+        return jsonify({"error": "invalid_profile"}), 400
+    return jsonify(brain_inspector.inspect(profile, model=data.get("model")))
+
 
 @app.route('/robots.txt')
 def robots_txt():

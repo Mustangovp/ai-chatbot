@@ -21,3 +21,9 @@ def brain_shadow() -> bool:
 
 def brain_enforce() -> bool:
     return flag("BRAIN_ENFORCE")
+
+
+def brain_debug() -> bool:
+    """Gate for the developer inspection endpoint. OFF by default → the debug
+    routes 404 in production; only a deliberately-set BRAIN_DEBUG enables them."""
+    return flag("BRAIN_DEBUG")
