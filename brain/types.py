@@ -19,6 +19,14 @@ class Verdict(str, Enum):                       # S4 Appropriateness Gate output
     NO_TRAIN = "NO_TRAIN"                        # training is the wrong answer (categorical)
 
 
+@dataclass(frozen=True)
+class Intervention:                             # S5 Intervention Selector output
+    # kind ∈ training | recovery | sleep | walk | breathing | mobility |
+    #        stress_reduction | nutrition | conversation | medical_followup | crisis_support
+    kind: str
+    rationale_key: str                          # coach-safe rationale key; never a diagnosis
+
+
 class ConstraintTier(str, Enum):
     ABSOLUTE = "absolute"   # never program this movement
     RELATIVE = "relative"   # modify / avoid load / limit range
