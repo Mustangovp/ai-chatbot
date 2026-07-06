@@ -14,9 +14,14 @@ traces* — never a Brain decision):
   IDENTICAL        — canonical traces equal.
   EXPECTED_CHANGE  — differences are all in the SAFE direction (more/stricter
                      constraints, narrower envelope, more detections, version bump).
-  REGRESSION       — any SAFETY-WEAKENING drift (a constraint dropped or weakened,
-                     a lost detection, the envelope widened while constrained, or
-                     support lost while constrained).
+  REGRESSION       — any SAFETY-WEAKENING drift: a constraint dropped or weakened,
+                     a lost detection, the envelope widened while constrained,
+                     support lost while constrained, a halt dropped, a red flag
+                     lost, the verdict made bolder, or generation newly enabled.
+
+Every consumer here re-runs the Brain through the ONE orchestration path
+(`inspector.inspect` → `cascade.decide`) and consumes the identical Decision
+(via its formatted trace); no organ is executed in this module.
 """
 from copy import deepcopy
 from brain import inspector
@@ -26,6 +31,23 @@ EXPECTED_CHANGE = "EXPECTED_CHANGE"
 REGRESSION = "REGRESSION"
 
 _TIER_RANK = {"monitor": 0, "relative": 1, "absolute": 2}
+# Boldness of a verdict — higher = more permissive toward training. A replay that
+# moves the verdict UP this scale (safer→bolder) versus its baseline is unsafe.
+_VERDICT_BOLDNESS = {"NO_TRAIN": 0, "NOT_YET": 1, "MODIFY": 2, "GO": 3}
+
+
+def _run(evidence, *, model=None) -> dict:
+    """Re-run the Brain over evidence through the one orchestration path.
+    `evidence` is a bare profile, or a dict {profile, message, conversation,
+    physiology, model} for cascades that exercise S2-S5."""
+    if isinstance(evidence, dict) and ("profile" in evidence or "message" in evidence
+                                       or "conversation" in evidence or "physiology" in evidence):
+        return inspector.inspect(evidence.get("profile") or {},
+                                 message=evidence.get("message"),
+                                 conversation=evidence.get("conversation"),
+                                 physiology=evidence.get("physiology"),
+                                 model=evidence.get("model", model))
+    return inspector.inspect(evidence or {}, model=model)
 
 
 # ── Canonicalisation (deterministic core of a trace) ─────────────────────────
@@ -45,12 +67,20 @@ def canonicalize(trace: dict) -> dict:
 
 def deterministic_trace(evidence: dict, *, model: str | None = None) -> dict:
     """The stable trace: same evidence + same library + same code → equal output."""
-    return canonicalize(inspector.inspect(evidence, model=model))
+    return canonicalize(_run(evidence, model=model))
 
 
 # ── Trace accessors ──────────────────────────────────────────────────────────
 def _s1(trace: dict) -> dict:
     return ((trace or {}).get("stations") or {}).get("S1") or {}
+
+
+def _s2(trace: dict) -> dict:
+    return ((trace or {}).get("stations") or {}).get("S2") or {}
+
+
+def _cascade(trace: dict) -> dict:
+    return (trace or {}).get("cascade") or {}
 
 
 def _constraint_map(trace: dict) -> dict:
@@ -63,6 +93,22 @@ def _envelope(trace: dict) -> dict:
 
 def _detected(trace: dict) -> set:
     return set(_s1(trace).get("evidence_changed_state", {}).get("detected_conditions", []))
+
+
+def _red_flag_classes(trace: dict) -> set:
+    return {f.get("class_key") for f in _s2(trace).get("red_flags", [])}
+
+
+def _halt(trace: dict) -> bool:
+    return bool(_cascade(trace).get("halt") or _s2(trace).get("halt"))
+
+
+def _verdict(trace: dict) -> str | None:
+    return _cascade(trace).get("verdict")
+
+
+def _generates_training(trace: dict) -> bool:
+    return bool(_cascade(trace).get("generate_training"))
 
 
 # ── Deltas ───────────────────────────────────────────────────────────────────
@@ -133,13 +179,25 @@ def classify(baseline: dict, new: dict) -> str:
     if be.get("supported") and not ne.get("supported") and _constraint_map(new):
         unsafe = True                                              # support lost while constrained
 
+    # C3 — cascade-level safety drift (S2-S5).
+    if _halt(baseline) and not _halt(new):
+        unsafe = True                                              # a halt was dropped
+    if _red_flag_classes(baseline) - _red_flag_classes(new):
+        unsafe = True                                              # a red flag was lost
+    bv, nv = _verdict(baseline), _verdict(new)
+    if bv in _VERDICT_BOLDNESS and nv in _VERDICT_BOLDNESS and \
+            _VERDICT_BOLDNESS[nv] > _VERDICT_BOLDNESS[bv]:
+        unsafe = True                                              # verdict made bolder (toward GO)
+    if _generates_training(new) and not _generates_training(baseline):
+        unsafe = True                                              # generation newly enabled
+
     return REGRESSION if unsafe else EXPECTED_CHANGE
 
 
 # ── Replay ───────────────────────────────────────────────────────────────────
 def replay(evidence: dict, baseline_trace: dict, *, model: str | None = None) -> dict:
     """Re-run the Brain over `evidence` and compare to `baseline_trace`."""
-    new_trace = inspector.inspect(evidence, model=model)
+    new_trace = _run(evidence, model=model)
     return {
         "classification": classify(baseline_trace, new_trace),
         "first_divergence": first_divergence(baseline_trace, new_trace),
@@ -153,7 +211,7 @@ def replay(evidence: dict, baseline_trace: dict, *, model: str | None = None) ->
 
 def snapshot(cases: list, *, model: str | None = None) -> dict:
     """Baseline traces for a list of cases [{id, evidence}] → {id: trace}."""
-    return {c["id"]: inspector.inspect(c.get("evidence") or {}, model=model) for c in cases}
+    return {c["id"]: _run(c.get("evidence") or {}, model=model) for c in cases}
 
 
 def replay_corpus(cases: list, baselines: dict, *, model: str | None = None) -> dict:

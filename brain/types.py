@@ -27,6 +27,25 @@ class Intervention:                             # S5 Intervention Selector outpu
     rationale_key: str                          # coach-safe rationale key; never a diagnosis
 
 
+@dataclass
+class Decision:
+    """The single object the cascade produces; the ONLY thing Inspector, Replay,
+    and Regression consume. Carries the station outputs plus a deterministic,
+    trace-ready payload (`trace_core`) that the Inspector merely wraps."""
+    verdict: "Verdict"
+    intervention: Intervention
+    generate_training: bool
+    halt: bool
+    verdict_confidence: float
+    constraints: ConstraintSet
+    envelope: CapacityEnvelope
+    s2: "S2State"
+    need_vector: list
+    decision_id: str
+    model: str | None
+    trace_core: dict = field(default_factory=dict)
+
+
 class ConstraintTier(str, Enum):
     ABSOLUTE = "absolute"   # never program this movement
     RELATIVE = "relative"   # modify / avoid load / limit range
