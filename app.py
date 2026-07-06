@@ -35,6 +35,8 @@ import brain.config as brain_config             # M1: Brain shadow flags (defaul
 import brain.ledger as brain_ledger             # M1: shadow decision ledger
 import brain.inspector as brain_inspector       # M1/Commit3: Brain Inspector (observability)
 import brain.replay as brain_replay             # M1/Commit4: Replay & Regression Harness
+import brain.cascade as brain_cascade           # M3: the one orchestrator (Decision)
+import brain.enforcement as brain_enforcement   # M4: Safety-Front renderer
 import secrets as _secrets
 import uuid as _uuid
 from flask import g
@@ -1492,6 +1494,35 @@ def chat():
         persist_profile = profile if isinstance(profile, dict) else {}
         persist_conversation = history if isinstance(history, list) else []  # recent window (Addendum 02 A2-1)
 
+        # ── M4 · SAFETY-FRONT ENFORCEMENT (BRAIN_ENFORCE — OFF by default) ────
+        # When OFF this block is skipped entirely, so `messages` and the SSE stream
+        # are byte-identical to the legacy system. When ON, the shadow Decision is
+        # rendered by brain.enforcement (a pure organ): a red-flag halt / NOT_YET /
+        # NO_TRAIN steers the SAME generation call to route/decline instead of a
+        # workout (voice preserved), and GO/MODIFY inject S1 constraints. Failure-
+        # isolated: any error falls back to legacy generation. No organ/cascade edit.
+        enforce_event = None
+        if brain_config.brain_enforce():
+            try:
+                _phys = athlete_store.physiology(persist_uid) if persist_uid else None
+            except Exception:
+                _phys = None
+            try:
+                _decision = brain_cascade.decide(
+                    persist_profile, message=persist_user_msg,
+                    conversation=persist_conversation, physiology=_phys, model=model_to_use)
+                _directive = brain_enforcement.render(_decision)
+                enforce_event = _directive["decision_event"]
+                _add = _directive["system_prompt_addendum"]
+                if _add:
+                    if _directive["should_generate_workout"]:
+                        messages[0]["content"] = messages[0]["content"] + "\n\n" + _add   # constraints
+                    else:
+                        messages[0]["content"] = _add + "\n\n" + messages[0]["content"]   # safety override
+            except Exception as _ee:
+                print(f"[enforce] safety-front render failed: {_ee}")
+                enforce_event = None
+
         def _persist_reply(reply_text):
             """Store the exchange to the account so the coach remembers it across
             devices; save any nutrition plan to nutrition_history."""
@@ -1540,6 +1571,10 @@ def chat():
         def generate():
             full = []
             try:
+                if enforce_event is not None:
+                    # Backward-compatible leading event; unknown events are ignored by
+                    # the current frontend. Only emitted when BRAIN_ENFORCE is ON.
+                    yield sse({"decision": enforce_event})
                 stream = client.chat.completions.create(
                     model=model_to_use,
                     messages=messages,
