@@ -11,12 +11,20 @@ call, covering only the SAFETY FRONT (roadmap M4):
     the reason kindly and offer the S5 alternative.
   • GO / MODIFY                        → mode "constrain": a workout IS generated,
     with the S1 movement constraints + envelope injected into the prompt.
+  • cold-start (ADR-001)               → mode "cold_start": an IGNORANCE NOT_YET —
+    no halt, no red flags, no constraints, and no Athlete Model — yields a
+    CONSERVATIVE BEGINNER workout instead of a refusal. This is a POLICY exception,
+    gated so it can never override a safety decision (any halt / red flag /
+    constraint / physiological data disqualifies it). The Brain Decision is
+    unchanged and still logged truthfully as NOT_YET; only the enforcement response
+    differs, flagged `cold_start` on the decision event.
 
 This is a PURE function: it takes a Decision and returns a dict. It performs no
-I/O, reads no flags, and touches no organ — the caller (behind BRAIN_ENFORCE)
-decides whether to apply it. Non-diagnosis is structural: the directive carries
-routing INSTRUCTIONS and internal keys, never a clinical label or a message that
-names an unstated condition (Brain Architecture §6 / audit R7).
+I/O, reads no flags, and touches no organ (S1–S5, the cascade, replay, and the
+Event Ledger are untouched) — the caller (behind BRAIN_ENFORCE) decides whether to
+apply it. Non-diagnosis is structural: the directive carries routing INSTRUCTIONS
+and internal keys, never a clinical label or a message that names an unstated
+condition (Brain Architecture §6 / audit R7).
 """
 from brain.types import Verdict
 
@@ -44,6 +52,30 @@ _INTERVENTION_ALT = {
 
 _NO_DIAGNOSIS = (" Do NOT name or imply a medical condition, do NOT diagnose, and do NOT give "
                  "medication or treatment advice. Speak in APEX's voice.")
+
+# ADR-001 cold-start: a brand-new person with no data and no risk signals gets a
+# deliberately minimal, universally-safe beginner session — not a refusal.
+_COLD_START_ADDENDUM = (
+    "COLD START — this is a brand-new person with no history and no risk signals yet. "
+    "Generate ONE conservative BEGINNER session only: low intensity, mostly bodyweight or "
+    "light load, technique-first, controlled range of motion, a proper warm-up, and short "
+    "total volume. No maximal, heavy, or high-impact work. Add a plain line telling them to "
+    "stop and seek help if they feel chest pain, dizziness, or unusual shortness of breath. "
+    "Invite them to share their goals and any health conditions so the next session can be "
+    "tailored." + _NO_DIAGNOSIS)
+
+
+def _is_cold_start(decision) -> bool:
+    """ADR-001 gate: an IGNORANCE NOT_YET with ZERO risk signals and no Athlete Model.
+    Every clause is required so the exception can NEVER override a safety decision —
+    a halt, ANY red flag, ANY constraint, or ANY physiological data (readiness_conf
+    > 0) disqualifies it. Reads only the Decision; changes nothing."""
+    s2 = decision.s2
+    return (decision.verdict is Verdict.NOT_YET
+            and not decision.halt
+            and not (getattr(s2, "red_flags", None) or [])
+            and decision.constraints.is_empty()
+            and float(getattr(s2, "readiness_conf", 0.0)) <= 1e-9)
 
 
 def _strongest_flag(decision):
@@ -78,6 +110,13 @@ def render(decision) -> dict:
         mode, should_generate = "route", False
         addendum = "SAFETY OVERRIDE — do not generate a workout. " + directive + _NO_DIAGNOSIS
 
+    elif _is_cold_start(decision):
+        # ADR-001: ignorance NOT_YET with no risk signals + no Athlete Model.
+        # Conservative beginner starter instead of a refusal. Checked AFTER the halt
+        # branch and gated on no flags / no constraints, so it never masks safety.
+        mode, should_generate = "cold_start", True
+        addendum = _COLD_START_ADDENDUM
+
     elif verdict in (Verdict.NOT_YET, Verdict.NO_TRAIN):
         mode, should_generate = ("refuse" if verdict is Verdict.NO_TRAIN else "defer"), False
         stem = ("Training is not the right answer for this request right now"
@@ -95,11 +134,12 @@ def render(decision) -> dict:
         "mode": mode,
         "should_generate_workout": should_generate,
         "decision_event": {
-            "verdict": verdict.value,
+            "verdict": verdict.value,                 # the TRUE Brain verdict (unchanged, e.g. NOT_YET)
             "urgency": urgency,
             "route": route,
             "intervention": decision.intervention.kind,
             "generate": should_generate,
+            "cold_start": mode == "cold_start",        # policy exception marker (audit-honest)
         },
         "system_prompt_addendum": addendum,
     }
