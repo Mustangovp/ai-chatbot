@@ -37,8 +37,8 @@ class Decision:
     generate_training: bool
     halt: bool
     verdict_confidence: float
-    constraints: ConstraintSet
-    envelope: CapacityEnvelope
+    constraints: "ConstraintSet"                # forward ref (defined below) — quoted so the
+    envelope: "CapacityEnvelope"                # annotation is not evaluated at class-def time
     s2: "S2State"
     need_vector: list
     decision_id: str
