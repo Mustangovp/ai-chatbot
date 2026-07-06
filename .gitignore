@@ -44,6 +44,29 @@ Thumbs.db
 local_test*.html
 test_*.py
 
+# ...EXCEPT the Brain test suite, which is a committed CI gate (the Brain
+# Acceptance Gate + Safety-Front guards must run in CI, not just locally).
+# General app tests (test_app_boots / test_db_migrations / test_wiring) stay local.
+!tests/conftest.py
+!tests/test_s1_constraints.py
+!tests/test_s2_sentinel.py
+!tests/test_s3_needs.py
+!tests/test_s4_gate.py
+!tests/test_s5_selector.py
+!tests/test_cascade.py
+!tests/test_inspector.py
+!tests/test_replay.py
+!tests/test_ledger.py
+!tests/test_shadow_s1.py
+!tests/test_enforcement.py
+!tests/test_chat_enforcement.py
+!tests/test_corpus_shadow.py
+!tests/test_corpus_acceptance.py
+!tests/test_debug_endpoint.py
+!tests/test_athlete_store.py
+!tests/test_athlete_model_deltas.py
+!tests/test_db_athlete_models.py
+
 # Anthropic / Claude artifacts
 /mnt/user-data/
 
