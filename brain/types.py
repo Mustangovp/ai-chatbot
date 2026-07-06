@@ -12,6 +12,13 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 
+class Verdict(str, Enum):                       # S4 Appropriateness Gate output
+    GO = "GO"                                   # train within S1's envelope
+    MODIFY = "MODIFY"                           # train only inside a tightened envelope
+    NOT_YET = "NOT_YET"                          # precondition unmet today (reversible)
+    NO_TRAIN = "NO_TRAIN"                        # training is the wrong answer (categorical)
+
+
 class ConstraintTier(str, Enum):
     ABSOLUTE = "absolute"   # never program this movement
     RELATIVE = "relative"   # modify / avoid load / limit range
