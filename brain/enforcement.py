@@ -12,8 +12,8 @@ call, covering only the SAFETY FRONT (roadmap M4):
   • GO / MODIFY                        → mode "constrain": a workout IS generated,
     with the S1 movement constraints + envelope injected into the prompt.
   • cold-start (ADR-001)               → mode "cold_start": an IGNORANCE NOT_YET —
-    no halt, no red flags, no constraints, and no Athlete Model — yields a
-    CONSERVATIVE BEGINNER workout instead of a refusal. This is a POLICY exception,
+    no halt, no red flags, no constraints, and no confident read on the person's
+    state — yields a CONSERVATIVE BEGINNER workout instead of a refusal. POLICY,
     gated so it can never override a safety decision (any halt / red flag /
     constraint / physiological data disqualifies it). The Brain Decision is
     unchanged and still logged truthfully as NOT_YET; only the enforcement response
@@ -66,10 +66,26 @@ _COLD_START_ADDENDUM = (
 
 
 def _is_cold_start(decision) -> bool:
-    """ADR-001 gate: an IGNORANCE NOT_YET with ZERO risk signals and no Athlete Model.
-    Every clause is required so the exception can NEVER override a safety decision —
-    a halt, ANY red flag, ANY constraint, or ANY physiological data (readiness_conf
-    > 0) disqualifies it. Reads only the Decision; changes nothing."""
+    """ADR-001 gate: an IGNORANCE NOT_YET with ZERO risk signals and no confident
+    read on the person's current state.
+
+    SAFETY rests on the first three clauses ONLY — a halt, ANY red flag, or ANY
+    constraint disqualifies cold-start. None of those depends on a confidence value,
+    so the safety guarantee cannot be weakened by how confidence is computed.
+
+    The last clause is NOT a proxy for "an Athlete Model row exists". It reads
+    `S2State.readiness_conf` directly — the *confidence in the readiness estimate*,
+    which `s2_sentinel._readiness` sets to exactly 0.0 whenever the Brain has no
+    confident physiological read (no physiology, OR physiology carrying no
+    confidence). That "0 ⇔ no confident state read" is the field's GUARANTEED
+    semantic (its docstring), invariant across revisions unless readiness_conf is
+    redefined — at which point this call site is the intended single point to
+    revisit. Its role is only to avoid overriding a *confident* state-based deferral
+    (e.g. a genuinely-depleted, known user). Even if it ever admitted a known user,
+    the result is still safe by construction: someone with no halt, no red flag and
+    no constraint receives only a conservative beginner session.
+
+    Reads only the Decision; changes nothing."""
     s2 = decision.s2
     return (decision.verdict is Verdict.NOT_YET
             and not decision.halt
