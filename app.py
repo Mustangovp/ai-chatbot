@@ -1490,6 +1490,7 @@ def chat():
         persist_user_msg = user_message
         persist_lang = lang
         persist_profile = profile if isinstance(profile, dict) else {}
+        persist_conversation = history if isinstance(history, list) else []  # recent window (Addendum 02 A2-1)
 
         def _persist_reply(reply_text):
             """Store the exchange to the account so the coach remembers it across
@@ -1509,24 +1510,32 @@ def chat():
             # M0: exchange evidence — account-only (persist_uid is non-None past the guard above).
             athlete_store.observe(persist_uid, "exchange", {})
 
-        def _shadow_s1_log():
-            """M1 SHADOW: compute S1 (ConstraintSet + CapacityEnvelope) and write a
+        def _shadow_log():
+            """SHADOW (M1/M2): compute the cascade so far (S1 + S2) and write a
             fully-traceable record to the decision ledger. Gated by BRAIN_SHADOW
             (OFF by default) and failure-isolated — zero effect on prompt, generation,
-            response, or the user. Reads the profile only; writes only brain_decisions.
-            No enforcement, no routing, no S2–S6."""
+            response, or the user. Reads only; writes only brain_decisions. No
+            enforcement, no routing, no refusals."""
             if not brain_config.brain_shadow():
                 return
             try:
+                phys = None
+                if persist_uid:
+                    try:
+                        phys = athlete_store.physiology(persist_uid)
+                    except Exception:
+                        phys = None
                 did = str(_uuid.uuid4())
-                trace = brain_inspector.inspect(persist_profile, model=model_to_use, decision_id=did)
+                trace = brain_inspector.inspect(persist_profile, message=persist_user_msg,
+                                                conversation=persist_conversation, physiology=phys,
+                                                model=model_to_use, decision_id=did)
                 mh = (hashlib.sha256(persist_user_msg.encode("utf-8")).hexdigest()
                       if persist_user_msg else None)
                 brain_ledger.log_decision(persist_uid, verdict=None, intervention=None,
                                           urgency=None, enforced=False, out_of_mandate=False,
                                           trace=trace, message_hash=mh, decision_id=did)
             except Exception as _se:
-                print(f"[shadow] S1 log failed: {_se}")
+                print(f"[shadow] cascade log failed: {_se}")
 
         def generate():
             full = []
@@ -1546,7 +1555,7 @@ def chat():
                         yield sse({"t": delta})
                 _bump_plans_today()  # honest landing counter: +1 real AI plan
                 _persist_reply("".join(full))
-                _shadow_s1_log()     # M1 SHADOW (BRAIN_SHADOW off by default; no-op in prod)
+                _shadow_log()        # SHADOW (BRAIN_SHADOW off by default; no-op in prod)
                 yield sse({"done": True})
             except Exception as openai_error:
                 print(f"[chat] OpenAI error: {openai_error}")
@@ -1554,7 +1563,7 @@ def chat():
                     # Потребителят вече получи почти всичко — завършваме чисто
                     _bump_plans_today()
                     _persist_reply("".join(full))
-                    _shadow_s1_log()  # M1 SHADOW (BRAIN_SHADOW off by default; no-op in prod)
+                    _shadow_log()     # SHADOW (BRAIN_SHADOW off by default; no-op in prod)
                     yield sse({"done": True})
                 else:
                     # Нищо не е стигнало → връщаме съобщението в лимита му (DB refund)
@@ -2229,7 +2238,10 @@ def debug_brain_replay():
     profile = data.get("profile") or {}
     if not isinstance(profile, dict):
         return jsonify({"error": "invalid_profile"}), 400
-    return jsonify(brain_inspector.inspect(profile, model=data.get("model")))
+    return jsonify(brain_inspector.inspect(profile, message=data.get("message"),
+                                           conversation=data.get("conversation"),
+                                           physiology=data.get("physiology"),
+                                           model=data.get("model")))
 
 @app.route("/debug/brain/replay-compare", methods=["POST"])
 def debug_brain_replay_compare():

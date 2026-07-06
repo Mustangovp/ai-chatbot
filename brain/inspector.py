@@ -21,7 +21,7 @@ import json
 import hashlib
 
 import athlete_model as am
-from brain import s1_constraints, config as brain_config, constraint_library
+from brain import s1_constraints, s2_sentinel, config as brain_config, constraint_library
 
 TRACE_SCHEMA = "brain-trace-v2"
 _ALL_STATIONS = ("S1", "S2", "S3", "S4", "S5", "S6")
@@ -45,10 +45,12 @@ def _fingerprint(profile: dict) -> str:
     return _sha(json.dumps(relevant, sort_keys=True, ensure_ascii=False))
 
 
-def inspect(profile: dict, *, model: str | None = None, decision_id: str | None = None) -> dict:
-    """Run the (currently S1-only) cascade over `profile` and return a full,
-    replayable trace. Pure and side-effect free. `decision_id` is a stable id
-    (generated if not supplied)."""
+def inspect(profile: dict, *, message: str | None = None, conversation: list | None = None,
+            physiology: dict | None = None, model: str | None = None,
+            decision_id: str | None = None) -> dict:
+    """Run the (S1 + S2) cascade over the evidence and return a full, replayable
+    trace. Pure and side-effect free. `decision_id` is a stable id (generated if
+    not supplied). `message`/`conversation`/`physiology` feed S2."""
     profile = profile or {}
     decision_id = str(decision_id) if decision_id else str(uuid.uuid4())
     hn = str(profile.get("healthNotes") or profile.get("injuries") or "")
@@ -142,9 +144,28 @@ def inspect(profile: dict, *, model: str | None = None, decision_id: str | None 
     trace["cascade"]["stations_executed"].append("S1")
     trace["cascade"]["confidence_evolution"].append({"station": "S1", "confidence": env.confidence})
 
+    # ── Station S2 · Readiness + Red-Flag Sentinel ────────────────────────────
+    t1 = time.perf_counter()
+    s2 = s2_sentinel.assess(message=message, conversation=conversation,
+                            profile=profile, physiology=physiology)
+    dur2_ms = round((time.perf_counter() - t1) * 1000, 3)
+    trace["stations"]["S2"] = {
+        "executed": True,
+        "duration_ms": dur2_ms,
+        "readiness": s2.readiness,
+        "readiness_confidence": s2.readiness_conf,
+        "red_flags": [{"class_key": f.class_key, "urgency": f.urgency.value,
+                       "route_target": f.route_target, "message_key": f.message_key,
+                       "source": f.source} for f in s2.red_flags],
+        "halt": s2.halt,
+    }
+    trace["cascade"]["stations_executed"].append("S2")
+    trace["cascade"]["confidence_evolution"].append({"station": "S2", "confidence": s2.readiness_conf})
+    trace["cascade"]["halt"] = s2.halt        # surfaced at cascade level for querying
+
     # Stations not yet implemented are recorded explicitly as skipped.
-    for s in _ALL_STATIONS[1:]:
+    for s in _ALL_STATIONS[2:]:
         trace["cascade"]["stations_skipped"].append({"station": s, "reason": "not_yet_implemented"})
 
-    trace["cascade"]["total_ms"] = round(dur_ms, 3)
+    trace["cascade"]["total_ms"] = round(dur_ms + dur2_ms, 3)
     return trace
