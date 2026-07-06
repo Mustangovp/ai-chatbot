@@ -60,3 +60,33 @@ class CapacityEnvelope:
     volume_ceiling: float         # 0..1
     supported: bool               # balance-supported required
     confidence: float             # 0..1 — how much the profile actually specified
+
+
+# ── S2 · Readiness + Red-Flag Sentinel ───────────────────────────────────────
+class Urgency(str, Enum):                       # verification GAP-α (Addendum 01)
+    EMERGENCY = "EMERGENCY_now"                 # stop now; emergency services / protocol
+    URGENT = "URGENT_soon"                      # halt exertion; see a clinician promptly
+    ROUTINE = "ROUTINE_mention"                 # soft — keep within limits; worth raising
+
+
+@dataclass(frozen=True)
+class RedFlag:
+    class_key: str                # INTERNAL routing key — never rendered to a user (R7/§6)
+    urgency: Urgency
+    route_target: str             # emergency_services | stop_and_treat | crisis_support | clinician_prompt | gp_soft
+    message_key: str              # curated, non-diagnostic template key — never a clinical label
+    source: str = "message"       # where it was detected: "message" | "prior_turn" (Addendum 02)
+
+
+@dataclass
+class S2State:
+    readiness: float              # 0..1 — today's capacity within the envelope
+    readiness_conf: float         # 0..1
+    red_flags: list = field(default_factory=list)   # list[RedFlag]
+    halt: bool = False            # structural halt — cascade stops at S2 (Addendum 02 A2-0)
+
+    def by_urgency(self, u: "Urgency") -> list:
+        return [f for f in self.red_flags if f.urgency == u]
+
+    def emergencies(self) -> list:
+        return self.by_urgency(Urgency.EMERGENCY)
