@@ -13,3 +13,9 @@ def audit_enabled() -> bool:
     """HSE_AUDIT — BUILD-002 Observatory capture (extract + ingest + record the full
     transition for review). Default OFF. Implies ingestion when on."""
     return os.getenv("HSE_AUDIT", "").strip().lower() in _TRUE
+
+
+def trajectory_enabled() -> bool:
+    """HSE_TRAJECTORY — BUILD-004 trend analysis over Human State history. Default OFF.
+    Reads the existing human_state_events history; computes nothing new when off."""
+    return os.getenv("HSE_TRAJECTORY", "").strip().lower() in _TRUE

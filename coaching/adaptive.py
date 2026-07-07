@@ -13,7 +13,7 @@ Reads Human State (persistent view + the current message's signals). Never reads
 touches the Brain.
 """
 import human_state
-from human_state import extractor
+from human_state import extractor, trajectory
 from human_state.schema import now_utc
 
 # The clamp is stated to the model AND enforced structurally (only softening rules fire,
@@ -124,6 +124,25 @@ def adapt(subject, message, decision, directive, profile=None, now=None):
         if _val(state, "equipment"):
             A("equipment", "stated equipment", "lifestyle-coaching", "APX-PHI-023",
               "Use only the equipment they have available.")
+
+    # ── BUILD-004 · trajectory (trend-aware) adaptations — caution/support only ──
+    if trajectory.enabled():
+        traj = trajectory.compute(subject, now=at)
+        if traj.get("ok") and traj.get("sufficient"):
+            if traj["recovery_direction"] == "declining":
+                A("recovery_trend", "recovery trending down over recent history", "recovery-gate",
+                  "APX-REC-010 recovery is the limiter",
+                  "Recovery has been sliding lately — bias conservative today.", "reassuring")
+            if traj["adherence_direction"] == "declining" or traj["risk"]["level"] == "elevated":
+                A("adherence_trend", f"adherence/dropout risk trend ({traj['risk']['level']})",
+                  "relapse-prevention", "APX-PSY-002 a lapse is not a relapse",
+                  "Consistency has wobbled — make today small and winnable; warm, no pressure.", "supportive")
+            if traj["confidence_direction"] == "improving" or traj["trajectory"] == "improving":
+                A("momentum", "positive trajectory / rising confidence", "identity-coaching",
+                  "APX-PSY identity", "Momentum is building — reinforce their identity as someone who trains.")
+            if any(pk.get("volatility", 0) > 0.4 for pk in traj["per_key"].values()):
+                A("volatility", "state has been erratic recently", "consistency-coaching",
+                  "APX-PSY-002", "Their state has been up and down — keep it simple and stable today.")
 
     goal = (profile or {}).get("goal")
     if goal:

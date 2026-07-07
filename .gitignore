@@ -79,3 +79,5 @@ test_*.py
 
 # local dev database (prod uses Postgres via DATABASE_URL)
 data/*.db
+
+!tests/test_trajectory.py
