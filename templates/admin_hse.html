@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>APEX · Human State Observatory</title>
+  <style>
+    :root{--bg:#0a0e14;--card:#121824;--line:#1e2836;--txt:#e6edf3;--mut:#8b98a9;
+          --ok:#3fb950;--warn:#d29922;--bad:#f85149;--acc:#58a6ff;--ins:#7ee787}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--txt);font:13px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;padding:22px}
+    h1{font-size:19px;margin:0 0 2px}
+    .sub{color:var(--mut);font-size:12px;margin-bottom:18px}
+    h2{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.6px;margin:20px 0 10px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:13px}
+    .big{font-size:24px;font-weight:700}
+    .unit{font-size:12px;color:var(--mut)}
+    table{width:100%;border-collapse:collapse;font-size:12px}
+    th,td{text-align:left;padding:5px 7px;border-bottom:1px solid var(--line);vertical-align:top}
+    th{color:var(--mut);font-weight:600}
+    code{background:#0d1420;padding:1px 5px;border-radius:4px;color:var(--acc)}
+    .msg{color:var(--txt);max-width:340px}
+    .act-insert{color:var(--ins)} .act-replace{color:var(--acc)} .act-keep{color:var(--mut)}
+    .pill{display:inline-block;padding:1px 6px;border-radius:10px;font-size:10.5px;border:1px solid var(--line)}
+    .rev button,.rev input{font:11px inherit}
+    .rev button{background:#0d1420;color:var(--txt);border:1px solid var(--line);border-radius:5px;padding:2px 6px;cursor:pointer;margin:1px}
+    .b-ok{border-color:var(--ok)} .b-bad{border-color:var(--bad)} .b-part{border-color:var(--warn)}
+    .scroll{overflow-x:auto}
+    a{color:var(--acc)}
+  </style>
+</head>
+<body>
+  <h1>APEX · Human State Observatory</h1>
+  <div class="sub">Internal extraction validation · every transition is traceable · no hidden inference</div>
+
+  {% if not d.ok %}
+    <div class="card" style="border-color:var(--bad)"><b>Unavailable:</b> {{ d.error }}</div>
+  {% else %}
+
+  <!-- ENGINEERING METRICS -->
+  <h2>Engineering metrics</h2>
+  {% set m = d.metrics %}
+  <div class="grid">
+    <div class="card"><h2>Events</h2><div class="big">{{ d.total_events }}</div></div>
+    <div class="card"><h2>Precision</h2><div class="big">{{ '%.2f'|format(m.precision) if m.precision is not none else '—' }}</div></div>
+    <div class="card"><h2>Recall</h2><div class="big">{{ '%.2f'|format(m.recall) if m.recall is not none else '—' }}</div></div>
+    <div class="card"><h2>Agreement</h2><div class="big">{{ '%.2f'|format(m.agreement_rate) if m.agreement_rate is not none else '—' }}</div></div>
+    <div class="card"><h2>Avg latency</h2><div class="big">{{ '%.1f'|format(m.avg_latency_ms) if m.avg_latency_ms is not none else '—' }}<span class="unit">ms</span></div></div>
+    <div class="card"><h2>Reviews</h2><div class="big">{{ m.reviews }}</div><div class="unit">TP {{m.tp}} · FP {{m.fp}} · FN {{m.fn}} · ~{{m.partial}}</div></div>
+  </div>
+
+  <!-- CONFIDENCE CALIBRATION -->
+  <h2>Confidence calibration</h2>
+  <div class="card scroll"><table>
+    <tr><th>Confidence bucket</th><th>Reviewed</th><th>Accuracy</th></tr>
+    {% for b, cal in m.calibration.items() %}
+      <tr><td>{{ b }}</td><td>{{ cal.reviewed }}</td><td>{{ '%.0f%%'|format(cal.accuracy*100) if cal.accuracy is not none else '—' }}</td></tr>
+    {% else %}<tr><td colspan="3" class="unit">No reviewed extractions yet.</td></tr>{% endfor %}
+  </table></div>
+
+  <!-- ANALYTICS -->
+  <h2>Analytics</h2>
+  {% set a = d.analytics %}
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(230px,1fr))">
+    <div class="card"><h2>Most uncertain (avg conf)</h2>
+      {% for k,v in a.most_uncertain %}<div>{{k}} <span class="unit">{{'%.2f'|format(v)}}</span></div>{% else %}<span class="unit">—</span>{% endfor %}</div>
+    <div class="card"><h2>Top missed</h2>
+      {% for k,n in a.top_missed %}<div>{{k}} <span class="unit">×{{n}}</span></div>{% else %}<span class="unit">none</span>{% endfor %}</div>
+    <div class="card"><h2>Most corrected</h2>
+      {% for k,n in a.most_corrected %}<div>{{k}} <span class="unit">×{{n}}</span></div>{% else %}<span class="unit">none</span>{% endfor %}</div>
+    <div class="card"><h2>Detected (volume)</h2>
+      {% for k,n in a.detected[:10] %}<div>{{k}} <span class="unit">×{{n}}</span></div>{% else %}<span class="unit">—</span>{% endfor %}</div>
+  </div>
+
+  <!-- TIMELINE / REPLAY -->
+  <h2>Timeline / Replay {% if d.timeline_subject %}— <code>{{ d.timeline_subject }}</code>{% endif %}</h2>
+  <div class="card">
+    <form method="get" action="/admin/hse" style="margin-bottom:8px">
+      <input type="hidden" name="key" value="{{ key }}">
+      <input name="subject" value="{{ subject }}" placeholder="subject e.g. device:abc"
+             style="background:#0d1420;color:var(--txt);border:1px solid var(--line);border-radius:5px;padding:4px 8px">
+      <button style="background:#0d1420;color:var(--txt);border:1px solid var(--line);border-radius:5px;padding:4px 10px;cursor:pointer">Replay subject →</button>
+    </form>
+    {% if d.timeline %}
+      <div class="scroll"><table>
+        <tr><th>step</th><th>message</th><th>state update</th></tr>
+        {% for e in d.timeline %}
+          <tr><td>{{ loop.index }}</td><td class="msg">{{ e.message }}</td>
+              <td>{% for tr in e.transitions %}<div><code>{{tr.key}}</code>={{tr.extracted_value}}
+                  <span class="act-{{tr.action}}">[{{tr.action}}]</span></div>{% endfor %}</td></tr>
+        {% endfor %}
+      </table></div>
+    {% else %}<span class="unit">Enter a subject to replay its state evolution step by step.</span>{% endif %}
+  </div>
+
+  <!-- RECENT EXTRACTIONS + REVIEWER MODE -->
+  <h2>Recent extractions — reviewer mode</h2>
+  <div class="card scroll"><table>
+    <tr><th>message</th><th>entity → confidence · ttl</th><th>prev → updated (conflict)</th><th>final</th><th>review</th></tr>
+    {% for e in d.events %}
+      {% if e.transitions %}{% for tr in e.transitions %}
+      <tr>
+        <td class="msg">{% if loop.first %}{{ e.message }}{% endif %}</td>
+        <td><code>{{ tr.key }}</code> = {{ tr.extracted_value }}<br>
+            <span class="unit">conf {{ '%.2f'|format(tr.confidence) }} · ttl {{ (tr.ttl_seconds//3600) }}h</span></td>
+        <td>{{ tr.prev_value if tr.prev_value is not none else '∅' }}
+            <span class="unit">(eff {{ '%.2f'|format(tr.prev_effective) }})</span> →
+            <span class="act-{{tr.action}}">{{ tr.action }}</span></td>
+        <td>{{ tr.final_value }}</td>
+        <td class="rev"><form method="post" action="/admin/hse/review" style="display:inline">
+            <input type="hidden" name="key" value="{{ key }}">
+            <input type="hidden" name="event_id" value="{{ e.id }}">
+            <input type="hidden" name="entity" value="{{ tr.key }}">
+            <button class="b-ok" name="verdict" value="correct">✓</button>
+            <button class="b-part" name="verdict" value="partial">~</button>
+            <button class="b-bad" name="verdict" value="incorrect">✗</button>
+            <button class="b-bad" name="verdict" value="false_extraction">FP</button>
+          </form></td>
+      </tr>
+      {% endfor %}{% else %}
+      <tr><td class="msg">{{ e.message }}</td><td colspan="3" class="unit">no entities extracted</td>
+          <td class="rev"><form method="post" action="/admin/hse/review" style="display:inline">
+            <input type="hidden" name="key" value="{{ key }}"><input type="hidden" name="event_id" value="{{ e.id }}">
+            <input name="entity" placeholder="missed key" style="width:80px;background:#0d1420;color:var(--txt);border:1px solid var(--line);border-radius:4px">
+            <button class="b-bad" name="verdict" value="missed">missed</button></form></td></tr>
+      {% endif %}
+    {% else %}<tr><td colspan="5" class="unit">No extraction events yet. Enable HSE_AUDIT and send messages.</td></tr>{% endfor %}
+  </table></div>
+
+  {% endif %}
+</body>
+</html>

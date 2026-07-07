@@ -39,6 +39,7 @@ import brain.cascade as brain_cascade           # M3: the one orchestrator (Deci
 import brain.enforcement as brain_enforcement   # M4: Safety-Front renderer
 import brain_analytics                          # M5: Brain Observatory (analytics only)
 import human_state                              # BUILD-001: Human State ingestion (flag-gated)
+import human_state.observatory as human_state_observatory  # BUILD-002: HSE Observatory (audit)
 import secrets as _secrets
 import uuid as _uuid
 from flask import g
@@ -1588,9 +1589,11 @@ def chat():
             # Flag-gated (HSE_INGEST, default OFF) + failure-isolated. Writes only the
             # human_state store; NEVER touches the Brain, the prompt, or the reply.
             try:
-                if human_state.enabled():
-                    human_state.ingest(":".join(persist_analytics_subject), persist_user_msg,
-                                       source="message")
+                _hs_subj = ":".join(persist_analytics_subject)
+                if human_state_observatory.enabled():      # BUILD-002: capture full transition
+                    human_state_observatory.capture(_hs_subj, persist_user_msg)
+                elif human_state.enabled():
+                    human_state.ingest(_hs_subj, persist_user_msg, source="message")
             except Exception as _he:
                 print(f"[hse] ingest failed: {_he}")
 
@@ -2346,6 +2349,32 @@ def admin_brain():
     if not token or request.args.get("key", "") != token:
         return jsonify({"error": "not_found"}), 404
     return render_template("admin_brain.html", d=brain_analytics.observatory(), key=token)
+
+
+# ── BUILD-002 Human State Observatory dashboard (admin-gated, internal) ──────
+@app.route("/admin/hse")
+def admin_hse():
+    token = os.getenv("ADMIN_TOKEN", "")
+    if not token or request.args.get("key", "") != token:
+        return jsonify({"error": "not_found"}), 404
+    subject = request.args.get("subject") or None
+    return render_template("admin_hse.html",
+                           d=human_state_observatory.report(subject=subject),
+                           key=token, subject=subject or "")
+
+
+@app.route("/admin/hse/review", methods=["POST"])
+def admin_hse_review():
+    token = os.getenv("ADMIN_TOKEN", "")
+    if not token or request.values.get("key", "") != token:
+        return jsonify({"error": "not_found"}), 404
+    try:
+        store.hse_add_review(request.values.get("event_id"), request.values.get("entity", ""),
+                             request.values.get("verdict", ""), request.values.get("note"),
+                             reviewer="admin")
+    except Exception as e:
+        print(f"[hse-obs] review failed: {e}")
+    return redirect(f"/admin/hse?key={token}")
 
 
 @app.route('/robots.txt')

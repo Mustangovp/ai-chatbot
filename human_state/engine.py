@@ -44,23 +44,36 @@ def decide(stored, reading, now):
 
 
 def apply(subject, readings, now=None):
-    """Apply readings for a subject. Returns a summary of what changed. Failure-isolated
+    """Apply readings for a subject. Returns {applied, kept, transitions}. The
+    `transitions` list is a full, per-reading audit (prev → action → final) for the
+    Observatory — additive; it does NOT change the update behavior. Failure-isolated
     per reading so one bad write can't lose the rest."""
     at = now or now_utc()
-    applied, kept = [], []
+    applied, kept, transitions = [], [], []
     for r in readings:
         try:
             # preferences are multi-valued; key them by their note so likes/dislikes coexist
             skey = f"preference:{r.note}" if r.key == "preference" else r.key
             stored = store.hs_get(subject, skey)
+            prev_eff = effective_confidence(stored, at) if stored else 0.0
             action = decide(stored, r, at)
             if action in ("insert", "replace"):
                 store.hs_upsert(subject, skey, value=r.value, confidence=r.confidence,
                                 source=r.source, observed_at=r.observed_at,
                                 ttl_seconds=r.ttl_seconds, note=r.note)
                 applied.append(skey)
+                final = r.value
             else:
                 kept.append(skey)
+                final = stored["value"] if stored else None
+            transitions.append({
+                "key": skey, "extracted_value": r.value, "confidence": r.confidence,
+                "ttl_seconds": r.ttl_seconds, "source": r.source,
+                "prev_value": stored["value"] if stored else None,
+                "prev_confidence": (stored.get("confidence") if stored else None),
+                "prev_effective": round(prev_eff, 3),
+                "action": action, "final_value": final,
+            })
         except Exception as e:
             print(f"[hse] apply failed for {getattr(r, 'key', '?')}: {e}")
-    return {"applied": applied, "kept": kept}
+    return {"applied": applied, "kept": kept, "transitions": transitions}

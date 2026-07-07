@@ -65,6 +65,7 @@ test_*.py
 !tests/test_recommend.py
 !tests/test_human_state.py
 !tests/test_human_state_replay.py
+!tests/test_hse_observatory.py
 !tests/test_corpus_shadow.py
 !tests/test_corpus_acceptance.py
 !tests/test_debug_endpoint.py

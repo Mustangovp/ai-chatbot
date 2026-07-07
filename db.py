@@ -256,6 +256,29 @@ human_state = Table("human_state", metadata,
     Index("ix_human_state_subject", "subject"),
 )
 
+# BUILD-002 Human State Observatory — extraction audit log + reviewer marks.
+# Internal engineering validation only; admin-gated. Additive.
+human_state_events = Table("human_state_events", metadata,
+    _uuid_col(),
+    Column("subject", String(64), nullable=False),
+    Column("message", String(4000)),                    # raw message, for reviewer inspection (admin-only)
+    Column("transitions", JSON),                        # [{key, extracted_value, confidence, ttl, prev_*, action, final_value}]
+    Column("latency_ms", Float),
+    Column("created_at", DateTime(timezone=True), server_default=func.now()),
+    Index("ix_hse_events_created", "created_at"),
+    Index("ix_hse_events_subject", "subject"),
+)
+human_state_reviews = Table("human_state_reviews", metadata,
+    _uuid_col(),
+    Column("event_id", Uuid(as_uuid=True)),             # references human_state_events.id
+    Column("key", String(48)),                          # entity reviewed, or a missed-entity key
+    Column("verdict", String(24)),                      # correct|incorrect|partial|missed|false_extraction
+    Column("note", String(240)),
+    Column("reviewer", String(48)),
+    Column("created_at", DateTime(timezone=True), server_default=func.now()),
+    Index("ix_hse_reviews_event", "event_id"),
+)
+
 schema_version = Table("schema_version", metadata,
     Column("version", Integer, primary_key=True),
     Column("applied_at", DateTime(timezone=True), server_default=func.now()),
@@ -273,6 +296,8 @@ _MIGRATIONS = [
     (5, lambda c: None),  # M6: user_preferences table (created by create_all)
     (6, lambda c: None),  # M6: recommendation_history table (created by create_all)
     (7, lambda c: None),  # BUILD-001: human_state table (created by create_all)
+    (8, lambda c: None),  # BUILD-002: human_state_events table (created by create_all)
+    (9, lambda c: None),  # BUILD-002: human_state_reviews table (created by create_all)
 ]
 
 def run_migrations():
@@ -805,3 +830,41 @@ def hs_upsert(subject, key, value, confidence, source, observed_at, ttl_seconds,
             c.execute(update(t).where(t.c.subject == subject).where(t.c.key == key).values(**vals))
         else:
             c.execute(insert(t).values(id=uuid.uuid4(), subject=subject, key=key, **vals))
+
+
+# ── BUILD-002 Human State Observatory — audit log + reviews ──────────────────
+def hse_log_event(subject, message, transitions, latency_ms):
+    eid = uuid.uuid4()
+    with engine.begin() as c:
+        c.execute(insert(human_state_events).values(
+            id=eid, subject=subject, message=(message or "")[:4000],
+            transitions=transitions, latency_ms=float(latency_ms) if latency_ms is not None else None))
+    return str(eid)
+
+
+def hse_recent_events(limit=50, subject=None):
+    t = human_state_events
+    q = select(t).order_by(t.c.created_at.desc()).limit(limit)
+    if subject:
+        q = select(t).where(t.c.subject == subject).order_by(t.c.created_at.asc()).limit(limit)
+    with engine.begin() as c:
+        return [_serial(dict(r)) for r in c.execute(q).mappings().all()]
+
+
+def hse_add_review(event_id, key, verdict, note=None, reviewer=None):
+    with engine.begin() as c:
+        c.execute(insert(human_state_reviews).values(
+            id=uuid.uuid4(), event_id=_as_uuid(event_id) if event_id else None,
+            key=key, verdict=verdict, note=(note or "")[:240], reviewer=(reviewer or "admin")[:48]))
+
+
+def hse_all_reviews(limit=5000):
+    t = human_state_reviews
+    with engine.begin() as c:
+        return [_serial(dict(r)) for r in
+                c.execute(select(t).order_by(t.c.created_at.desc()).limit(limit)).mappings().all()]
+
+
+def hse_event_count():
+    with engine.begin() as c:
+        return c.execute(select(func.count()).select_from(human_state_events)).scalar() or 0
