@@ -37,6 +37,7 @@ import brain.inspector as brain_inspector       # M1/Commit3: Brain Inspector (o
 import brain.replay as brain_replay             # M1/Commit4: Replay & Regression Harness
 import brain.cascade as brain_cascade           # M3: the one orchestrator (Decision)
 import brain.enforcement as brain_enforcement   # M4: Safety-Front renderer
+import brain_analytics                          # M5: Brain Observatory (analytics only)
 import secrets as _secrets
 import uuid as _uuid
 from flask import g
@@ -1493,6 +1494,9 @@ def chat():
         persist_lang = lang
         persist_profile = profile if isinstance(profile, dict) else {}
         persist_conversation = history if isinstance(history, list) else []  # recent window (Addendum 02 A2-1)
+        # M5 Observatory — pseudonymous subject for analytics (hashed at write time, no PII).
+        persist_analytics_subject = (("user", str(g.user["id"])) if g.get("user")
+                                     else ("device", g.device_id or _client_ip()))
 
         # ── M4 · SAFETY-FRONT ENFORCEMENT (BRAIN_ENFORCE — OFF by default) ────
         # When OFF this block is skipped entirely, so `messages` and the SSE stream
@@ -1568,8 +1572,19 @@ def chat():
             except Exception as _se:
                 print(f"[shadow] cascade log failed: {_se}")
 
+        def _log_analytics(t0):
+            # M5 Observatory — record the enforced decision + response latency.
+            # Failure-isolated; only when a decision was actually rendered (enforce ON).
+            try:
+                if enforce_event is not None:
+                    brain_analytics.record(persist_analytics_subject, enforce_event,
+                                           (time.perf_counter() - t0) * 1000)
+            except Exception as _ae:
+                print(f"[analytics] chat log failed: {_ae}")
+
         def generate():
             full = []
+            _t_start = time.perf_counter()
             try:
                 if enforce_event is not None:
                     # Backward-compatible leading event; unknown events are ignored by
@@ -1591,6 +1606,7 @@ def chat():
                 _bump_plans_today()  # honest landing counter: +1 real AI plan
                 _persist_reply("".join(full))
                 _shadow_log()        # SHADOW (BRAIN_SHADOW off by default; no-op in prod)
+                _log_analytics(_t_start)   # M5 Observatory
                 yield sse({"done": True})
             except Exception as openai_error:
                 print(f"[chat] OpenAI error: {openai_error}")
@@ -1599,6 +1615,7 @@ def chat():
                     _bump_plans_today()
                     _persist_reply("".join(full))
                     _shadow_log()     # SHADOW (BRAIN_SHADOW off by default; no-op in prod)
+                    _log_analytics(_t_start)   # M5 Observatory
                     yield sse({"done": True})
                 else:
                     # Нищо не е стигнало → връщаме съобщението в лимита му (DB refund)
@@ -2304,6 +2321,17 @@ def debug_brain_regression():
     if not isinstance(baselines, dict):
         return jsonify({"baselines": brain_replay.snapshot(cases, model=data.get("model"))})
     return jsonify(brain_replay.replay_corpus(cases, baselines, model=data.get("model")))
+
+
+# ── M5 Brain Observatory dashboard ──────────────────────────────────────────
+# Gated by ADMIN_TOKEN (?key=…). 404s when the token is unset or wrong, so the
+# page never reveals itself in production. Read-only analytics; no Brain logic.
+@app.route("/admin/brain")
+def admin_brain():
+    token = os.getenv("ADMIN_TOKEN", "")
+    if not token or request.args.get("key", "") != token:
+        return jsonify({"error": "not_found"}), 404
+    return render_template("admin_brain.html", d=brain_analytics.observatory(), key=token)
 
 
 @app.route('/robots.txt')

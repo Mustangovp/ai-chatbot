@@ -206,6 +206,22 @@ brain_decisions = Table("brain_decisions", metadata,
     Index("ix_brain_user_created", "user_id", "created_at"),
 )
 
+# M5 Brain Observatory — one analytics row per enforced Brain decision. Additive,
+# no PII (anon_id is a one-way hash), never read by the Brain. Observability only.
+brain_events = Table("brain_events", metadata,
+    _uuid_col(),
+    Column("anon_id", String(32)),                        # sha256(subject)[:32] — not reversible
+    Column("verdict", String(16)),                        # GO|MODIFY|NOT_YET|NO_TRAIN
+    Column("urgency", String(16)),                        # EMERGENCY_now|URGENT_soon|ROUTINE_mention|null
+    Column("intervention", String(32)),
+    Column("route", String(32)),                          # route_target or null
+    Column("cold_start", Boolean, default=False),
+    Column("enforcement_generate", Boolean, default=False),
+    Column("latency_ms", Integer),
+    Column("created_at", DateTime(timezone=True), server_default=func.now()),
+    Index("ix_brain_events_created", "created_at"),
+)
+
 schema_version = Table("schema_version", metadata,
     Column("version", Integer, primary_key=True),
     Column("applied_at", DateTime(timezone=True), server_default=func.now()),
@@ -219,6 +235,7 @@ _MIGRATIONS = [
     (1, lambda c: None),  # baseline: tables created by metadata.create_all()
     (2, lambda c: None),  # M0: athlete_models table (created by create_all)
     (3, lambda c: None),  # M0: brain_decisions ledger (created by create_all)
+    (4, lambda c: None),  # M5: brain_events observatory table (created by create_all)
 ]
 
 def run_migrations():
@@ -626,3 +643,55 @@ def get_brain_decision(decision_id):
     with engine.begin() as c:
         row = c.execute(select(brain_decisions).where(brain_decisions.c.id == did)).mappings().first()
     return _serial(dict(row)) if row else None
+
+
+# ── M5 Brain Observatory — analytics writes + aggregates (no PII, obs-only) ──
+def log_brain_event(anon_id, verdict=None, urgency=None, intervention=None, route=None,
+                    cold_start=False, enforcement_generate=False, latency_ms=None):
+    """Append one analytics row for an enforced Brain decision. Never read by the Brain."""
+    with engine.begin() as c:
+        c.execute(insert(brain_events).values(
+            id=uuid.uuid4(), anon_id=anon_id, verdict=verdict, urgency=urgency,
+            intervention=intervention, route=route, cold_start=bool(cold_start),
+            enforcement_generate=bool(enforcement_generate), latency_ms=latency_ms))
+
+
+def _since(hours=0, days=0):
+    return _dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(hours=hours, days=days)
+
+
+def brain_events_stats(hours=24):
+    """Aggregate stats over a rolling window (DB-agnostic; cutoff computed in Python)."""
+    cutoff = _since(hours=hours)
+    t = brain_events
+    with engine.begin() as c:
+        total = c.execute(select(func.count()).select_from(t).where(t.c.created_at >= cutoff)).scalar() or 0
+        verdicts = dict(c.execute(select(t.c.verdict, func.count())
+                                  .where(t.c.created_at >= cutoff).group_by(t.c.verdict)).all())
+        interventions = dict(c.execute(select(t.c.intervention, func.count())
+                                       .where(t.c.created_at >= cutoff).group_by(t.c.intervention)).all())
+        cold = c.execute(select(func.count()).select_from(t)
+                         .where(t.c.created_at >= cutoff).where(t.c.cold_start == True)).scalar() or 0  # noqa: E712
+        avg_lat = c.execute(select(func.avg(t.c.latency_ms)).where(t.c.created_at >= cutoff)).scalar()
+    return {
+        "total": int(total),
+        "verdicts": {k: int(v) for k, v in verdicts.items() if k},
+        "interventions": {k: int(v) for k, v in interventions.items() if k},
+        "cold_start": int(cold),
+        "cold_start_rate": (cold / total) if total else 0.0,
+        "avg_latency_ms": int(avg_lat) if avg_lat is not None else 0,
+    }
+
+
+def brain_events_daily(days=7):
+    """Per-day decision counts for the last `days` (bucketed in Python, DB-agnostic)."""
+    cutoff = _since(days=days)
+    t = brain_events
+    with engine.begin() as c:
+        rows = c.execute(select(t.c.created_at).where(t.c.created_at >= cutoff)).all()
+    from collections import Counter
+    buckets = Counter()
+    for (ts,) in rows:
+        if ts is not None:
+            buckets[ts.date().isoformat()] += 1
+    return sorted(buckets.items())

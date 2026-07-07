@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <meta http-equiv="refresh" content="30">
+  <title>APEX · Brain Observatory</title>
+  <style>
+    :root{--bg:#0a0e14;--card:#121824;--line:#1e2836;--txt:#e6edf3;--mut:#8b98a9;
+          --go:#3fb950;--mod:#58a6ff;--not:#d29922;--no:#f85149;--acc:#7ee787;--warn:#f85149}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;padding:24px}
+    h1{font-size:20px;margin:0 0 2px;letter-spacing:.3px}
+    .sub{color:var(--mut);font-size:12px;margin-bottom:20px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:20px}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+    .card h2{font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.6px;margin:0 0 10px;font-weight:600}
+    .big{font-size:30px;font-weight:700}
+    .unit{font-size:13px;color:var(--mut);font-weight:400}
+    .bar{height:10px;border-radius:6px;background:#0d1420;overflow:hidden;margin:6px 0 2px}
+    .bar > span{display:block;height:100%}
+    .row{display:flex;justify-content:space-between;align-items:center;font-size:13px;margin-top:8px}
+    .row .lbl{color:var(--mut)}
+    .anom{background:#2d0f10;border:1px solid var(--warn);border-radius:12px;padding:14px 16px;margin-bottom:20px}
+    .anom h2{color:var(--warn);margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.5px}
+    .anom li{color:#ffb3ae;margin:3px 0}
+    .ok-note{color:var(--acc);font-size:12px}
+    .daily{display:flex;align-items:flex-end;gap:8px;height:120px;margin-top:6px}
+    .daily .col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px}
+    .daily .col .b{width:100%;background:var(--mod);border-radius:5px 5px 0 0;min-height:2px}
+    .daily .col .d{font-size:10px;color:var(--mut)}
+    .daily .col .n{font-size:11px;color:var(--txt)}
+    table{width:100%;border-collapse:collapse}
+    td{padding:4px 0;font-size:13px}
+    td.n{text-align:right;color:var(--mut);width:56px}
+  </style>
+</head>
+<body>
+  <h1>APEX · Brain Observatory</h1>
+  <div class="sub">Live production analytics · auto-refresh 30s · first-party (Postgres) only</div>
+
+  {% if not d.ok %}
+    <div class="anom"><h2>Analytics unavailable</h2><div>{{ d.error }}</div></div>
+  {% else %}
+
+  {% if d.anomalies %}
+    <div class="anom">
+      <h2>⚠ Anomalies detected</h2>
+      <ul>{% for a in d.anomalies %}<li>{{ a }}</li>{% endfor %}</ul>
+    </div>
+  {% else %}
+    <div class="ok-note" style="margin-bottom:16px">✓ No anomalies in the last hour.</div>
+  {% endif %}
+
+  <div class="grid">
+    <div class="card"><h2>Decisions · 24h</h2><div class="big">{{ d.total_24h }}</div></div>
+    <div class="card"><h2>Decisions · last 1h</h2><div class="big">{{ d.recent_1h }}</div></div>
+    <div class="card"><h2>Cold-start rate</h2><div class="big">{{ d.cold_start_rate }}<span class="unit">%</span></div></div>
+    <div class="card"><h2>Avg latency</h2><div class="big">{{ d.avg_latency_ms }}<span class="unit">ms</span></div></div>
+  </div>
+
+  <div class="grid" style="grid-template-columns:1fr 1fr">
+    <div class="card">
+      <h2>Verdict distribution · 24h</h2>
+      {% set colors = {'GO':'var(--go)','MODIFY':'var(--mod)','NOT_YET':'var(--not)','NO_TRAIN':'var(--no)'} %}
+      {% for v in ['GO','MODIFY','NOT_YET','NO_TRAIN'] %}
+        <div class="row"><span class="lbl">{{ v }}</span>
+          <span>{{ d.verdict_pct[v] }}% <span class="unit">({{ d.verdict_counts[v] }})</span></span></div>
+        <div class="bar"><span style="width:{{ d.verdict_pct[v] }}%;background:{{ colors[v] }}"></span></div>
+      {% endfor %}
+    </div>
+
+    <div class="card">
+      <h2>Top interventions · 24h</h2>
+      {% set ns = namespace(maxi=1) %}
+      {% for name,cnt in d.interventions %}{% if cnt > ns.maxi %}{% set ns.maxi = cnt %}{% endif %}{% endfor %}
+      <table>
+        {% for name,cnt in d.interventions %}
+        <tr><td>{{ name }}</td><td class="n">{{ cnt }}</td></tr>
+        <tr><td colspan="2"><div class="bar"><span style="width:{{ (100*cnt/ns.maxi)|round(0,'floor') }}%;background:var(--acc)"></span></div></td></tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Daily decisions · last 7 days</h2>
+    {% set nd = namespace(maxd=1) %}
+    {% for day,cnt in d.daily %}{% if cnt > nd.maxd %}{% set nd.maxd = cnt %}{% endif %}{% endfor %}
+    {% if d.daily %}
+    <div class="daily">
+      {% for day,cnt in d.daily %}
+      <div class="col">
+        <div class="n">{{ cnt }}</div>
+        <div class="b" style="height:{{ (100*cnt/nd.maxd)|round(0,'floor') }}%"></div>
+        <div class="d">{{ day[5:] }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}<div class="sub">No decisions recorded yet.</div>{% endif %}
+  </div>
+
+  {% endif %}
+</body>
+</html>

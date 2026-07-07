@@ -36,7 +36,7 @@ def _bootstrap_schema():
 
 # Tables cleared between tests for determinism (FK-safe order: children → parents).
 _CLEAN_ORDER = (
-    "brain_decisions", "athlete_models", "conversations", "workout_history",
+    "brain_events", "brain_decisions", "athlete_models", "conversations", "workout_history",
     "nutrition_history", "coach_memory", "subscriptions", "auth_identities",
     "login_tokens", "sessions", "payments", "free_usage", "users",
 )
