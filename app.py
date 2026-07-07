@@ -34,14 +34,12 @@ import athlete_store  # M0: Athlete Model substrate (failure-isolated observe wi
 import brain.config as brain_config             # M1: Brain shadow flags (default OFF)
 import brain.ledger as brain_ledger             # M1: shadow decision ledger
 import brain.inspector as brain_inspector       # M1/Commit3: Brain Inspector (observability)
-import brain.replay as brain_replay             # M1/Commit4: Replay & Regression Harness
 import brain.cascade as brain_cascade           # M3: the one orchestrator (Decision)
 import brain.enforcement as brain_enforcement   # M4: Safety-Front renderer
 import brain_analytics                          # M5: Brain Observatory (analytics only)
 import human_state                              # BUILD-001: Human State ingestion (flag-gated)
 import human_state.observatory as human_state_observatory  # BUILD-002: HSE Observatory (audit)
 import coaching                                 # BUILD-003: Adaptive Coach (HSE consumer, flag-gated)
-import secrets as _secrets
 import uuid as _uuid
 from flask import g
 try:
@@ -2297,101 +2295,6 @@ Sent automatically from apexpulse.pro feedback widget
 # Search engines look for these at exact paths
 # ═══════════════════════════════════════════════════════════
 
-# ── Brain Inspector — developer-only inspection endpoints ─────────────────────
-# 404 unless BRAIN_DEBUG is explicitly set → never exposed in production.
-def _brain_debug_on():
-    return brain_config.brain_debug()
-
-@app.route("/debug/brain/decision/<decision_id>")
-def debug_brain_decision(decision_id):
-    """Inspect one stored shadow decision by its stable Decision ID."""
-    if not _brain_debug_on():
-        return jsonify({"error": "not_found"}), 404
-    row = store.get_brain_decision(decision_id)
-    if not row:
-        return jsonify({"error": "not_found"}), 404
-    return jsonify(row)
-
-@app.route("/debug/brain/replay", methods=["POST"])
-def debug_brain_replay():
-    """Replay the Brain over supplied evidence and return the full trace.
-    (Raw evidence is not persisted in the ledger by design, so replay runs on
-    the profile you provide.)"""
-    if not _brain_debug_on():
-        return jsonify({"error": "not_found"}), 404
-    data = request.get_json(silent=True) or {}
-    profile = data.get("profile") or {}
-    if not isinstance(profile, dict):
-        return jsonify({"error": "invalid_profile"}), 400
-    return jsonify(brain_inspector.inspect(profile, message=data.get("message"),
-                                           conversation=data.get("conversation"),
-                                           physiology=data.get("physiology"),
-                                           model=data.get("model")))
-
-@app.route("/debug/brain/replay-compare", methods=["POST"])
-def debug_brain_replay_compare():
-    """Replay evidence against a baseline trace → classification + deltas."""
-    if not _brain_debug_on():
-        return jsonify({"error": "not_found"}), 404
-    data = request.get_json(silent=True) or {}
-    evidence = data.get("evidence") or {}
-    baseline = data.get("baseline")
-    if not isinstance(evidence, dict) or not isinstance(baseline, dict):
-        return jsonify({"error": "invalid_input"}), 400
-    return jsonify(brain_replay.replay(evidence, baseline, model=data.get("model")))
-
-@app.route("/debug/brain/regression", methods=["POST"])
-def debug_brain_regression():
-    """Regression report over cases vs baselines (suitable for the 140-persona
-    corpus). If `baselines` is omitted, returns freshly-snapshotted baselines."""
-    if not _brain_debug_on():
-        return jsonify({"error": "not_found"}), 404
-    data = request.get_json(silent=True) or {}
-    cases = data.get("cases") or []
-    if not isinstance(cases, list):
-        return jsonify({"error": "invalid_cases"}), 400
-    baselines = data.get("baselines")
-    if not isinstance(baselines, dict):
-        return jsonify({"baselines": brain_replay.snapshot(cases, model=data.get("model"))})
-    return jsonify(brain_replay.replay_corpus(cases, baselines, model=data.get("model")))
-
-
-# ── M5 Brain Observatory dashboard ──────────────────────────────────────────
-# Gated by ADMIN_TOKEN (?key=…). 404s when the token is unset or wrong, so the
-# page never reveals itself in production. Read-only analytics; no Brain logic.
-@app.route("/admin/brain")
-def admin_brain():
-    token = os.getenv("ADMIN_TOKEN", "")
-    if not token or request.args.get("key", "") != token:
-        return jsonify({"error": "not_found"}), 404
-    return render_template("admin_brain.html", d=brain_analytics.observatory(), key=token)
-
-
-# ── BUILD-002 Human State Observatory dashboard (admin-gated, internal) ──────
-@app.route("/admin/hse")
-def admin_hse():
-    token = os.getenv("ADMIN_TOKEN", "")
-    if not token or request.args.get("key", "") != token:
-        return jsonify({"error": "not_found"}), 404
-    subject = request.args.get("subject") or None
-    return render_template("admin_hse.html",
-                           d=human_state_observatory.report(subject=subject),
-                           key=token, subject=subject or "")
-
-
-@app.route("/admin/hse/review", methods=["POST"])
-def admin_hse_review():
-    token = os.getenv("ADMIN_TOKEN", "")
-    if not token or request.values.get("key", "") != token:
-        return jsonify({"error": "not_found"}), 404
-    try:
-        store.hse_add_review(request.values.get("event_id"), request.values.get("entity", ""),
-                             request.values.get("verdict", ""), request.values.get("note"),
-                             reviewer="admin")
-    except Exception as e:
-        print(f"[hse-obs] review failed: {e}")
-    return redirect(f"/admin/hse?key={token}")
-
 
 @app.route('/robots.txt')
 def robots_txt():
@@ -2405,6 +2308,13 @@ def sitemap_xml():
     """List all pages on the site for search engines."""
     from flask import send_from_directory
     return send_from_directory('static', 'sitemap.xml', mimetype='application/xml')
+
+
+# REFACTOR-001 — internal admin & Brain-debug routes live in admin_routes.py
+# (a Flask Blueprint). Same URL paths, same token/flag gating; app.py stays the
+# entry point. Registered here so all app-level state is already defined.
+from admin_routes import bp as admin_bp  # noqa: E402
+app.register_blueprint(admin_bp)
 
 
 if __name__ == "__main__":

@@ -81,3 +81,4 @@ test_*.py
 data/*.db
 
 !tests/test_trajectory.py
+!tests/test_architecture_invariants.py

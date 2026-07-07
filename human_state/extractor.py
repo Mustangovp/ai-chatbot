@@ -12,7 +12,7 @@ travel / goals / behavior / identity / habit / preference.
 import re
 
 from human_state.schema import (Reading, CONF_NUMERIC, CONF_EXPLICIT, CONF_HEDGED,
-                                 CONF_INFERRED, now_utc)
+                                 now_utc)
 
 _BOUNDARY = {"to", "it", "the", "a", "an", "and", "or", "but", "now", "have", "so",
              "because", "when", "if", "really", "just", "today", "anymore", "for", "with"}

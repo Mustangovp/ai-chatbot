@@ -4,7 +4,7 @@ Push-Up Surrogate Body Illustration — Apex Coach Card Phase 1
 Holographic wireframe style. Surrogate only; replaced by Apex artwork in Phase 2.
 Output: static/exercise/pushup-holo.png  (600x380 RGBA, transparent bg)
 """
-import math, sys, os
+import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from PIL import Image, ImageDraw, ImageFilter
 

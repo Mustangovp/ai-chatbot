@@ -16,7 +16,7 @@ Design guarantees requested for 1.0:
 import os, uuid, hashlib, secrets, datetime as _dt
 from sqlalchemy import (
     create_engine, MetaData, Table, Column, String, Integer, Boolean, Float,
-    DateTime, JSON, ForeignKey, UniqueConstraint, Index, func, select, update, insert, delete
+    DateTime, JSON, ForeignKey, UniqueConstraint, Index, func, select, update, insert
 )
 from sqlalchemy.types import Uuid
 from sqlalchemy.exc import IntegrityError

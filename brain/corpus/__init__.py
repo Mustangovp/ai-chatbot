@@ -2,7 +2,7 @@
 APEX Brain — Validation Corpus harness (infrastructure only).
 
 Loads the 140 machine-readable persona fixtures (built from the frozen
-docs/APEX_VALIDATION_CORPUS.md by build_fixtures.py) and scores the live cascade
+docs/research/APEX_VALIDATION_CORPUS.md by build_fixtures.py) and scores the live cascade
 against them through the ONE orchestration path (brain.cascade.decide). Adds NO
 reasoning and NO Brain logic — it only runs the Brain and tallies outcomes.
 

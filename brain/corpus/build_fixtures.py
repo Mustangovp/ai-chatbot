@@ -1,7 +1,7 @@
 """
 Corpus fixture builder (infrastructure only — NOT part of the Brain).
 
-Converts docs/APEX_VALIDATION_CORPUS.md (140 prose personas, each with a frozen
+Converts docs/research/APEX_VALIDATION_CORPUS.md (140 prose personas, each with a frozen
 10-point evaluation) into ONE deterministic machine-readable fixture per persona,
 written to brain/corpus/corpus_fixtures.json.
 
@@ -22,7 +22,7 @@ import json
 import pathlib
 
 _ROOT = pathlib.Path(__file__).resolve().parents[2]
-_SRC = _ROOT / "docs" / "APEX_VALIDATION_CORPUS.md"
+_SRC = _ROOT / "docs" / "research" / "APEX_VALIDATION_CORPUS.md"
 _OUT = pathlib.Path(__file__).resolve().parent / "corpus_fixtures.json"
 
 # Cluster map from the corpus coverage table (§ "Coverage map").

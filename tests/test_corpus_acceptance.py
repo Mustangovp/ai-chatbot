@@ -5,7 +5,7 @@ automatically against the live cascade by ONE CI command:
     py -3 -m pytest tests/test_corpus_acceptance.py
 
 Infrastructure only: no Brain / architecture / organ is changed here. Every
-persona in docs/APEX_VALIDATION_CORPUS.md is one deterministic fixture
+persona in docs/research/APEX_VALIDATION_CORPUS.md is one deterministic fixture
 (brain/corpus/corpus_fixtures.json), preserving persona id, expected verdict,
 expected generation gate, expected refusal, expected red flag, and expected
 intervention.
