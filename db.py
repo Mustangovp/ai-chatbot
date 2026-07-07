@@ -222,6 +222,23 @@ brain_events = Table("brain_events", metadata,
     Index("ix_brain_events_created", "created_at"),
 )
 
+# M6 Recommendation Architecture — persistent per-subject preferences + diversity
+# history. Additive; never read by the Brain (kept out of the athlete model).
+user_preferences = Table("user_preferences", metadata,
+    _uuid_col(),
+    Column("subject", String(64), nullable=False, unique=True),   # 'user:<id>' | 'device:<id>'
+    Column("data", JSON, nullable=False, default=dict),
+    Column("updated_at", DateTime(timezone=True), server_default=func.now(), onupdate=func.now()),
+)
+recommendation_history = Table("recommendation_history", metadata,
+    _uuid_col(),
+    Column("subject", String(64), nullable=False),
+    Column("kind", String(24), nullable=False),        # nutrition | workout | recovery
+    Column("anchor", String(48), nullable=False),      # rotated anchor for diversity
+    Column("created_at", DateTime(timezone=True), server_default=func.now()),
+    Index("ix_rec_hist_subject_kind", "subject", "kind", "created_at"),
+)
+
 schema_version = Table("schema_version", metadata,
     Column("version", Integer, primary_key=True),
     Column("applied_at", DateTime(timezone=True), server_default=func.now()),
@@ -236,6 +253,8 @@ _MIGRATIONS = [
     (2, lambda c: None),  # M0: athlete_models table (created by create_all)
     (3, lambda c: None),  # M0: brain_decisions ledger (created by create_all)
     (4, lambda c: None),  # M5: brain_events observatory table (created by create_all)
+    (5, lambda c: None),  # M6: user_preferences table (created by create_all)
+    (6, lambda c: None),  # M6: recommendation_history table (created by create_all)
 ]
 
 def run_migrations():
@@ -708,3 +727,36 @@ def brain_events_daily(days=7):
         if ts is not None:
             buckets[ts.date().isoformat()] += 1
     return sorted(buckets.items())
+
+
+# ── M6 Recommendation Architecture — preferences + diversity history ─────────
+def get_preferences(subject):
+    with engine.begin() as c:
+        row = c.execute(select(user_preferences.c.data)
+                        .where(user_preferences.c.subject == subject)).first()
+    return dict(row[0]) if row and row[0] else None
+
+
+def save_preferences(subject, data):
+    with engine.begin() as c:
+        exists = c.execute(select(user_preferences.c.id)
+                           .where(user_preferences.c.subject == subject)).first()
+        if exists:
+            c.execute(update(user_preferences)
+                      .where(user_preferences.c.subject == subject).values(data=data))
+        else:
+            c.execute(insert(user_preferences).values(id=uuid.uuid4(), subject=subject, data=data))
+
+
+def log_recommendation(subject, kind, anchor):
+    with engine.begin() as c:
+        c.execute(insert(recommendation_history).values(
+            id=uuid.uuid4(), subject=subject, kind=kind, anchor=anchor))
+
+
+def recent_recommendations(subject, kind, n=4):
+    t = recommendation_history
+    with engine.begin() as c:
+        rows = c.execute(select(t.c.anchor).where(t.c.subject == subject).where(t.c.kind == kind)
+                         .order_by(t.c.created_at.desc()).limit(n)).all()
+    return [r[0] for r in rows]

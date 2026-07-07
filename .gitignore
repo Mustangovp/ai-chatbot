@@ -62,6 +62,7 @@ test_*.py
 !tests/test_chat_enforcement.py
 !tests/test_cold_start.py
 !tests/test_brain_analytics.py
+!tests/test_recommend.py
 !tests/test_corpus_shadow.py
 !tests/test_corpus_acceptance.py
 !tests/test_debug_endpoint.py
