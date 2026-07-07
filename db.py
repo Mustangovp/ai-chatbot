@@ -15,7 +15,7 @@ Design guarantees requested for 1.0:
 """
 import os, uuid, hashlib, secrets, datetime as _dt
 from sqlalchemy import (
-    create_engine, MetaData, Table, Column, String, Integer, Boolean,
+    create_engine, MetaData, Table, Column, String, Integer, Boolean, Float,
     DateTime, JSON, ForeignKey, UniqueConstraint, Index, func, select, update, insert, delete
 )
 from sqlalchemy.types import Uuid
@@ -239,6 +239,23 @@ recommendation_history = Table("recommendation_history", metadata,
     Index("ix_rec_hist_subject_kind", "subject", "kind", "created_at"),
 )
 
+# BUILD-001 Human Conversation Ingestion — current fused state per (subject, key).
+# Additive; NEVER read or written by the Brain (independent of athlete_models).
+human_state = Table("human_state", metadata,
+    _uuid_col(),
+    Column("subject", String(64), nullable=False),      # 'user:<id>' | 'device:<id>'
+    Column("key", String(32), nullable=False),          # fatigue|pain|sleep|motivation|...
+    Column("value", JSON),                              # scalar or small token
+    Column("confidence", Float),                        # 0..1 at time observed
+    Column("source", String(24)),                      # message|checkin|coach_obs
+    Column("observed_at", DateTime(timezone=True)),
+    Column("ttl_seconds", Integer),
+    Column("note", String(120)),
+    Column("updated_at", DateTime(timezone=True), server_default=func.now(), onupdate=func.now()),
+    UniqueConstraint("subject", "key", name="uq_human_state_subject_key"),
+    Index("ix_human_state_subject", "subject"),
+)
+
 schema_version = Table("schema_version", metadata,
     Column("version", Integer, primary_key=True),
     Column("applied_at", DateTime(timezone=True), server_default=func.now()),
@@ -255,6 +272,7 @@ _MIGRATIONS = [
     (4, lambda c: None),  # M5: brain_events observatory table (created by create_all)
     (5, lambda c: None),  # M6: user_preferences table (created by create_all)
     (6, lambda c: None),  # M6: recommendation_history table (created by create_all)
+    (7, lambda c: None),  # BUILD-001: human_state table (created by create_all)
 ]
 
 def run_migrations():
@@ -760,3 +778,30 @@ def recent_recommendations(subject, kind, n=4):
         rows = c.execute(select(t.c.anchor).where(t.c.subject == subject).where(t.c.kind == kind)
                          .order_by(t.c.created_at.desc()).limit(n)).all()
     return [r[0] for r in rows]
+
+
+# ── BUILD-001 Human Conversation Ingestion — human_state store (Brain-independent) ──
+def hs_get(subject, key):
+    t = human_state
+    with engine.begin() as c:
+        row = c.execute(select(t).where(t.c.subject == subject).where(t.c.key == key)).mappings().first()
+    return dict(row) if row else None
+
+
+def hs_get_all(subject):
+    t = human_state
+    with engine.begin() as c:
+        rows = c.execute(select(t).where(t.c.subject == subject)).mappings().all()
+    return [dict(r) for r in rows]
+
+
+def hs_upsert(subject, key, value, confidence, source, observed_at, ttl_seconds, note=None):
+    t = human_state
+    with engine.begin() as c:
+        exists = c.execute(select(t.c.id).where(t.c.subject == subject).where(t.c.key == key)).first()
+        vals = dict(value=value, confidence=float(confidence), source=source,
+                    observed_at=observed_at, ttl_seconds=int(ttl_seconds), note=note)
+        if exists:
+            c.execute(update(t).where(t.c.subject == subject).where(t.c.key == key).values(**vals))
+        else:
+            c.execute(insert(t).values(id=uuid.uuid4(), subject=subject, key=key, **vals))

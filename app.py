@@ -38,6 +38,7 @@ import brain.replay as brain_replay             # M1/Commit4: Replay & Regressio
 import brain.cascade as brain_cascade           # M3: the one orchestrator (Decision)
 import brain.enforcement as brain_enforcement   # M4: Safety-Front renderer
 import brain_analytics                          # M5: Brain Observatory (analytics only)
+import human_state                              # BUILD-001: Human State ingestion (flag-gated)
 import secrets as _secrets
 import uuid as _uuid
 from flask import g
@@ -1582,6 +1583,17 @@ def chat():
             except Exception as _ae:
                 print(f"[analytics] chat log failed: {_ae}")
 
+        def _ingest_state():
+            # BUILD-001 — turn the user's message into structured Human State.
+            # Flag-gated (HSE_INGEST, default OFF) + failure-isolated. Writes only the
+            # human_state store; NEVER touches the Brain, the prompt, or the reply.
+            try:
+                if human_state.enabled():
+                    human_state.ingest(":".join(persist_analytics_subject), persist_user_msg,
+                                       source="message")
+            except Exception as _he:
+                print(f"[hse] ingest failed: {_he}")
+
         def generate():
             full = []
             _t_start = time.perf_counter()
@@ -1607,6 +1619,7 @@ def chat():
                 _persist_reply("".join(full))
                 _shadow_log()        # SHADOW (BRAIN_SHADOW off by default; no-op in prod)
                 _log_analytics(_t_start)   # M5 Observatory
+                _ingest_state()      # BUILD-001 Human State (HSE_INGEST off by default)
                 yield sse({"done": True})
             except Exception as openai_error:
                 print(f"[chat] OpenAI error: {openai_error}")
@@ -1616,6 +1629,7 @@ def chat():
                     _persist_reply("".join(full))
                     _shadow_log()     # SHADOW (BRAIN_SHADOW off by default; no-op in prod)
                     _log_analytics(_t_start)   # M5 Observatory
+                    _ingest_state()   # BUILD-001 Human State (HSE_INGEST off by default)
                     yield sse({"done": True})
                 else:
                     # Нищо не е стигнало → връщаме съобщението в лимита му (DB refund)
