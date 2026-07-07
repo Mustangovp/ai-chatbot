@@ -40,6 +40,7 @@ import brain.enforcement as brain_enforcement   # M4: Safety-Front renderer
 import brain_analytics                          # M5: Brain Observatory (analytics only)
 import human_state                              # BUILD-001: Human State ingestion (flag-gated)
 import human_state.observatory as human_state_observatory  # BUILD-002: HSE Observatory (audit)
+import coaching                                 # BUILD-003: Adaptive Coach (HSE consumer, flag-gated)
 import secrets as _secrets
 import uuid as _uuid
 from flask import g
@@ -1525,6 +1526,21 @@ def chat():
                         messages[0]["content"] = messages[0]["content"] + "\n\n" + _add   # constraints
                     else:
                         messages[0]["content"] = _add + "\n\n" + messages[0]["content"]   # safety override
+                # ── BUILD-003 · ADAPTIVE COACH (HSE_CONSUMER — OFF by default) ──
+                # First runtime consumer of Human State. Shapes HOW the response is
+                # delivered (tone/volume/intensity/recovery/motivation), APPENDED after
+                # the safety directive — never overrides it, never generates a withheld
+                # workout, never raises load. Failure-isolated. The Brain never reads state.
+                if coaching.enabled():
+                    try:
+                        _adapt = coaching.adapt(":".join(persist_analytics_subject),
+                                                persist_user_msg, _decision, _directive,
+                                                profile=persist_profile)
+                        if _adapt["applied"]:
+                            messages[0]["content"] = messages[0]["content"] + "\n\n" + _adapt["addendum"]
+                            enforce_event["adaptation"] = _adapt["adaptations"]   # explainability
+                    except Exception as _ce:
+                        print(f"[coach] adaptation failed: {_ce}")
             except Exception as _ee:
                 print(f"[enforce] safety-front render failed: {_ee}")
                 enforce_event = None
