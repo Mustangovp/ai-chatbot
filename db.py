@@ -239,8 +239,21 @@ _MIGRATIONS = [
 ]
 
 def run_migrations():
-    """Create the base schema, then apply any pending versioned migrations."""
-    metadata.create_all(engine)
+    """Create the base schema, then apply any pending versioned migrations.
+
+    Resilient creation: a single pre-existing object (e.g. an index orphaned by a
+    past partial deploy) must NOT abort the whole run and leave newer tables
+    uncreated. We try the fast bulk path first, then fall back to per-table
+    checkfirst creation so every missing table is still created."""
+    try:
+        metadata.create_all(engine, checkfirst=True)
+    except Exception as e:
+        print(f"[db] create_all bulk path failed ({e}); creating tables individually")
+        for table in metadata.sorted_tables:
+            try:
+                table.create(engine, checkfirst=True)
+            except Exception as te:
+                print(f"[db] table {table.name} create skipped: {te}")
     with engine.begin() as c:
         applied = {r[0] for r in c.execute(select(schema_version.c.version)).all()}
         for version, fn in _MIGRATIONS:
