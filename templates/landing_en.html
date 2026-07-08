@@ -34,10 +34,12 @@ gtag('js', new Date());gtag('config','G-B3WLGXE2XM');
 
 <style>
 :root{
-  --bg:#07090D; --ink:#0C1017; --card:#0E131C;
-  --line:rgba(255,255,255,.06); --line2:rgba(255,255,255,.11);
-  --text:#EEF1F6; --muted:#7E869A; --faint:#4B5265;
+  /* the app's exact tokens (apex.html) — landing and app are one surface */
+  --bg:#070910; --ink:#121724; --card:#121724;
+  --line:rgba(255,255,255,.10); --line2:rgba(255,255,255,.16);
+  --text:#F2F5FA; --muted:#8B93A7; --faint:#5A6276;
   --brand:#F5212D; --ember:#FF6A3C; --gold:#FFB13C;
+  --cyan:#38E0FF; --lime:#B6FF3C;
   --grad:linear-gradient(96deg,#F5212D,#FF6A3C 55%,#FFB13C);
 }
 *{margin:0;padding:0;box-sizing:border-box;}
@@ -61,9 +63,12 @@ a{color:inherit;text-decoration:none;}
 .enter-top:hover{color:var(--text);border-color:rgba(255,255,255,.28);}
 
 /* ── ARRIVAL + SURFACE (the whole experience) ── */
-.stage{position:relative;z-index:1;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:120px 24px 80px;}
-.mark{width:46px;height:46px;border-radius:13px;background:url('/static/logo.png') center/cover;box-shadow:0 0 0 1px var(--line2),0 0 40px rgba(245,33,45,.28);animation:pulse 3.2s ease-in-out infinite;}
-@keyframes pulse{0%,100%{box-shadow:0 0 0 1px var(--line2),0 0 32px rgba(245,33,45,.22);}50%{box-shadow:0 0 0 1px var(--line2),0 0 52px rgba(245,33,45,.4);}}
+.stage{position:relative;z-index:1;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:100px 24px 80px;}
+/* the living core — the application's own organism, not a logo */
+.core-stage{position:relative;width:min(230px,58vw);height:min(230px,58vw);margin:-14px auto 0;}
+.core-stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block;
+  -webkit-mask-image:radial-gradient(circle at 50% 50%,#000 48%,transparent 70%);
+  mask-image:radial-gradient(circle at 50% 50%,#000 48%,transparent 70%);}
 .arrival{min-height:34px;margin:26px 0 4px;font-family:'Unbounded';font-weight:500;font-size:clamp(19px,3.2vw,27px);letter-spacing:-.01em;color:var(--text);}
 .arrival .cursor{display:inline-block;width:2px;height:1.05em;background:var(--ember);margin-left:2px;vertical-align:-2px;animation:blink 1s steps(1) infinite;}
 @keyframes blink{50%{opacity:0;}}
@@ -81,16 +86,16 @@ a{color:inherit;text-decoration:none;}
 .opt:hover{color:var(--text);}
 .opt.sel{color:#fff;background:var(--grad);box-shadow:0 4px 16px rgba(245,33,45,.28);}
 
-/* reasoning */
-.reason{margin-top:46px;width:100%;max-width:600px;min-height:150px;}
-.lenses{display:flex;justify-content:center;gap:26px;height:40px;align-items:flex-end;margin-bottom:22px;}
-.lens{position:relative;display:flex;flex-direction:column;align-items:center;gap:0;}
-.lens .dot{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.14);transition:background .3s,box-shadow .3s,transform .3s;}
-.lens.on .dot{background:var(--gold);box-shadow:0 0 14px var(--gold);transform:scale(1.25);}
-.lens .w{position:absolute;bottom:16px;left:50%;transform:translate(-50%,4px);font-size:11px;font-weight:600;letter-spacing:1px;color:var(--gold);opacity:0;transition:opacity .28s,transform .28s;white-space:nowrap;text-transform:lowercase;}
-.lens.say .w{opacity:.92;transform:translate(-50%,0);}
-.lens .thread{position:absolute;top:3px;left:50%;width:1px;height:0;background:linear-gradient(180deg,rgba(255,177,60,.5),transparent);transition:height .4s ease;}
-.lens.on .thread{height:22px;}
+/* reasoning — the priority order IS the visible thought */
+.reason{margin-top:40px;width:100%;max-width:600px;min-height:150px;}
+.pri{display:flex;justify-content:center;align-items:center;gap:8px;flex-wrap:wrap;min-height:36px;margin-bottom:20px;padding:0 8px;}
+.pri .pl{font-size:10.5px;letter-spacing:2px;text-transform:uppercase;color:var(--faint);font-weight:700;margin-right:4px;}
+.pri .pc{font-size:12.5px;font-weight:600;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:6px 13px;opacity:0;transform:translateY(5px);transition:opacity .3s ease,transform .3s ease;white-space:nowrap;}
+.pri .pc.on{opacity:.8;transform:none;}
+.pri .pc.lead{color:var(--gold);border-color:rgba(255,177,60,.45);box-shadow:0 0 0 1px rgba(255,177,60,.12);}
+.pri .pc.lead.on{opacity:1;}
+.pri .sep{color:var(--faint);font-size:11px;opacity:0;transition:opacity .3s;}
+.pri .sep.on{opacity:.55;}
 .answer{font-family:'Unbounded';font-weight:500;font-size:clamp(18px,2.7vw,25px);line-height:1.42;letter-spacing:-.01em;color:var(--text);min-height:2.8em;display:flex;align-items:center;justify-content:center;transition:opacity .35s ease,transform .35s ease;padding:0 6px;}
 .answer.swap{opacity:0;transform:translateY(8px);}
 .whyq{margin-top:10px;background:none;border:none;color:var(--faint);font-family:'Manrope';font-weight:600;font-size:12px;letter-spacing:1.5px;cursor:pointer;text-transform:lowercase;transition:color .2s;opacity:0;}
@@ -101,10 +106,10 @@ a{color:inherit;text-decoration:none;}
 .notice{margin-top:14px;font-size:13.5px;color:var(--ember);font-weight:600;opacity:0;transform:translateY(6px);transition:opacity .6s,transform .6s;}
 .notice.on{opacity:1;transform:none;}
 
-/* memory pill */
-.mem{position:relative;height:0;overflow:visible;}
-.mem-pill{position:absolute;top:-8px;left:50%;transform:translate(-50%,-14px);display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--muted);background:rgba(255,255,255,.03);border:1px solid var(--line2);padding:7px 14px;border-radius:999px;opacity:0;transition:opacity .5s,transform .5s;white-space:nowrap;}
-.mem-pill.on{opacity:1;transform:translate(-50%,0);}
+/* memory pill — in flow, never overlapping */
+.mem{margin-top:16px;min-height:0;display:flex;justify-content:center;}
+.mem-pill{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--muted);background:rgba(255,255,255,.03);border:1px solid var(--line2);padding:7px 14px;border-radius:999px;opacity:0;transform:translateY(-6px);transition:opacity .5s,transform .5s;white-space:nowrap;max-width:100%;}
+.mem-pill.on{opacity:1;transform:none;}
 .mem-pill i{width:6px;height:6px;border-radius:50%;background:var(--gold);box-shadow:0 0 8px var(--gold);}
 
 /* enter */
@@ -114,6 +119,16 @@ a{color:inherit;text-decoration:none;}
 .enter:active{transform:translateY(0) scale(.99);}
 .tiny{margin-top:16px;font-size:12px;color:var(--faint);font-weight:500;letter-spacing:.2px;opacity:0;transition:opacity .8s;}
 .tiny.on{opacity:1;}
+/* the app's own input bar — the product itself, on the door */
+.ask{margin:30px auto 0;width:100%;max-width:520px;display:flex;gap:9px;opacity:0;transform:translateY(8px);transition:opacity .8s ease,transform .8s ease;}
+.ask.on{opacity:1;transform:none;}
+.ask input{flex:1;min-width:0;background:var(--ink);border:1px solid var(--line2);border-radius:14px;padding:14px 16px;font-family:'Manrope';font-size:15px;color:var(--text);}
+.ask input::placeholder{color:var(--faint);}
+.ask input:focus{outline:none;border-color:rgba(245,33,45,.5);}
+.ask button{width:50px;border-radius:14px;background:var(--grad);color:#fff;font-size:16px;flex-shrink:0;box-shadow:0 6px 20px rgba(245,33,45,.3);transition:transform .15s;}
+.ask button:active{transform:scale(.96);}
+.ask-cap{margin-top:10px;font-size:11.5px;color:var(--faint);opacity:0;transition:opacity .8s;}
+.ask-cap.on{opacity:1;}
 .scroll-hint{margin-top:54px;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--faint);font-weight:600;opacity:0;transition:opacity 1s;}
 .scroll-hint.on{opacity:.7;}
 
@@ -148,7 +163,7 @@ footer{position:relative;z-index:1;padding:36px 0 80px;text-align:center;color:v
 /* reveal */
 .rv{opacity:0;transform:translateY(18px);transition:opacity .7s cubic-bezier(.2,.7,.2,1),transform .7s cubic-bezier(.2,.7,.2,1);}
 .rv.in{opacity:1;transform:none;}
-@media(prefers-reduced-motion:reduce){.rv{opacity:1;transform:none;}.field .glow,.mark{animation:none;}.arrival .cursor{display:none;}}
+@media(prefers-reduced-motion:reduce){.rv{opacity:1;transform:none;}.field .glow{animation:none;}.arrival .cursor{display:none;}}
 
 /* modals + cookie (kept) */
 .cookiebar{position:fixed;bottom:14px;left:14px;right:14px;max-width:520px;margin:0 auto;background:var(--ink);border:1px solid var(--line2);border-radius:16px;padding:13px 15px;font-size:12.5px;color:#C3CAD8;display:none;gap:10px;align-items:center;z-index:999;box-shadow:0 14px 44px rgba(0,0,0,.6);flex-wrap:wrap;}
@@ -177,7 +192,7 @@ footer{position:relative;z-index:1;padding:36px 0 80px;text-align:center;color:v
 
 <!-- THE EXPERIENCE -->
 <main class="stage">
-  <div class="mark" aria-hidden="true"></div>
+  <div class="core-stage" aria-hidden="true"><canvas id="lcore"></canvas></div>
   <div class="arrival" id="arrival"><span class="cursor"></span></div>
   <div class="sub-ask" id="subask">No sign-up. Just tell me — I'll show you how I think.</div>
 
@@ -212,7 +227,7 @@ footer{position:relative;z-index:1;padding:36px 0 80px;text-align:center;color:v
   </div>
 
   <div class="reason" id="reason">
-    <div class="lenses" id="lenses"></div>
+    <div class="pri" id="pri" aria-hidden="true"></div>
     <div class="answer" id="answer"></div>
     <button class="whyq" id="whyq" onclick="toggleWhy()">why?</button>
     <div class="whyline" id="whyline"></div>
@@ -220,6 +235,11 @@ footer{position:relative;z-index:1;padding:36px 0 80px;text-align:center;color:v
   </div>
 
   <button class="enter" id="enter" onclick="enterInside('stage')">Begin →</button>
+  <form class="ask" id="ask" onsubmit="enterFree();return false;">
+    <input id="free-in" type="text" placeholder="Describe your goal…" aria-label="Describe your goal" autocomplete="off">
+    <button type="submit" aria-label="Send">➤</button>
+  </form>
+  <div class="ask-cap" id="askcap">or say it your way — this is the coach's real doorway</div>
   <div class="tiny" id="tiny">No account · no card · nothing renews on its own<br>Guidance for healthy adults. Not medical advice.</div>
   <div class="scroll-hint" id="shint">↓</div>
 </main>
@@ -280,8 +300,21 @@ function track(n,p){try{gtag('event',n,p||{});}catch(e){}}
 
 /* ══════════════ THE REASONING SURFACE ══════════════ */
 var S={sleep:'ok',time:'40',body:'ok'};
-var LENS=['recovery','load','movement','timing','fuel'];
 var shortPicks=0, noticed=false, memActive=false;
+
+/* the reasoning order — what leads in THIS state; the reorder is the visible thought */
+function priorities(s){
+  var p=[];
+  if(s.body==='knee')p.push('protect · knee');
+  else if(s.body==='back')p.push('protect · back');
+  if(s.sleep==='poor')p.push('recovery');
+  else if(s.body==='tired')p.push('recovery');
+  p.push('time · '+s.time+'m');
+  if(s.sleep==='good'&&s.body==='ok')p.push('load');
+  else p.push('movement');
+  p.push('fuel');
+  return p.slice(0,4);
+}
 
 function decide(s){
   // safety first — a tender area leads, no matter what else is true (a decision changing, shown)
@@ -352,22 +385,28 @@ function greetLine(){
   return "Good evening.";
 }
 
-var answerEl,lensEl,noticeEl,memPill,memText,reduce;
-function paintLenses(){
-  var nodes=lensEl.querySelectorAll('.lens');
-  nodes.forEach(function(l){l.classList.remove('on','say');});
-  // a travelling consideration: each perspective lights and speaks in turn, one at a time
-  nodes.forEach(function(l,i){
-    setTimeout(function(){l.classList.add('on','say');},i*140);
-    setTimeout(function(){l.classList.remove('say');},i*140+560);
+var answerEl,priEl,noticeEl,memPill,memText,reduce;
+function paintPri(instant){
+  var p=priorities(S);
+  priEl.innerHTML='<span class="pl">weighing</span>';
+  var made=[];
+  p.forEach(function(w,i){
+    var c=document.createElement('span');c.className='pc'+(i===0?' lead':'');c.textContent=w;
+    priEl.appendChild(c);made.push(c);
+    if(i<p.length-1){var s2=document.createElement('span');s2.className='sep';s2.textContent='›';priEl.appendChild(s2);made.push(s2);}
+  });
+  made.forEach(function(el,i){
+    if(instant)el.classList.add('on');
+    else setTimeout(function(){el.classList.add('on');},120+i*110);
   });
 }
 function think(){
-  // several perspectives light in turn, then one answer settles
-  if(reduce){answerEl.textContent=decide(S);refreshWhy();updateMemory();return;}
-  paintLenses();
+  // the priority order re-forms, the core re-weights, then one answer settles
+  if(window.coreFeel)coreFeel(S);
+  if(reduce){answerEl.textContent=decide(S);paintPri(true);refreshWhy();updateMemory();return;}
+  paintPri();
   answerEl.classList.add('swap');
-  var total=LENS.length*140+300;
+  var total=priorities(S).length*230+380;
   setTimeout(function(){
     answerEl.textContent=decide(S);
     answerEl.classList.remove('swap');
@@ -414,14 +453,18 @@ function enterInside(place){
   var q="Today: "+sleepTxt+", about "+S.time+" minutes, "+bodyTxt+". Where should we start?";
   window.location.href='/app?lang=en&q='+encodeURIComponent(q);
 }
+function enterFree(){
+  var t=(document.getElementById('free-in').value||'').trim();
+  track('enter',{place:'free',len:t.length});
+  saveSurface();
+  window.location.href='/app?lang=en'+(t?'&q='+encodeURIComponent(t):'');
+}
 
 /* ══════════════ ARRIVAL (types, then invites) ══════════════ */
 (function(){
-  answerEl=document.getElementById('answer');lensEl=document.getElementById('lenses');
+  answerEl=document.getElementById('answer');priEl=document.getElementById('pri');
   noticeEl=document.getElementById('notice');memPill=document.getElementById('mem-pill');memText=document.getElementById('mem-text');
   reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion:reduce)').matches;
-  // build lens nodes
-  LENS.forEach(function(w){var d=document.createElement('div');d.className='lens';d.innerHTML='<span class="w">'+w+'</span><span class="thread"></span><span class="dot"></span>';lensEl.appendChild(d);});
   // wire choices
   document.querySelectorAll('.row').forEach(function(row){row.querySelectorAll('.opt').forEach(function(o){o.addEventListener('click',function(){pick(row,o.getAttribute('data-v'));});});});
 
@@ -431,8 +474,12 @@ function enterInside(place){
     document.getElementById('subask').classList.add('on');
     document.getElementById('choices').classList.add('on');
     answerEl.textContent=decide(S);
+    paintPri(true);
+    if(window.coreFeel)coreFeel(S);
     document.getElementById('whyq').classList.add('on');
     document.getElementById('enter').classList.add('on');
+    document.getElementById('ask').classList.add('on');
+    document.getElementById('askcap').classList.add('on');
     document.getElementById('tiny').classList.add('on');
     document.getElementById('shint').classList.add('on');
   }
@@ -442,6 +489,85 @@ function enterInside(place){
     if(i<=line.length){el.innerHTML=line.slice(0,i)+cur;i++;setTimeout(type,36);}
     else{setTimeout(function(){el.innerHTML=line;setTimeout(reveal,180);},360);}
   })();
+})();
+
+/* ══════════════ THE LIVING CORE — the app's organism, same language, on the door ══════════════
+   Distilled from apex.html's LivingCore: half-res buffer, lighter-composited soft lobes,
+   physiology palette (recovery→cool, fatigue→warm, stress→turbulence), breath.
+   Every visual change maps to a reasoning input: sleep→fatigue, pain→stress+gather, rest→expansion. */
+(function(){
+  var cv=document.getElementById('lcore');if(!cv||!cv.getContext)return;
+  var ctx=cv.getContext('2d');
+  var off=document.createElement('canvas'),g=off.getContext('2d');
+  var dpr=Math.min(window.devicePixelRatio||1,2),W,H,ow,oh,cx,cy,R;
+  function resize(){
+    W=cv.clientWidth;H=cv.clientHeight;
+    cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);
+    ow=Math.max(2,Math.round(W*.5));oh=Math.max(2,Math.round(H*.5));
+    off.width=ow;off.height=oh;g.fillStyle='#070910';g.fillRect(0,0,ow,oh);
+    cx=ow/2;cy=oh/2;R=Math.min(ow,oh)*.335;
+  }
+  resize();window.addEventListener('resize',resize);
+  var lobes=[];for(var i=0;i<7;i++){var sd=i*7.3+Math.random()*3;
+    lobes.push({seed:sd,phase:sd,nt:sd,rad:.30+Math.random()*.20,sz:.7+Math.random()*.5,sp:.18+Math.random()*.22});}
+  var cur={recovery:.6,fatigue:.3,stress:.25},tgt={recovery:.6,fatigue:.3,stress:.25},focus=0;
+  window.coreFeel=function(s){
+    tgt.fatigue=Math.min(.85,(s.sleep==='poor'?.66:s.sleep==='ok'?.32:.15)+(s.body==='tired'?.2:0));
+    tgt.stress=(s.body==='knee'||s.body==='back')?.58:.24;
+    tgt.recovery=Math.max(.12,1-tgt.fatigue*.9);
+    focus=1;                                     /* it gathers while considering */
+  };
+  function nz(a,b){return Math.sin(a*1.7+b)*.6+Math.sin(a*.9-b*1.3)*.4;}
+  function mix(a,b,t){return[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];}
+  function palette(){
+    var r=cur.recovery,f=cur.fatigue,st=cur.stress;
+    var cool=[[56,224,255],[140,235,120]],mid=[[255,177,60],[255,106,60]],warm=[[245,33,45],[255,90,50]],c1,c2;
+    if(r>.55){c1=mix(cool[0],mid[0],(1-r)*1.1);c2=mix(cool[1],mid[1],(1-r)*1.1);}
+    else if(f>.55){c1=mix(warm[0],mid[0],1-f);c2=mix(warm[1],mid[1],1-f);}
+    else{c1=mid[0].slice();c2=mid[1].slice();}
+    if(st>.4)c1=mix(c1,warm[0],(st-.4)*.7);
+    return[c1,c2];
+  }
+  var last=performance.now(),lr=0,reduceCore=window.matchMedia&&matchMedia('(prefers-reduced-motion:reduce)').matches;
+  function render(now,breath){
+    var r=cur.recovery,f=cur.fatigue,st=cur.stress,pal=palette(),c1=pal[0],c2=pal[1];
+    g.globalCompositeOperation='source-over';
+    g.fillStyle='rgba(7,9,16,'+(0.10+st*0.04)+')';g.fillRect(0,0,ow,oh);
+    var compress=1-f*.26,expand=1+r*.14,gather=1-focus*.26;
+    g.globalCompositeOperation='lighter';
+    for(var i=0;i<lobes.length;i++){
+      var L=lobes[i];
+      var a1=nz(L.seed,L.nt),ang=L.phase+a1*1.1+nz(L.seed*.6+5,L.nt*.8)*st*.8;
+      var orbit=R*(0.55+L.rad)*expand*compress*gather*(0.9+breath*0.12);
+      var x=cx+Math.cos(ang)*orbit,y=cy+Math.sin(ang)*orbit;
+      var size=R*L.sz*0.95*(0.7+breath*0.25)*expand*compress;
+      var alpha=(0.055+r*0.030-f*0.012)*(1+focus*.5);
+      var rg=g.createRadialGradient(x,y,0,x,y,Math.max(size,1));
+      rg.addColorStop(0,'rgba('+(c1[0]|0)+','+(c1[1]|0)+','+(c1[2]|0)+','+alpha+')');
+      rg.addColorStop(.5,'rgba('+(c2[0]|0)+','+(c2[1]|0)+','+(c2[2]|0)+','+(alpha*.45)+')');
+      rg.addColorStop(1,'rgba(0,0,0,0)');
+      g.fillStyle=rg;g.beginPath();g.arc(x,y,Math.max(size,1),0,6.2832);g.fill();
+    }
+    ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+    ctx.clearRect(0,0,W,H);ctx.drawImage(off,0,0,ow,oh,0,0,W,H);
+  }
+  function frame(now){
+    if(!reduceCore)requestAnimationFrame(frame);
+    var dt=Math.min((now-last)/1000,.05);last=now;
+    for(var k in cur)cur[k]+=(tgt[k]-cur[k])*Math.min(dt*.9,1);
+    focus+=(0-focus)*Math.min(dt*.5,1);
+    var spd=dt*(.10+cur.recovery*.10-cur.fatigue*.05)*5*(1+focus*.8);
+    for(var i=0;i<lobes.length;i++){lobes[i].nt+=spd*(lobes[i].sp/.29);lobes[i].phase+=spd*(lobes[i].sp/.29)*.45;}
+    if(document.hidden)return;
+    if(now-lr<33&&!reduceCore)return;lr=now;
+    if(!W||Math.abs(cv.clientWidth-W)>1)resize();   /* self-heal if layout settled late */
+    if(!W)return;
+    render(now,.5+.5*Math.sin(now/952));
+  }
+  coreFeel(S);
+  if(reduceCore){cur.recovery=tgt.recovery;cur.fatigue=tgt.fatigue;cur.stress=tgt.stress;
+    for(var w=0;w<40;w++)frame(performance.now()+w*33);   /* settle, then one still frame */
+  }else requestAnimationFrame(frame);
 })();
 
 /* ══════════════ plumbing (preserved) ══════════════ */
