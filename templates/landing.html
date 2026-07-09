@@ -327,12 +327,10 @@ footer{position:relative;z-index:1;padding:36px 0 80px;text-align:center;color:v
   transition: transform .8s ease;
 }
 .stage.plan-active .speak {
-  font-size: 15px;
-  margin-top: 15px;
-  margin-bottom: 10px;
+  display: none !important;
 }
 .stage.plan-active .fc-input-wrap {
-  margin-top: 20px;
+  display: none !important;
 }
 
 #fc-plan-container {
@@ -894,11 +892,8 @@ async function sendFirstContactMsg() {
         
         apexSpeak(fullReply);
       } else if (serverBrainState.decision === "PLAN_READY") {
-        showPlan(fullReply);
-        apexSpeak("Мисля, че разбрах достатъчно, за да започнем. Можеш да ми зададеш допълнителни въпроси или да стартираш сесията.", function() {
-          if (isVoiceMode) {
-            startListening();
-          }
+        apexSpeak("Мисля, че разбрах достатъчно, за да започнем.", function() {
+          showPlan(fullReply);
         });
       } else {
         apexSpeak(fullReply, function() {
