@@ -1368,11 +1368,155 @@ def api_sync():
                     "conversations": store.list_conversation(u["id"], limit=60)})
 
 
+
+_FC_SYSTEM_PROMPT_EN_ASK = """You are APEX, an exceptionally intelligent performance coach.
+This is the first conversation with a new user. Your goal is to make them feel safe, understood, and heard.
+Speak naturally, calmly, and with quiet confidence.
+
+RULES:
+1. Speak in plain English.
+2. NEVER use AI, medical, or engineering terminology. Never use words like: calibration, physiological, signature, telemetry, optimization, processing, reasoning engine.
+3. Keep responses extremely short: maximum 2 sentences, maximum 20 words per sentence.
+4. Ask at most ONE question per turn to clarify missing parameters (specifically: training goal, where they train, what equipment they have, or active injuries). Never ask more than one question.
+"""
+
+_FC_SYSTEM_PROMPT_EN_PLAN = """You are APEX, an exceptionally intelligent performance coach.
+This is the first conversation with a new user. Your goal is to make them feel safe, understood, and heard.
+Speak naturally, calmly, and with quiet confidence.
+
+RULES:
+1. Speak in plain English.
+2. NEVER use AI, medical, or engineering terminology. Never use words like: calibration, physiological, signature, telemetry, optimization, processing, reasoning engine.
+3. You now have enough information to safely begin coaching. Say exactly: "I think I understand enough to get started." followed by a clean, simple list of exercises with sets and reps tailored to their goals and constraints.
+"""
+
+_FC_SYSTEM_PROMPT_EN_SAFETY = """You are APEX, an exceptionally intelligent performance coach.
+The user has indicated signs of high-risk medical or safety concerns. You must prioritize their safety immediately.
+
+RULES:
+1. Speak in plain English.
+2. Say exactly: "I cannot design a plan for you at this time."
+3. Follow up with a single sentence instructing them to stop exertion and seek professional medical guidance.
+4. Keep it under 2 sentences and 20 words per sentence. Do not offer exercises.
+"""
+
+_FC_SYSTEM_PROMPT_EN_CONTINUE = """You are APEX, an exceptionally intelligent performance coach.
+Keep responses unhurried, calm, and under 2 sentences. Ask at most one question. Speak naturally, calmly, and with quiet confidence. No AI, medical, or engineering terminology.
+"""
+
+_FC_SYSTEM_PROMPT_BG_ASK = """Ти си APEX, изключително интелигентен треньор.
+Това е първият ти разговор с нов потребител. Целта е да го накараш да се почувства в безопасност, разбран и чут.
+Говори естествено, спокойно и с тиха увереност.
+
+ПРАВИЛА:
+1. Говори на български език.
+2. НИКОГА не използвай изкуствен интелект, медицински или инженерни термини. Никога не използвай думи като: калибриране, физиологичен, телеметрия, оптимизация, обработка, двигател за разсъждения.
+3. Дръж отговорите изключително кратки: максимум 2 изречения, максимум 20 думи на изречение.
+4. Задавай най-много ЕДИН въпрос на реплика, за да изясниш липсващите параметри (цел, къде тренират, какво оборудване имат или контузии). Никога повече от един.
+"""
+
+_FC_SYSTEM_PROMPT_BG_PLAN = """Ти си APEX, изключително интелигентен треньор.
+Това е първият ти разговор с нов потребител. Целта е да го накараш да се почувства в безопасност, разбран и чут.
+Говори естествено, спокойно и с тиха увереност.
+
+ПРАВИЛА:
+1. Говори на български език.
+2. НИКОГА не използвай изкуствен интелект, медицински или инженерни термини. Никога не използвай думи като: калибриране, физиологичен, телеметрия, оптимизация, обработка, двигател за разсъждения.
+3. Вече имаш достатъчно информация. Кажи точно: "Мисля, че разбрах достатъчно, за да започнем." последвано от ясен, прост тренировъчен план (списък от упражнения, серии и повторения), адаптиран към техните цели и ограничения.
+"""
+
+_FC_SYSTEM_PROMPT_BG_SAFETY = """Ти си APEX, изключително интелигентен треньор.
+Потребителят е посочил признаци на високорискови медицински или безопасни проблеми. Трябва незабавно да дадеш приоритет на безопасността.
+
+ПРАВИЛА:
+1. Говори на български език.
+2. Кажи точно: "В момента не мога да изготвя тренировъчен план за теб."
+3. Следвай това с едно изречение с указание да спрат натоварването и да потърсят лекарска помощ.
+4. Дръж отговора под 2 изречения и под 20 думи на изречение. Не предлагай упражнения.
+"""
+
+_FC_SYSTEM_PROMPT_BG_CONTINUE = """Ти си APEX, изключително интелигентен треньор.
+Дръж отговорите спокойни и под 2 изречения. Задавай най-много един въпрос. Говори естествено и с тиха увереност. Без изкуствен интелект, медицински или инженерни термини.
+"""
+
+def _extract_profile_silent(history_messages, current_profile):
+    """
+    Quietly extracts profile data from the conversation history using GPT-4o-mini.
+    Returns a dict of updated profile values.
+    """
+    try:
+        conv_text = ""
+        for m in history_messages:
+            role = m.get("role", "user")
+            content = m.get("content", "")
+            conv_text += f"{role.upper()}: {content}\n"
+        
+        system_content = """Analyze the conversation and extract the user's fitness profile.
+Return ONLY a valid JSON object. Do not include markdown wraps or any other text.
+
+RULES FOR EXTRACTION:
+1. Store only confirmed facts. Never store guesses or unconfirmed assumptions.
+2. Never store temporary emotions, transient feelings, or mood descriptions.
+3. Keep values null unless they are explicitly and clearly stated by the user.
+
+JSON structure:
+{
+  "name": string or null,
+  "goal": string or null, # one of "fat_loss", "muscle_gain", "strength", "endurance", "general"
+  "equipment": string or null, # one of "gym", "home", "none"
+  "injuries": string or null, # text describing injuries/pain
+  "frequency": integer or null, # number of training days
+  "sleepQuality": string or null, # one of "poor", "average", "good"
+  "stressLevel": string or null # one of "low", "moderate", "high"
+}
+Current profile values:
+""" + _json.dumps(current_profile or {})
+
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_content},
+                {"role": "user", "content": f"Conversation history:\n{conv_text}"}
+            ],
+            temperature=0,
+            response_format={"type": "json_object"}
+        )
+        extracted = _json.loads(resp.choices[0].message.content or "{}")
+        updated_profile = dict(current_profile or {})
+        for k, v in extracted.items():
+            if v is not None:
+                updated_profile[k] = v
+        if "frequency" in updated_profile and updated_profile["frequency"] is not None:
+            updated_profile["frequency"] = str(updated_profile["frequency"])
+        return updated_profile
+    except Exception as e:
+        print(f"[first-contact] silent extraction failed: {e}")
+        return current_profile or {}
+
+
+from brain.learning.schema import HumanModel
+from brain.learning.engine import HumanLearningEngine
+
+def _update_learning_engine(uid, user_msg, assistant_reply, current_profile):
+    model = HumanModel(current_profile)
+    HumanLearningEngine.process_exchange(model, user_msg, assistant_reply)
+    updated_profile = model.to_dict()
+    for k, v in updated_profile.items():
+        current_profile[k] = v
+    if uid:
+        try:
+            store.save_profile(uid, current_profile)
+        except Exception as e:
+            print(f"[learning] save_profile failed: {e}")
+
+
 @app.route("/chat", methods=["POST"])
 def chat():
     try:
         data = request.json or {}
         token = data.get("token", "")
+        is_first_contact = bool(data.get("first_contact", False))
+        
         # Plan is SERVER-AUTHORITATIVE: DB subscription first (logged-in accounts),
         # then a signed legacy token as fallback for pre-account payers, then dev.
         db_plan, db_status = _current_plan_status()
@@ -1395,9 +1539,6 @@ def chat():
             lang = "bg"
 
         # ── SERVER-AUTHORITATIVE FREE LIMIT ──
-        # Enforced entirely in the database and keyed by the account (logged in) or
-        # a server-issued httpOnly device id — NEVER by client storage. Deleting
-        # localStorage/incognito cannot reset it.
         free_subject = None
         if not is_elite:
             free_subject = ("user", str(g.user["id"])) if g.get("user") else ("device", g.device_id or _client_ip())
@@ -1406,11 +1547,8 @@ def chat():
             if not q["allowed"]:
                 return jsonify({"limit_reached": True, "hours_left": q["hours_left"], "remaining": 0}), 200
 
-        # For logged-in accounts the DATABASE is the source of truth for profile,
-        # coaching memory AND conversation history — the AI remembers the person
-        # across devices, not the browser.
         chat_uid = str(g.user["id"]) if g.get("user") else None
-        pers_workouts = []   # behavioural data for the Personality Engine (accounts only)
+        pers_workouts = []
         if chat_uid:
             db_profile = store.get_profile(chat_uid)
             if db_profile:
@@ -1427,36 +1565,87 @@ def chat():
             except Exception as _we:
                 print(f"[chat] workout load failed: {_we}")
 
-        # Memory cap based on plan.
         if is_elite:
             memory_cap = 60 if is_pro else 10
         else:
             memory_cap = 12
 
-        # Conversation history: DB (server truth, cross-device) for accounts,
-        # else the client-sent cache for anonymous users.
         if chat_uid:
             try:
                 history = store.list_conversation(chat_uid, limit=memory_cap)
             except Exception as _ce:
                 print(f"[chat] conversation load failed: {_ce}")
 
-        # ── PERSONALITY ENGINE ──────────────────────────────────────────────
-        # Assemble the fixed APEX identity + data-driven tone + a true observation.
-        # This makes every reply read as the same coach. The model composes the
-        # words; this layer guarantees the voice. Degrades safely to the core
-        # identity if anything is missing (never blocks a reply).
-        try:
-            personality_block = personality.compose(
-                lang=lang, profile=profile if isinstance(profile, dict) else {},
-                workouts=pers_workouts, message=user_message, conversation=history)
-        except Exception as _pe:
-            print(f"[chat] personality compose failed: {_pe}")
-            personality_block = ""
+        decision_state = "CONTINUE_CONVERSATION"
+        if is_first_contact:
+            # 1. Understanding: Silent extraction (updates the Human State profile)
+            # Safe conversation history wrapper
+            history_for_extract = []
+            if isinstance(history, list):
+                for m in history:
+                    if isinstance(m, dict) and m.get("role") in ("user", "assistant"):
+                        history_for_extract.append(m)
+            history_for_extract.append({"role": "user", "content": user_message})
+            profile = _extract_profile_silent(history_for_extract, profile)
+            
+            # Ingest safety flags inside the Understanding layer
+            from brain.redflag_library import detect_flag_classes
+            flags = set(profile.get("red_flags") or [])
+            for cls in detect_flag_classes(user_message):
+                flags.add(cls)
+            profile["red_flags"] = list(flags)
+            
+            # 2. Brain Evaluation: Passes ONLY the structured Human State (profile) and physiology
+            _phys = athlete_store.physiology(chat_uid) if chat_uid else None
+            _decision = brain_cascade.decide(profile, physiology=_phys, model=model_to_use)
+            
+            # 3. Decision mapping
+            if _decision.s2.halt:
+                decision_state = "SAFETY_STOP"
+            else:
+                has_goal = bool(str(profile.get("goal") or "").strip())
+                has_equip = bool(str(profile.get("equipment") or "").strip())
+                if has_goal and has_equip:
+                    decision_state = "PLAN_READY"
+                elif has_goal or has_equip:
+                    decision_state = "NEED_MORE_INFORMATION"
+                else:
+                    decision_state = "CONTINUE_CONVERSATION"
+            
+            # 4. System prompt selection based ONLY on Decision
+            if lang == "en":
+                prompts = {
+                    "SAFETY_STOP": _FC_SYSTEM_PROMPT_EN_SAFETY,
+                    "PLAN_READY": _FC_SYSTEM_PROMPT_EN_PLAN,
+                    "NEED_MORE_INFORMATION": _FC_SYSTEM_PROMPT_EN_ASK,
+                    "CONTINUE_CONVERSATION": _FC_SYSTEM_PROMPT_EN_CONTINUE
+                }
+            else:
+                prompts = {
+                    "SAFETY_STOP": _FC_SYSTEM_PROMPT_BG_SAFETY,
+                    "PLAN_READY": _FC_SYSTEM_PROMPT_BG_PLAN,
+                    "NEED_MORE_INFORMATION": _FC_SYSTEM_PROMPT_BG_ASK,
+                    "CONTINUE_CONVERSATION": _FC_SYSTEM_PROMPT_BG_CONTINUE
+                }
+            system_content = prompts[decision_state]
+            
+            # 5. Memory: Write confirmed profile facts to store (logged-in accounts)
+            if chat_uid:
+                try: store.save_profile(chat_uid, profile)
+                except Exception: pass
+        else:
+            try:
+                personality_block = personality.compose(
+                    lang=lang, profile=profile if isinstance(profile, dict) else {},
+                    workouts=pers_workouts, message=user_message, conversation=history)
+            except Exception as _pe:
+                print(f"[chat] personality compose failed: {_pe}")
+                personality_block = ""
 
-        profile_block = _build_profile_block(profile, lang) if isinstance(profile, dict) else ""
-        base = (profile_block + "\n\n" + SYSTEM_INSTRUCTIONS) if profile_block else SYSTEM_INSTRUCTIONS
-        system_content = (personality_block + "\n\n" + base) if personality_block else base
+            profile_block = _build_profile_block(profile, lang) if isinstance(profile, dict) else ""
+            base = (profile_block + "\n\n" + SYSTEM_INSTRUCTIONS) if profile_block else SYSTEM_INSTRUCTIONS
+            system_content = (personality_block + "\n\n" + base) if personality_block else base
+
         messages = [{"role": "system", "content": system_content}]
 
         if isinstance(history, list):
@@ -1633,21 +1822,45 @@ def chat():
                         full.append(delta)
                         yield sse({"t": delta})
                 _bump_plans_today()  # honest landing counter: +1 real AI plan
-                _persist_reply("".join(full))
+                reply_text = "".join(full)
+                _persist_reply(reply_text)
+                _update_learning_engine(chat_uid, user_message, reply_text, profile)
                 _shadow_log()        # SHADOW (BRAIN_SHADOW off by default; no-op in prod)
                 _log_analytics(_t_start)   # M5 Observatory
                 _ingest_state()      # BUILD-001 Human State (HSE_INGEST off by default)
-                yield sse({"done": True})
+                if is_first_contact:
+                    brain_state = {
+                        "decision": decision_state,
+                        "confidence": _decision.envelope.confidence,
+                        "sleep": profile.get("sleepQuality", "good"),
+                        "stress": profile.get("stressLevel", "low"),
+                        "body": "knee" if any(k in str(profile.get("injuries") or "").lower() for k in ("knee", "shoulder", "back", "joint", "elbow", "wrist", "pain", "ache", "коляно", "рамо", "гръб", "болка")) else "ok"
+                    }
+                    yield sse({"done": True, "profile": profile, "brain_state": brain_state})
+                else:
+                    yield sse({"done": True})
             except Exception as openai_error:
                 print(f"[chat] OpenAI error: {openai_error}")
                 if full:
                     # Потребителят вече получи почти всичко — завършваме чисто
                     _bump_plans_today()
-                    _persist_reply("".join(full))
+                    reply_text = "".join(full)
+                    _persist_reply(reply_text)
+                    _update_learning_engine(chat_uid, user_message, reply_text, profile)
                     _shadow_log()     # SHADOW (BRAIN_SHADOW off by default; no-op in prod)
                     _log_analytics(_t_start)   # M5 Observatory
                     _ingest_state()   # BUILD-001 Human State (HSE_INGEST off by default)
-                    yield sse({"done": True})
+                    if is_first_contact:
+                        brain_state = {
+                            "decision": decision_state,
+                            "confidence": _decision.envelope.confidence,
+                            "sleep": profile.get("sleepQuality", "good"),
+                            "stress": profile.get("stressLevel", "low"),
+                            "body": "knee" if any(k in str(profile.get("injuries") or "").lower() for k in ("knee", "shoulder", "back", "joint", "elbow", "wrist", "pain", "ache", "коляно", "рамо", "гръб", "болка")) else "ok"
+                        }
+                        yield sse({"done": True, "profile": profile, "brain_state": brain_state})
+                    else:
+                        yield sse({"done": True})
                 else:
                     # Нищо не е стигнало → връщаме съобщението в лимита му (DB refund)
                     if refund_subject:

@@ -161,11 +161,247 @@ footer{position:relative;z-index:1;padding:36px 0 80px;text-align:center;color:v
 #legal-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:1000;overflow-y:auto;padding:24px 16px;backdrop-filter:blur(5px);}
 #legal-modal.active{display:block;}
 #legal-modal .lm{max-width:700px;margin:0 auto;background:var(--card);border:1px solid var(--line2);border-radius:16px;padding:30px 26px;position:relative;}
-#legal-modal .lx{position:sticky;top:0;float:right;background:var(--ink);border:1px solid var(--line2);color:var(--text);width:34px;height:34px;border-radius:50%;font-size:16px;cursor:pointer;}
-#legal-content{font-size:13.5px;color:#C3CAD8;}
-#legal-content h2{font-size:19px;margin-bottom:12px;font-family:'Unbounded';font-weight:600;}
-#legal-content h3{font-size:15px;margin:16px 0 6px;color:var(--text);}
-#legal-content p,#legal-content li{margin-bottom:8px;}#legal-content ul{padding-left:18px;}
+
+/* First Contact CSS Overrides */
+.top, .whyhint, .whyline, .notice, .held, .tiny, .scroll-hint, #inside, footer, .qopts {
+  display: none !important;
+}
+
+.fc-talk-btn {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.25s, background-color 0.25s, opacity 0.5s;
+  margin-top: 30px;
+  padding: 12px;
+  z-index: 10;
+}
+.fc-talk-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(0, 243, 255, 0.3);
+  transform: scale(1.04);
+}
+.fc-talk-btn:active, .fc-talk-btn.activating {
+  transform: scale(0.92);
+  background: rgba(0, 243, 255, 0.05);
+  border-color: rgba(0, 243, 255, 0.5);
+}
+.fc-talk-btn svg {
+  width: 100%;
+  height: 100%;
+}
+.fc-talk-btn svg .nucleus {
+  transition: fill 0.3s, transform 0.3s;
+}
+.fc-talk-btn:hover svg .nucleus {
+  fill: #00f3ff;
+  transform: scale(1.1);
+  transform-origin: center;
+}
+.fc-talk-btn.activating svg .path-cyan {
+  animation: pulse-cyan 0.85s ease-in-out infinite alternate;
+}
+.fc-talk-btn.activating svg .path-amber {
+  animation: pulse-amber 0.85s ease-in-out infinite alternate;
+}
+.fc-talk-btn.activating svg .nucleus {
+  fill: #00f3ff;
+  animation: scale-nucleus 0.85s ease-in-out infinite alternate;
+}
+.fc-talk-btn.activating svg .synapse {
+  animation: synapse-active 0.4s ease-in-out infinite alternate;
+}
+@keyframes pulse-cyan {
+  0% { stroke: #00f3ff; stroke-width: 2.5; }
+  100% { stroke: #ffffff; stroke-width: 4.0; filter: drop-shadow(0 0 4px #00f3ff); }
+}
+@keyframes pulse-amber {
+  0% { stroke: #fdcb6e; stroke-width: 2.5; }
+  100% { stroke: #ffffff; stroke-width: 4.0; filter: drop-shadow(0 0 4px #fdcb6e); }
+}
+@keyframes scale-nucleus {
+  0% { transform: scale(1); transform-origin: center; }
+  100% { transform: scale(1.3); transform-origin: center; filter: drop-shadow(0 0 8px #00f3ff); }
+}
+@keyframes synapse-active {
+  0% { transform: scale(1); transform-origin: center; opacity: 0.7; }
+  100% { transform: scale(1.2); transform-origin: center; opacity: 1; }
+}
+
+.fc-kb-btn {
+  background: none;
+  border: none;
+  color: #8C9BAE;
+  font-family: 'Manrope', sans-serif;
+  font-size: 13.5px;
+  text-decoration: underline;
+  cursor: pointer;
+  margin-top: 15px;
+  transition: color .2s, opacity .5s;
+  z-index: 10;
+}
+.fc-kb-btn:hover {
+  color: #fff;
+}
+
+.fc-input-wrap {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  max-width: 500px;
+  margin-top: 30px;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity .5s, transform .5s;
+  pointer-events: none;
+  z-index: 10;
+}
+.fc-input-wrap.on {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: all;
+}
+.fc-input-wrap input {
+  flex: 1;
+  background: var(--ink);
+  border: 1px solid var(--line2);
+  border-radius: 14px;
+  padding: 14px 16px;
+  font-family: 'Manrope', sans-serif;
+  font-size: 15px;
+  color: var(--text);
+}
+.fc-input-wrap input:focus {
+  outline: none;
+  border-color: rgba(245,33,45,.5);
+}
+.fc-input-wrap button {
+  background: var(--ink);
+  border: 1px solid var(--line2);
+  color: var(--text);
+  border-radius: 14px;
+  width: 50px;
+  height: 50px;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .2s, border-color .2s;
+}
+.fc-input-wrap button:hover {
+  border-color: rgba(255,255,255,.3);
+}
+.fc-input-wrap button#fc-send-btn {
+  background: var(--grad);
+  border: none;
+  box-shadow: 0 6px 20px rgba(245,33,45,.3);
+}
+.fc-mic-btn.active {
+  background: var(--brand);
+  border-color: var(--brand);
+  animation: mic-pulse 1.5s infinite ease-in-out;
+}
+@keyframes mic-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* Plan display state */
+.stage {
+  transition: padding .8s ease;
+}
+.stage.plan-active {
+  padding-top: 40px;
+}
+.stage.plan-active #orbit {
+  transform: scale(0.6);
+  margin-bottom: 0;
+  transition: transform .8s ease;
+}
+.stage.plan-active .speak {
+  font-size: 15px;
+  margin-top: 15px;
+  margin-bottom: 10px;
+}
+.stage.plan-active .fc-input-wrap {
+  margin-top: 20px;
+}
+
+#fc-plan-container {
+  display: none;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity .8s ease, transform .8s ease;
+  max-width: 640px;
+  width: 100%;
+  margin: 20px auto 0;
+  text-align: left;
+  z-index: 10;
+}
+#fc-plan-container.on {
+  display: block;
+  opacity: 1;
+  transform: translateY(0);
+}
+.plan-card {
+  background: var(--card);
+  border: 1px solid var(--line2);
+  border-radius: 18px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.5);
+}
+.plan-card h3 {
+  font-family: 'Unbounded', sans-serif;
+  font-size: 16px;
+  margin-bottom: 12px;
+  color: var(--text);
+  letter-spacing: 1px;
+}
+.plan-card ul {
+  list-style: none;
+  padding: 0;
+}
+.plan-card li {
+  font-family: 'Manrope', sans-serif;
+  font-size: 14.5px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255,255,255,.05);
+  color: #C3CAD8;
+  display: flex;
+  justify-content: space-between;
+}
+.plan-card li:last-child {
+  border-bottom: none;
+}
+.plan-start-btn {
+  display: block;
+  width: 100%;
+  background: var(--grad);
+  color: #fff;
+  font-family: 'Unbounded', sans-serif;
+  font-weight: 600;
+  font-size: 15px;
+  padding: 18px;
+  border: none;
+  border-radius: 14px;
+  cursor: pointer;
+  text-align: center;
+  box-shadow: 0 8px 30px rgba(245,33,45,.3);
+  transition: transform .16s, box-shadow .16s;
+}
+.plan-start-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 40px rgba(245,33,45,.444);
+}
 </style>
 </head>
 <body>
@@ -177,29 +413,57 @@ footer{position:relative;z-index:1;padding:36px 0 80px;text-align:center;color:v
   <button class="enter-top" onclick="enterFree('nav')">влез →</button>
 </div>
 
-<!-- THE ENCOUNTER — the organism meets you; distance is priority; memory stays lit -->
 <main class="stage">
   <div class="orbit" id="orbit" aria-label="APEX преценява">
-    <canvas id="lcore" title="докосни, за да видиш защо"></canvas>
+    <canvas id="lcore" title="APEX"></canvas>
   </div>
 
   <div class="speak" id="speak"><span class="cursor"></span></div>
 
-  <div class="qopts" id="qopts"></div>
+  <button class="fc-talk-btn" id="fc-talk-btn" onclick="pressTalk()" aria-label="Активиране на системата APEX">
+    <svg class="apex-symbol" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <defs>
+        <linearGradient id="helix-cyan" x1="0" y1="0" x2="100" y2="100">
+          <stop offset="0%" stop-color="#00f3ff"/>
+          <stop offset="100%" stop-color="#0984e3"/>
+        </linearGradient>
+        <linearGradient id="helix-amber" x1="100" y1="0" x2="0" y2="100">
+          <stop offset="0%" stop-color="#fdcb6e"/>
+          <stop offset="100%" stop-color="#ff7675"/>
+        </linearGradient>
+      </defs>
+      <circle class="shell" cx="50" cy="50" r="44" stroke="rgba(255,255,255,0.08)" stroke-width="2"/>
+      <path class="path-cyan" d="M16 50 Q33 18 50 50 T84 50" stroke="url(#helix-cyan)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+      <path class="path-amber" d="M84 50 Q67 82 50 50 T16 50" stroke="url(#helix-amber)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+      <ellipse class="loop-1" cx="50" cy="50" rx="16" ry="36" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" transform="rotate(30 50 50)" fill="none"/>
+      <ellipse class="loop-2" cx="50" cy="50" rx="16" ry="36" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" transform="rotate(-30 50 50)" fill="none"/>
+      <circle class="nucleus" cx="50" cy="50" r="5.5" fill="#ffffff"/>
+      <circle class="synapse cyan-node" cx="28" cy="35" r="3.5" fill="#00f3ff"/>
+      <circle class="synapse red-node" cx="72" cy="65" r="3.5" fill="#ff7675"/>
+      <circle class="synapse yellow-node" cx="34" cy="62" r="3.5" fill="#fdcb6e"/>
+      <circle class="synapse blue-node" cx="66" cy="38" r="3.5" fill="#0984e3"/>
+    </svg>
+  </button>
+  <button class="fc-kb-btn" id="fc-kb-btn" onclick="pressKeyboard()">Използвай клавиатура</button>
 
-  <div class="held" id="held"><div class="held-cap" id="heldcap">запомня</div></div>
+  <div class="fc-input-wrap" id="fc-input-wrap">
+    <input type="text" id="fc-user-input" placeholder="Пиши тук или говори..." autocomplete="off">
+    <button id="fc-mic-btn" class="fc-mic-btn" onclick="startListening()">🎤</button>
+    <button id="fc-send-btn" class="fc-send-btn" onclick="sendFirstContactMsg()">➤</button>
+  </div>
 
-  <button class="whyhint" id="whyhint" onclick="toggleWhy()">докосни ядрото — виж защо</button>
-  <div class="whyline" id="whyline"></div>
-  <div class="notice" id="notice"></div>
+  <div id="fc-plan-container"></div>
 
-  <form class="ask" id="ask" onsubmit="enterFree('ask');return false;">
-    <input id="free-in" type="text" placeholder="Опиши целта си…" aria-label="Опиши целта си" autocomplete="off">
-    <button type="submit" aria-label="Send">➤</button>
-  </form>
-  <button class="enter" id="enter" onclick="enterInside('stage')">Започни →</button>
-  <div class="tiny" id="tiny">Без акаунт · без карта · нищо не се подновява само<br>Насоки за здрави възрастни. Не е медицински съвет.</div>
-  <div class="scroll-hint" id="shint">↓</div>
+  <!-- Keep hidden containers to prevent script reference breaks -->
+  <div id="qopts" style="display:none;"></div>
+  <div id="held" style="display:none;"><div id="heldcap"></div></div>
+  <div id="whyhint" style="display:none;"></div>
+  <div id="whyline" style="display:none;"></div>
+  <div id="notice" style="display:none;"></div>
+  <form id="ask" style="display:none;" onsubmit="return false;"><input id="free-in"><button></button></form>
+  <button id="enter" style="display:none;"></button>
+  <div id="tiny" style="display:none;"></div>
+  <div id="shint" style="display:none;"></div>
 </main>
 
 <!-- THE DEEPER CHAMBER -->
@@ -451,49 +715,444 @@ function toggleWhy(){
 }
 function refreshWhy(){var w=document.getElementById('whyline');if(w.classList.contains('on'))w.textContent=whyFor(S);}
 
-function enterInside(place){
-  track('enter',{place:place||'stage'});saveSurface();
-  var st={poor:'спа зле',ok:'спа нормално',good:'спа добре'}[S.sleep]||'slept okay';
-  var bt={ok:'feeling good',knee:'tender knee',back:'cranky back',tired:'low energy'}[S.body]||'feeling good';
-  var q="Today: "+st+", about "+(S.time||'40')+" minutes, "+bt+". Where should we start?";
-  window.location.href='/app?lang=bg&q='+encodeURIComponent(q);
+var fcHistory = [];
+var isFirstContactStarted = false;
+var extractedProfile = null;
+var isVoiceMode = false;
+
+/* ══════════ CONVERSATION MANAGER ══════════ */
+window.ConversationManager = (function() {
+  var sessionState = "IDLE";
+  return {
+    setSessionState: function(state) {
+      if (["IDLE", "ACTIVE", "LISTENING", "PROCESSING", "SPEAKING", "PAUSED", "ENDED"].indexOf(state) !== -1) {
+        sessionState = state;
+        if (state === "IDLE") {
+          LivingCore.setState("IDLE");
+        } else if (state === "LISTENING") {
+          LivingCore.setState("LISTENING");
+        } else if (state === "PROCESSING") {
+          LivingCore.setState("PROCESSING");
+        } else if (state === "SPEAKING") {
+          LivingCore.setState("SPEAKING");
+        }
+      }
+    },
+    getSessionState: function() {
+      return sessionState;
+    }
+  };
+})();
+
+function acknowledgeSafety() {
+  window.location.reload();
 }
-function enterFree(place){
-  var el=document.getElementById('free-in');
-  var t=el?(el.value||'').trim():'';
-  track('enter',{place:place,len:t.length});saveSurface();
-  window.location.href='/app?lang=bg'+(t?'&q='+encodeURIComponent(t):'');
+
+function pressTalk() {
+  var talkBtn = document.getElementById('fc-talk-btn');
+  var kbBtn = document.getElementById('fc-kb-btn');
+  
+  if (talkBtn) talkBtn.classList.add('activating');
+  if (kbBtn) kbBtn.style.opacity = '0';
+  
+  setTimeout(function() {
+    if (talkBtn) talkBtn.style.display = 'none';
+    if (kbBtn) kbBtn.style.display = 'none';
+    
+    isVoiceMode = true;
+    isFirstContactStarted = true;
+    ConversationManager.setSessionState("ACTIVE");
+    
+    if (window.coreFeel) {
+      window.coreFeel({sleep: 'good', body: 'ok'});
+    }
+    var intro = "Здравей. Аз съм APEX. Създавам тренировъчни планове, които се адаптират ежедневно към това как се чувства тялото ти. Разкажи ми какво се случва с теб напоследък.";
+    speak(intro, function() {
+      var wrap = document.getElementById('fc-input-wrap');
+      if (wrap) wrap.classList.add('on');
+      apexSpeak(intro, function() {
+        startListening();
+      });
+    });
+  }, 850);
+}
+
+function pressKeyboard() {
+  var talkBtn = document.getElementById('fc-talk-btn');
+  var kbBtn = document.getElementById('fc-kb-btn');
+  if (talkBtn) talkBtn.style.display = 'none';
+  if (kbBtn) kbBtn.style.display = 'none';
+  
+  isVoiceMode = false;
+  isFirstContactStarted = true;
+  ConversationManager.setSessionState("ACTIVE");
+  
+  if (window.coreFeel) {
+    window.coreFeel({sleep: 'good', body: 'ok'});
+  }
+  var intro = "Здравей. Аз съм APEX. Създавам тренировъчни планове, които се адаптират ежедневно към това как се чувства тялото ти. Разкажи ми какво се случва с теб напоследък.";
+  speak(intro, function() {
+    var wrap = document.getElementById('fc-input-wrap');
+    if (wrap) wrap.classList.add('on');
+  });
+}
+
+var fcIsSending = false;
+async function sendFirstContactMsg() {
+  if (fcIsSending) return;
+  var input = document.getElementById('fc-user-input');
+  var val = (input ? input.value : "").trim();
+  if (!val) return;
+  input.value = "";
+  
+  speak(val);
+  
+  if (recognition) {
+    recognition.stop();
+  }
+  
+  fcIsSending = true;
+  ConversationManager.setSessionState("PROCESSING");
+  
+  var historyPayload = [];
+  if (fcHistory.length === 0) {
+    historyPayload.push({
+      role: "assistant", 
+      content: "Здравей. Аз съм APEX. Създавам тренировъчни планове, които се адаптират ежедневно към това как се чувства тялото ти. Разкажи ми какво се случва с теб напоследък."
+    });
+  } else {
+    historyPayload = fcHistory.slice();
+  }
+  
+  try {
+    const r = await fetch('/chat', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        message: val,
+        history: historyPayload,
+        lang: 'bg',
+        first_contact: true
+      })
+    });
+    
+    const reader = r.body.getReader();
+    const decoder = new TextDecoder();
+    var buffer = "";
+    var fullReply = "";
+    var serverBrainState = null;
+    speakEl.innerHTML = '<span class="cursor"></span>';
+    
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, {stream: true});
+      const lines = buffer.split("\n\n");
+      buffer = lines.pop();
+      
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        try {
+          const d = JSON.parse(line.slice(6));
+          if (d.t) {
+            fullReply += d.t;
+            speakEl.textContent = fullReply;
+          }
+          if (d.profile) {
+            extractedProfile = d.profile;
+          }
+          if (d.brain_state) {
+            serverBrainState = d.brain_state;
+          }
+        } catch (e) {}
+      }
+    }
+    
+    fcHistory.push({role: "user", content: val});
+    fcHistory.push({role: "assistant", content: fullReply});
+    
+    if (serverBrainState) {
+      if (window.coreFeel) {
+        window.coreFeel({
+          sleep: serverBrainState.sleep,
+          body: serverBrainState.body
+        });
+      }
+      
+      if (serverBrainState.decision === "SAFETY_STOP") {
+        if (recognition) recognition.stop();
+        if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+        
+        ConversationManager.setSessionState("ENDED");
+        LivingCore.setState("SAFETY");
+        
+        var wrap = document.getElementById('fc-input-wrap');
+        if (wrap) {
+          wrap.innerHTML = '<button class="plan-start-btn" style="background:#f5212d; border-radius:14px; padding:18px; color:#fff; width:100%; border:none; cursor:pointer;" onclick="acknowledgeSafety()">РАЗБРАХ</button>';
+          wrap.classList.add('on');
+        }
+        
+        apexSpeak(fullReply);
+      } else if (serverBrainState.decision === "PLAN_READY") {
+        showPlan(fullReply);
+        apexSpeak("Мисля, че разбрах достатъчно, за да започнем. Можеш да ми зададеш допълнителни въпроси или да стартираш сесията.", function() {
+          if (isVoiceMode) {
+            startListening();
+          }
+        });
+      } else {
+        apexSpeak(fullReply, function() {
+          if (isVoiceMode) {
+            startListening();
+          }
+        });
+      }
+    } else {
+      apexSpeak(fullReply, function() {
+        if (isVoiceMode) {
+          startListening();
+        }
+      });
+    }
+  } catch (e) {
+    speak("Нещо се обърка. Нека опитаме пак.");
+  } finally {
+    fcIsSending = false;
+  }
+}
+
+function showPlan(planMarkdown) {
+  var stage = document.querySelector('.stage');
+  if (stage) stage.classList.add('plan-active');
+  
+  var planContainer = document.getElementById('fc-plan-container');
+  if (planContainer) {
+    var html = planMarkdown
+      .replace(/Мисля, че разбрах достатъчно, за да започнем\.?/i, '')
+      .replace(/\r?\n/g, '<br>')
+      .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+      .replace(/###\s*([^\n<]+)/g, '<h3>$1</h3>')
+      .replace(/-\s*([^\n<]+)/g, '<li>$1</li>');
+      
+    planContainer.innerHTML = '<div class="plan-card">' +
+      '<h3>ТВОЯТ ПЕРСОНАЛИЗИРАН ПЛАН</h3>' +
+      '<div>' + html + '</div>' +
+      '</div>' +
+      '<button class="plan-start-btn" onclick="startSession()">ЗАПОЧНИ КАЛИБРИРАЩА СЕСИЯ</button>';
+    planContainer.classList.add('on');
+  }
+}
+
+function startSession() {
+  if (extractedProfile) {
+    try {
+      localStorage.setItem('apexProfile', JSON.stringify(extractedProfile));
+    } catch(e){}
+  }
+  window.location.href = '/app?lang=bg';
+}
+
+var S = {sleep: 'good', time: '40', body: 'ok'};
+var SATS = [];
+var satEls = {};
+function glideSats() {}
+function pulseSats() {}
+
+var S = {sleep: 'good', time: '40', body: 'ok'};
+var SATS = [];
+var satEls = {};
+function glideSats() {}
+function pulseSats() {}
+
+/* ══════════ THE LIVING CORE CONTROLLER ══════════ */
+window.LivingCore = (function() {
+  var currentState = "IDLE";
+  var micAmplitude = 0;
+  var speakAmplitude = 0;
+  var brainState = { sleep: "good", body: "ok" };
+  var ripples = [];
+  
+  return {
+    setState: function(state) {
+      if (state === "IDLE" || state === "LISTENING" || state === "PROCESSING" || state === "SPEAKING" || state === "SAFETY") {
+        currentState = state;
+      }
+    },
+    getState: function() {
+      return currentState;
+    },
+    setMicAmplitude: function(amp) {
+      micAmplitude = amp;
+    },
+    getMicAmplitude: function() {
+      return micAmplitude;
+    },
+    setSpeakAmplitude: function(amp) {
+      speakAmplitude = amp;
+    },
+    getSpeakAmplitude: function() {
+      return speakAmplitude;
+    },
+    setBrainState: function(sleep, body) {
+      brainState.sleep = sleep || "good";
+      brainState.body = body || "ok";
+    },
+    getBrainState: function() {
+      return brainState;
+    },
+    emitRipple: function() {
+      ripples.push({ r: 5, max: 120, alpha: 0.6, speed: 3.5 });
+    },
+    getRipples: function() {
+      return ripples;
+    }
+  };
+})();
+
+/* Web Speech & Audio Context Analyser API Setup */
+var recognition = null;
+var micStream = null;
+var audioCtx = null;
+var analyser = null;
+var dataArray = null;
+
+if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+  var SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
+  recognition = new SpeechRecognition();
+  recognition.continuous = false;
+  recognition.interimResults = false;
+  recognition.lang = 'bg-BG';
+
+  recognition.onstart = function() {
+    ConversationManager.setSessionState("LISTENING");
+    document.getElementById('fc-mic-btn').classList.add('active');
+    startMicAnalyser();
+  };
+
+  recognition.onspeechstart = function() {
+    // Microphone animation starts automatically as Audio Context measures amplitude
+  };
+
+  recognition.onspeechend = function() {
+    ConversationManager.setSessionState("PROCESSING");
+  };
+
+  recognition.onresult = function(event) {
+    var txt = event.results[0][0].transcript;
+    document.getElementById('fc-user-input').value = txt;
+    sendFirstContactMsg();
+  };
+
+  recognition.onend = function() {
+    document.getElementById('fc-mic-btn').classList.remove('active');
+    stopMicAnalyser();
+    if (ConversationManager.getSessionState() === "LISTENING" || (ConversationManager.getSessionState() === "PROCESSING" && !fcIsSending)) {
+      ConversationManager.setSessionState("IDLE");
+    }
+  };
+
+  recognition.onerror = function() {
+    document.getElementById('fc-mic-btn').classList.remove('active');
+    stopMicAnalyser();
+    ConversationManager.setSessionState("IDLE");
+  };
+}
+
+function startListening() {
+  if (!recognition) return;
+  try {
+    recognition.start();
+  } catch (e) {
+    recognition.stop();
+  }
+}
+
+function startMicAnalyser() {
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
+      micStream = stream;
+      window.AudioContext = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new AudioContext();
+      var source = audioCtx.createMediaStreamSource(stream);
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 64;
+      dataArray = new Uint8Array(analyser.frequencyBinCount);
+      source.connect(analyser);
+    }).catch(function(e) {
+      console.warn("Audio Context init failed:", e);
+    });
+  }
+}
+
+function stopMicAnalyser() {
+  if (micStream) {
+    micStream.getTracks().forEach(function(t) { t.stop(); });
+    micStream = null;
+  }
+  if (audioCtx) {
+    audioCtx.close();
+    audioCtx = null;
+    analyser = null;
+  }
+  LivingCore.setMicAmplitude(0);
+}
+
+function apexSpeak(text, callback) {
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+    var utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'bg-BG';
+    utterance.rate = 0.85;
+    utterance.pitch = 0.9;
+    
+    utterance.onstart = function() {
+      ConversationManager.setSessionState("SPEAKING");
+    };
+    
+    utterance.onboundary = function(e) {
+      if (e.name === 'word') {
+        LivingCore.setSpeakAmplitude(0.75 + Math.random() * 0.25);
+      } else if (e.name === 'sentence') {
+        LivingCore.emitRipple();
+      }
+    };
+    
+    utterance.onend = function() {
+      LivingCore.setSpeakAmplitude(0);
+      LivingCore.emitRipple();
+      if (isVoiceMode && ConversationManager.getSessionState() !== "ENDED") {
+        startListening();
+      } else if (ConversationManager.getSessionState() === "ENDED") {
+        LivingCore.setState("SAFETY");
+      } else {
+        ConversationManager.setSessionState("IDLE");
+      }
+      callback && callback();
+    };
+    window.speechSynthesis.speak(utterance);
+  } else {
+    if (isVoiceMode && ConversationManager.getSessionState() !== "ENDED") {
+      startListening();
+    } else if (ConversationManager.getSessionState() === "ENDED") {
+      LivingCore.setState("SAFETY");
+    } else {
+      ConversationManager.setSessionState("IDLE");
+    }
+    callback && callback();
+  }
 }
 
 /* boot the encounter */
 (function(){
-  speakEl=document.getElementById('speak');qoptsEl=document.getElementById('qopts');
-  heldEl=document.getElementById('held');noticeEl=document.getElementById('notice');
-  orbitEl=document.getElementById('orbit');
-  SATS.forEach(function(sat){
-    var el=document.createElement('span');el.className='sat';el.textContent=sat.label||sat.k;el.setAttribute('aria-hidden','true');
-    orbitEl.appendChild(el);satEls[sat.k]=el;
-  });
-  document.getElementById('lcore').addEventListener('click',toggleWhy);
-  window.addEventListener('resize',function(){if(S.sleep||S.time||S.body)glideSats();else glideSats();});
-  var back=loadSurface();
-  if(back){
-    S={sleep:back.sleep,time:back.time,body:back.body};
-    renderMotes();glideSats();
-    setTimeout(function(){SATS.forEach(function(s2){satEls[s2.k].classList.add('on');});},reduce?0:300);
-    speak(greetBack(back),function(){
-      setTimeout(function(){conclude();},reduce?0:600);
-    });
-  }else{
-    glideSats();
-    setTimeout(function(){SATS.forEach(function(s2){satEls[s2.k].classList.add('on');});},reduce?0:700);
-    speak(greetNew(),function(){
-      setTimeout(function(){askQ(0);},reduce?0:650);
-    });
-  }
+  speakEl = document.getElementById('speak');
+  orbitEl = document.getElementById('orbit');
+  
+  try {
+    localStorage.removeItem('apexLastSurface');
+  } catch(e){}
 })();
 
-/* ══════════ THE LIVING CORE — the app's organism, same language ══════════ */
+/* ══════════ THE LIVING CORE RENDERER ══════════ */
 (function(){
   var cv=document.getElementById('lcore');if(!cv||!cv.getContext)return;
   var ctx=cv.getContext('2d');
@@ -509,59 +1168,189 @@ function enterFree(place){
   resize();window.addEventListener('resize',resize);
   var lobes=[];for(var i=0;i<7;i++){var sd=i*7.3+Math.random()*3;
     lobes.push({seed:sd,phase:sd,nt:sd,rad:.30+Math.random()*.20,sz:.7+Math.random()*.5,sp:.18+Math.random()*.22});}
-  var cur={recovery:.6,fatigue:.3,stress:.25},tgt={recovery:.6,fatigue:.3,stress:.25},focus=0;
-  window.coreFeel=function(s){
-    tgt.fatigue=Math.min(.85,(s.sleep==='poor'?.66:s.sleep==='good'?.15:.32)+(s.body==='tired'?.2:0));
-    tgt.stress=(s.body==='knee'||s.body==='back')?.58:.24;
-    tgt.recovery=Math.max(.12,1-tgt.fatigue*.9);
-    focus=1;
-  };
-  function nz(a,b){return Math.sin(a*1.7+b)*.6+Math.sin(a*.9-b*1.3)*.4;}
-  function mix(a,b,t){return[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];}
-  function palette(){
-    var r=cur.recovery,f=cur.fatigue,st=cur.stress;
-    var cool=[[56,224,255],[140,235,120]],mid=[[255,177,60],[255,106,60]],warm=[[245,33,45],[255,90,50]],c1,c2;
-    if(r>.55){c1=mix(cool[0],mid[0],(1-r)*1.1);c2=mix(cool[1],mid[1],(1-r)*1.1);}
-    else if(f>.55){c1=mix(warm[0],mid[0],1-f);c2=mix(warm[1],mid[1],1-f);}
-    else{c1=mid[0].slice();c2=mid[1].slice();}
-    if(st>.4)c1=mix(c1,warm[0],(st-.4)*.7);
-    return[c1,c2];
+  
+  var particles=[];
+  for(var i=0;i<30;i++){
+    particles.push({
+      ang:Math.random()*6.28,
+      dist:R*(0.4+Math.random()*0.8),
+      size:1+Math.random()*1.8,
+      speed:0.015+Math.random()*0.02,
+      seed:Math.random()*100
+    });
   }
+
+  window.coreFeel=function(s){
+    LivingCore.setBrainState(s.sleep, s.body);
+  };
+  
+  function nz(a,b){return Math.sin(a*1.7+b)*.6+Math.sin(a*.9-b*1.3)*.4;}
+  
   var last=performance.now(),lr=0,reduceCore=reduce;
+  var curScale=1.0, curSpdFactor=1.0;
+  
   function render(now,breath){
-    var r=cur.recovery,f=cur.fatigue,st=cur.stress,pal=palette(),c1=pal[0],c2=pal[1];
+    var state = LivingCore.getState();
+    var micAmp = LivingCore.getMicAmplitude();
+    var speakAmp = LivingCore.getSpeakAmplitude();
+    
+    var c1, c2;
+    if (state === "SAFETY") {
+      c1 = [245, 33, 45];
+      c2 = [180, 20, 20];
+    } else if (state === "PROCESSING") {
+      c1 = [255, 177, 60];
+      c2 = [240, 240, 240];
+    } else {
+      var bs = LivingCore.getBrainState();
+      var isRed = (bs.sleep === 'poor' || bs.body === 'knee' || bs.body === 'back');
+      var isYellow = (bs.sleep === 'average' || bs.body === 'tired');
+      if (isRed) {
+        c1 = [210, 25, 25];
+        c2 = [140, 15, 15];
+      } else if (isYellow) {
+        c1 = [40, 120, 255];
+        c2 = [255, 160, 40];
+      } else {
+        c1 = [56, 224, 255];
+        c2 = [140, 235, 120];
+      }
+    }
+    
     g.globalCompositeOperation='source-over';
-    g.fillStyle='rgba(7,9,16,'+(0.10+st*0.04)+')';g.fillRect(0,0,ow,oh);
-    var compress=1-f*.26,expand=1+r*.14,gather=1-focus*.26;
+    g.fillStyle='rgba(7,9,16,0.12)';
+    g.fillRect(0,0,ow,oh);
+    
     g.globalCompositeOperation='lighter';
     for(var i=0;i<lobes.length;i++){
       var L=lobes[i];
-      var a1=nz(L.seed,L.nt),ang=L.phase+a1*1.1+nz(L.seed*.6+5,L.nt*.8)*st*.8;
-      var orbit=R*(0.55+L.rad)*expand*compress*gather*(0.9+breath*0.12);
+      var a1=nz(L.seed,L.nt),ang=L.phase+a1*1.1;
+      var orbit=R*(0.55+L.rad)*curScale*(0.9+breath*0.12);
       var x=cx+Math.cos(ang)*orbit,y=cy+Math.sin(ang)*orbit;
-      var size=R*L.sz*0.95*(0.7+breath*0.25)*expand*compress;
-      var alpha=(0.055+r*0.030-f*0.012)*(1+focus*.5);
+      var size=R*L.sz*0.95*(0.7+breath*0.25)*curScale;
+      
+      var alphaBoost = 1.0;
+      if (state === "SPEAKING") {
+        alphaBoost = 1.0 + speakAmp * 1.5;
+      } else if (state === "LISTENING") {
+        alphaBoost = 1.0 + micAmp * 1.0;
+      }
+      var alpha=0.065 * alphaBoost;
+      
       var rg=g.createRadialGradient(x,y,0,x,y,Math.max(size,1));
       rg.addColorStop(0,'rgba('+(c1[0]|0)+','+(c1[1]|0)+','+(c1[2]|0)+','+alpha+')');
       rg.addColorStop(.5,'rgba('+(c2[0]|0)+','+(c2[1]|0)+','+(c2[2]|0)+','+(alpha*.45)+')');
       rg.addColorStop(1,'rgba(0,0,0,0)');
       g.fillStyle=rg;g.beginPath();g.arc(x,y,Math.max(size,1),0,6.2832);g.fill();
     }
+    
+    for (var i = 0; i < particles.length; i++) {
+      var p = particles[i];
+      var pSpd = p.speed * curSpdFactor;
+      if (state === "LISTENING") {
+        pSpd = p.speed * (1.0 + micAmp * 5.0);
+      }
+      p.ang += pSpd;
+      
+      var targetDist = R * (0.45 + 0.15 * Math.sin(p.seed + now / 1000));
+      if (state === "PROCESSING") {
+        targetDist = R * 0.65;
+      }
+      p.dist += (targetDist - p.dist) * 0.05;
+      
+      var px = cx + Math.cos(p.ang) * p.dist;
+      var py = cy + Math.sin(p.ang) * p.dist;
+      
+      g.fillStyle = 'rgba(' + (c1[0]|0) + ',' + (c1[1]|0) + ',' + (c1[2]|0) + ',0.35)';
+      g.beginPath();
+      g.arc(px, py, p.size, 0, 6.28);
+      g.fill();
+    }
+    
+    var activeRipples = LivingCore.getRipples();
+    for (var i = activeRipples.length - 1; i >= 0; i--) {
+      var rip = activeRipples[i];
+      rip.r += rip.speed;
+      rip.alpha -= 0.015;
+      if (rip.alpha <= 0 || rip.r >= rip.max) {
+        activeRipples.splice(i, 1);
+      } else {
+        g.strokeStyle = 'rgba(' + (c1[0]|0) + ',' + (c1[1]|0) + ',' + (c1[2]|0) + ',' + rip.alpha + ')';
+        g.lineWidth = 1.5;
+        g.beginPath();
+        g.arc(cx, cy, rip.r, 0, 6.28);
+        g.stroke();
+      }
+    }
+    
     ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
     ctx.clearRect(0,0,W,H);ctx.drawImage(off,0,0,ow,oh,0,0,W,H);
   }
+  
   function frame(now){
     if(!reduceCore)requestAnimationFrame(frame);
     var dt=Math.min((now-last)/1000,.05);last=now;
-    for(var k in cur)cur[k]+=(tgt[k]-cur[k])*Math.min(dt*.9,1);
-    focus+=(0-focus)*Math.min(dt*.5,1);
-    var spd=dt*(.10+cur.recovery*.10-cur.fatigue*.05)*5*(1+focus*.8);
+    
+    var state = LivingCore.getState();
+    var micAmp = LivingCore.getMicAmplitude();
+    var speakAmp = LivingCore.getSpeakAmplitude();
+    
+    var targetScale = 1.0;
+    var targetSpd = 1.0;
+    
+    if (state === "SAFETY") {
+      targetScale = 0.65;
+      targetSpd = 0.05;
+    } else if (state === "PROCESSING") {
+      targetScale = 0.85;
+      targetSpd = 0.35;
+    } else if (state === "SPEAKING") {
+      targetScale = 1.15 + speakAmp * 0.22;
+      targetSpd = 1.2;
+    } else if (state === "LISTENING") {
+      targetScale = 1.05 + micAmp * 0.20;
+      targetSpd = 0.7;
+    } else {
+      targetScale = 1.0;
+      targetSpd = 1.0;
+    }
+    
+    curScale += (targetScale - curScale) * Math.min(dt * 6.0, 1);
+    curSpdFactor += (targetSpd - curSpdFactor) * Math.min(dt * 6.0, 1);
+    
+    var spd=dt*(.10+0.5*.10-0.3*.05)*5*curSpdFactor;
     for(var i=0;i<lobes.length;i++){lobes[i].nt+=spd*(lobes[i].sp/.29);lobes[i].phase+=spd*(lobes[i].sp/.29)*.45;}
+    
+    if (analyser && dataArray) {
+      analyser.getByteFrequencyData(dataArray);
+      var sum = 0;
+      for (var i = 0; i < dataArray.length; i++) {
+        sum += dataArray[i];
+      }
+      var avg = sum / dataArray.length;
+      var rawVol = Math.min(1.0, avg / 48.0);
+      LivingCore.setMicAmplitude(rawVol);
+    }
+    
+    if (state === "SPEAKING") {
+      LivingCore.setSpeakAmplitude(speakAmp * 0.88);
+    }
+    
     if(document.hidden)return;
     if(now-lr<33&&!reduceCore)return;lr=now;
     if(!W||Math.abs(cv.clientWidth-W)>1)resize();
     if(!W)return;
-    render(now,.5+.5*Math.sin(now/952));
+    
+    var breath = 0.5;
+    if (state === "IDLE") {
+      breath = 0.5 + 0.5 * Math.sin(now / 952);
+    } else if (state === "PROCESSING") {
+      breath = 0.5 + 0.1 * Math.sin(now / 600);
+    } else if (state === "SPEAKING") {
+      breath = 0.5 + 0.3 * Math.sin(now / 400);
+    }
+    
+    render(now, breath);
   }
   if(reduceCore){
     for(var w=0;w<40;w++)frame(performance.now()+w*33);

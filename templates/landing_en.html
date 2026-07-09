@@ -34,7 +34,7 @@ gtag('js', new Date());gtag('config','G-B3WLGXE2XM');
 
 <style>
 :root{
-  /* the app's exact tokens (apex.html) — landing and app are one surface */
+  /* the app's exact tokens (apex.html) — this is not a website, it is the organism's room */
   --bg:#070910; --ink:#121724; --card:#121724;
   --line:rgba(255,255,255,.10); --line2:rgba(255,255,255,.16);
   --text:#F2F5FA; --muted:#8B93A7; --faint:#5A6276;
@@ -49,90 +49,79 @@ body{background:var(--bg);color:var(--text);font-family:'Manrope',sans-serif;lin
 a{color:inherit;text-decoration:none;}
 ::selection{background:rgba(245,33,45,.26);}
 
-/* one calm, breathing field of light behind everything */
 .field{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden;}
-.field .glow{position:absolute;top:-24%;left:50%;transform:translateX(-50%);width:min(1100px,140vw);height:760px;background:radial-gradient(ellipse at center,rgba(245,33,45,.14),rgba(255,106,60,.05) 40%,transparent 70%);opacity:.55;animation:breathe 9s ease-in-out infinite;}
-@keyframes breathe{0%,100%{opacity:.42;transform:translateX(-50%) scale(1);}50%{opacity:.62;transform:translateX(-50%) scale(1.06);}}
+.field .glow{position:absolute;top:-24%;left:50%;transform:translateX(-50%);width:min(1100px,140vw);height:760px;background:radial-gradient(ellipse at center,rgba(245,33,45,.12),rgba(255,106,60,.05) 40%,transparent 70%);opacity:.5;animation:breathe 9s ease-in-out infinite;}
+@keyframes breathe{0%,100%{opacity:.38;}50%{opacity:.58;}}
 
-/* top whisper */
 .top{position:fixed;top:0;left:0;right:0;z-index:40;display:flex;align-items:center;justify-content:space-between;padding:18px 24px;}
 .top .mk{display:flex;align-items:center;gap:10px;}
 .top .mk img{width:26px;height:26px;}
 .top .mk b{font-family:'Unbounded';font-weight:600;font-size:13px;letter-spacing:1px;}
-.enter-top{font-size:13px;font-weight:600;color:var(--muted);border:1px solid var(--line2);padding:8px 16px;border-radius:999px;transition:color .25s,border-color .25s;cursor:pointer;}
+.enter-top{font-size:13px;font-weight:600;color:var(--muted);border:1px solid var(--line2);padding:8px 16px;border-radius:999px;transition:color .25s,border-color .25s;cursor:pointer;background:none;font-family:'Manrope';}
 .enter-top:hover{color:var(--text);border-color:rgba(255,255,255,.28);}
 
-/* ── ARRIVAL + SURFACE (the whole experience) ── */
-.stage{position:relative;z-index:1;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:100px 24px 80px;}
-/* the living core — the application's own organism, not a logo */
-.core-stage{position:relative;width:min(230px,58vw);height:min(230px,58vw);margin:-14px auto 0;}
-.core-stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block;
+/* ══ THE ENCOUNTER ══ */
+.stage{position:relative;z-index:1;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:96px 20px 70px;}
+
+/* the organism and its considerations — distance IS priority */
+.orbit{position:relative;width:min(360px,94vw);height:min(360px,94vw);margin:0 auto;}
+.orbit canvas{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:58%;height:58%;display:block;cursor:pointer;
   -webkit-mask-image:radial-gradient(circle at 50% 50%,#000 48%,transparent 70%);
   mask-image:radial-gradient(circle at 50% 50%,#000 48%,transparent 70%);}
-.arrival{min-height:34px;margin:26px 0 4px;font-family:'Unbounded';font-weight:500;font-size:clamp(19px,3.2vw,27px);letter-spacing:-.01em;color:var(--text);}
-.arrival .cursor{display:inline-block;width:2px;height:1.05em;background:var(--ember);margin-left:2px;vertical-align:-2px;animation:blink 1s steps(1) infinite;}
+.sat{position:absolute;left:50%;top:50%;font-size:11.5px;font-weight:600;letter-spacing:1.6px;text-transform:lowercase;color:var(--faint);white-space:nowrap;pointer-events:none;transition:transform 1.1s cubic-bezier(.2,.7,.2,1),color .8s,text-shadow .8s,opacity .8s;opacity:0;}
+.sat.on{opacity:.85;}
+.sat.lead{color:var(--gold);text-shadow:0 0 14px rgba(255,177,60,.55);}
+.sat::before{content:'';display:inline-block;width:4px;height:4px;border-radius:50%;background:currentColor;margin-right:7px;vertical-align:2px;}
+.sat.pulse{animation:satpulse .5s ease;}
+@keyframes satpulse{50%{text-shadow:0 0 22px rgba(255,177,60,.9);}}
+
+/* the organism speaks */
+.speak{min-height:64px;margin:8px auto 0;max-width:640px;font-family:'Unbounded';font-weight:500;font-size:clamp(17px,2.6vw,24px);line-height:1.45;letter-spacing:-.01em;display:flex;align-items:center;justify-content:center;padding:0 6px;}
+.speak .cursor{display:inline-block;width:2px;height:1.05em;background:var(--ember);margin-left:3px;vertical-align:-2px;animation:blink 1s steps(1) infinite;}
 @keyframes blink{50%{opacity:0;}}
-.sub-ask{color:var(--muted);font-size:14.5px;margin-top:2px;opacity:0;transition:opacity .8s ease;}
-.sub-ask.on{opacity:1;}
 
-/* choices */
-.choices{margin-top:40px;display:flex;flex-direction:column;gap:16px;width:100%;max-width:540px;opacity:0;transform:translateY(10px);transition:opacity .9s ease,transform .9s ease;}
-.choices.on{opacity:1;transform:none;}
-.row{display:flex;align-items:center;gap:14px;justify-content:center;flex-wrap:wrap;}
-.row .rl{font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--faint);width:74px;text-align:right;}
-@media(max-width:520px){.row .rl{width:100%;text-align:center;margin-bottom:-4px;}}
-.opts{display:inline-flex;flex-wrap:wrap;justify-content:center;gap:7px;background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:24px;padding:5px;max-width:100%;}
-.opt{font-size:13.5px;font-weight:600;color:var(--muted);padding:8px 16px;border-radius:999px;cursor:pointer;transition:color .22s,background .22s,box-shadow .22s;white-space:nowrap;}
-.opt:hover{color:var(--text);}
-.opt.sel{color:#fff;background:var(--grad);box-shadow:0 4px 16px rgba(245,33,45,.28);}
+/* answers — floating words, absorbed on touch */
+.qopts{margin-top:26px;display:flex;gap:10px 26px;justify-content:center;flex-wrap:wrap;min-height:44px;}
+.qw{background:none;border:none;font-family:'Manrope';font-weight:600;font-size:17px;color:var(--muted);cursor:pointer;padding:8px 6px;letter-spacing:.2px;transition:color .25s,text-shadow .25s,transform .25s;opacity:0;transform:translateY(8px);}
+.qw.on{opacity:1;transform:none;}
+.qw:hover{color:var(--text);text-shadow:0 0 18px rgba(255,106,60,.55);}
+.qw:active{transform:scale(.96);}
+.fly{position:fixed;z-index:80;font-family:'Manrope';font-weight:600;font-size:17px;color:var(--gold);pointer-events:none;transition:transform .8s cubic-bezier(.4,0,.2,1),opacity .8s;}
 
-/* reasoning — the priority order IS the visible thought */
-.reason{margin-top:40px;width:100%;max-width:600px;min-height:150px;}
-.pri{display:flex;justify-content:center;align-items:center;gap:8px;flex-wrap:wrap;min-height:36px;margin-bottom:20px;padding:0 8px;}
-.pri .pl{font-size:10.5px;letter-spacing:2px;text-transform:uppercase;color:var(--faint);font-weight:700;margin-right:4px;}
-.pri .pc{font-size:12.5px;font-weight:600;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:6px 13px;opacity:0;transform:translateY(5px);transition:opacity .3s ease,transform .3s ease;white-space:nowrap;}
-.pri .pc.on{opacity:.8;transform:none;}
-.pri .pc.lead{color:var(--gold);border-color:rgba(255,177,60,.45);box-shadow:0 0 0 1px rgba(255,177,60,.12);}
-.pri .pc.lead.on{opacity:1;}
-.pri .sep{color:var(--faint);font-size:11px;opacity:0;transition:opacity .3s;}
-.pri .sep.on{opacity:.55;}
-.answer{font-family:'Unbounded';font-weight:500;font-size:clamp(18px,2.7vw,25px);line-height:1.42;letter-spacing:-.01em;color:var(--text);min-height:2.8em;display:flex;align-items:center;justify-content:center;transition:opacity .35s ease,transform .35s ease;padding:0 6px;}
-.answer.swap{opacity:0;transform:translateY(8px);}
-.whyq{margin-top:10px;background:none;border:none;color:var(--faint);font-family:'Manrope';font-weight:600;font-size:12px;letter-spacing:1.5px;cursor:pointer;text-transform:lowercase;transition:color .2s;opacity:0;}
-.whyq.on{opacity:.85;}
-.whyq:hover{color:var(--gold);}
-.whyline{font-size:13px;color:var(--muted);margin-top:8px;max-height:0;opacity:0;overflow:hidden;transition:max-height .45s ease,opacity .45s ease;padding:0 10px;}
-.whyline.on{max-height:70px;opacity:1;}
+/* what it holds — memory as small lights */
+.held{margin-top:24px;display:flex;gap:9px;justify-content:center;flex-wrap:wrap;min-height:32px;}
+.mote{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--muted);background:rgba(255,255,255,.03);border:1px solid var(--line2);padding:6px 13px;border-radius:999px;cursor:pointer;opacity:0;transform:scale(.7);transition:opacity .5s,transform .5s,border-color .25s,color .25s;font-family:'Manrope';}
+.mote.on{opacity:1;transform:none;}
+.mote:hover{border-color:rgba(255,177,60,.5);color:var(--text);}
+.mote i{width:5px;height:5px;border-radius:50%;background:var(--gold);box-shadow:0 0 9px var(--gold);}
+.held-cap{width:100%;font-size:10px;letter-spacing:2.4px;text-transform:uppercase;color:var(--faint);font-weight:700;margin-bottom:2px;opacity:0;transition:opacity .6s;}
+.held-cap.on{opacity:.8;}
+
+.whyline{font-size:13px;color:var(--muted);margin-top:14px;max-height:0;opacity:0;overflow:hidden;transition:max-height .45s ease,opacity .45s ease;padding:0 10px;}
+.whyline.on{max-height:72px;opacity:1;}
+.whyhint{margin-top:12px;font-size:11px;letter-spacing:1.8px;text-transform:uppercase;color:var(--faint);font-weight:700;opacity:0;transition:opacity .8s;cursor:pointer;background:none;border:none;font-family:'Manrope';}
+.whyhint.on{opacity:.7;}
+.whyhint:hover{color:var(--gold);}
 .notice{margin-top:14px;font-size:13.5px;color:var(--ember);font-weight:600;opacity:0;transform:translateY(6px);transition:opacity .6s,transform .6s;}
 .notice.on{opacity:1;transform:none;}
 
-/* memory pill — in flow, never overlapping */
-.mem{margin-top:16px;min-height:0;display:flex;justify-content:center;}
-.mem-pill{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--muted);background:rgba(255,255,255,.03);border:1px solid var(--line2);padding:7px 14px;border-radius:999px;opacity:0;transform:translateY(-6px);transition:opacity .5s,transform .5s;white-space:nowrap;max-width:100%;}
-.mem-pill.on{opacity:1;transform:none;}
-.mem-pill i{width:6px;height:6px;border-radius:50%;background:var(--gold);box-shadow:0 0 8px var(--gold);}
-
-/* enter */
-.enter{margin-top:44px;display:inline-flex;align-items:center;gap:10px;background:var(--grad);color:#fff;font-family:'Manrope';font-weight:700;font-size:15.5px;padding:15px 30px;border:none;border-radius:999px;cursor:pointer;box-shadow:0 8px 30px rgba(245,33,45,.3);transition:transform .16s,box-shadow .16s;opacity:0;transform:translateY(10px);}
-.enter.on{opacity:1;transform:none;}
-.enter:hover{transform:translateY(-2px);box-shadow:0 14px 40px rgba(245,33,45,.44);}
-.enter:active{transform:translateY(0) scale(.99);}
-.tiny{margin-top:16px;font-size:12px;color:var(--faint);font-weight:500;letter-spacing:.2px;opacity:0;transition:opacity .8s;}
-.tiny.on{opacity:1;}
-/* the app's own input bar — the product itself, on the door */
-.ask{margin:30px auto 0;width:100%;max-width:520px;display:flex;gap:9px;opacity:0;transform:translateY(8px);transition:opacity .8s ease,transform .8s ease;}
+/* the doorway — the app's own input */
+.ask{margin:28px auto 0;width:100%;max-width:520px;display:flex;gap:9px;opacity:0;transform:translateY(8px);transition:opacity .8s ease,transform .8s ease;}
 .ask.on{opacity:1;transform:none;}
 .ask input{flex:1;min-width:0;background:var(--ink);border:1px solid var(--line2);border-radius:14px;padding:14px 16px;font-family:'Manrope';font-size:15px;color:var(--text);}
 .ask input::placeholder{color:var(--faint);}
 .ask input:focus{outline:none;border-color:rgba(245,33,45,.5);}
-.ask button{width:50px;border-radius:14px;background:var(--grad);color:#fff;font-size:16px;flex-shrink:0;box-shadow:0 6px 20px rgba(245,33,45,.3);transition:transform .15s;}
+.ask button{width:50px;border-radius:14px;background:var(--grad);color:#fff;font-size:16px;flex-shrink:0;box-shadow:0 6px 20px rgba(245,33,45,.3);transition:transform .15s;border:none;cursor:pointer;}
 .ask button:active{transform:scale(.96);}
-.ask-cap{margin-top:10px;font-size:11.5px;color:var(--faint);opacity:0;transition:opacity .8s;}
-.ask-cap.on{opacity:1;}
-.scroll-hint{margin-top:54px;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--faint);font-weight:600;opacity:0;transition:opacity 1s;}
+.enter{margin-top:22px;display:inline-flex;align-items:center;gap:10px;background:var(--grad);color:#fff;font-family:'Manrope';font-weight:700;font-size:15.5px;padding:15px 30px;border:none;border-radius:999px;cursor:pointer;box-shadow:0 8px 30px rgba(245,33,45,.3);transition:transform .16s,box-shadow .16s,opacity .8s;opacity:0;transform:translateY(10px);}
+.enter.on{opacity:1;transform:none;}
+.enter:hover{transform:translateY(-2px);box-shadow:0 14px 40px rgba(245,33,45,.44);}
+.tiny{margin-top:16px;font-size:12px;color:var(--faint);font-weight:500;letter-spacing:.2px;opacity:0;transition:opacity .8s;}
+.tiny.on{opacity:1;}
+.scroll-hint{margin-top:40px;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--faint);font-weight:600;opacity:0;transition:opacity 1s;}
 .scroll-hint.on{opacity:.7;}
 
-/* ── QUIET INSIDE (pricing) ── */
+/* ══ THE DEEPER CHAMBER (pricing — preserved) ══ */
 .inside{position:relative;z-index:1;padding:110px 0 60px;text-align:center;border-top:1px solid var(--line);background:linear-gradient(180deg,transparent,rgba(255,255,255,.012));}
 .inside h2{font-family:'Unbounded';font-weight:500;font-size:clamp(22px,3.4vw,32px);letter-spacing:-.02em;}
 .inside .q{color:var(--muted);font-size:15px;margin-top:12px;}
@@ -160,12 +149,10 @@ footer{position:relative;z-index:1;padding:36px 0 80px;text-align:center;color:v
 .foot-links{display:flex;justify-content:center;gap:15px;flex-wrap:wrap;margin-top:12px;}
 .foot-links a:hover{color:var(--text);}
 
-/* reveal */
 .rv{opacity:0;transform:translateY(18px);transition:opacity .7s cubic-bezier(.2,.7,.2,1),transform .7s cubic-bezier(.2,.7,.2,1);}
 .rv.in{opacity:1;transform:none;}
-@media(prefers-reduced-motion:reduce){.rv{opacity:1;transform:none;}.field .glow{animation:none;}.arrival .cursor{display:none;}}
+@media(prefers-reduced-motion:reduce){.rv{opacity:1;transform:none;}.field .glow{animation:none;}.speak .cursor{display:none;}.sat{transition:none;}.fly{transition:none;}}
 
-/* modals + cookie (kept) */
 .cookiebar{position:fixed;bottom:14px;left:14px;right:14px;max-width:520px;margin:0 auto;background:var(--ink);border:1px solid var(--line2);border-radius:16px;padding:13px 15px;font-size:12.5px;color:#C3CAD8;display:none;gap:10px;align-items:center;z-index:999;box-shadow:0 14px 44px rgba(0,0,0,.6);flex-wrap:wrap;}
 .cookiebar.show{display:flex;}
 .cookiebar .cbt{flex:1;min-width:170px;}
@@ -174,11 +161,247 @@ footer{position:relative;z-index:1;padding:36px 0 80px;text-align:center;color:v
 #legal-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:1000;overflow-y:auto;padding:24px 16px;backdrop-filter:blur(5px);}
 #legal-modal.active{display:block;}
 #legal-modal .lm{max-width:700px;margin:0 auto;background:var(--card);border:1px solid var(--line2);border-radius:16px;padding:30px 26px;position:relative;}
-#legal-modal .lx{position:sticky;top:0;float:right;background:var(--ink);border:1px solid var(--line2);color:var(--text);width:34px;height:34px;border-radius:50%;font-size:16px;cursor:pointer;}
-#legal-content{font-size:13.5px;color:#C3CAD8;}
-#legal-content h2{font-size:19px;margin-bottom:12px;font-family:'Unbounded';font-weight:600;}
-#legal-content h3{font-size:15px;margin:16px 0 6px;color:var(--text);}
-#legal-content p,#legal-content li{margin-bottom:8px;}#legal-content ul{padding-left:18px;}
+
+/* First Contact CSS Overrides */
+.top, .whyhint, .whyline, .notice, .held, .tiny, .scroll-hint, #inside, footer, .qopts {
+  display: none !important;
+}
+
+.fc-talk-btn {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.25s, background-color 0.25s, opacity 0.5s;
+  margin-top: 30px;
+  padding: 12px;
+  z-index: 10;
+}
+.fc-talk-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(0, 243, 255, 0.3);
+  transform: scale(1.04);
+}
+.fc-talk-btn:active, .fc-talk-btn.activating {
+  transform: scale(0.92);
+  background: rgba(0, 243, 255, 0.05);
+  border-color: rgba(0, 243, 255, 0.5);
+}
+.fc-talk-btn svg {
+  width: 100%;
+  height: 100%;
+}
+.fc-talk-btn svg .nucleus {
+  transition: fill 0.3s, transform 0.3s;
+}
+.fc-talk-btn:hover svg .nucleus {
+  fill: #00f3ff;
+  transform: scale(1.1);
+  transform-origin: center;
+}
+.fc-talk-btn.activating svg .path-cyan {
+  animation: pulse-cyan 0.85s ease-in-out infinite alternate;
+}
+.fc-talk-btn.activating svg .path-amber {
+  animation: pulse-amber 0.85s ease-in-out infinite alternate;
+}
+.fc-talk-btn.activating svg .nucleus {
+  fill: #00f3ff;
+  animation: scale-nucleus 0.85s ease-in-out infinite alternate;
+}
+.fc-talk-btn.activating svg .synapse {
+  animation: synapse-active 0.4s ease-in-out infinite alternate;
+}
+@keyframes pulse-cyan {
+  0% { stroke: #00f3ff; stroke-width: 2.5; }
+  100% { stroke: #ffffff; stroke-width: 4.0; filter: drop-shadow(0 0 4px #00f3ff); }
+}
+@keyframes pulse-amber {
+  0% { stroke: #fdcb6e; stroke-width: 2.5; }
+  100% { stroke: #ffffff; stroke-width: 4.0; filter: drop-shadow(0 0 4px #fdcb6e); }
+}
+@keyframes scale-nucleus {
+  0% { transform: scale(1); transform-origin: center; }
+  100% { transform: scale(1.3); transform-origin: center; filter: drop-shadow(0 0 8px #00f3ff); }
+}
+@keyframes synapse-active {
+  0% { transform: scale(1); transform-origin: center; opacity: 0.7; }
+  100% { transform: scale(1.2); transform-origin: center; opacity: 1; }
+}
+
+.fc-kb-btn {
+  background: none;
+  border: none;
+  color: #8C9BAE;
+  font-family: 'Manrope', sans-serif;
+  font-size: 13.5px;
+  text-decoration: underline;
+  cursor: pointer;
+  margin-top: 15px;
+  transition: color .2s, opacity .5s;
+  z-index: 10;
+}
+.fc-kb-btn:hover {
+  color: #fff;
+}
+
+.fc-input-wrap {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  max-width: 500px;
+  margin-top: 30px;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity .5s, transform .5s;
+  pointer-events: none;
+  z-index: 10;
+}
+.fc-input-wrap.on {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: all;
+}
+.fc-input-wrap input {
+  flex: 1;
+  background: var(--ink);
+  border: 1px solid var(--line2);
+  border-radius: 14px;
+  padding: 14px 16px;
+  font-family: 'Manrope', sans-serif;
+  font-size: 15px;
+  color: var(--text);
+}
+.fc-input-wrap input:focus {
+  outline: none;
+  border-color: rgba(245,33,45,.5);
+}
+.fc-input-wrap button {
+  background: var(--ink);
+  border: 1px solid var(--line2);
+  color: var(--text);
+  border-radius: 14px;
+  width: 50px;
+  height: 50px;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .2s, border-color .2s;
+}
+.fc-input-wrap button:hover {
+  border-color: rgba(255,255,255,.3);
+}
+.fc-input-wrap button#fc-send-btn {
+  background: var(--grad);
+  border: none;
+  box-shadow: 0 6px 20px rgba(245,33,45,.3);
+}
+.fc-mic-btn.active {
+  background: var(--brand);
+  border-color: var(--brand);
+  animation: mic-pulse 1.5s infinite ease-in-out;
+}
+@keyframes mic-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* Plan display state */
+.stage {
+  transition: padding .8s ease;
+}
+.stage.plan-active {
+  padding-top: 40px;
+}
+.stage.plan-active #orbit {
+  transform: scale(0.6);
+  margin-bottom: 0;
+  transition: transform .8s ease;
+}
+.stage.plan-active .speak {
+  font-size: 15px;
+  margin-top: 15px;
+  margin-bottom: 10px;
+}
+.stage.plan-active .fc-input-wrap {
+  margin-top: 20px;
+}
+
+#fc-plan-container {
+  display: none;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity .8s ease, transform .8s ease;
+  max-width: 640px;
+  width: 100%;
+  margin: 20px auto 0;
+  text-align: left;
+  z-index: 10;
+}
+#fc-plan-container.on {
+  display: block;
+  opacity: 1;
+  transform: translateY(0);
+}
+.plan-card {
+  background: var(--card);
+  border: 1px solid var(--line2);
+  border-radius: 18px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.5);
+}
+.plan-card h3 {
+  font-family: 'Unbounded', sans-serif;
+  font-size: 16px;
+  margin-bottom: 12px;
+  color: var(--text);
+  letter-spacing: 1px;
+}
+.plan-card ul {
+  list-style: none;
+  padding: 0;
+}
+.plan-card li {
+  font-family: 'Manrope', sans-serif;
+  font-size: 14.5px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255,255,255,.05);
+  color: #C3CAD8;
+  display: flex;
+  justify-content: space-between;
+}
+.plan-card li:last-child {
+  border-bottom: none;
+}
+.plan-start-btn {
+  display: block;
+  width: 100%;
+  background: var(--grad);
+  color: #fff;
+  font-family: 'Unbounded', sans-serif;
+  font-weight: 600;
+  font-size: 15px;
+  padding: 18px;
+  border: none;
+  border-radius: 14px;
+  cursor: pointer;
+  text-align: center;
+  box-shadow: 0 8px 30px rgba(245,33,45,.3);
+  transition: transform .16s, box-shadow .16s;
+}
+.plan-start-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 40px rgba(245,33,45,.444);
+}
 </style>
 </head>
 <body>
@@ -187,64 +410,63 @@ footer{position:relative;z-index:1;padding:36px 0 80px;text-align:center;color:v
 
 <div class="top">
   <a class="mk" href="/en"><img src="/static/logo.png" alt="APEX"><b>APEX</b></a>
-  <button class="enter-top" onclick="enterInside('nav')">enter →</button>
+  <button class="enter-top" onclick="enterFree('nav')">enter →</button>
 </div>
 
-<!-- THE EXPERIENCE -->
 <main class="stage">
-  <div class="core-stage" aria-hidden="true"><canvas id="lcore"></canvas></div>
-  <div class="arrival" id="arrival"><span class="cursor"></span></div>
-  <div class="sub-ask" id="subask">No sign-up. Just tell me — I'll show you how I think.</div>
-
-  <div class="mem" id="mem"><span class="mem-pill" id="mem-pill"><i></i><span id="mem-text"></span></span></div>
-
-  <div class="choices" id="choices">
-    <div class="row" data-key="sleep">
-      <span class="rl">slept</span>
-      <div class="opts">
-        <span class="opt" data-v="poor">badly</span>
-        <span class="opt sel" data-v="ok">okay</span>
-        <span class="opt" data-v="good">well</span>
-      </div>
-    </div>
-    <div class="row" data-key="time">
-      <span class="rl">today</span>
-      <div class="opts">
-        <span class="opt" data-v="15">15 min</span>
-        <span class="opt sel" data-v="40">40 min</span>
-        <span class="opt" data-v="90">90 min</span>
-      </div>
-    </div>
-    <div class="row" data-key="body">
-      <span class="rl">moving</span>
-      <div class="opts">
-        <span class="opt sel" data-v="ok">all good</span>
-        <span class="opt" data-v="knee">tender knee</span>
-        <span class="opt" data-v="back">cranky back</span>
-        <span class="opt" data-v="tired">low energy</span>
-      </div>
-    </div>
+  <div class="orbit" id="orbit" aria-label="APEX considering">
+    <canvas id="lcore" title="APEX"></canvas>
   </div>
 
-  <div class="reason" id="reason">
-    <div class="pri" id="pri" aria-hidden="true"></div>
-    <div class="answer" id="answer"></div>
-    <button class="whyq" id="whyq" onclick="toggleWhy()">why?</button>
-    <div class="whyline" id="whyline"></div>
-    <div class="notice" id="notice"></div>
+  <div class="speak" id="speak"><span class="cursor"></span></div>
+
+  <button class="fc-talk-btn" id="fc-talk-btn" onclick="pressTalk()" aria-label="Activate APEX reasoning system">
+    <svg class="apex-symbol" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <defs>
+        <linearGradient id="helix-cyan" x1="0" y1="0" x2="100" y2="100">
+          <stop offset="0%" stop-color="#00f3ff"/>
+          <stop offset="100%" stop-color="#0984e3"/>
+        </linearGradient>
+        <linearGradient id="helix-amber" x1="100" y1="0" x2="0" y2="100">
+          <stop offset="0%" stop-color="#fdcb6e"/>
+          <stop offset="100%" stop-color="#ff7675"/>
+        </linearGradient>
+      </defs>
+      <circle class="shell" cx="50" cy="50" r="44" stroke="rgba(255,255,255,0.08)" stroke-width="2"/>
+      <path class="path-cyan" d="M16 50 Q33 18 50 50 T84 50" stroke="url(#helix-cyan)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+      <path class="path-amber" d="M84 50 Q67 82 50 50 T16 50" stroke="url(#helix-amber)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+      <ellipse class="loop-1" cx="50" cy="50" rx="16" ry="36" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" transform="rotate(30 50 50)" fill="none"/>
+      <ellipse class="loop-2" cx="50" cy="50" rx="16" ry="36" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" transform="rotate(-30 50 50)" fill="none"/>
+      <circle class="nucleus" cx="50" cy="50" r="5.5" fill="#ffffff"/>
+      <circle class="synapse cyan-node" cx="28" cy="35" r="3.5" fill="#00f3ff"/>
+      <circle class="synapse red-node" cx="72" cy="65" r="3.5" fill="#ff7675"/>
+      <circle class="synapse yellow-node" cx="34" cy="62" r="3.5" fill="#fdcb6e"/>
+      <circle class="synapse blue-node" cx="66" cy="38" r="3.5" fill="#0984e3"/>
+    </svg>
+  </button>
+  <button class="fc-kb-btn" id="fc-kb-btn" onclick="pressKeyboard()">Use keyboard instead</button>
+
+  <div class="fc-input-wrap" id="fc-input-wrap">
+    <input type="text" id="fc-user-input" placeholder="Type here or speak..." autocomplete="off">
+    <button id="fc-mic-btn" class="fc-mic-btn" onclick="startListening()">🎤</button>
+    <button id="fc-send-btn" class="fc-send-btn" onclick="sendFirstContactMsg()">➤</button>
   </div>
 
-  <button class="enter" id="enter" onclick="enterInside('stage')">Begin →</button>
-  <form class="ask" id="ask" onsubmit="enterFree();return false;">
-    <input id="free-in" type="text" placeholder="Describe your goal…" aria-label="Describe your goal" autocomplete="off">
-    <button type="submit" aria-label="Send">➤</button>
-  </form>
-  <div class="ask-cap" id="askcap">or say it your way — this is the coach's real doorway</div>
-  <div class="tiny" id="tiny">No account · no card · nothing renews on its own<br>Guidance for healthy adults. Not medical advice.</div>
-  <div class="scroll-hint" id="shint">↓</div>
+  <div id="fc-plan-container"></div>
+
+  <!-- Keep hidden containers to prevent script reference breaks -->
+  <div id="qopts" style="display:none;"></div>
+  <div id="held" style="display:none;"><div id="heldcap"></div></div>
+  <div id="whyhint" style="display:none;"></div>
+  <div id="whyline" style="display:none;"></div>
+  <div id="notice" style="display:none;"></div>
+  <form id="ask" style="display:none;" onsubmit="return false;"><input id="free-in"><button></button></form>
+  <button id="enter" style="display:none;"></button>
+  <div id="tiny" style="display:none;"></div>
+  <div id="shint" style="display:none;"></div>
 </main>
 
-<!-- QUIET INSIDE -->
+<!-- THE DEEPER CHAMBER -->
 <section class="inside" id="inside">
   <div class="wrap">
     <h2 class="rv">Stay when it starts to know you.</h2>
@@ -298,32 +520,14 @@ footer{position:relative;z-index:1;padding:36px 0 80px;text-align:center;color:v
 <script>
 function track(n,p){try{gtag('event',n,p||{});}catch(e){}}
 
-/* ══════════════ THE REASONING SURFACE ══════════════ */
-var S={sleep:'ok',time:'40',body:'ok'};
-var shortPicks=0, noticed=false, memActive=false;
-
-/* the reasoning order — what leads in THIS state; the reorder is the visible thought */
-function priorities(s){
-  var p=[];
-  if(s.body==='knee')p.push('protect · knee');
-  else if(s.body==='back')p.push('protect · back');
-  if(s.sleep==='poor')p.push('recovery');
-  else if(s.body==='tired')p.push('recovery');
-  p.push('time · '+s.time+'m');
-  if(s.sleep==='good'&&s.body==='ok')p.push('load');
-  else p.push('movement');
-  p.push('fuel');
-  return p.slice(0,4);
-}
-
+/* ══════════ THE MIND (honest: same rules as the coach's own softening logic) ══════════ */
+var S={sleep:null,time:null,body:null};
 function decide(s){
-  // safety first — a tender area leads, no matter what else is true (a decision changing, shown)
   if(s.body==='knee') return "Off that knee today — there's still plenty we can do well.";
   if(s.body==='back') return "We keep every movement kind to your back, and skip what isn't.";
   if(s.body==='tired') return (s.time==='90')
     ? "The time's there — but low energy comes first. Gentle today, just enough to move."
     : "Gentle and moving — enough to feel better, nothing that digs a hole.";
-  // recovery can outweigh available time (the 'it actually understands' moment)
   if(s.sleep==='poor') return (s.time==='90')
     ? "You've got time — but on little sleep it's better spent easy. Short today; more once you've rested."
     : "Short and easy today. I'll ask more on a day you've slept.";
@@ -333,15 +537,6 @@ function decide(s){
   if(s.time==='90') return "Room to work — a fuller session, ending with something in reserve.";
   return "A steady forty — build a little, and stop with a bit left in the tank.";
 }
-
-function memoryFor(s){
-  if(s.body==='knee') return "remembering · your knee";
-  if(s.body==='back') return "remembering · your back";
-  if(s.body==='tired') return "remembering · low energy today";
-  return null;
-}
-
-/* explainability — one quiet line, on request */
 function whyFor(s){
   var p=[];
   if(s.body==='knee')p.push("your knee → nothing that loads it");
@@ -354,147 +549,604 @@ function whyFor(s){
   if(!p.length)p.push("a steady day → build a little, keep some in reserve");
   return p.join('  ·  ');
 }
-function toggleWhy(){
-  var w=document.getElementById('whyline');
-  var on=!w.classList.contains('on');
-  w.textContent=whyFor(S);
-  w.classList.toggle('on',on);
-  track('why_toggle',{on:on});
+/* considerations — distance from the core IS current priority */
+function weights(s){
+  return{
+    protect:(s.body==='knee'||s.body==='back')?0:4.2,
+    recovery:(s.sleep==='poor')?0.3:(s.body==='tired')?0.8:3.4,
+    time:(s.time==='15')?0.9:(s.time==='90')?2.6:1.8,
+    load:(s.sleep==='good'&&s.body==='ok')?0.8:3.8,
+    fuel:2.9
+  };
 }
-function refreshWhy(){var w=document.getElementById('whyline');if(w&&w.classList.contains('on'))w.textContent=whyFor(S);}
 
-/* it remembers between visits (device-local only) */
+/* ══════════ MEMORY (device-local) ══════════ */
 function saveSurface(){try{localStorage.setItem('apexLastSurface',JSON.stringify({s:S,ts:Date.now()}));}catch(e){}}
-function greetLine(){
-  try{
-    var raw=localStorage.getItem('apexLastSurface');
-    if(raw){var d=JSON.parse(raw);
-      if(d&&d.ts&&(Date.now()-d.ts)>3*3600*1000&&(Date.now()-d.ts)<14*24*3600*1000){
-        var ls=d.s||{};
-        if(ls.body==='knee')return "Last time — your knee. How is it today?";
-        if(ls.body==='back')return "Last time — your back. How is it today?";
-        if(ls.sleep==='poor')return "Last time was a heavy one. How's today?";
-        return "Good to see you again.";
-      }
-    }
+function loadSurface(){
+  try{var raw=localStorage.getItem('apexLastSurface');if(!raw)return null;
+    var d=JSON.parse(raw);
+    if(d&&d.ts&&(Date.now()-d.ts)>3*3600*1000&&(Date.now()-d.ts)<14*24*3600*1000&&d.s&&d.s.sleep)return d.s;
   }catch(e){}
+  return null;
+}
+function greetNew(){
   var h=new Date().getHours();
   if(h<5)return "You're up late.";
   if(h<12)return "Good morning.";
   if(h<18)return "Good afternoon.";
   return "Good evening.";
 }
-
-var answerEl,priEl,noticeEl,memPill,memText,reduce;
-function paintPri(instant){
-  var p=priorities(S);
-  priEl.innerHTML='<span class="pl">weighing</span>';
-  var made=[];
-  p.forEach(function(w,i){
-    var c=document.createElement('span');c.className='pc'+(i===0?' lead':'');c.textContent=w;
-    priEl.appendChild(c);made.push(c);
-    if(i<p.length-1){var s2=document.createElement('span');s2.className='sep';s2.textContent='›';priEl.appendChild(s2);made.push(s2);}
-  });
-  made.forEach(function(el,i){
-    if(instant)el.classList.add('on');
-    else setTimeout(function(){el.classList.add('on');},120+i*110);
-  });
-}
-function think(){
-  // the priority order re-forms, the core re-weights, then one answer settles
-  if(window.coreFeel)coreFeel(S);
-  if(reduce){answerEl.textContent=decide(S);paintPri(true);refreshWhy();updateMemory();return;}
-  paintPri();
-  answerEl.classList.add('swap');
-  var total=priorities(S).length*230+380;
-  setTimeout(function(){
-    answerEl.textContent=decide(S);
-    answerEl.classList.remove('swap');
-    refreshWhy();
-    updateMemory();
-  },total);
-}
-function updateMemory(){
-  var m=memoryFor(S);
-  if(m){memText.textContent=m;memPill.classList.add('on');memActive=true;}
-  else if(memActive){memText.textContent="noted · all clear";setTimeout(function(){memPill.classList.remove('on');},2200);memActive=false;}
-}
-function noticing(){
-  if(noticed)return;
-  if(shortPicks>=2){noticed=true;setTimeout(function(){noticeEl.textContent="I'm noticing your days run short — I'll keep things realistic for you.";noticeEl.classList.add('on');},700);}
-}
-var touched=false;
-function pick(row,v){
-  var key=row.getAttribute('data-key');
-  if(S[key]===v)return;
-  S[key]=v;
-  row.querySelectorAll('.opt').forEach(function(o){o.classList.toggle('sel',o.getAttribute('data-v')===v);});
-  if(key==='time'&&v==='15')shortPicks++;
-  if(key==='sleep'&&v==='poor')shortPicks++;
-  track('surface_pick',{k:key,v:v});
-  think();
-  saveSurface();
-  if(!touched){
-    touched=true;
-    setTimeout(function(){
-      if(!noticed&&!noticeEl.classList.contains('on')){
-        noticeEl.textContent="Tomorrow I'll ask again — that's how I learn the difference between a bad day and a pattern.";
-        noticeEl.classList.add('on');
-      }
-    },1800);
-  }
-  noticing();
-}
-function enterInside(place){
-  track('enter',{place:place||'stage'});
-  saveSurface();
-  var sleepTxt={poor:'slept badly',ok:'slept okay',good:'slept well'}[S.sleep];
-  var bodyTxt={ok:'feeling good',knee:'tender knee',back:'cranky back',tired:'low energy'}[S.body];
-  var q="Today: "+sleepTxt+", about "+S.time+" minutes, "+bodyTxt+". Where should we start?";
-  window.location.href='/app?lang=en&q='+encodeURIComponent(q);
-}
-function enterFree(){
-  var t=(document.getElementById('free-in').value||'').trim();
-  track('enter',{place:'free',len:t.length});
-  saveSurface();
-  window.location.href='/app?lang=en'+(t?'&q='+encodeURIComponent(t):'');
+function greetBack(ls){
+  if(ls.body==='knee')return "Last time — your knee. How is it today?";
+  if(ls.body==='back')return "Last time — your back. How is it today?";
+  if(ls.sleep==='poor')return "Last time was a heavy one. How's today?";
+  return "Good to see you again.";
 }
 
-/* ══════════════ ARRIVAL (types, then invites) ══════════════ */
-(function(){
-  answerEl=document.getElementById('answer');priEl=document.getElementById('pri');
-  noticeEl=document.getElementById('notice');memPill=document.getElementById('mem-pill');memText=document.getElementById('mem-text');
-  reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion:reduce)').matches;
-  // wire choices
-  document.querySelectorAll('.row').forEach(function(row){row.querySelectorAll('.opt').forEach(function(o){o.addEventListener('click',function(){pick(row,o.getAttribute('data-v'));});});});
+/* ══════════ THE ENCOUNTER ══════════ */
+var QUESTIONS=[
+ {k:'sleep',q:"How did you sleep?",opts:[['poor','badly'],['ok','okay'],['good','well']],
+  mote:{poor:'slept badly',ok:'slept okay',good:'slept well'}},
+ {k:'time',q:"How much of today is yours?",opts:[['15','15 minutes'],['40','40 minutes'],['90','90 minutes']],
+  mote:{'15':'15 min','40':'40 min','90':'90 min'}},
+ {k:'body',q:"And your body — anything I should be careful with?",opts:[['ok','all good'],['knee','a tender knee'],['back','a cranky back'],['tired','low energy']],
+  mote:{ok:'feeling good',knee:'your knee',back:'your back',tired:'low energy'}}
+];
+var SATS=[{k:'protect',a:-90},{k:'recovery',a:-18},{k:'time',a:54},{k:'load',a:126},{k:'fuel',a:198}];
+var reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion:reduce)').matches;
+var speakEl,qoptsEl,heldEl,noticeEl,orbitEl,satEls={},concluded=false,typeTok=0;
 
-  var line=greetLine();
-  var el=document.getElementById('arrival'),cur='<span class="cursor"></span>';
-  function reveal(){
-    document.getElementById('subask').classList.add('on');
-    document.getElementById('choices').classList.add('on');
-    answerEl.textContent=decide(S);
-    paintPri(true);
-    if(window.coreFeel)coreFeel(S);
-    document.getElementById('whyq').classList.add('on');
-    document.getElementById('enter').classList.add('on');
-    document.getElementById('ask').classList.add('on');
-    document.getElementById('askcap').classList.add('on');
-    document.getElementById('tiny').classList.add('on');
-    document.getElementById('shint').classList.add('on');
-  }
-  if(reduce){el.textContent=line;reveal();return;}
-  var i=0;
-  (function type(){
-    if(i<=line.length){el.innerHTML=line.slice(0,i)+cur;i++;setTimeout(type,36);}
-    else{setTimeout(function(){el.innerHTML=line;setTimeout(reveal,180);},360);}
+function speak(text,cb){
+  var tok=++typeTok;
+  if(reduce){speakEl.textContent=text;cb&&cb();return;}
+  var i=0,cur='<span class="cursor"></span>';
+  (function t(){
+    if(tok!==typeTok)return;
+    if(i<=text.length){speakEl.innerHTML=text.slice(0,i).replace(/</g,'&lt;')+cur;i++;setTimeout(t,30);}
+    else{speakEl.textContent=text;cb&&cb();}
   })();
+}
+
+/* satellites glide — the decision rearranges space */
+function glideSats(){
+  var half=orbitEl.clientWidth/2;
+  var w=weights(S),order=Object.keys(w).sort(function(a,b){return w[a]-w[b];});
+  SATS.forEach(function(sat){
+    var rank=order.indexOf(sat.k);
+    var r=half*(0.46+rank*0.125);
+    var x=Math.cos(sat.a*Math.PI/180)*r,y=Math.sin(sat.a*Math.PI/180)*r;
+    var el=satEls[sat.k];
+    el.style.transform='translate(-50%,-50%) translate('+x.toFixed(1)+'px,'+y.toFixed(1)+'px)';
+    el.classList.toggle('lead',rank===0);
+  });
+}
+function pulseSats(){
+  var w=weights(S),order=Object.keys(w).sort(function(a,b){return w[a]-w[b];});
+  order.forEach(function(k,i){setTimeout(function(){var e=satEls[k];e.classList.add('pulse');setTimeout(function(){e.classList.remove('pulse');},520);},i*130);});
+}
+
+/* a chosen word flies into the core — it is taken in, and kept */
+function absorb(btn,cb){
+  if(reduce){cb();return;}
+  var r=btn.getBoundingClientRect(),c=document.getElementById('lcore').getBoundingClientRect();
+  var f=document.createElement('span');f.className='fly';f.textContent=btn.textContent;
+  f.style.left=r.left+'px';f.style.top=r.top+'px';document.body.appendChild(f);
+  requestAnimationFrame(function(){
+    f.style.transform='translate('+((c.left+c.width/2)-(r.left+r.width/2))+'px,'+((c.top+c.height/2)-(r.top+r.height/2))+'px) scale(.15)';
+    f.style.opacity='0';
+  });
+  setTimeout(function(){f.remove();cb();},780);
+}
+
+function renderMotes(){
+  heldEl.querySelectorAll('.mote').forEach(function(m){m.remove();});
+  var any=false;
+  QUESTIONS.forEach(function(Q,qi){
+    var v=S[Q.k];if(!v)return;any=true;
+    var m=document.createElement('button');m.type='button';m.className='mote';
+    m.innerHTML='<i></i>'+Q.mote[v];
+    m.onclick=function(){reask(qi);};
+    heldEl.appendChild(m);
+    requestAnimationFrame(function(){requestAnimationFrame(function(){m.classList.add('on');});});
+  });
+  document.getElementById('heldcap').classList.toggle('on',any);
+}
+
+function renderOpts(qi){
+  qoptsEl.innerHTML='';
+  QUESTIONS[qi].opts.forEach(function(o,i){
+    var b=document.createElement('button');b.type='button';b.className='qw';b.textContent=o[1];
+    b.onclick=function(){pickAnswer(qi,o[0],b);};
+    qoptsEl.appendChild(b);
+    setTimeout(function(){b.classList.add('on');},reduce?0:220+i*120);
+  });
+}
+
+function askQ(qi){speak(QUESTIONS[qi].q,function(){renderOpts(qi);});}
+
+function pickAnswer(qi,v,btn){
+  track('surface_pick',{k:QUESTIONS[qi].k,v:v});
+  qoptsEl.querySelectorAll('.qw').forEach(function(b){b.classList.remove('on');});
+  absorb(btn,function(){
+    S[QUESTIONS[qi].k]=v;saveSurface();
+    qoptsEl.innerHTML='';
+    renderMotes();glideSats();
+    if(window.coreFeel)coreFeel(S);
+    var next=QUESTIONS.findIndex(function(Q){return !S[Q.k];});
+    if(next===-1)conclude();
+    else setTimeout(function(){askQ(next);},reduce?0:450);
+  });
+}
+
+function reask(qi){
+  if(!concluded){return;}
+  track('mote_edit',{k:QUESTIONS[qi].k});
+  S[QUESTIONS[qi].k]=null;renderMotes();
+  hideDoor();askQ(qi);
+}
+
+function conclude(){
+  concluded=true;
+  pulseSats();
+  refreshWhy();
+  setTimeout(function(){
+    speak(decide(S),function(){
+      document.getElementById('whyhint').classList.add('on');
+      showDoor();
+      if(!noticeEl.classList.contains('on')){
+        setTimeout(function(){
+          noticeEl.textContent="Tomorrow I'll ask again — that's how I learn the difference between a bad day and a pattern.";
+          noticeEl.classList.add('on');
+        },1400);
+      }
+    });
+  },reduce?0:520);
+}
+function showDoor(){['ask','enter','tiny','shint'].forEach(function(id){document.getElementById(id).classList.add('on');});}
+function hideDoor(){['ask','enter'].forEach(function(id){document.getElementById(id).classList.remove('on');});}
+
+function toggleWhy(){
+  var w=document.getElementById('whyline');
+  var on=!w.classList.contains('on');
+  w.textContent=whyFor(S);
+  w.classList.toggle('on',on);
+  if(on)pulseSats();
+  track('why_toggle',{on:on});
+}
+function refreshWhy(){var w=document.getElementById('whyline');if(w.classList.contains('on'))w.textContent=whyFor(S);}
+
+var fcHistory = [];
+var isFirstContactStarted = false;
+var extractedProfile = null;
+var isVoiceMode = false;
+
+/* ══════════ CONVERSATION MANAGER ══════════ */
+window.ConversationManager = (function() {
+  var sessionState = "IDLE";
+  return {
+    setSessionState: function(state) {
+      if (["IDLE", "ACTIVE", "LISTENING", "PROCESSING", "SPEAKING", "PAUSED", "ENDED"].indexOf(state) !== -1) {
+        sessionState = state;
+        if (state === "IDLE") {
+          LivingCore.setState("IDLE");
+        } else if (state === "LISTENING") {
+          LivingCore.setState("LISTENING");
+        } else if (state === "PROCESSING") {
+          LivingCore.setState("PROCESSING");
+        } else if (state === "SPEAKING") {
+          LivingCore.setState("SPEAKING");
+        }
+      }
+    },
+    getSessionState: function() {
+      return sessionState;
+    }
+  };
 })();
 
-/* ══════════════ THE LIVING CORE — the app's organism, same language, on the door ══════════════
-   Distilled from apex.html's LivingCore: half-res buffer, lighter-composited soft lobes,
-   physiology palette (recovery→cool, fatigue→warm, stress→turbulence), breath.
-   Every visual change maps to a reasoning input: sleep→fatigue, pain→stress+gather, rest→expansion. */
+function acknowledgeSafety() {
+  window.location.reload();
+}
+
+function pressTalk() {
+  var talkBtn = document.getElementById('fc-talk-btn');
+  var kbBtn = document.getElementById('fc-kb-btn');
+  
+  if (talkBtn) talkBtn.classList.add('activating');
+  if (kbBtn) kbBtn.style.opacity = '0';
+  
+  setTimeout(function() {
+    if (talkBtn) talkBtn.style.display = 'none';
+    if (kbBtn) kbBtn.style.display = 'none';
+    
+    isVoiceMode = true;
+    isFirstContactStarted = true;
+    ConversationManager.setSessionState("ACTIVE");
+    
+    if (window.coreFeel) {
+      window.coreFeel({sleep: 'good', body: 'ok'});
+    }
+    var intro = "Hello. I am APEX. I design training plans that adapt daily to how your body is feeling. Tell me what's been going on with you.";
+    speak(intro, function() {
+      var wrap = document.getElementById('fc-input-wrap');
+      if (wrap) wrap.classList.add('on');
+      apexSpeak(intro, function() {
+        startListening();
+      });
+    });
+  }, 850);
+}
+
+function pressKeyboard() {
+  var talkBtn = document.getElementById('fc-talk-btn');
+  var kbBtn = document.getElementById('fc-kb-btn');
+  if (talkBtn) talkBtn.style.display = 'none';
+  if (kbBtn) kbBtn.style.display = 'none';
+  
+  isVoiceMode = false;
+  isFirstContactStarted = true;
+  ConversationManager.setSessionState("ACTIVE");
+  
+  if (window.coreFeel) {
+    window.coreFeel({sleep: 'good', body: 'ok'});
+  }
+  var intro = "Hello. I am APEX. I design training plans that adapt daily to how your body is feeling. Tell me what's been going on with you.";
+  speak(intro, function() {
+    var wrap = document.getElementById('fc-input-wrap');
+    if (wrap) wrap.classList.add('on');
+  });
+}
+
+var fcIsSending = false;
+async function sendFirstContactMsg() {
+  if (fcIsSending) return;
+  var input = document.getElementById('fc-user-input');
+  var val = (input ? input.value : "").trim();
+  if (!val) return;
+  input.value = "";
+  
+  speak(val);
+  
+  if (recognition) {
+    recognition.stop();
+  }
+  
+  fcIsSending = true;
+  ConversationManager.setSessionState("PROCESSING");
+  
+  var historyPayload = [];
+  if (fcHistory.length === 0) {
+    historyPayload.push({
+      role: "assistant", 
+      content: "Hello. I am APEX. I design training plans that adapt daily to how your body is feeling. Tell me what's been going on with you."
+    });
+  } else {
+    historyPayload = fcHistory.slice();
+  }
+  
+  try {
+    const r = await fetch('/chat', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        message: val,
+        history: historyPayload,
+        lang: 'en',
+        first_contact: true
+      })
+    });
+    
+    const reader = r.body.getReader();
+    const decoder = new TextDecoder();
+    var buffer = "";
+    var fullReply = "";
+    var serverBrainState = null;
+    speakEl.innerHTML = '<span class="cursor"></span>';
+    
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, {stream: true});
+      const lines = buffer.split("\n\n");
+      buffer = lines.pop();
+      
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        try {
+          const d = JSON.parse(line.slice(6));
+          if (d.t) {
+            fullReply += d.t;
+            speakEl.textContent = fullReply;
+          }
+          if (d.profile) {
+            extractedProfile = d.profile;
+          }
+          if (d.brain_state) {
+            serverBrainState = d.brain_state;
+          }
+        } catch (e) {}
+      }
+    }
+    
+    fcHistory.push({role: "user", content: val});
+    fcHistory.push({role: "assistant", content: fullReply});
+    
+    if (serverBrainState) {
+      if (window.coreFeel) {
+        window.coreFeel({
+          sleep: serverBrainState.sleep,
+          body: serverBrainState.body
+        });
+      }
+      
+      if (serverBrainState.decision === "SAFETY_STOP") {
+        if (recognition) recognition.stop();
+        if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+        
+        ConversationManager.setSessionState("ENDED");
+        LivingCore.setState("SAFETY");
+        
+        var wrap = document.getElementById('fc-input-wrap');
+        if (wrap) {
+          wrap.innerHTML = '<button class="plan-start-btn" style="background:#f5212d; border-radius:14px; padding:18px; color:#fff; width:100%; border:none; cursor:pointer;" onclick="acknowledgeSafety()">I UNDERSTAND</button>';
+          wrap.classList.add('on');
+        }
+        
+        apexSpeak(fullReply);
+      } else if (serverBrainState.decision === "PLAN_READY") {
+        showPlan(fullReply);
+        apexSpeak("I think I understand enough to get started. You can ask me follow-up questions, or begin the session.", function() {
+          if (isVoiceMode) {
+            startListening();
+          }
+        });
+      } else {
+        apexSpeak(fullReply, function() {
+          if (isVoiceMode) {
+            startListening();
+          }
+        });
+      }
+    } else {
+      apexSpeak(fullReply, function() {
+        if (isVoiceMode) {
+          startListening();
+        }
+      });
+    }
+  } catch (e) {
+    speak("Something went wrong. Let's try again.");
+  } finally {
+    fcIsSending = false;
+  }
+}
+
+function showPlan(planMarkdown) {
+  var stage = document.querySelector('.stage');
+  if (stage) stage.classList.add('plan-active');
+  
+  var planContainer = document.getElementById('fc-plan-container');
+  if (planContainer) {
+    var html = planMarkdown
+      .replace(/I think I understand enough to get started\.?/i, '')
+      .replace(/\r?\n/g, '<br>')
+      .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+      .replace(/###\s*([^\n<]+)/g, '<h3>$1</h3>')
+      .replace(/-\s*([^\n<]+)/g, '<li>$1</li>');
+      
+    planContainer.innerHTML = '<div class="plan-card">' +
+      '<h3>YOUR TARGET PROTOCOL</h3>' +
+      '<div>' + html + '</div>' +
+      '</div>' +
+      '<button class="plan-start-btn" onclick="startSession()">START CALIBRATION SESSION</button>';
+    planContainer.classList.add('on');
+  }
+}
+
+function startSession() {
+  if (extractedProfile) {
+    try {
+      localStorage.setItem('apexProfile', JSON.stringify(extractedProfile));
+    } catch(e){}
+  }
+  window.location.href = '/app?lang=en';
+}
+
+var S = {sleep: 'good', time: '40', body: 'ok'};
+var SATS = [];
+var satEls = {};
+function glideSats() {}
+function pulseSats() {}
+
+/* ══════════ THE LIVING CORE CONTROLLER ══════════ */
+window.LivingCore = (function() {
+  var currentState = "IDLE";
+  var micAmplitude = 0;
+  var speakAmplitude = 0;
+  var brainState = { sleep: "good", body: "ok" };
+  var ripples = [];
+  
+  return {
+    setState: function(state) {
+      if (state === "IDLE" || state === "LISTENING" || state === "PROCESSING" || state === "SPEAKING" || state === "SAFETY") {
+        currentState = state;
+      }
+    },
+    getState: function() {
+      return currentState;
+    },
+    setMicAmplitude: function(amp) {
+      micAmplitude = amp;
+    },
+    getMicAmplitude: function() {
+      return micAmplitude;
+    },
+    setSpeakAmplitude: function(amp) {
+      speakAmplitude = amp;
+    },
+    getSpeakAmplitude: function() {
+      return speakAmplitude;
+    },
+    setBrainState: function(sleep, body) {
+      brainState.sleep = sleep || "good";
+      brainState.body = body || "ok";
+    },
+    getBrainState: function() {
+      return brainState;
+    },
+    emitRipple: function() {
+      ripples.push({ r: 5, max: 120, alpha: 0.6, speed: 3.5 });
+    },
+    getRipples: function() {
+      return ripples;
+    }
+  };
+})();
+
+/* Web Speech & Audio Context Analyser API Setup */
+var recognition = null;
+var micStream = null;
+var audioCtx = null;
+var analyser = null;
+var dataArray = null;
+
+if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+  var SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
+  recognition = new SpeechRecognition();
+  recognition.continuous = false;
+  recognition.interimResults = false;
+  recognition.lang = 'en-US';
+
+  recognition.onstart = function() {
+    ConversationManager.setSessionState("LISTENING");
+    document.getElementById('fc-mic-btn').classList.add('active');
+    startMicAnalyser();
+  };
+
+  recognition.onspeechstart = function() {
+    // Microphone animation starts automatically as Audio Context measures amplitude
+  };
+
+  recognition.onspeechend = function() {
+    ConversationManager.setSessionState("PROCESSING");
+  };
+
+  recognition.onresult = function(event) {
+    var txt = event.results[0][0].transcript;
+    document.getElementById('fc-user-input').value = txt;
+    sendFirstContactMsg();
+  };
+
+  recognition.onend = function() {
+    document.getElementById('fc-mic-btn').classList.remove('active');
+    stopMicAnalyser();
+    if (ConversationManager.getSessionState() === "LISTENING" || (ConversationManager.getSessionState() === "PROCESSING" && !fcIsSending)) {
+      ConversationManager.setSessionState("IDLE");
+    }
+  };
+
+  recognition.onerror = function() {
+    document.getElementById('fc-mic-btn').classList.remove('active');
+    stopMicAnalyser();
+    ConversationManager.setSessionState("IDLE");
+  };
+}
+
+function startListening() {
+  if (!recognition) return;
+  try {
+    recognition.start();
+  } catch (e) {
+    recognition.stop();
+  }
+}
+
+function startMicAnalyser() {
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
+      micStream = stream;
+      window.AudioContext = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new AudioContext();
+      var source = audioCtx.createMediaStreamSource(stream);
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 64;
+      dataArray = new Uint8Array(analyser.frequencyBinCount);
+      source.connect(analyser);
+    }).catch(function(e) {
+      console.warn("Audio Context init failed:", e);
+    });
+  }
+}
+
+function stopMicAnalyser() {
+  if (micStream) {
+    micStream.getTracks().forEach(function(t) { t.stop(); });
+    micStream = null;
+  }
+  if (audioCtx) {
+    audioCtx.close();
+    audioCtx = null;
+    analyser = null;
+  }
+  LivingCore.setMicAmplitude(0);
+}
+
+function apexSpeak(text, callback) {
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+    var utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'en-US';
+    utterance.rate = 0.90;
+    utterance.pitch = 1.0;
+    
+    utterance.onstart = function() {
+      ConversationManager.setSessionState("SPEAKING");
+    };
+    
+    utterance.onboundary = function(e) {
+      if (e.name === 'word') {
+        LivingCore.setSpeakAmplitude(0.75 + Math.random() * 0.25);
+      } else if (e.name === 'sentence') {
+        LivingCore.emitRipple();
+      }
+    };
+    
+    utterance.onend = function() {
+      LivingCore.setSpeakAmplitude(0);
+      LivingCore.emitRipple();
+      if (isVoiceMode && ConversationManager.getSessionState() !== "ENDED") {
+        startListening();
+      } else if (ConversationManager.getSessionState() === "ENDED") {
+        LivingCore.setState("SAFETY");
+      } else {
+        ConversationManager.setSessionState("IDLE");
+      }
+      callback && callback();
+    };
+    window.speechSynthesis.speak(utterance);
+  } else {
+    if (isVoiceMode && ConversationManager.getSessionState() !== "ENDED") {
+      startListening();
+    } else if (ConversationManager.getSessionState() === "ENDED") {
+      LivingCore.setState("SAFETY");
+    } else {
+      ConversationManager.setSessionState("IDLE");
+    }
+    callback && callback();
+  }
+}
+
+/* boot the encounter */
+(function(){
+  speakEl = document.getElementById('speak');
+  orbitEl = document.getElementById('orbit');
+  
+  try {
+    localStorage.removeItem('apexLastSurface');
+  } catch(e){}
+})();
+
+/* ══════════ THE LIVING CORE RENDERER ══════════ */
 (function(){
   var cv=document.getElementById('lcore');if(!cv||!cv.getContext)return;
   var ctx=cv.getContext('2d');
@@ -510,67 +1162,196 @@ function enterFree(){
   resize();window.addEventListener('resize',resize);
   var lobes=[];for(var i=0;i<7;i++){var sd=i*7.3+Math.random()*3;
     lobes.push({seed:sd,phase:sd,nt:sd,rad:.30+Math.random()*.20,sz:.7+Math.random()*.5,sp:.18+Math.random()*.22});}
-  var cur={recovery:.6,fatigue:.3,stress:.25},tgt={recovery:.6,fatigue:.3,stress:.25},focus=0;
-  window.coreFeel=function(s){
-    tgt.fatigue=Math.min(.85,(s.sleep==='poor'?.66:s.sleep==='ok'?.32:.15)+(s.body==='tired'?.2:0));
-    tgt.stress=(s.body==='knee'||s.body==='back')?.58:.24;
-    tgt.recovery=Math.max(.12,1-tgt.fatigue*.9);
-    focus=1;                                     /* it gathers while considering */
-  };
-  function nz(a,b){return Math.sin(a*1.7+b)*.6+Math.sin(a*.9-b*1.3)*.4;}
-  function mix(a,b,t){return[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];}
-  function palette(){
-    var r=cur.recovery,f=cur.fatigue,st=cur.stress;
-    var cool=[[56,224,255],[140,235,120]],mid=[[255,177,60],[255,106,60]],warm=[[245,33,45],[255,90,50]],c1,c2;
-    if(r>.55){c1=mix(cool[0],mid[0],(1-r)*1.1);c2=mix(cool[1],mid[1],(1-r)*1.1);}
-    else if(f>.55){c1=mix(warm[0],mid[0],1-f);c2=mix(warm[1],mid[1],1-f);}
-    else{c1=mid[0].slice();c2=mid[1].slice();}
-    if(st>.4)c1=mix(c1,warm[0],(st-.4)*.7);
-    return[c1,c2];
+  
+  var particles=[];
+  for(var i=0;i<30;i++){
+    particles.push({
+      ang:Math.random()*6.28,
+      dist:R*(0.4+Math.random()*0.8),
+      size:1+Math.random()*1.8,
+      speed:0.015+Math.random()*0.02,
+      seed:Math.random()*100
+    });
   }
-  var last=performance.now(),lr=0,reduceCore=window.matchMedia&&matchMedia('(prefers-reduced-motion:reduce)').matches;
+
+  window.coreFeel=function(s){
+    LivingCore.setBrainState(s.sleep, s.body);
+  };
+  
+  function nz(a,b){return Math.sin(a*1.7+b)*.6+Math.sin(a*.9-b*1.3)*.4;}
+  
+  var last=performance.now(),lr=0,reduceCore=reduce;
+  var curScale=1.0, curSpdFactor=1.0;
+  
   function render(now,breath){
-    var r=cur.recovery,f=cur.fatigue,st=cur.stress,pal=palette(),c1=pal[0],c2=pal[1];
+    var state = LivingCore.getState();
+    var micAmp = LivingCore.getMicAmplitude();
+    var speakAmp = LivingCore.getSpeakAmplitude();
+    
+    var c1, c2;
+    if (state === "SAFETY") {
+      c1 = [245, 33, 45];
+      c2 = [180, 20, 20];
+    } else if (state === "PROCESSING") {
+      c1 = [255, 177, 60];
+      c2 = [240, 240, 240];
+    } else {
+      var bs = LivingCore.getBrainState();
+      var isRed = (bs.sleep === 'poor' || bs.body === 'knee' || bs.body === 'back');
+      var isYellow = (bs.sleep === 'average' || bs.body === 'tired');
+      if (isRed) {
+        c1 = [210, 25, 25];
+        c2 = [140, 15, 15];
+      } else if (isYellow) {
+        c1 = [40, 120, 255];
+        c2 = [255, 160, 40];
+      } else {
+        c1 = [56, 224, 255];
+        c2 = [140, 235, 120];
+      }
+    }
+    
     g.globalCompositeOperation='source-over';
-    g.fillStyle='rgba(7,9,16,'+(0.10+st*0.04)+')';g.fillRect(0,0,ow,oh);
-    var compress=1-f*.26,expand=1+r*.14,gather=1-focus*.26;
+    g.fillStyle='rgba(7,9,16,0.12)';
+    g.fillRect(0,0,ow,oh);
+    
     g.globalCompositeOperation='lighter';
     for(var i=0;i<lobes.length;i++){
       var L=lobes[i];
-      var a1=nz(L.seed,L.nt),ang=L.phase+a1*1.1+nz(L.seed*.6+5,L.nt*.8)*st*.8;
-      var orbit=R*(0.55+L.rad)*expand*compress*gather*(0.9+breath*0.12);
+      var a1=nz(L.seed,L.nt),ang=L.phase+a1*1.1;
+      var orbit=R*(0.55+L.rad)*curScale*(0.9+breath*0.12);
       var x=cx+Math.cos(ang)*orbit,y=cy+Math.sin(ang)*orbit;
-      var size=R*L.sz*0.95*(0.7+breath*0.25)*expand*compress;
-      var alpha=(0.055+r*0.030-f*0.012)*(1+focus*.5);
+      var size=R*L.sz*0.95*(0.7+breath*0.25)*curScale;
+      
+      var alphaBoost = 1.0;
+      if (state === "SPEAKING") {
+        alphaBoost = 1.0 + speakAmp * 1.5;
+      } else if (state === "LISTENING") {
+        alphaBoost = 1.0 + micAmp * 1.0;
+      }
+      var alpha=0.065 * alphaBoost;
+      
       var rg=g.createRadialGradient(x,y,0,x,y,Math.max(size,1));
       rg.addColorStop(0,'rgba('+(c1[0]|0)+','+(c1[1]|0)+','+(c1[2]|0)+','+alpha+')');
       rg.addColorStop(.5,'rgba('+(c2[0]|0)+','+(c2[1]|0)+','+(c2[2]|0)+','+(alpha*.45)+')');
       rg.addColorStop(1,'rgba(0,0,0,0)');
       g.fillStyle=rg;g.beginPath();g.arc(x,y,Math.max(size,1),0,6.2832);g.fill();
     }
+    
+    for (var i = 0; i < particles.length; i++) {
+      var p = particles[i];
+      var pSpd = p.speed * curSpdFactor;
+      if (state === "LISTENING") {
+        pSpd = p.speed * (1.0 + micAmp * 5.0);
+      }
+      p.ang += pSpd;
+      
+      var targetDist = R * (0.45 + 0.15 * Math.sin(p.seed + now / 1000));
+      if (state === "PROCESSING") {
+        targetDist = R * 0.65;
+      }
+      p.dist += (targetDist - p.dist) * 0.05;
+      
+      var px = cx + Math.cos(p.ang) * p.dist;
+      var py = cy + Math.sin(p.ang) * p.dist;
+      
+      g.fillStyle = 'rgba(' + (c1[0]|0) + ',' + (c1[1]|0) + ',' + (c1[2]|0) + ',0.35)';
+      g.beginPath();
+      g.arc(px, py, p.size, 0, 6.28);
+      g.fill();
+    }
+    
+    var activeRipples = LivingCore.getRipples();
+    for (var i = activeRipples.length - 1; i >= 0; i--) {
+      var rip = activeRipples[i];
+      rip.r += rip.speed;
+      rip.alpha -= 0.015;
+      if (rip.alpha <= 0 || rip.r >= rip.max) {
+        activeRipples.splice(i, 1);
+      } else {
+        g.strokeStyle = 'rgba(' + (c1[0]|0) + ',' + (c1[1]|0) + ',' + (c1[2]|0) + ',' + rip.alpha + ')';
+        g.lineWidth = 1.5;
+        g.beginPath();
+        g.arc(cx, cy, rip.r, 0, 6.28);
+        g.stroke();
+      }
+    }
+    
     ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
     ctx.clearRect(0,0,W,H);ctx.drawImage(off,0,0,ow,oh,0,0,W,H);
   }
+  
   function frame(now){
     if(!reduceCore)requestAnimationFrame(frame);
     var dt=Math.min((now-last)/1000,.05);last=now;
-    for(var k in cur)cur[k]+=(tgt[k]-cur[k])*Math.min(dt*.9,1);
-    focus+=(0-focus)*Math.min(dt*.5,1);
-    var spd=dt*(.10+cur.recovery*.10-cur.fatigue*.05)*5*(1+focus*.8);
+    
+    var state = LivingCore.getState();
+    var micAmp = LivingCore.getMicAmplitude();
+    var speakAmp = LivingCore.getSpeakAmplitude();
+    
+    var targetScale = 1.0;
+    var targetSpd = 1.0;
+    
+    if (state === "SAFETY") {
+      targetScale = 0.65;
+      targetSpd = 0.05;
+    } else if (state === "PROCESSING") {
+      targetScale = 0.85;
+      targetSpd = 0.35;
+    } else if (state === "SPEAKING") {
+      targetScale = 1.15 + speakAmp * 0.22;
+      targetSpd = 1.2;
+    } else if (state === "LISTENING") {
+      targetScale = 1.05 + micAmp * 0.20;
+      targetSpd = 0.7;
+    } else {
+      targetScale = 1.0;
+      targetSpd = 1.0;
+    }
+    
+    curScale += (targetScale - curScale) * Math.min(dt * 6.0, 1);
+    curSpdFactor += (targetSpd - curSpdFactor) * Math.min(dt * 6.0, 1);
+    
+    var spd=dt*(.10+0.5*.10-0.3*.05)*5*curSpdFactor;
     for(var i=0;i<lobes.length;i++){lobes[i].nt+=spd*(lobes[i].sp/.29);lobes[i].phase+=spd*(lobes[i].sp/.29)*.45;}
+    
+    if (analyser && dataArray) {
+      analyser.getByteFrequencyData(dataArray);
+      var sum = 0;
+      for (var i = 0; i < dataArray.length; i++) {
+        sum += dataArray[i];
+      }
+      var avg = sum / dataArray.length;
+      var rawVol = Math.min(1.0, avg / 48.0);
+      LivingCore.setMicAmplitude(rawVol);
+    }
+    
+    if (state === "SPEAKING") {
+      LivingCore.setSpeakAmplitude(speakAmp * 0.88);
+    }
+    
     if(document.hidden)return;
     if(now-lr<33&&!reduceCore)return;lr=now;
-    if(!W||Math.abs(cv.clientWidth-W)>1)resize();   /* self-heal if layout settled late */
+    if(!W||Math.abs(cv.clientWidth-W)>1)resize();
     if(!W)return;
-    render(now,.5+.5*Math.sin(now/952));
+    
+    var breath = 0.5;
+    if (state === "IDLE") {
+      breath = 0.5 + 0.5 * Math.sin(now / 952);
+    } else if (state === "PROCESSING") {
+      breath = 0.5 + 0.1 * Math.sin(now / 600);
+    } else if (state === "SPEAKING") {
+      breath = 0.5 + 0.3 * Math.sin(now / 400);
+    }
+    
+    render(now, breath);
   }
-  coreFeel(S);
-  if(reduceCore){cur.recovery=tgt.recovery;cur.fatigue=tgt.fatigue;cur.stress=tgt.stress;
-    for(var w=0;w<40;w++)frame(performance.now()+w*33);   /* settle, then one still frame */
+  if(reduceCore){
+    for(var w=0;w<40;w++)frame(performance.now()+w*33);
   }else requestAnimationFrame(frame);
 })();
 
-/* ══════════════ plumbing (preserved) ══════════════ */
+/* ══════════ plumbing (preserved) ══════════ */
 async function goCheckout(btn,plan){
   if(btn._busy)return;btn._busy=true;btn.style.opacity='.6';btn.style.pointerEvents='none';
   track('checkout_intent',{plan:plan,place:'landing_en'});
@@ -599,7 +1380,7 @@ const LEGAL={
   <ul><li>The content of your questions to the AI (processed by our AI provider)</li><li>Email — only upon payment (to Stripe)</li><li>Anonymous analytics via Google Analytics</li><li>Standard server logs (IP, browser type)</li></ul>
   <p><strong>We do NOT collect:</strong></p>
   <ul><li>Financial data — handled solely by Stripe</li><li>Card numbers, PINs, CVV — never seen by us</li><li>Identity documents</li></ul>
-  <p><strong>Storage:</strong> SSL/TLS encrypted. Browser LocalStorage keeps only your language, access status, and disclaimer acceptance — it never leaves your device.</p>
+  <p><strong>Storage:</strong> SSL/TLS encrypted. Browser LocalStorage keeps only your language, access status, disclaimer acceptance and — on this page — the last answers you chose, so APEX can greet you accordingly. It never leaves your device.</p>
   <p><strong>Processors:</strong> our AI provider (conversations), Stripe (payments), Google Analytics (anonymous stats), Railway (EU hosting) — each under its own policy.</p>
   <p><strong>GDPR rights:</strong> access, correct, delete, restrict, port. Email apexpulsepro@gmail.com; response within 30 days.</p>
   <p><strong>Retention:</strong> Payment records held by Stripe per their policy; server logs auto-deleted after 30 days.</p>
@@ -624,7 +1405,6 @@ function closeLegal(){document.getElementById('legal-modal').classList.remove('a
 document.addEventListener('keydown',function(e){if(e.key==='Escape')closeLegal();});
 document.querySelectorAll('img').forEach(function(im){im.addEventListener('error',function(){im.style.display='none';});});
 
-/* reveal for the inside section */
 (function(){
   var els=[].slice.call(document.querySelectorAll('.rv'));
   function chk(){var vh=window.innerHeight||document.documentElement.clientHeight||0;for(var i=els.length-1;i>=0;i--){var r=els[i].getBoundingClientRect();if(r.top<vh*0.9&&r.bottom>0){els[i].classList.add('in');els.splice(i,1);}}if(!els.length){window.removeEventListener('scroll',chk);}}

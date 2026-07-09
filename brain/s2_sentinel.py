@@ -39,11 +39,10 @@ def _readiness(physiology):
     return round(r, 3), round(float(physiology.get("confidence", 0.0)), 3)
 
 
-def assess(*, message, conversation=None, profile=None, physiology=None, is_prescription=True) -> S2State:
-    """Scan for red flags over the message + recent conversation window; compute
-    readiness; set the structural halt. `conversation` = recent [{role, content}]."""
+def assess(*, message=None, conversation=None, profile=None, physiology=None, is_prescription=True) -> S2State:
+    """Scan for red flags over the message, recent conversation window, and structured Human State;
+    compute readiness; set the structural halt."""
     readiness, conf = _readiness(physiology)
-
     flags, seen = [], set()
 
     def _scan(text, source):
@@ -53,11 +52,25 @@ def assess(*, message, conversation=None, profile=None, physiology=None, is_pres
             seen.add(cls)
             flags.append(flag_for(cls, source))
 
-    # Current message first (so its source wins on dedupe), then prior USER turns.
+    # 1. Scan message and conversation (for compatibility and test suite)
     _scan(message, "message")
     for m in (conversation or []):
         if isinstance(m, dict) and m.get("role") == "user":
             _scan(m.get("content"), "prior_turn")
+
+    # 2. Scan structured profile red flags and health notes
+    profile = profile or {}
+    safety_classes = profile.get("red_flags") or []
+    for cls in safety_classes:
+        if cls not in seen:
+            seen.add(cls)
+            flags.append(flag_for(cls, "human_state"))
+
+    hn = str(profile.get("healthNotes") or profile.get("injuries") or "")
+    for cls in detect_flag_classes(hn):
+        if cls not in seen:
+            seen.add(cls)
+            flags.append(flag_for(cls, "health_notes"))
 
     # Structural halt (Addendum 02 A2-0).
     has_emergency = any(f.urgency == Urgency.EMERGENCY for f in flags)
