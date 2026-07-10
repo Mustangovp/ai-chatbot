@@ -386,6 +386,13 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 .send-btn{width:46px;height:46px;border-radius:14px;background:var(--pulse);color:#fff;font-size:18px;
   display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(245,33,45,.42);flex-shrink:0;transition:transform .15s;}
 .send-btn:hover{transform:translateY(-1px);}.send-btn:active{transform:scale(.92);}
+/* Voice mic — ChatGPT-style, sits between the input and send. Static control:
+   ghost by default; only its COLOR changes while live/recording. No animation,
+   no glow, no scaling. */
+.mic-btn{width:46px;height:46px;flex-shrink:0;border-radius:14px;background:none;border:1px solid rgba(255,255,255,.14);color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:color .2s,border-color .2s,background .2s;}
+.mic-btn:hover{color:var(--text);border-color:var(--border2);}
+.mic-btn svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+.mic-btn.active,.mic-btn.listening{color:#fff;border-color:transparent;background:var(--pulse);}
 
 @media(max-width:560px){
   .topbar{padding:14px 16px;} .brand .bs{display:none;}
@@ -449,6 +456,9 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
   <div class="inputbar">
     <div class="input-wrap">
       <input type="text" id="user-in" placeholder="Describe your goal…" aria-label="Describe your goal" autocomplete="off">
+      <button class="mic-btn" id="mic-btn" onclick="voiceToggle()" aria-pressed="false" aria-label="Voice conversation" title="Talk to APEX">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3.5 3.5 0 0 0 3.5-3.5V6a3.5 3.5 0 0 0-7 0v5.5A3.5 3.5 0 0 0 12 15Z"/><path d="M6 11a6 6 0 0 0 12 0M12 18v3"/></svg>
+      </button>
       <button class="send-btn" onclick="send()">➤</button>
     </div>
   </div>
@@ -1931,6 +1941,121 @@ function afterReply(text){
   const m=memLoad();
   if(/ккал|kcal|калории|protein|протеин/i.test(text)&&/\|/.test(text)){m.lastNutritionAt=Date.now();witness('modelChanged');}
   m.lastConsultationAt=Date.now(); memSave(m);
+  // Event-driven: the conversation pipeline announces a completed reply. The Voice
+  // Controller (below) subscribes; nothing here knows or cares that voice exists.
+  try{ if(window.VoiceBus) window.VoiceBus.emit('reply',{text:text}); }catch(_){}
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   VOICE CONTROLLER — one activation button → greeting → listen → Brain → speak.
+   • STT: native browser SpeechRecognition (unchanged).
+   • Reasoning: the EXISTING /chat pipeline (SESSION_START for the greeting; the
+     existing send() for every turn). Brain / Athlete Model / Personality untouched.
+   • Output: OpenAI TTS via the provider-independent /speak → voice adapter.
+   • The frozen Living Core reacts only through facts it already consumes (witness()).
+   ═══════════════════════════════════════════════════════════════════════════ */
+window.VoiceBus = { _l:{}, on(e,f){(this._l[e]=this._l[e]||[]).push(f);}, emit(e,d){(this._l[e]||[]).forEach(f=>{try{f(d);}catch(_){}});} };
+
+const VoiceOut = {              // provider-independent OUTPUT (talks to /speak, not to any vendor)
+  _audio:null, _pulse:null,
+  async speak(text){
+    if(!text) return;
+    try{
+      const r=await fetch('/speak',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',
+        body:JSON.stringify({text:text,lang:lang})});
+      if(!r.ok) throw new Error('tts '+r.status);
+      const url=URL.createObjectURL(await r.blob());
+      await new Promise((res)=>{
+        const a=new Audio(url); this._audio=a;
+        this._pulse=setInterval(()=>witness('replyToken'),120);   // the Core visibly SPEAKS while audio plays
+        const done=()=>{clearInterval(this._pulse);URL.revokeObjectURL(url);this._audio=null;res();};
+        a.onended=done; a.onerror=done; a.play().catch(done);
+      });
+    }catch(e){ console.warn('[voice] speak failed',e); }
+  },
+  stop(){ if(this._pulse)clearInterval(this._pulse); if(this._audio){try{this._audio.pause();}catch(_){}}this._audio=null; }
+};
+
+const VoiceIn = {               // native speech recognition (kept native, as approved)
+  _rec:null,
+  get supported(){ return !!(window.SpeechRecognition||window.webkitSpeechRecognition); },
+  start(onFinal){
+    const SR=window.SpeechRecognition||window.webkitSpeechRecognition; if(!SR) return false;
+    try{ if(this._rec){this._rec.onend=null;this._rec.stop();} }catch(_){}
+    const r=new SR(); this._rec=r;
+    r.lang=(lang==='en')?'en-US':'bg-BG'; r.interimResults=false; r.maxAlternatives=1; r.continuous=false;
+    witness('keystroke');       // the Core visibly LISTENS (attention rises), same as when typing
+    r.onresult=(e)=>{ const t=(e.results[0]&&e.results[0][0]&&e.results[0][0].transcript||'').trim(); if(t)onFinal(t); };
+    r.onerror=()=>{};
+    try{ r.start(); }catch(_){ return false; }
+    return true;
+  },
+  stop(){ if(this._rec){ try{this._rec.onend=null;this._rec.onresult=null;this._rec.stop();}catch(_){} this._rec=null; } }
+};
+
+let voiceMode=false, voiceBusy=false;
+// Activation lives on the mic button in the composer. Its class shows state
+// (active = speaking, listening = recording); the Living Core also reacts through
+// its existing state system (witness facts). aria-pressed for assistive tech.
+function _helix(){ return document.getElementById('mic-btn'); }
+function _setHelix(cls){ const b=_helix(); if(!b)return; b.classList.remove('active','listening'); if(cls)b.classList.add(cls); b.setAttribute('aria-pressed', cls?'true':'false'); }
+
+function voiceToggle(){
+  if(voiceMode){ voiceEnd(); return; }
+  voiceMode=true; _setHelix('active');
+  try{ new Audio().play().catch(()=>{}); }catch(_){}   // unlock audio inside the user gesture
+  voiceGreet();
+}
+function voiceEnd(){
+  voiceMode=false; voiceBusy=false; _setHelix(null);
+  VoiceIn.stop(); VoiceOut.stop();
+}
+
+/* the reply event (from afterReply) → speak it, then listen again. Purely event-driven. */
+window.VoiceBus.on('reply', ({text})=>{ if(voiceMode) _speakThenListen(text); });
+
+async function _speakThenListen(text){
+  if(!voiceMode) return;
+  voiceBusy=true; _setHelix('active');
+  await VoiceOut.speak(text);
+  voiceBusy=false;
+  if(voiceMode) _listen();
+}
+function _listen(){
+  if(!voiceMode) return;
+  if(!VoiceIn.supported){ _setHelix('active'); return; }   // no STT (e.g. Firefox): APEX still speaks; user can type
+  _setHelix('listening');
+  VoiceIn.start((transcript)=>{
+    if(!voiceMode||!transcript) return;
+    const inp=document.getElementById('user-in');
+    inp.value=transcript; send();      // the EXISTING pipeline: Brain + Athlete + Personality + storage + Core facts
+  });
+}
+
+/* SESSION_START greeting — through the SINGLE /chat entry point, streamed into a coach bubble, then spoken. */
+async function voiceGreet(){
+  if(voiceBusy) return; voiceBusy=true;
+  const h=new Date().getHours();
+  const daypart=h<5?'night':h<12?'morning':h<18?'afternoon':'evening';
+  const body={session_start:true,lang:lang,daypart:daypart,history:(typeof getHistory==='function'?getHistory():[])};
+  try{ const p=pfLoad(); if(p&&Object.keys(p).length)body.profile=p; }catch(_){}
+  const token=localStorage.getItem('apexToken')||''; if(token)body.token=token;
+  let full='';
+  try{
+    const res=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body)});
+    if((res.headers.get('content-type')||'').indexOf('text/event-stream')!==-1){
+      const target=appendCoach(); const reader=res.body.getReader(),dec=new TextDecoder(); let buf='';
+      while(true){ const{done,value}=await reader.read(); if(done)break;
+        buf+=dec.decode(value,{stream:true}); const parts=buf.split('\n\n'); buf=parts.pop();
+        for(const part of parts){ const line=part.trim(); if(!line.startsWith('data:'))continue;
+          let o; try{o=JSON.parse(line.slice(5).trim());}catch(e){continue;}
+          if(o.t){ witness('replyToken'); full+=o.t; target.innerHTML=streamRender(full); smartScroll(); }
+        } }
+      if(full) target.innerHTML=renderMarkdown(full);
+    }
+  }catch(e){ console.warn('[voice] greet failed',e); }
+  voiceBusy=false;
+  if(voiceMode){ await VoiceOut.speak(full); if(voiceMode) _listen(); }
 }
 
 /* ═══════════════════════════════════════════════════════════════════

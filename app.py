@@ -40,6 +40,7 @@ import brain_analytics                          # M5: Brain Observatory (analyti
 import human_state                              # BUILD-001: Human State ingestion (flag-gated)
 import human_state.observatory as human_state_observatory  # BUILD-002: HSE Observatory (audit)
 import coaching                                 # BUILD-003: Adaptive Coach (HSE consumer, flag-gated)
+import voice as apex_voice                       # Sprint 10: provider-independent voice (TTS) transport
 import uuid as _uuid
 from flask import g
 try:
@@ -1148,7 +1149,10 @@ def add_security_headers(response):
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-    response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=()'
+    # microphone=(self): the browser mic is allowed for our own origin only, so
+    # native SpeechRecognition can run for the voice conversation. Camera and
+    # geolocation stay fully disabled.
+    response.headers['Permissions-Policy'] = 'camera=(), microphone=(self), geolocation=()'
     return response
 
 
@@ -1530,8 +1534,15 @@ def chat():
         is_elite = is_dev or plan in ("core", "pro")
         is_pro = is_dev or plan == "pro"
 
+        # SESSION_START — the voice layer opens a conversation with no user words.
+        # It is NOT a separate reasoning path: it enters this same /chat pipeline,
+        # so the greeting is produced by the very same Personality + profile + history
+        # (+ Brain, when enforced) as every other turn. Single reasoning entry point.
+        session_start = bool(data.get("session_start"))
+        daypart = str(data.get("daypart", ""))[:12]
+
         msg_limit = 4000 if is_elite else 1000
-        user_message = str(data.get("message", ""))[:msg_limit]
+        user_message = "" if session_start else str(data.get("message", ""))[:msg_limit]
         history = data.get("history", [])
         profile = data.get("profile") or {}
         lang = str(data.get("lang", "bg")).lower()
@@ -1540,7 +1551,7 @@ def chat():
 
         # ── SERVER-AUTHORITATIVE FREE LIMIT ──
         free_subject = None
-        if not is_elite:
+        if not is_elite and not session_start:   # a greeting is free — it never spends a daily message
             free_subject = ("user", str(g.user["id"])) if g.get("user") else ("device", g.device_id or _client_ip())
             q = store.free_usage_consume(free_subject[0], free_subject[1],
                                          FREE_DAILY_LIMIT, FREE_WINDOW_SECONDS, LEAD_BONUS)
@@ -1655,7 +1666,27 @@ def chat():
                     content = str(msg.get("content", ""))[:4000]
                     messages.append({"role": msg["role"], "content": content})
 
-        messages.append({"role": "user", "content": user_message})
+        if session_start:
+            # The opening turn: the model greets in APEX's voice using everything it
+            # already has (the system block above carries Personality + profile;
+            # `history` above carries whether we've met). No lists, spoken aloud.
+            _dp = {"morning": "It is morning for me.", "afternoon": "It is afternoon for me.",
+                   "evening": "It is evening for me.", "night": "It is late at night for me."}.get(daypart, "")
+            if lang == "en":
+                _open = ("[SESSION START — you are opening a live, spoken conversation.] "
+                         "Greet me now in your coach voice: brief and natural, one or two sentences, "
+                         "to be read aloud (no lists, no markdown, no emoji). " + _dp + " "
+                         "If we have trained before, acknowledge it lightly; if my goal is on file, nod to it. "
+                         "End with one short, open question to begin.")
+            else:
+                _open = ("[НАЧАЛО НА СЕСИЯ — започваш жив, гласов разговор.] "
+                         "Поздрави ме сега със своя треньорски глас: кратко и естествено, едно-две изречения, "
+                         "за изговаряне на глас (без списъци, без markdown, без емоджи). " + _dp + " "
+                         "Ако сме тренирали заедно, отбележи го леко; ако целта ми е записана, спомени я. "
+                         "Завърши с един кратък отворен въпрос, за да започнем.")
+            messages.append({"role": "user", "content": _open})
+        else:
+            messages.append({"role": "user", "content": user_message})
 
         # Model selection based on plan:
         # - PRO → gpt-4o (premium model, smarter responses, better Bulgarian)
@@ -1735,7 +1766,9 @@ def chat():
         def _persist_reply(reply_text):
             """Store the exchange to the account so the coach remembers it across
             devices; save any nutrition plan to nutrition_history."""
-            if not persist_uid or not reply_text:
+            # A SESSION_START greeting is regenerated fresh each session from live
+            # state; it is not a content turn, so it is never written to history.
+            if session_start or not persist_uid or not reply_text:
                 return
             try:
                 store.add_conversation(persist_uid, "user", persist_user_msg, persist_lang)
@@ -1880,6 +1913,36 @@ def chat():
     except Exception as e:
         print(f"[chat] Server error: {e}")
         return jsonify({"error": "server_error"}), 500
+
+
+# ═══════════════════════════════════════════════════════════
+# VOICE — /speak : the Brain's TEXT → natural audio (provider-independent).
+# This performs NO reasoning. It only speaks text the /chat pipeline already
+# produced. The vendor lives entirely behind voice/tts.py, so it can be swapped
+# without touching the Brain or the UI.
+# ═══════════════════════════════════════════════════════════
+_speak_rate = {}  # subject -> [timestamps]  (bounds a billable endpoint)
+
+@app.route("/speak", methods=["POST"])
+def speak():
+    data = request.get_json(silent=True) or {}
+    text = str(data.get("text", "")).strip()[:1600]
+    lang = "en" if str(data.get("lang", "bg")).lower() == "en" else "bg"
+    if not text:
+        return jsonify({"error": "empty"}), 400
+    # Cost guard: cap synthesis calls per subject (account or httpOnly device / IP).
+    subj = str(g.user["id"]) if g.get("user") else (g.device_id or _client_ip())
+    now = time.time()
+    stamps = [t for t in _speak_rate.get(subj, []) if now - t < 300]
+    if len(stamps) >= 60:
+        return jsonify({"error": "rate_limited"}), 429
+    stamps.append(now); _speak_rate[subj] = stamps
+    try:
+        audio, mime = apex_voice.synthesize(text, lang=lang, client=client)
+    except Exception as e:
+        print(f"[speak] TTS failed: {e}")
+        return jsonify({"error": "tts_unavailable"}), 502
+    return Response(audio, mimetype=mime, headers={"Cache-Control": "no-store"})
 
 
 @app.route('/create-checkout-session', methods=['POST'])
