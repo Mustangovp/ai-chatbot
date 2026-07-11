@@ -466,6 +466,19 @@ def record_payment(user_id, stripe_session_id, amount_cents, currency, plan):
             c.execute(insert(payments).values(id=uuid.uuid4(), user_id=_as_uuid(user_id),
                 stripe_session_id=stripe_session_id, amount_cents=amount_cents, currency=currency, plan=plan))
 
+def get_checkout_session_user(stripe_session_id):
+    """Return the account that has already redeemed a Checkout session, if any."""
+    session_id = str(stripe_session_id or "")[:120]
+    if not session_id:
+        return None
+    with engine.begin() as c:
+        row = c.execute(select(payments.c.user_id).where(
+            payments.c.stripe_session_id == session_id)).first()
+        if not row:
+            row = c.execute(select(subscriptions.c.user_id).where(
+                subscriptions.c.stripe_session_id == session_id)).first()
+    return str(row[0]) if row else None
+
 def list_payments(user_id):
     with engine.begin() as c:
         rows = c.execute(select(payments).where(payments.c.user_id == _as_uuid(user_id))

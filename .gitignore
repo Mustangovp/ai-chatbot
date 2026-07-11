@@ -82,3 +82,6 @@ data/*.db
 
 !tests/test_trajectory.py
 !tests/test_architecture_invariants.py
+
+# Regression test for Stripe Checkout session replay protection.
+!tests/test_poll_token.py

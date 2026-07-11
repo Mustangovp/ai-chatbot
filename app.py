@@ -6,6 +6,7 @@ import os
 import hmac
 import hashlib
 import time
+import datetime as _dt
 import base64
 import threading
 import json as _json_lib
@@ -2072,6 +2073,25 @@ def poll_token():
     if entry:
         token, _, uid = (entry + (None,))[:3]
         return _poll_success(token, uid)
+
+    # A completed Checkout session may be replayed after its one-time pending token
+    # has been consumed or evicted. Never create a new 30-day period for it: only
+    # restore the entitlement already recorded for its account, if it is still live.
+    redeemed_uid = store.get_checkout_session_user(session_id)
+    if redeemed_uid:
+        sub = store.get_subscription(redeemed_uid)
+        period_end = sub.get("current_period_end")
+        if sub.get("plan") in PLANS and sub.get("status") in ("active", "grace") and period_end:
+            try:
+                recorded_end = _dt.datetime.fromisoformat(period_end)
+                if recorded_end.tzinfo is None:
+                    recorded_end = recorded_end.replace(tzinfo=_dt.timezone.utc)
+                expiry = int(recorded_end.timestamp())
+            except (TypeError, ValueError):
+                expiry = 0
+            if expiry > now:
+                return _poll_success(make_token(expiry, sub["plan"]), redeemed_uid)
+        return jsonify({'ready': False})
 
     # Fallback: webhook may be slightly delayed — verify directly with Stripe.
     # Rate-limit to 5 Stripe API calls per session_id to avoid hammering Stripe.
