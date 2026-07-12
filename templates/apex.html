@@ -1626,6 +1626,22 @@ function classifyTable(header){
   if(/ккал|kcal|калории|protein|протеин|въглехидрати|carb|мазнини|fat/.test(h))return'nutrition';
   return'generic';
 }
+function pipeCells(line){return line.trim().replace(/^\||\|$/g,'').split('|').map(c=>c.trim());}
+function isMealLabel(value){return /^(meal|breakfast|lunch|snack|dinner|хранене|закуска|обяд|междинно|вечеря)/i.test(value||'');}
+function nutritionHeaderFor(columns){
+  const base=columns===5?['Meal','Protein','Carbs','Fat','Kcal']:
+    ['Meal','Quantity','Protein','Carbs','Fat','Kcal'];
+  return base.slice(0,columns);
+}
+function separatorlessNutritionBlock(lines,start){
+  const rows=[];let i=start;
+  while(i<lines.length&&lines[i].includes('|')){rows.push(pipeCells(lines[i]));i++;}
+  if(rows.length<2||rows[0].length<3||!rows.every(r=>r.length===rows[0].length))return null;
+  const first=rows[0];
+  const isHeader=classifyTable(first)==='nutrition';
+  if(!isHeader&&!isMealLabel(first[0]))return null;
+  return {header:isHeader?first:nutritionHeaderFor(first.length),body:isHeader?rows.slice(1):rows,next:i};
+}
 function renderMarkdown(raw){
   const lines=raw.replace(/\r/g,'').split('\n');
   let html='',i=0,inCode=false,codeBuf=[];
@@ -1649,6 +1665,8 @@ function renderMarkdown(raw){
       else html+=renderGenericTable(header,body);
       continue;
     }
+    const nutritionBlock=t.includes('|')?separatorlessNutritionBlock(lines,i):null;
+    if(nutritionBlock){html+=renderNutrition(nutritionBlock.header,nutritionBlock.body);i=nutritionBlock.next;continue;}
     // heading
     let mh=t.match(/^(#{1,4})\s+(.*)$/);
     if(mh){html+='<h'+mh[1].length+'>'+inlineMd(mh[2])+'</h'+mh[1].length+'>';i++;continue;}
