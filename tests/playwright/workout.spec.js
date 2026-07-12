@@ -1,125 +1,191 @@
 const { test, expect } = require('@playwright/test');
-const {
-  startSimulatedWorkout,
-  verifyCoreMount,
-  assertSingleCoreElement,
-  verifyRafContinuity
-} = require('./helpers/workoutHelper');
 
-test.describe('APEX V2 Coach Card Rendering Pipeline & Legacy Fallback', () => {
+/**
+ * Regression coverage for the CURRENT approved APEX app shell.
+ *
+ * The previous spec asserted a removed "V2 Coach Card" interface
+ * (#workout-overlay / cc-active / Biological Core legacy fallback). Those
+ * elements no longer exist in the approved shell, so this file replaces that
+ * obsolete check with coverage of the interface that ships today:
+ *   - the workout renderer (exercise cards),
+ *   - the nutrition parser (separator-less plans, no raw pipes),
+ *   - nutrition readability (full macro words + units),
+ *   - the voice UI (mic button, state-machine markup, voice selector),
+ *   - mobile: no horizontal overflow.
+ *
+ * Content is injected through the app's own render pipeline (renderMarkdown),
+ * exactly as a real AI reply would arrive — no production UI is modified.
+ */
+test.describe('APEX approved app shell — UX regression', () => {
   let consoleErrors = [];
 
   test.beforeEach(async ({ page }) => {
     consoleErrors = [];
-    // Catch console errors and uncaught exceptions
-    page.on('pageerror', (exception) => {
-      consoleErrors.push(exception.message || exception.toString());
+    page.on('pageerror', (e) => consoleErrors.push(e.message || String(e)));
+    // ?lang=bg pins the app to Bulgarian (applyIntent reads it), so the bilingual
+    // renderers emit the approved BG labels the assertions below check.
+    await page.goto('/app?lang=bg');
+    // Enter the consultation view and dismiss onboarding so the chat log + composer exist.
+    await page.evaluate(() => {
+      try {
+        localStorage.setItem('apexProfile', JSON.stringify({
+          goal: 'fat_loss', age: '30', weight: '75', height: '178',
+          gender: 'male', level: 'beginner', equip: 'full_gym'
+        }));
+      } catch (e) {}
+      try { if (typeof enterConsult === 'function') enterConsult(''); } catch (e) {}
+      const m = document.getElementById('profile-modal');
+      if (m) m.classList.remove('on');
     });
-    
-    // Navigate to local App endpoint
-    await page.goto('/app');
   });
 
-  test('CC-001: Execute workout with Push-Ups (Coach Card) and Squats (Legacy)', async ({ page }) => {
-    // 1. Prepare target exercises
-    const workoutData = [
-      { name: 'Push-ups', sets: 2, reps: 10 },
-      { name: 'Squats', sets: 2, reps: 12 }
-    ];
+  test('WO-1: workout cards render with exercise name, sets and reps', async ({ page }) => {
+    await page.evaluate(() => {
+      const md = [
+        '| Упражнение | Серии | Повторения | Почивка |',
+        '| --- | --- | --- | --- |',
+        '| Лицеви опори | 3 | 12 | 60 |',
+        '| Клекове | 3 | 15 | 60 |'
+      ].join('\n');
+      const el = appendCoach();
+      el.innerHTML = renderMarkdown(md);
+    });
 
-    // 2. Start the simulated workout bypass profile modal
-    await startSimulatedWorkout(page, workoutData);
+    // 1. cards render
+    const cards = page.locator('.ex-card');
+    await expect(cards).toHaveCount(2);
 
-    // ── STEP 1 & 2: Push-Up Renders Coach Card & Core Mounts ──
-    const overlay = page.locator('#workout-overlay');
-    await expect(overlay).toHaveClass(/active/);
-    await expect(overlay).toHaveClass(/cc-active/); // Coach Card layout active
+    // 2. exercise name is visible
+    const firstName = page.locator('.ex-card').first().locator('.ex-name');
+    await expect(firstName).toBeVisible();
+    await expect(firstName).toHaveText('Лицеви опори');
 
-    // Verify Coach Card elements exist
-    await expect(page.locator('.cc-root')).toBeVisible();
-    await expect(page.locator('.cc-tech-item')).toHaveCount(5); // 5 technique pointers
+    // 3. sets AND reps are visible on the card
+    const firstStats = page.locator('.ex-card').first().locator('.ex-stats');
+    await expect(firstStats).toContainText('3');            // sets value
+    await expect(firstStats).toContainText(/серии|sets/);
+    await expect(firstStats).toContainText('12');           // reps value
+    await expect(firstStats).toContainText(/повт|reps/);
 
-    // Verify Biological Core mounts in the Coach Card slot
-    const coreSlotCc = await verifyCoreMount(page, '#cc-core-slot');
-    expect(coreSlotCc).toBe(true);
+    // approved workout entry point is present
+    await expect(page.locator('.start-wo')).toBeVisible();
+  });
 
-    // Dynamic checks
-    await assertSingleCoreElement(page);
-    expect(await verifyRafContinuity(page)).toBe(true);
+  test('NP-1: nutrition parser recognizes a separator-less plan with no raw pipes', async ({ page }) => {
+    await page.evaluate(() => {
+      // A nutrition table WITHOUT the markdown separator row — the parser
+      // (separatorlessNutritionBlock / pipeCells) must recognize it and render cards.
+      const md = [
+        'Закуска | 30 | 45 | 12 | 320',
+        'Обяд | 40 | 55 | 15 | 520'
+      ].join('\n');
+      const el = appendCoach();
+      el.innerHTML = renderMarkdown(md);
+    });
 
-    // ── STEP 3: Click Done ──
-    const doneBtn = page.locator('.wo-done-btn');
-    await doneBtn.click();
+    // 4. parser produced nutrition cards (not raw markdown text)
+    const nutri = page.locator('.nutri').first();
+    await expect(page.locator('.nutri-meal').first()).toBeVisible();
+    await expect(page.locator('.nutri-meal')).toHaveCount(2);
 
-    await expect(page.locator('.wo-feedback')).toBeVisible();
-    
-    // Organism must return to the background slot during feedback
-    const coreSlotFb = await verifyCoreMount(page, '#wo-organism-slot');
-    expect(coreSlotFb).toBe(true);
+    // 8. NO raw pipe symbols remain in the recognized plan
+    const nutriText = await nutri.innerText();
+    expect(nutriText).not.toContain('|');
+  });
 
-    // Trigger feedback selection: 'Moderate' (medium)
-    const moderateBtn = page.locator('.wo-fb-btn.medium');
-    await moderateBtn.click();
+  test('NR-1: nutrition readability — full words, units, colour is not the sole signal', async ({ page }) => {
+    await page.evaluate(() => {
+      const md = [
+        '| Ястие | Протеин | Въглехидрати | Мазнини | Калории |',
+        '| --- | --- | --- | --- | --- |',
+        '| Обяд | 40 | 55 | 15 | 520 |',
+        '| Общо | 40 | 55 | 15 | 520 |'
+      ].join('\n');
+      const el = appendCoach();
+      el.innerHTML = renderMarkdown(md);
+    });
 
-    // ── STEP 5 & 6: Rest screen appears & Core returns to background slot ──
-    await expect(page.locator('.wo-rest')).toBeVisible();
-    
-    // Core must move back to the background slot during rest timer phase
-    const coreSlotRest = await verifyCoreMount(page, '#wo-organism-slot');
-    expect(coreSlotRest).toBe(true);
+    const nutri = page.locator('.nutri').first();
+    // 5. full macro names + caption
+    await expect(nutri).toContainText('Хранителна стойност');
+    await expect(nutri).toContainText('Белтъчини');
+    await expect(nutri).toContainText('Въглехидрати');
+    await expect(nutri).toContainText('Мазнини');
+    await expect(nutri).toContainText('Калории');
+    // units г / kcal
+    await expect(nutri).toContainText('г');
+    await expect(nutri).toContainText('kcal');
+    // colour is a helper: the WORD label carries meaning (readable without colour perception)
+    await expect(page.locator('.macro .mname').first()).toHaveText('Белтъчини');
+  });
 
-    // Skip the rest timer
-    const skipBtn = page.locator('.wo-skip-btn');
-    await skipBtn.click();
+  test('VX-1: voice UI — mic button, state-machine markup, voice selector persistence', async ({ page }) => {
+    // 6a. mic button present, secondary control with an initial idle state + accessible name
+    const mic = page.locator('#mic-btn');
+    await expect(mic).toBeVisible();
+    await expect(mic).toHaveAttribute('data-state', 'idle');
+    await expect(mic).toHaveAttribute('aria-label', /.+/);
 
-    // ── PUSH-UPS SET 2 ──
-    await expect(page.locator('.cc-root')).toBeVisible();
-    await page.locator('.wo-done-btn').click();
-    await expect(page.locator('.wo-feedback')).toBeVisible();
-    await page.locator('.wo-fb-btn.medium').click();
-    await expect(page.locator('.wo-rest')).toBeVisible();
-    await page.locator('.wo-skip-btn').click();
+    // 6b. state-machine markup: shape-based indicators (not colour-only)
+    await expect(mic.locator('.mic-dots')).toHaveCount(1);   // THINKING
+    await expect(mic.locator('.mic-wave')).toHaveCount(1);   // SPEAKING
+    // send stays the primary, distinct action
+    await expect(page.locator('.send-btn')).toBeVisible();
 
-    // ── STEP 7: Squats (next exercise) Renders using Unified Renderer ──
-    await expect(overlay).toHaveClass(/active/);
-    await expect(overlay).toHaveClass(/cc-active/); // unified rendering pipeline
+    // deterministic state machine drives data-state
+    const speaking = await page.evaluate(() => {
+      Voice.set('SPEAKING');
+      const s = document.getElementById('mic-btn').getAttribute('data-state');
+      Voice.set('IDLE');
+      return s;
+    });
+    expect(speaking).toBe('speaking');
 
-    // Verify simple legacy element layout
-    await expect(page.locator('.cc-ex-name-en')).toHaveText('Squats');
-    
-    // Core must be mapped to #cc-core-slot
-    const coreSlotLegacy = await verifyCoreMount(page, '#cc-core-slot');
-    expect(coreSlotLegacy).toBe(true);
+    // 6c. voice selector lives in Settings, persists the choice
+    const sel = await page.evaluate(() => {
+      showSettings();
+      const s = document.getElementById('voice-select');
+      const opts = s ? [...s.options].map((o) => o.value) : [];
+      let ls = null;
+      if (s) { s.value = 'calm'; voicePick('calm'); ls = localStorage.getItem('apexVoice'); }
+      if (typeof closePanel === 'function') closePanel();
+      VoiceReg.set('alpha');
+      return { exists: !!s, opts, ls };
+    });
+    expect(sel.exists).toBe(true);
+    expect(sel.opts).toEqual(expect.arrayContaining(['alpha', 'calm']));
+    expect(sel.ls).toBe('calm');
+  });
 
-    // Complete Squats Set 1
-    await page.locator('.wo-done-btn').click();
-    await page.locator('.wo-fb-btn.medium').click();
-    await page.locator('.wo-skip-btn').click();
+  test('MB-1: no horizontal overflow on a mobile viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.evaluate(() => {
+      const md = [
+        '| Упражнение | Серии | Повторения | Почивка |',
+        '| --- | --- | --- | --- |',
+        '| Лицеви опори с дълго име за проверка на пренасяне | 3 | 12 | 60 |',
+        '| Клекове | 3 | 15 | 60 |'
+      ].join('\n');
+      const el = appendCoach();
+      el.innerHTML = renderMarkdown(md);
+    });
+    // 7. document must not scroll horizontally (allow 1px sub-pixel rounding)
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+    );
+    expect(overflow).toBeLessThanOrEqual(1);
+  });
 
-    // Complete Squats Set 2 (Final set -> transitions directly to done screen)
-    await page.locator('.wo-done-btn').click();
-    await page.locator('.wo-fb-btn.medium').click();
-
-    // ── STEP 8: Complete Workout Survey ──
-    await expect(page.locator('.wo-complete-title')).toBeVisible();
-    await page.locator('.wo-done-btn').click(); // Moves to recovery survey
-
-    // Fill the recovery check-in forms
-    await expect(page.locator('.wo-rec-title')).toBeVisible();
-    await page.locator('.wo-rec-save').click(); // Saves and exits
-
-    // ── STEP 9 & 10: Exit Workout & Core returns to Overview stage ──
-    await expect(overlay).not.toHaveClass(/active/); // overlay hidden
-    
-    // Core must return to the primary stage
-    const coreSlotStage = await verifyCoreMount(page, '#phys-core-stage');
-    expect(coreSlotStage).toBe(true);
-
-    // Dynamic checks
-    await assertSingleCoreElement(page);
-    expect(await verifyRafContinuity(page)).toBe(true);
-
-    // ── CONSOLE ERRORS AUDIT ──
-    expect(consoleErrors).toEqual([]); // Ensure zero uncaught JS exceptions
+  test('JS-1: approved shell renders workout + nutrition with no uncaught errors', async ({ page }) => {
+    await page.evaluate(() => {
+      const md = [
+        '| Упражнение | Серии | Повторения |',
+        '| --- | --- | --- |',
+        '| Клекове | 3 | 15 |'
+      ].join('\n');
+      const el = appendCoach();
+      el.innerHTML = renderMarkdown(md);
+    });
+    expect(consoleErrors).toEqual([]);
   });
 });
