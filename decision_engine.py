@@ -1,0 +1,65 @@
+"""Deterministic shadow decisions for Phase B1.
+
+The engine is intentionally pure: it reads no external state and its result is
+not yet allowed to influence chat execution.  It exists solely to establish the
+production decision contract alongside the existing ContextSnapshot.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Literal
+
+from context_builder import ContextSnapshot
+
+
+Outcome = Literal["recommend", "recover", "clarify", "converse", "route"]
+Intent = Literal[
+    "workout", "nutrition", "recovery", "progress", "question", "motivation",
+    "general_conversation", "medical", "account", "unknown",
+]
+
+
+@dataclass(frozen=True)
+class DecisionResult:
+    """Immutable, observational result of one deterministic shadow decision."""
+
+    outcome: Outcome
+    intent: Intent
+    reason: str
+    evidence: tuple[str, ...]
+    confidence: float
+
+
+_INTENT_KEYWORDS: tuple[tuple[Intent, tuple[str, ...]], ...] = (
+    ("medical", ("chest pain", "chest feels tight", "difficulty breathing", "fainting", "passed out", "suicidal")),
+    ("recovery", ("recovery", "recover", "sore", "fatigue", "rest day")),
+    ("nutrition", ("nutrition", "meal", "diet", "calories", "protein", "macros", "food")),
+    ("workout", ("workout", "exercise", "training", "push-up", "pushup", "squat", "gym")),
+)
+
+
+def classify_intent(message: str) -> Intent:
+    """Return the narrow B1 shadow intent label without performing reasoning."""
+    text = str(message or "").strip().lower()
+    if not text:
+        return "unknown"
+    for intent, keywords in _INTENT_KEYWORDS:
+        if any(keyword in text for keyword in keywords):
+            return intent
+    return "general_conversation"
+
+
+def decide(snapshot: ContextSnapshot, intent: Intent) -> DecisionResult:
+    """Produce exactly one conservative outcome from the snapshot and intent."""
+    # Reading the snapshot identity keeps the evidence subject-bound without
+    # allowing the engine to inspect storage, browser state, or external APIs.
+    evidence = (f"snapshot:{snapshot.snapshot_id}", f"intent:{intent}")
+    if intent in ("workout", "nutrition"):
+        return DecisionResult("recommend", intent, "coaching request", evidence, 1.0)
+    if intent == "recovery":
+        return DecisionResult("recover", intent, "recovery request", evidence, 1.0)
+    if intent == "medical":
+        return DecisionResult("route", intent, "medical red-flag route", evidence, 1.0)
+    if intent == "unknown":
+        return DecisionResult("clarify", intent, "request is empty or unknown", evidence, 1.0)
+    return DecisionResult("converse", intent, "general conversation", evidence, 1.0)
