@@ -22,6 +22,8 @@ import pytest
 import app as appmod
 import db as store
 import decision_engine
+from recommend import diversity as recommendation_diversity
+from recommend.blueprint import NutritionBlueprint, WorkoutBlueprint, to_dict
 from context_builder import LockedPreferences, Subject, build_context
 from brain.types import (Decision, Verdict, Intervention, S2State, ConstraintSet,
                          Constraint, ConstraintTier, CapacityEnvelope)
@@ -62,6 +64,7 @@ def client():
 @pytest.fixture(autouse=True)
 def _enforce_off_by_default(monkeypatch):
     monkeypatch.delenv("BRAIN_ENFORCE", raising=False)        # default OFF for every test
+    monkeypatch.delenv("RECOMMENDATION_ENGINE_ACTIVE", raising=False)
     yield
 
 
@@ -75,6 +78,17 @@ def _events(resp):
 
 def _post(client, message, profile=None):
     return client.post("/chat", json={"message": message, "lang": "en", "profile": profile or {}})
+
+
+def _set_stream(monkeypatch, captured, reply):
+    def fake_create(**kwargs):
+        captured["system"] = kwargs["messages"][0]["content"]
+        captured["messages"] = kwargs["messages"]
+        def stream():
+            yield _Chunk(reply)
+        return stream()
+
+    monkeypatch.setattr(appmod.client.chat.completions, "create", fake_create)
 
 
 # ── OFF = byte-identical ─────────────────────────────────────────────────────
@@ -653,6 +667,156 @@ def test_shadow_decision_does_not_add_memory_writes(client, captured, monkeypatc
     assert [(turn["role"], turn["content"]) for turn in saved] == [("user", "hello"), ("assistant", "ok")]
 
 
+@pytest.mark.parametrize("message,expected_kind", [
+    ("build a workout", "workout"),
+    ("plan my nutrition", "nutrition"),
+    ("I need recovery today", None),
+    ("I have chest pain", None),
+    ("???", None),
+    ("hello", None),
+])
+def test_shadow_recommendation_runs_only_for_recommend_decisions(client, captured, monkeypatch,
+                                                                  message, expected_kind):
+    calls = []
+
+    def design(kind, *, decision, profile, preferences, subject, record):
+        calls.append({"kind": kind, "decision": decision, "profile": profile,
+                      "preferences": preferences, "subject": subject, "record": record})
+        return types.SimpleNamespace(kind=kind)
+
+    monkeypatch.setattr(appmod.recommendation_architect, "design", design)
+    response = _post(client, message, profile=_profile())
+
+    assert response.status_code == 200
+    if expected_kind is None:
+        assert calls == []
+    else:
+        assert len(calls) == 1
+        assert calls[0]["kind"] == expected_kind
+        assert calls[0]["decision"].outcome == "recommend"
+        assert calls[0]["profile"] == _profile()
+        assert calls[0]["preferences"] == {}
+        assert calls[0]["record"] is False
+    events = _events(response)
+    assert not any("blueprint" in event or "recommendation" in event for event in events)
+
+
+def test_shadow_recommendation_keeps_blueprint_local_and_does_not_record_history(monkeypatch):
+    writes = []
+    monkeypatch.setattr(recommendation_diversity.store, "log_recommendation",
+                        lambda *args: writes.append(args))
+    snapshot = build_context(
+        intent="workout",
+        subject=Subject("anonymous_device", "recommendation-shadow", False),
+        request_time=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        browser_profile=_profile(),
+    )
+    decision = decision_engine.decide(snapshot, "workout")
+
+    blueprint = appmod._shadow_recommendation(snapshot, decision, _profile())
+
+    assert blueprint.kind == "workout"
+    with pytest.raises(FrozenInstanceError):
+        blueprint.kind = "nutrition"
+    assert writes == []
+
+
+def test_shadow_recommendation_does_not_change_chat_persistence(client, captured):
+    uid = _login_for_chat(client, _profile())
+    response = _post(client, "build a workout")
+    response.get_data()
+
+    saved = store.list_conversation(uid, limit=10)
+    assert [(turn["role"], turn["content"]) for turn in saved] == [
+        ("user", "build a workout"), ("assistant", "ok"),
+    ]
+
+
+def _workout_blueprint():
+    return WorkoutBlueprint(
+        goal="strength", difficulty="moderate", mobility_requirement="standard",
+        joint_impact="moderate", balance_demand="low", equipment=["dumbbells"],
+        session_minutes=35, exercise_families=["squat", "hinge"], contraindications=[],
+        rotation_anchor="lower_body", meal_diversity=[], explanations=[])
+
+
+def _nutrition_blueprint():
+    return NutritionBlueprint(
+        meal="breakfast", protein_g=45, carbs_g=50, fat_g=15, fiber_g=8,
+        max_prep_minutes=15, budget="moderate", preferred_foods=["eggs"],
+        avoided_foods=["oats"], rotation_anchor="eggs", meal_diversity=[],
+        difficulty="easy", required_equipment=["stove"], seasonality="summer",
+        medical_constraints=[], explanations=[])
+
+
+@pytest.mark.parametrize("message,blueprint,expected_title", [
+    ("build a workout", _workout_blueprint(), "**Workout**"),
+    ("plan my nutrition", _nutrition_blueprint(), "**Nutrition**"),
+])
+def test_active_recommendation_engine_delivers_only_verified_blueprint(client, captured, monkeypatch,
+                                                                         message, blueprint, expected_title):
+    monkeypatch.setenv("RECOMMENDATION_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod.recommendation_architect, "design", lambda *args, **kwargs: blueprint)
+    _set_stream(monkeypatch, captured, json.dumps({
+        "blueprint": to_dict(blueprint), "explanations": []
+    }))
+
+    response = _post(client, message, profile=_profile())
+    events = _events(response)
+
+    assert captured["system"] == appmod.recommendation_renderer.render_prompt(blueprint)
+    assert "BLUEPRINT (render exactly, do not alter values)" in captured["system"]
+    assert appmod.SYSTEM_INSTRUCTIONS not in captured["system"]
+    assert len(events) == 2 and events[1] == {"done": True}
+    assert events[0]["t"].startswith(expected_title)
+    assert '"blueprint"' not in events[0]["t"]
+
+
+def test_active_recommendation_engine_rejects_modified_blueprint(client, captured, monkeypatch):
+    blueprint = _workout_blueprint()
+    modified = to_dict(blueprint)
+    modified["session_minutes"] = 99
+    monkeypatch.setenv("RECOMMENDATION_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod.recommendation_architect, "design", lambda *args, **kwargs: blueprint)
+    _set_stream(monkeypatch, captured, json.dumps({
+        "blueprint": modified, "explanations": []
+    }))
+
+    response = _post(client, "build a workout", profile=_profile())
+
+    assert _events(response) == [
+        {"t": "I couldn't safely deliver that recommendation. Please try again."}, {"done": True}
+    ]
+    assert blueprint.session_minutes == 35
+
+
+def test_recommendation_engine_flag_off_keeps_legacy_workout_prompt(client, captured, monkeypatch):
+    profile = _profile()
+    history = [{"role": "user", "content": "prior"}]
+    expected = _legacy_messages(profile, [], history, "build a workout", 12)
+    response = client.post("/chat", json={"message": "build a workout", "lang": "en",
+                                           "profile": profile, "history": history})
+
+    assert response.status_code == 200
+    assert captured["messages"] == expected
+    assert "BLUEPRINT (render exactly, do not alter values)" not in captured["system"]
+
+
+@pytest.mark.parametrize("message", ["hello", "I need recovery today", "I have chest pain", "???"])
+def test_active_recommendation_engine_does_not_run_for_non_recommend_outcomes(client, captured, monkeypatch,
+                                                                                message):
+    calls = []
+    monkeypatch.setenv("RECOMMENDATION_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod.recommendation_architect, "design", lambda *args, **kwargs: calls.append(args))
+
+    response = _post(client, message, profile=_profile())
+
+    assert response.status_code == 200
+    assert calls == []
+    if "messages" in captured:
+        assert "BLUEPRINT (render exactly, do not alter values)" not in captured["system"]
+
+
 # Phase B2: clarify and route are fixed delivery contracts. They bypass OpenAI
 # while retaining the normal SSE and delivered-response persistence contract.
 @pytest.mark.parametrize("message,expected", [
@@ -710,3 +874,44 @@ def test_first_contact_does_not_compute_b2_controlled_response(client, monkeypat
     monkeypatch.setattr(appmod.decision_engine, "decide", wrapped)
     response = client.post("/chat", json={"message": "???", "lang": "en", "first_contact": True})
     assert calls == []
+
+
+def _daily_plan(total=2800, meals=("Breakfast", "Lunch", "Dinner")):
+    rows = ["| Meal | Quantity | Protein | Carbs | Fat | Kcal |",
+            "| --- | --- | --- | --- | --- | --- |"]
+    rows.extend(f"| {meal} | food | 30 | 70 | 20 | 700 |" for meal in meals)
+    rows.append(f"| Total | | 120 | 280 | 80 | {total} |")
+    return "\n".join(rows)
+
+
+@pytest.mark.parametrize("target", [2800, 2500])
+def test_daily_nutrition_contract_accepts_total_within_ten_percent(target):
+    profile_block = f"Calorie target: {target} kcal"
+    assert appmod._is_complete_daily_nutrition(_daily_plan(target), target)
+    assert appmod._daily_nutrition_target("give me a full-day nutrition plan", profile_block) == target
+
+
+@pytest.mark.parametrize("reply", [
+    _daily_plan(1600),
+    _daily_plan(2800, ("Breakfast", "Dinner")),
+    _daily_plan(2800, ("Breakfast", "Lunch")),
+    "Breakfast, lunch, and dinner are included, but no daily calories are declared.",
+])
+def test_daily_nutrition_contract_rejects_incomplete_or_under_target_plan(reply):
+    assert not appmod._is_complete_daily_nutrition(reply, 2800)
+
+
+def test_daily_nutrition_contract_delivers_controlled_clarification(client, captured, monkeypatch):
+    monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: "Calorie target: 2800 kcal")
+    _set_stream(monkeypatch, captured, _daily_plan(1600))
+    response = _post(client, "Give me a full-day nutrition plan", profile=_profile())
+    events = _events(response)
+
+    assert events == [{"t": "I couldn't generate a complete nutrition plan that matches your current calorie target. I'll regenerate it."}, {"done": True}]
+
+
+@pytest.mark.parametrize("message", ["give me a strength workout", "how much water should I drink?"])
+def test_daily_nutrition_contract_does_not_affect_non_daily_responses(client, captured, message):
+    response = _post(client, message, profile=_profile())
+    assert captured["messages"][-1] == {"role": "user", "content": message}
+    assert any(event.get("t") == "ok" for event in _events(response))

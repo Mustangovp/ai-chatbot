@@ -17,7 +17,7 @@ class Explanation:
         return (self.claim, self.because)
 
 
-@dataclass
+@dataclass(frozen=True)
 class NutritionBlueprint:
     meal: str                    # breakfast | lunch | dinner | snack
     protein_g: int
@@ -38,7 +38,7 @@ class NutritionBlueprint:
     kind: str = "nutrition"
 
 
-@dataclass
+@dataclass(frozen=True)
 class WorkoutBlueprint:
     goal: str
     difficulty: str              # beginner | moderate | advanced
@@ -55,7 +55,7 @@ class WorkoutBlueprint:
     kind: str = "workout"
 
 
-@dataclass
+@dataclass(frozen=True)
 class RecoveryBlueprint:
     sleep_hours: float
     hydration_liters: float

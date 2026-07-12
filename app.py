@@ -10,6 +10,7 @@ import datetime as _dt
 import base64
 import threading
 import json as _json_lib
+import re
 
 from werkzeug.middleware.proxy_fix import ProxyFix
 app = Flask(__name__, static_folder='static', template_folder='templates')
@@ -33,6 +34,7 @@ import db as store
 import personality
 import context_builder
 import decision_engine
+from recommend import architect as recommendation_architect, renderer as recommendation_renderer
 import athlete_store  # M0: Athlete Model substrate (failure-isolated observe wiring)
 import brain.config as brain_config             # M1: Brain shadow flags (default OFF)
 import brain.ledger as brain_ledger             # M1: shadow decision ledger
@@ -1517,6 +1519,84 @@ def _update_learning_engine(uid, user_msg, assistant_reply, current_profile):
             print(f"[learning] save_profile failed: {e}")
 
 
+_DAILY_NUTRITION_REQUEST = re.compile(
+    r"\b(?:daily|full[- ]day|complete menu|daily nutrition)\b|дневен|цял ден|пълно меню", re.IGNORECASE)
+_DAILY_TOTAL_LABEL = re.compile(r"^(?:daily\s+)?total$|^total\s+for\s+the\s+day$|^общо(?:\s+за\s+деня)?$", re.IGNORECASE)
+_MEAL_LABELS = (
+    ("breakfast", "закуска"),
+    ("lunch", "обяд"),
+    ("dinner", "вечеря"),
+)
+
+
+def _daily_nutrition_target(message, profile_block):
+    """Return the injected calorie target for an explicit full-day request."""
+    if not _DAILY_NUTRITION_REQUEST.search(str(message or "")):
+        return None
+    match = re.search(r"(?:Calorie target|Калориен таргет):\s*([\d\s,]+)\s*(?:kcal|ккал)",
+                      str(profile_block or ""), re.IGNORECASE)
+    return int(re.sub(r"\D", "", match.group(1))) if match else 0
+
+
+def _declared_daily_calories(reply):
+    """Extract the final numeric cell from an explicit daily-total table row."""
+    text = str(reply or "")
+    if not re.search(r"ккал|kcal|калори", text, re.IGNORECASE):
+        return None
+    for line in text.splitlines():
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if cells and _DAILY_TOTAL_LABEL.match(cells[0]):
+            for cell in reversed(cells[1:]):
+                numbers = re.findall(r"\d{2,5}", cell.replace(",", ""))
+                if numbers:
+                    return int(numbers[-1])
+    match = re.search(r"(?:daily\s+total|дневен\s+общо|общо\s+за\s+деня)\D{0,40}(\d{2,5})\s*(?:kcal|ккал)",
+                      text, re.IGNORECASE)
+    return int(match.group(1)) if match else None
+
+
+def _is_complete_daily_nutrition(reply, target):
+    """Validate an LLM-declared day plan without changing its content."""
+    if not target:
+        return False
+    text = str(reply or "")
+    for labels in _MEAL_LABELS:
+        if not any(re.search(r"(?:^|\||#\s*)\s*" + re.escape(label) + r"\b", text,
+                             re.IGNORECASE | re.MULTILINE) for label in labels):
+            return False
+    total = _declared_daily_calories(text)
+    return total is not None and abs(total - target) <= target * 0.10
+
+
+def _shadow_recommendation(snapshot, decision, profile):
+    """Generate a non-persistent blueprint without affecting chat delivery."""
+    if decision.outcome != "recommend":
+        return None
+    kind = "workout" if decision.intent == "workout" else "nutrition"
+    print(f"[recommendation-shadow] invoked type={kind}")
+    try:
+        blueprint = recommendation_architect.design(
+            kind,
+            decision=decision,
+            profile=profile if isinstance(profile, dict) else {},
+            preferences={},
+            subject=snapshot.subject.identifier,
+            record=False,
+        )
+        if blueprint is None:
+            print(f"[recommendation-shadow] failed type={kind}")
+        else:
+            print(f"[recommendation-shadow] blueprint generated type={blueprint.kind}")
+        return blueprint
+    except Exception as error:
+        print(f"[recommendation-shadow] failed type={kind}: {error}")
+        return None
+
+
+def _recommendation_engine_active():
+    return os.getenv("RECOMMENDATION_ENGINE_ACTIVE", "false").strip().lower() == "true"
+
+
 @app.route("/chat", methods=["POST"])
 def chat():
     try:
@@ -1594,6 +1674,7 @@ def chat():
         # context boundary, then its legacy adapter restores the exact variables
         # consumed by the unchanged prompt assembly below. First-contact keeps its
         # established path until its own integration phase.
+        _recommendation_blueprint = None
         if not is_first_contact:
             _legacy_profile = profile if isinstance(profile, dict) else {}
             _legacy_history = history if isinstance(history, list) else []
@@ -1621,7 +1702,16 @@ def chat():
                 history = _legacy["history"]
             pers_workouts = _legacy["workouts"]
             _shadow_decision = decision_engine.decide(_snapshot, _shadow_intent)
+            if _recommendation_engine_active() and _shadow_decision.outcome == "recommend":
+                _recommendation_blueprint = _shadow_recommendation(_snapshot, _shadow_decision, profile)
             _controlled_reply = decision_engine.controlled_response(_shadow_decision, lang)
+            if _recommendation_engine_active() and _shadow_decision.outcome == "recommend" and \
+                    _recommendation_blueprint is None:
+                _controlled_reply = decision_engine.controlled_response(
+                    decision_engine.DecisionResult("clarify", _shadow_decision.intent,
+                                                   "recommendation_integrity_contract", (), 1.0), lang)
+            if not _recommendation_engine_active():
+                _shadow_recommendation(_snapshot, _shadow_decision, profile)
         else:
             _controlled_reply = None
 
@@ -1694,6 +1784,11 @@ def chat():
             profile_block = _build_profile_block(profile, lang) if isinstance(profile, dict) else ""
             base = (profile_block + "\n\n" + SYSTEM_INSTRUCTIONS) if profile_block else SYSTEM_INSTRUCTIONS
             system_content = (personality_block + "\n\n" + base) if personality_block else base
+
+        nutrition_delivery_target = (_daily_nutrition_target(user_message, profile_block)
+                                     if not is_first_contact else None)
+        if _recommendation_blueprint is not None:
+            system_content = recommendation_renderer.render_prompt(_recommendation_blueprint)
 
         messages = [{"role": "system", "content": system_content}]
 
@@ -1885,6 +1980,14 @@ def chat():
                     _ingest_state()
                     yield sse({"done": True})
                     return
+                if _recommendation_blueprint is not None and nutrition_delivery_target is not None:
+                    reply_text = decision_engine.controlled_response(
+                        decision_engine.DecisionResult("clarify", "nutrition", "nutrition_delivery_contract", (), 1.0), lang)
+                    yield sse({"t": reply_text})
+                    _persist_reply(reply_text)
+                    _update_learning_engine(chat_uid, user_message, reply_text, profile)
+                    yield sse({"done": True})
+                    return
                 if enforce_event is not None:
                     # Backward-compatible leading event; unknown events are ignored by
                     # the current frontend. Only emitted when BRAIN_ENFORCE is ON.
@@ -1901,9 +2004,27 @@ def chat():
                         delta = chunk.choices[0].delta.content
                     if delta:
                         full.append(delta)
-                        yield sse({"t": delta})
+                        if nutrition_delivery_target is None and _recommendation_blueprint is None:
+                            yield sse({"t": delta})
                 _bump_plans_today()  # honest landing counter: +1 real AI plan
                 reply_text = "".join(full)
+                if _recommendation_blueprint is not None:
+                    try:
+                        explanations = recommendation_renderer.verified_explanations(
+                            reply_text, _recommendation_blueprint)
+                        reply_text = recommendation_renderer.render_delivery(
+                            _recommendation_blueprint, explanations, lang)
+                    except Exception as recommendation_error:
+                        print(f"[recommendation] delivery rejected: {recommendation_error}")
+                        reply_text = decision_engine.controlled_response(
+                            decision_engine.DecisionResult("clarify", _shadow_decision.intent,
+                                                           "recommendation_integrity_contract", (), 1.0), lang)
+                    yield sse({"t": reply_text})
+                elif nutrition_delivery_target is not None:
+                    if not _is_complete_daily_nutrition(reply_text, nutrition_delivery_target):
+                        reply_text = decision_engine.controlled_response(
+                            decision_engine.DecisionResult("clarify", "nutrition", "nutrition_delivery_contract", (), 1.0), lang)
+                    yield sse({"t": reply_text})
                 _persist_reply(reply_text)
                 _update_learning_engine(chat_uid, user_message, reply_text, profile)
                 _shadow_log()        # SHADOW (BRAIN_SHADOW off by default; no-op in prod)
@@ -1926,6 +2047,23 @@ def chat():
                     # Потребителят вече получи почти всичко — завършваме чисто
                     _bump_plans_today()
                     reply_text = "".join(full)
+                    if _recommendation_blueprint is not None:
+                        try:
+                            explanations = recommendation_renderer.verified_explanations(
+                                reply_text, _recommendation_blueprint)
+                            reply_text = recommendation_renderer.render_delivery(
+                                _recommendation_blueprint, explanations, lang)
+                        except Exception as recommendation_error:
+                            print(f"[recommendation] delivery rejected: {recommendation_error}")
+                            reply_text = decision_engine.controlled_response(
+                                decision_engine.DecisionResult("clarify", _shadow_decision.intent,
+                                                               "recommendation_integrity_contract", (), 1.0), lang)
+                        yield sse({"t": reply_text})
+                    elif nutrition_delivery_target is not None:
+                        if not _is_complete_daily_nutrition(reply_text, nutrition_delivery_target):
+                            reply_text = decision_engine.controlled_response(
+                                decision_engine.DecisionResult("clarify", "nutrition", "nutrition_delivery_contract", (), 1.0), lang)
+                        yield sse({"t": reply_text})
                     _persist_reply(reply_text)
                     _update_learning_engine(chat_uid, user_message, reply_text, profile)
                     _shadow_log()     # SHADOW (BRAIN_SHADOW off by default; no-op in prod)

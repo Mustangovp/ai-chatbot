@@ -42,12 +42,12 @@ def rotate(pool: list, recent_anchors: list, avoid: list = None) -> str:
     return pool[0]
 
 
-def next_anchor(subject: str, kind: str, avoid: list = None) -> tuple:
-    """Return (chosen_anchor, recent_anchors) and record the choice. Failure-isolated."""
+def next_anchor(subject: str, kind: str, avoid: list = None, *, record: bool = True) -> tuple:
+    """Return (chosen_anchor, recent_anchors), optionally recording the choice."""
     pool = POOLS.get(kind, [])
     rec = recent(subject, kind)
     anchor = rotate(pool, rec, avoid) if pool else ""
-    if anchor:
+    if anchor and record:
         try:
             store.log_recommendation(subject, kind, anchor)
         except Exception as e:

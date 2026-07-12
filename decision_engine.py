@@ -69,6 +69,13 @@ def decide(snapshot: ContextSnapshot, intent: Intent) -> DecisionResult:
 def controlled_response(decision: DecisionResult, lang: str) -> str | None:
     """Return the fixed B2 delivery contract for non-generative outcomes only."""
     english = str(lang).lower() == "en"
+    if decision.reason == "recommendation_integrity_contract":
+        return ("I couldn't safely deliver that recommendation. Please try again." if english else
+                "Не успях да доставя тази препоръка безопасно. Моля, опитай отново.")
+    if decision.reason == "nutrition_delivery_contract":
+        return ("I couldn't generate a complete nutrition plan that matches your current calorie target. "
+                "I'll regenerate it." if english else
+                "Не успях да генерирам пълен хранителен план, който съответства на текущия ти калориен таргет. Ще го генерирам отново.")
     if decision.outcome == "clarify":
         return "What would you like help with today?" if english else "С какво да помогна днес?"
     if decision.outcome == "route":

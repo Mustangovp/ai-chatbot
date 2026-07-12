@@ -38,7 +38,7 @@ def _goal(profile) -> str:
 
 
 # ── Nutrition ────────────────────────────────────────────────────────────────
-def _nutrition(decision, profile, prefs, subject) -> NutritionBlueprint:
+def _nutrition(decision, profile, prefs, subject, *, record=True) -> NutritionBlueprint:
     goal = _goal(profile)
     protein, carbs, fat, fiber = 30, 40, 15, 8
     ex = []
@@ -68,7 +68,7 @@ def _nutrition(decision, profile, prefs, subject) -> NutritionBlueprint:
     for p in prefer:
         ex.append((f"Prefer {p}", "preference"))
 
-    anchor, recent = diversity.next_anchor(subject, "nutrition", avoid=avoid)
+    anchor, recent = diversity.next_anchor(subject, "nutrition", avoid=avoid, record=record)
     medical = ["defer to medical guidance"] if getattr(decision, "halt", False) else []
     return NutritionBlueprint(
         meal="breakfast", protein_g=protein, carbs_g=carbs, fat_g=fat, fiber_g=fiber,
@@ -89,7 +89,7 @@ _FAMILIES = {
 }
 
 
-def _workout(decision, profile, prefs, subject) -> WorkoutBlueprint:
+def _workout(decision, profile, prefs, subject, *, record=True) -> WorkoutBlueprint:
     goal = _goal(profile)
     env = getattr(decision, "envelope", None)
     ic = float(getattr(env, "intensity_ceiling", 0.5)) if env is not None else 0.5
@@ -124,7 +124,7 @@ def _workout(decision, profile, prefs, subject) -> WorkoutBlueprint:
     equip = [equip] if isinstance(equip, str) else list(equip)
     minutes = {"beginner": 20, "moderate": 35, "advanced": 50}[difficulty]
 
-    anchor, recent = diversity.next_anchor(subject, "workout")
+    anchor, recent = diversity.next_anchor(subject, "workout", record=record)
     families = [f for f in _FAMILIES.get(goal, _FAMILIES["general_fitness"])]
     for m in movements:
         ex.append((f"Avoid {m}", "safety constraint"))
@@ -135,8 +135,8 @@ def _workout(decision, profile, prefs, subject) -> WorkoutBlueprint:
 
 
 # ── Recovery ─────────────────────────────────────────────────────────────────
-def _recovery(decision, profile, prefs, subject) -> RecoveryBlueprint:
-    anchor, recent = diversity.next_anchor(subject, "recovery")
+def _recovery(decision, profile, prefs, subject, *, record=True) -> RecoveryBlueprint:
+    anchor, recent = diversity.next_anchor(subject, "recovery", record=record)
     ex = [("Recovery focus", "readiness low / deload")]
     if getattr(decision, "halt", False):
         ex.append(("No hard training", "safety signal — route to care"))
@@ -149,7 +149,7 @@ def _recovery(decision, profile, prefs, subject) -> RecoveryBlueprint:
 _BUILDERS = {"nutrition": _nutrition, "workout": _workout, "recovery": _recovery}
 
 
-def design(kind=None, *, decision=None, profile=None, preferences=None, subject="anon"):
+def design(kind=None, *, decision=None, profile=None, preferences=None, subject="anon", record=True):
     """Design a Blueprint. `kind` (nutrition|workout|recovery) may be given explicitly
     or inferred from the Brain decision's intervention. Returns None when the decision
     routes/asks (medical_followup / crisis_support / conversation) — nothing to design."""
@@ -160,4 +160,4 @@ def design(kind=None, *, decision=None, profile=None, preferences=None, subject=
     builder = _BUILDERS.get(kind)
     if builder is None:
         return None
-    return builder(decision, profile or {}, preferences or {}, subject)
+    return builder(decision, profile or {}, preferences or {}, subject, record=record)
