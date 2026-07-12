@@ -31,6 +31,8 @@ stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 # ═══════════════════════════════════════════════════════════
 import db as store
 import personality
+import context_builder
+import decision_engine
 import athlete_store  # M0: Athlete Model substrate (failure-isolated observe wiring)
 import brain.config as brain_config             # M1: Brain shadow flags (default OFF)
 import brain.ledger as brain_ledger             # M1: shadow decision ledger
@@ -1587,6 +1589,38 @@ def chat():
                 history = store.list_conversation(chat_uid, limit=memory_cap)
             except Exception as _ce:
                 print(f"[chat] conversation load failed: {_ce}")
+
+        # Phase A2 compatibility bridge: ContextSnapshot now owns the normal-chat
+        # context boundary, then its legacy adapter restores the exact variables
+        # consumed by the unchanged prompt assembly below. First-contact keeps its
+        # established path until its own integration phase.
+        if not is_first_contact:
+            _legacy_profile = profile if isinstance(profile, dict) else {}
+            _legacy_history = history if isinstance(history, list) else []
+            _shadow_intent = decision_engine.classify_intent(user_message)
+            _snapshot = context_builder.build_context(
+                intent=_shadow_intent,
+                subject=(context_builder.Subject("account", chat_uid, True)
+                         if chat_uid else
+                         context_builder.Subject("anonymous_device", g.device_id or _client_ip(), False)),
+                request_time=_dt.datetime.now(_dt.timezone.utc),
+                access={"plan": plan, "quota_status": db_status},
+                db_profile=_legacy_profile if chat_uid else None,
+                browser_profile=_legacy_profile if not chat_uid else None,
+                db_conversation=_legacy_history if chat_uid else None,
+                browser_conversation=_legacy_history if not chat_uid else None,
+                db_workouts=pers_workouts if chat_uid else None,
+                legacy_profile=_legacy_profile,
+                legacy_conversation=_legacy_history,
+                legacy_workouts=pers_workouts,
+            )
+            _legacy = _snapshot.legacy_prompt_projection(conversation_limit=len(_legacy_history)).prompt_variables()
+            if isinstance(profile, dict):
+                profile = _legacy["profile"]
+            if isinstance(history, list):
+                history = _legacy["history"]
+            pers_workouts = _legacy["workouts"]
+            _shadow_decision = decision_engine.decide(_snapshot, _shadow_intent)
 
         decision_state = "CONTINUE_CONVERSATION"
         if is_first_contact:
