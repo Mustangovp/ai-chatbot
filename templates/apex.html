@@ -217,20 +217,23 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 .nm-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:10px;}
 .nm-name{font-family:'Unbounded';font-weight:600;font-size:14px;color:#fff;}
 .nm-qty{font-size:12px;color:var(--muted);font-weight:600;flex-shrink:0;}
-.macros{display:flex;flex-wrap:wrap;gap:7px;}
-.macro{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;padding:5px 10px;border-radius:20px;border:1px solid;}
-.macro .mlbl{font-size:9px;letter-spacing:.6px;text-transform:uppercase;opacity:.75;}
-.macro.p{color:var(--cyan);border-color:rgba(56,224,255,.35);background:rgba(56,224,255,.08);}
-.macro.c{color:var(--gold);border-color:rgba(255,177,60,.35);background:rgba(255,177,60,.08);}
-.macro.f{color:var(--ember);border-color:rgba(255,106,60,.35);background:rgba(255,106,60,.08);}
-.macro.k{color:var(--lime);border-color:rgba(182,255,60,.35);background:rgba(182,255,60,.08);}
+.macros-cap{font-size:10.5px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:var(--faint);margin-bottom:8px;}
+.macros{display:flex;flex-wrap:wrap;gap:8px;}
+/* Full word carries the meaning; colour is only a helper (readable for colour-blind users). */
+.macro{display:inline-flex;align-items:baseline;gap:6px;font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:12px;border:1px solid;color:var(--text);}
+.macro .mname{color:var(--text);font-weight:600;}
+.macro b{font-family:'Unbounded';font-weight:700;font-size:13px;}
+.macro.p{border-color:rgba(56,224,255,.4);background:rgba(56,224,255,.08);} .macro.p b{color:var(--cyan);}
+.macro.c{border-color:rgba(255,177,60,.4);background:rgba(255,177,60,.08);} .macro.c b{color:var(--gold);}
+.macro.f{border-color:rgba(255,106,60,.4);background:rgba(255,106,60,.08);} .macro.f b{color:var(--ember);}
+.macro.k{border-color:rgba(182,255,60,.4);background:rgba(182,255,60,.08);} .macro.k b{color:var(--lime);}
 .nutri-total{background:linear-gradient(135deg,rgba(245,33,45,.12),rgba(255,106,60,.08));border:1px solid rgba(245,33,45,.3);
   border-radius:16px;padding:15px 17px;}
 .nt-label{font-family:'Unbounded';font-weight:600;font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:var(--gold);margin-bottom:11px;}
 .nt-grid{display:flex;flex-wrap:wrap;gap:10px;}
 .nt-stat{flex:1;min-width:70px;text-align:center;}
 .nt-stat .v{font-family:'Unbounded';font-weight:700;font-size:19px;}
-.nt-stat .l{font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--faint);margin-top:2px;}
+.nt-stat .l{font-size:10.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);margin-top:3px;}
 .nt-stat.p .v{color:var(--cyan);} .nt-stat.c .v{color:var(--gold);} .nt-stat.f .v{color:var(--ember);} .nt-stat.k .v{color:var(--lime);}
 
 /* ── EXERCISE CARDS ──────────────────────────────────────────────── */
@@ -1703,26 +1706,30 @@ function renderNutrition(header,body){
   const iF=colIndex(header,[/мазнини|fat/]);
   const iK=colIndex(header,[/ккал|kcal|калории|cal/]);
   const num=v=>(v||'').replace(/[^\d.,]/g,'');
+  // Full words + explicit unit, so a macro never reads as "grams of food to eat".
+  const L=(lang==='bg')
+    ?{p:'Белтъчини',c:'Въглехидрати',f:'Мазнини',k:'Калории',u:'г',cap:'Хранителна стойност'}
+    :{p:'Protein',c:'Carbs',f:'Fat',k:'Calories',u:'g',cap:'Nutrition value'};
   let html='<div class="nutri">';let total=null;
   body.forEach(r=>{
     const name=r[iName]||''; if(!name)return;
     const isTotal=/общо|total|сума|сумарно/i.test(name);
     const badges=[];
-    if(iP>-1&&num(r[iP]))badges.push('<span class="macro p"><b>'+num(r[iP])+'g</b><span class="mlbl">P</span></span>');
-    if(iC>-1&&num(r[iC]))badges.push('<span class="macro c"><b>'+num(r[iC])+'g</b><span class="mlbl">C</span></span>');
-    if(iF>-1&&num(r[iF]))badges.push('<span class="macro f"><b>'+num(r[iF])+'g</b><span class="mlbl">F</span></span>');
-    if(iK>-1&&num(r[iK]))badges.push('<span class="macro k"><b>'+num(r[iK])+'</b><span class="mlbl">kcal</span></span>');
+    if(iP>-1&&num(r[iP]))badges.push('<span class="macro p"><span class="mname">'+L.p+'</span><b>'+num(r[iP])+' '+L.u+'</b></span>');
+    if(iC>-1&&num(r[iC]))badges.push('<span class="macro c"><span class="mname">'+L.c+'</span><b>'+num(r[iC])+' '+L.u+'</b></span>');
+    if(iF>-1&&num(r[iF]))badges.push('<span class="macro f"><span class="mname">'+L.f+'</span><b>'+num(r[iF])+' '+L.u+'</b></span>');
+    if(iK>-1&&num(r[iK]))badges.push('<span class="macro k"><span class="mname">'+L.k+'</span><b>'+num(r[iK])+' kcal</b></span>');
     if(isTotal){total={p:iP>-1?num(r[iP]):'',c:iC>-1?num(r[iC]):'',f:iF>-1?num(r[iF]):'',k:iK>-1?num(r[iK]):''};return;}
     html+='<div class="nutri-meal"><div class="nm-head"><span class="nm-name">'+esc(name)+'</span>'+
       (iQty>-1&&r[iQty]?'<span class="nm-qty">'+esc(r[iQty])+'</span>':'')+'</div>'+
-      (badges.length?'<div class="macros">'+badges.join('')+'</div>':'')+'</div>';
+      (badges.length?'<div class="macros-cap">'+L.cap+'</div><div class="macros">'+badges.join('')+'</div>':'')+'</div>';
   });
   if(total){
     html+='<div class="nutri-total"><div class="nt-label">'+tr().nutriTotal+'</div><div class="nt-grid">'+
-      (total.p?'<div class="nt-stat p"><div class="v">'+total.p+'g</div><div class="l">'+tr().recovery.slice(0,0)+'Protein</div></div>':'')+
-      (total.c?'<div class="nt-stat c"><div class="v">'+total.c+'g</div><div class="l">Carbs</div></div>':'')+
-      (total.f?'<div class="nt-stat f"><div class="v">'+total.f+'g</div><div class="l">Fat</div></div>':'')+
-      (total.k?'<div class="nt-stat k"><div class="v">'+total.k+'</div><div class="l">kcal</div></div>':'')+
+      (total.p?'<div class="nt-stat p"><div class="v">'+total.p+' '+L.u+'</div><div class="l">'+L.p+'</div></div>':'')+
+      (total.c?'<div class="nt-stat c"><div class="v">'+total.c+' '+L.u+'</div><div class="l">'+L.c+'</div></div>':'')+
+      (total.f?'<div class="nt-stat f"><div class="v">'+total.f+' '+L.u+'</div><div class="l">'+L.f+'</div></div>':'')+
+      (total.k?'<div class="nt-stat k"><div class="v">'+total.k+'</div><div class="l">'+L.k+'</div></div>':'')+
       '</div></div>';
   }
   return html+'</div>';
