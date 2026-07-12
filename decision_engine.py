@@ -31,7 +31,8 @@ class DecisionResult:
 
 
 _INTENT_KEYWORDS: tuple[tuple[Intent, tuple[str, ...]], ...] = (
-    ("medical", ("chest pain", "chest feels tight", "difficulty breathing", "fainting", "passed out", "suicidal")),
+    ("medical", ("chest pain", "chest feels tight", "difficulty breathing", "fainting", "passed out", "suicidal",
+                 "болка в гърдите", "стягане в гърдите", "затруднено дишане", "припадък", "самоубий")),
     ("recovery", ("recovery", "recover", "sore", "fatigue", "rest day")),
     ("nutrition", ("nutrition", "meal", "diet", "calories", "protein", "macros", "food")),
     ("workout", ("workout", "exercise", "training", "push-up", "pushup", "squat", "gym")),
@@ -41,7 +42,7 @@ _INTENT_KEYWORDS: tuple[tuple[Intent, tuple[str, ...]], ...] = (
 def classify_intent(message: str) -> Intent:
     """Return the narrow B1 shadow intent label without performing reasoning."""
     text = str(message or "").strip().lower()
-    if not text:
+    if not text or not any(char.isalnum() for char in text):
         return "unknown"
     for intent, keywords in _INTENT_KEYWORDS:
         if any(keyword in text for keyword in keywords):
@@ -63,3 +64,17 @@ def decide(snapshot: ContextSnapshot, intent: Intent) -> DecisionResult:
     if intent == "unknown":
         return DecisionResult("clarify", intent, "request is empty or unknown", evidence, 1.0)
     return DecisionResult("converse", intent, "general conversation", evidence, 1.0)
+
+
+def controlled_response(decision: DecisionResult, lang: str) -> str | None:
+    """Return the fixed B2 delivery contract for non-generative outcomes only."""
+    english = str(lang).lower() == "en"
+    if decision.outcome == "clarify":
+        return "What would you like help with today?" if english else "С какво да помогна днес?"
+    if decision.outcome == "route":
+        if english:
+            return ("I can't assess urgent medical symptoms here. Please contact a qualified medical "
+                    "professional, or local emergency services if this feels urgent.")
+        return ("Не мога да преценявам спешни медицински симптоми тук. Свържи се с квалифициран "
+                "медицински специалист или със спешна помощ, ако това е неотложно.")
+    return None

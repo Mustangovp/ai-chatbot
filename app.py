@@ -1621,6 +1621,9 @@ def chat():
                 history = _legacy["history"]
             pers_workouts = _legacy["workouts"]
             _shadow_decision = decision_engine.decide(_snapshot, _shadow_intent)
+            _controlled_reply = decision_engine.controlled_response(_shadow_decision, lang)
+        else:
+            _controlled_reply = None
 
         decision_state = "CONTINUE_CONVERSATION"
         if is_first_contact:
@@ -1762,7 +1765,7 @@ def chat():
         # workout (voice preserved), and GO/MODIFY inject S1 constraints. Failure-
         # isolated: any error falls back to legacy generation. No organ/cascade edit.
         enforce_event = None
-        if brain_config.brain_enforce():
+        if _controlled_reply is None and brain_config.brain_enforce():
             try:
                 _phys = athlete_store.physiology(persist_uid) if persist_uid else None
             except Exception:
@@ -1872,6 +1875,16 @@ def chat():
             full = []
             _t_start = time.perf_counter()
             try:
+                if _controlled_reply is not None:
+                    full.append(_controlled_reply)
+                    yield sse({"t": _controlled_reply})
+                    _persist_reply(_controlled_reply)
+                    _update_learning_engine(chat_uid, user_message, _controlled_reply, profile)
+                    _shadow_log()
+                    _log_analytics(_t_start)
+                    _ingest_state()
+                    yield sse({"done": True})
+                    return
                 if enforce_event is not None:
                     # Backward-compatible leading event; unknown events are ignored by
                     # the current frontend. Only emitted when BRAIN_ENFORCE is ON.

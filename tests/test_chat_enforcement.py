@@ -79,7 +79,7 @@ def _post(client, message, profile=None):
 
 # ── OFF = byte-identical ─────────────────────────────────────────────────────
 def test_off_is_identical_no_decision_event(client, captured):
-    resp = _post(client, "my chest feels tight and heavy going uphill")
+    resp = _post(client, "I need recovery today")
     evs = _events(resp)
     assert not any("decision" in e for e in evs)              # no leading decision event
     assert "SAFETY OVERRIDE" not in captured["system"]        # system prompt untouched
@@ -91,13 +91,8 @@ def test_on_emergency_routes_and_blocks_workout(client, captured, monkeypatch):
     monkeypatch.setenv("BRAIN_ENFORCE", "1")
     resp = _post(client, "my chest feels tight and heavy going uphill")
     evs = _events(resp)
-    decision = next(e["decision"] for e in evs if "decision" in e)
-    assert decision["generate"] is False
-    assert decision["verdict"] in ("NOT_YET", "NO_TRAIN")
-    assert decision["route"] == "clinician_prompt"
-    # Generation call was made (voice) but steered away from a workout.
-    assert "SAFETY OVERRIDE" in captured["system"]
-    assert "do not generate a workout" in captured["system"].lower()
+    assert "messages" not in captured
+    assert evs == [{"t": "I can't assess urgent medical symptoms here. Please contact a qualified medical professional, or local emergency services if this feels urgent."}, {"done": True}]
 
 
 # ── ON + GO/MODIFY → continues to constrained generation ─────────────────────
@@ -656,3 +651,62 @@ def test_shadow_decision_does_not_add_memory_writes(client, captured, monkeypatc
     saved = store.list_conversation(uid, limit=10)
     assert len(decisions) == 1
     assert [(turn["role"], turn["content"]) for turn in saved] == [("user", "hello"), ("assistant", "ok")]
+
+
+# Phase B2: clarify and route are fixed delivery contracts. They bypass OpenAI
+# while retaining the normal SSE and delivered-response persistence contract.
+@pytest.mark.parametrize("message,expected", [
+    ("???", "What would you like help with today?"),
+    ("I have chest pain", "I can't assess urgent medical symptoms here. Please contact a qualified medical professional, or local emergency services if this feels urgent."),
+])
+def test_controlled_outcomes_bypass_openai_and_stream_only_safe_reply(client, captured, message, expected):
+    response = _post(client, message)
+    events = _events(response)
+
+    assert "messages" not in captured
+    assert events == [{"t": expected}, {"done": True}]
+    reply = events[0]["t"].lower()
+    assert "sets" not in reply and "reps" not in reply and "calories" not in reply
+
+
+@pytest.mark.parametrize("message", [
+    "build a workout", "plan my nutrition", "I need recovery today",
+    "show my progress", "how much water should I drink?", "hello",
+])
+def test_b2_legacy_outcomes_preserve_openai_messages(client, captured, message):
+    profile = _profile()
+    history = [{"role": "user", "content": "prior"}]
+    expected = _legacy_messages(profile, [], history, message, 12)
+    response = client.post("/chat", json={"message": message, "lang": "en",
+                                           "profile": profile, "history": history})
+
+    assert response.status_code == 200
+    assert captured["messages"] == expected
+    events = _events(response)
+    assert any(event.get("t") == "ok" for event in events)
+    assert any(event.get("done") for event in events)
+
+
+def test_controlled_route_persists_only_delivered_response(client, captured):
+    uid = _login_for_chat(client, _profile())
+    response = _post(client, "I have chest pain")
+    events = _events(response)
+
+    assert "messages" not in captured
+    saved = store.list_conversation(uid, limit=10)
+    assert [(turn["role"], turn["content"]) for turn in saved] == [
+        ("user", "I have chest pain"), ("assistant", events[0]["t"]),
+    ]
+
+
+def test_first_contact_does_not_compute_b2_controlled_response(client, monkeypatch):
+    calls = []
+    original = appmod.decision_engine.decide
+
+    def wrapped(snapshot, intent):
+        calls.append((snapshot, intent))
+        return original(snapshot, intent)
+
+    monkeypatch.setattr(appmod.decision_engine, "decide", wrapped)
+    response = client.post("/chat", json={"message": "???", "lang": "en", "first_contact": True})
+    assert calls == []
