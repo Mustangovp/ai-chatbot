@@ -389,13 +389,47 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 .send-btn{width:46px;height:46px;border-radius:14px;background:var(--pulse);color:#fff;font-size:18px;
   display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(245,33,45,.42);flex-shrink:0;transition:transform .15s;}
 .send-btn:hover{transform:translateY(-1px);}.send-btn:active{transform:scale(.92);}
-/* Voice mic — ChatGPT-style, sits between the input and send. Static control:
-   ghost by default; only its COLOR changes while live/recording. No animation,
-   no glow, no scaling. */
-.mic-btn{width:46px;height:46px;flex-shrink:0;border-radius:14px;background:none;border:1px solid rgba(255,255,255,.14);color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:color .2s,border-color .2s,background .2s;}
+/* Voice mic — ChatGPT-style, sits between the input and send. Secondary/ghost
+   control; SEND stays the only strongly-accented button. Each voice state is
+   distinguished by SHAPE (icon / dot), never by colour alone — so it reads for
+   colour-blind and low-vision users. */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
+.mic-btn{position:relative;width:46px;height:46px;flex-shrink:0;border-radius:14px;background:none;border:1px solid rgba(255,255,255,.16);color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:color .2s,border-color .2s,background .2s;}
 .mic-btn:hover{color:var(--text);border-color:var(--border2);}
+.mic-btn:focus-visible,.send-btn:focus-visible{outline:2px solid var(--cyan);outline-offset:2px;}
 .mic-btn svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
-.mic-btn.active,.mic-btn.listening{color:#fff;border-color:transparent;background:var(--pulse);}
+.mic-btn .mic-dot,.mic-btn .mic-dots,.mic-btn .mic-wave{display:none;}
+/* every voice state is distinguished by SHAPE (icon/dots/bars/badge), never colour alone */
+/* LISTENING / INTERRUPTED — cyan contour + a discreet pulsing dot */
+.mic-btn[data-state="listening"],.mic-btn[data-state="interrupted"]{color:var(--text);border-color:rgba(56,224,255,.7);}
+.mic-btn[data-state="listening"] .mic-dot,.mic-btn[data-state="interrupted"] .mic-dot{display:block;position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;background:var(--cyan);}
+/* THINKING — three quiet dots (mic icon hidden) */
+.mic-btn[data-state="thinking"]{color:var(--muted);border-color:var(--border2);}
+.mic-btn[data-state="thinking"] .ic-mic{display:none;}
+.mic-btn[data-state="thinking"] .mic-dots{display:flex;gap:3px;align-items:center;}
+.mic-btn .mic-dots i{width:4px;height:4px;border-radius:50%;background:currentColor;}
+/* SPEAKING — animated speaker (equaliser bars) + filled accent */
+.mic-btn[data-state="speaking"]{color:#fff;border-color:transparent;background:var(--pulse);box-shadow:0 4px 14px rgba(245,33,45,.3);}
+.mic-btn[data-state="speaking"] .ic-mic{display:none;}
+.mic-btn[data-state="speaking"] .mic-wave{display:flex;gap:2.5px;align-items:center;height:18px;}
+.mic-btn .mic-wave i{width:3px;height:6px;border-radius:2px;background:currentColor;}
+/* ERROR — base mic + a clear, colour-independent “!” badge */
+.mic-btn[data-state="error"]{color:var(--text);border-color:var(--ember);}
+.mic-btn[data-state="error"]::after{content:'!';position:absolute;top:-4px;right:-4px;width:15px;height:15px;border-radius:50%;background:var(--ember);color:#0a0d14;font-size:11px;font-weight:800;line-height:15px;text-align:center;}
+/* motion is subtle and only when the user allows it (shapes still read when off) */
+@media(prefers-reduced-motion:no-preference){
+  .mic-btn[data-state="listening"] .mic-dot,.mic-btn[data-state="interrupted"] .mic-dot{animation:micpulse 1.3s ease-in-out infinite;}
+  .mic-btn[data-state="thinking"] .mic-dots i{animation:micthink 1.2s ease-in-out infinite;}
+  .mic-btn[data-state="thinking"] .mic-dots i:nth-child(2){animation-delay:.15s;}
+  .mic-btn[data-state="thinking"] .mic-dots i:nth-child(3){animation-delay:.3s;}
+  .mic-btn[data-state="speaking"] .mic-wave i{animation:micwave .9s ease-in-out infinite;}
+  .mic-btn[data-state="speaking"] .mic-wave i:nth-child(2){animation-delay:.15s;}
+  .mic-btn[data-state="speaking"] .mic-wave i:nth-child(3){animation-delay:.3s;}
+  .mic-btn[data-state="speaking"] .mic-wave i:nth-child(4){animation-delay:.45s;}
+}
+@keyframes micpulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.35;transform:scale(.65);}}
+@keyframes micthink{0%,100%{opacity:.35;transform:translateY(0);}50%{opacity:1;transform:translateY(-2px);}}
+@keyframes micwave{0%,100%{height:5px;}50%{height:15px;}}
 
 @media(max-width:560px){
   .topbar{padding:14px 16px;} .brand .bs{display:none;}
@@ -459,11 +493,15 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
   <div class="inputbar">
     <div class="input-wrap">
       <input type="text" id="user-in" placeholder="Describe your goal…" aria-label="Describe your goal" autocomplete="off">
-      <button class="mic-btn" id="mic-btn" onclick="voiceToggle()" aria-pressed="false" aria-label="Voice conversation" title="Talk to APEX">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3.5 3.5 0 0 0 3.5-3.5V6a3.5 3.5 0 0 0-7 0v5.5A3.5 3.5 0 0 0 12 15Z"/><path d="M6 11a6 6 0 0 0 12 0M12 18v3"/></svg>
+      <button class="mic-btn" id="mic-btn" data-state="idle" onclick="voiceToggle()" aria-pressed="false" aria-label="Talk to APEX" title="Talk to APEX">
+        <svg class="ic-mic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3.5 3.5 0 0 0 3.5-3.5V6a3.5 3.5 0 0 0-7 0v5.5A3.5 3.5 0 0 0 12 15Z"/><path d="M6 11a6 6 0 0 0 12 0M12 18v3"/></svg>
+        <span class="mic-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="mic-wave" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <span class="mic-dot" aria-hidden="true"></span>
       </button>
-      <button class="send-btn" onclick="send()">➤</button>
+      <button class="send-btn" onclick="send()" aria-label="Send" title="Send">➤</button>
     </div>
+    <span id="mic-status" class="sr-only" role="status" aria-live="polite"></span>
   </div>
 </div>
 
@@ -1475,13 +1513,20 @@ function showHistory(){
 }
 function showSettings(){
   const st=tr().settings;
+  const vLabel=(lang==='bg'?'Глас на APEX':'APEX voice');
+  const vOpts=VoiceReg.catalog.map(v=>'<option value="'+v.id+'"'+(v.id===VoiceReg.current()?' selected':'')+'>'+(v.label[lang]||v.label.en)+'</option>').join('');
   const body='<div class="panel-row"><span class="pr-l">'+st.lang+'</span><span class="pr-v">'+
     '<button class="pill" style="height:32px" onclick="toggleLang();closePanel();">'+lang.toUpperCase()+'</button></span></div>'+
+    '<div class="panel-row"><span class="pr-l">'+vLabel+'</span><span class="pr-v">'+
+      '<select id="voice-select" aria-label="'+vLabel+'" onchange="voicePick(this.value)" '+
+      'style="height:40px;min-width:150px;background:var(--surface);color:var(--text);border:1px solid var(--border2);border-radius:10px;padding:0 10px;font-size:13px;font-weight:600;">'+
+      vOpts+'</select></span></div>'+
     '<div class="panel-row"><span class="pr-l">'+st.theme+'</span><span class="pr-v">'+st.dark+'</span></div>'+
     '<div class="eu-note">'+st.resetDesc+'</div>'+
     '<button class="cancel-btn" onclick="resetLocal()">'+st.reset+'</button>';
   showPanel(st.title,body);
 }
+function voicePick(id){ VoiceReg.set(id); toast(lang==='bg'?'Гласът е запазен ✓':'Voice saved ✓'); }
 function resetLocal(){
   const st=tr().settings; if(!confirm(st.resetConfirm))return;
   ['apexProfile','apexHistory','apexWorkoutLog','apexCoachMemory'].forEach(k=>localStorage.removeItem(k));
@@ -1981,107 +2026,208 @@ function afterReply(text){
    ═══════════════════════════════════════════════════════════════════════════ */
 window.VoiceBus = { _l:{}, on(e,f){(this._l[e]=this._l[e]||[]).push(f);}, emit(e,d){(this._l[e]||[]).forEach(f=>{try{f(d);}catch(_){}});} };
 
-const VoiceOut = {              // provider-independent OUTPUT (talks to /speak, not to any vendor)
-  _audio:null, _pulse:null,
+/* OUTPUT — provider-independent (talks to /speak). Exactly ONE active audio
+   stream: every speak() supersedes any previous request AND playback via a
+   generation counter, so responses are never queued or overlapped. Throws on
+   TTS failure so the state machine can surface ERROR + retry. */
+const VoiceOut = {
+  _audio:null, _pulse:null, _gen:0, _res:null,
+  get playing(){ return !!this._audio; },
   async speak(text){
+    this.stop();                                   // cancel whatever was playing — never queue
+    const gen=++this._gen;
     if(!text) return;
-    try{
-      const r=await fetch('/speak',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',
-        body:JSON.stringify({text:text,lang:lang})});
-      if(!r.ok) throw new Error('tts '+r.status);
-      const url=URL.createObjectURL(await r.blob());
-      await new Promise((res)=>{
-        const a=new Audio(url); this._audio=a;
-        this._pulse=setInterval(()=>witness('replyToken'),120);   // the Core visibly SPEAKS while audio plays
-        const done=()=>{clearInterval(this._pulse);URL.revokeObjectURL(url);this._audio=null;res();};
-        a.onended=done; a.onerror=done; a.play().catch(done);
-      });
-    }catch(e){ console.warn('[voice] speak failed',e); }
+    const r=await fetch('/speak',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',
+      body:JSON.stringify({text:text,lang:lang,voice:VoiceReg.ttsId()})});
+    if(gen!==this._gen) return;                    // superseded while the request was in flight
+    if(!r.ok) throw new Error('tts_'+r.status);
+    const url=URL.createObjectURL(await r.blob());
+    if(gen!==this._gen){ URL.revokeObjectURL(url); return; }
+    await new Promise((res)=>{
+      this._res=res;
+      const a=new Audio(url); this._audio=a;
+      this._pulse=setInterval(()=>witness('replyToken'),120);   // Core visibly SPEAKS while audio plays
+      const done=()=>{ if(this._pulse){clearInterval(this._pulse);this._pulse=null;} URL.revokeObjectURL(url); if(this._audio===a)this._audio=null; this._res=null; res(); };
+      a.onended=done; a.onerror=done; a.play().catch(done);
+    });
   },
-  stop(){ if(this._pulse)clearInterval(this._pulse); if(this._audio){try{this._audio.pause();}catch(_){}}this._audio=null; }
+  /* Instant cancel — also resolves any pending speak() promise (pause() alone
+     never fires onended), so an interrupted turn unwinds cleanly. */
+  stop(){ this._gen++; if(this._pulse){clearInterval(this._pulse);this._pulse=null;} if(this._audio){try{this._audio.pause();}catch(_){}} this._audio=null; if(this._res){const r=this._res;this._res=null;r();} }
 };
 
-const VoiceIn = {               // native speech recognition (kept native, as approved)
+/* INPUT — native SpeechRecognition. interimResults let the machine detect the
+   user starting to talk (barge-in); the final transcript is the user's turn.
+   One recognizer instance at a time. Callbacks: {onInterim,onFinal,onError,onEnd}. */
+const VoiceIn = {
   _rec:null,
   get supported(){ return !!(window.SpeechRecognition||window.webkitSpeechRecognition); },
-  start(onFinal){
-    const SR=window.SpeechRecognition||window.webkitSpeechRecognition; if(!SR) return false;
-    try{ if(this._rec){this._rec.onend=null;this._rec.stop();} }catch(_){}
+  start(cb){
+    const SR=window.SpeechRecognition||window.webkitSpeechRecognition; if(!SR){ cb.onError&&cb.onError('unsupported'); return false; }
+    this.stop();
     const r=new SR(); this._rec=r;
-    r.lang=(lang==='en')?'en-US':'bg-BG'; r.interimResults=false; r.maxAlternatives=1; r.continuous=false;
+    r.lang=(lang==='en')?'en-US':'bg-BG'; r.interimResults=true; r.maxAlternatives=1; r.continuous=false;
     witness('keystroke');       // the Core visibly LISTENS (attention rises), same as when typing
-    r.onresult=(e)=>{ const t=(e.results[0]&&e.results[0][0]&&e.results[0][0].transcript||'').trim(); if(t)onFinal(t); };
-    r.onerror=()=>{};
-    try{ r.start(); }catch(_){ return false; }
+    r.onresult=(e)=>{
+      let interim='', final='';
+      for(let i=e.resultIndex;i<e.results.length;i++){ const res=e.results[i], t=(res[0]&&res[0].transcript)||''; if(res.isFinal)final+=t; else interim+=t; }
+      if(interim.trim()&&cb.onInterim) cb.onInterim(interim.trim());
+      if(final.trim()&&cb.onFinal) cb.onFinal(final.trim());
+    };
+    r.onerror=(e)=>{ if(cb.onError) cb.onError((e&&e.error)||'error'); };
+    r.onend=()=>{ if(this._rec===r) this._rec=null; if(cb.onEnd) cb.onEnd(); };
+    try{ r.start(); }catch(_){ if(cb.onError) cb.onError('start_failed'); return false; }
     return true;
   },
-  stop(){ if(this._rec){ try{this._rec.onend=null;this._rec.onresult=null;this._rec.stop();}catch(_){} this._rec=null; } }
+  get active(){ return !!this._rec; },
+  stop(){ if(this._rec){ try{this._rec.onend=null;this._rec.onresult=null;this._rec.onerror=null;this._rec.stop();}catch(_){} this._rec=null; } }
 };
 
-let voiceMode=false, voiceBusy=false;
-// Activation lives on the mic button in the composer. Its class shows state
-// (active = speaking, listening = recording); the Living Core also reacts through
-// its existing state system (witness facts). aria-pressed for assistive tech.
+/* ══════════════════════════════════════════════════════════════════════════
+   VOICE STATE MACHINE — one deterministic machine, one source of truth.
+   States: IDLE · LISTENING · THINKING · SPEAKING · INTERRUPTED · ERROR.
+   `Voice.on` = session on/off; `Voice.state` = the ONLY state flag (no dup flags).
+   Barge-in: while SPEAKING a recognizer is armed; the instant the user speaks we
+   cancel TTS and drop to LISTENING — APEX never reads over the user.
+   ══════════════════════════════════════════════════════════════════════════ */
 function _helix(){ return document.getElementById('mic-btn'); }
-function _setHelix(cls){ const b=_helix(); if(!b)return; b.classList.remove('active','listening'); if(cls)b.classList.add(cls); b.setAttribute('aria-pressed', cls?'true':'false'); }
 
-function voiceToggle(){
-  if(voiceMode){ voiceEnd(); return; }
-  voiceMode=true; _setHelix('active');
-  try{ new Audio().play().catch(()=>{}); }catch(_){}   // unlock audio inside the user gesture
-  voiceGreet();
-}
-function voiceEnd(){
-  voiceMode=false; voiceBusy=false; _setHelix(null);
-  VoiceIn.stop(); VoiceOut.stop();
-}
+/* Voice registry — selectable, persisted, extensible. Maps a coach name to a
+   provider voice id passed to /speak (honoured once the backend reads it). */
+const VoiceReg = {
+  catalog:[
+    {id:'alpha', tts:'ash',   label:{bg:'Coach Alpha — енергичен', en:'Coach Alpha — energetic'}},
+    {id:'calm',  tts:'alloy', label:{bg:'Coach Calm — спокоен',    en:'Coach Calm — calm'}}
+  ],
+  current(){ const v=localStorage.getItem('apexVoice'); return this.catalog.some(x=>x.id===v)?v:this.catalog[0].id; },
+  set(id){ if(this.catalog.some(x=>x.id===id)) localStorage.setItem('apexVoice',id); },
+  ttsId(){ const c=this.catalog.find(x=>x.id===this.current()); return c?c.tts:'alloy'; }
+};
 
-/* the reply event (from afterReply) → speak it, then listen again. Purely event-driven. */
-window.VoiceBus.on('reply', ({text})=>{ if(voiceMode) _speakThenListen(text); });
+const BARGE_GUARD_MS=650;   // ignore the mic for the first moment of playback (reduce self-trigger)
+const MAX_RECOG_RETRY=3;    // bounded mic auto-recovery on silence / soft errors
 
-async function _speakThenListen(text){
-  if(!voiceMode) return;
-  voiceBusy=true; _setHelix('active');
-  await VoiceOut.speak(text);
-  voiceBusy=false;
-  if(voiceMode) _listen();
-}
-function _listen(){
-  if(!voiceMode) return;
-  if(!VoiceIn.supported){ _setHelix('active'); return; }   // no STT (e.g. Firefox): APEX still speaks; user can type
-  _setHelix('listening');
-  VoiceIn.start((transcript)=>{
-    if(!voiceMode||!transcript) return;
-    const inp=document.getElementById('user-in');
-    inp.value=transcript; send();      // the EXISTING pipeline: Brain + Athlete + Personality + storage + Core facts
-  });
-}
+const Voice = {
+  on:false, state:'IDLE', _spokeAt:0, _retry:0,
+  _labels(){ return (lang==='bg')
+    ? {IDLE:'Говори с APEX',LISTENING:'Слушам те…',THINKING:'APEX мисли…',SPEAKING:'APEX говори — докосни за край',INTERRUPTED:'Слушам те…',ERROR:'Проблем с гласа — докосни за нов опит'}
+    : {IDLE:'Talk to APEX',LISTENING:'Listening…',THINKING:'APEX is thinking…',SPEAKING:'APEX is speaking — tap to end',INTERRUPTED:'Listening…',ERROR:'Voice problem — tap to retry'}; },
 
-/* SESSION_START greeting — through the SINGLE /chat entry point, streamed into a coach bubble, then spoken. */
-async function voiceGreet(){
-  if(voiceBusy) return; voiceBusy=true;
-  const h=new Date().getHours();
-  const daypart=h<5?'night':h<12?'morning':h<18?'afternoon':'evening';
-  const body={session_start:true,lang:lang,daypart:daypart,history:(typeof getHistory==='function'?getHistory():[])};
-  try{ const p=pfLoad(); if(p&&Object.keys(p).length)body.profile=p; }catch(_){}
-  const token=localStorage.getItem('apexToken')||''; if(token)body.token=token;
-  let full='';
-  try{
-    const res=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body)});
-    if((res.headers.get('content-type')||'').indexOf('text/event-stream')!==-1){
-      const target=appendCoach(); const reader=res.body.getReader(),dec=new TextDecoder(); let buf='';
-      while(true){ const{done,value}=await reader.read(); if(done)break;
-        buf+=dec.decode(value,{stream:true}); const parts=buf.split('\n\n'); buf=parts.pop();
-        for(const part of parts){ const line=part.trim(); if(!line.startsWith('data:'))continue;
-          let o; try{o=JSON.parse(line.slice(5).trim());}catch(e){continue;}
-          if(o.t){ witness('replyToken'); full+=o.t; target.innerHTML=streamRender(full); smartScroll(); }
-        } }
-      if(full) target.innerHTML=renderMarkdown(full);
+  /* the ONLY place state changes — deterministic UI + a11y announcement (aria-live) */
+  set(next){
+    this.state=next;
+    const b=_helix(); if(!b) return;
+    b.setAttribute('data-state', next.toLowerCase());
+    b.setAttribute('aria-pressed', next==='IDLE'?'false':'true');
+    const lb=this._labels()[next]||''; b.setAttribute('aria-label', lb);
+    const st=document.getElementById('mic-status'); if(st) st.textContent=(next==='IDLE')?'':lb;
+  },
+
+  /* ── session control (mic button) ── */
+  start(){
+    if(this.on) return; this.on=true; this._retry=0;
+    try{ new Audio().play().catch(()=>{}); }catch(_){}   // unlock audio inside the user gesture
+    if(!VoiceIn.supported) toast(lang==='bg'?'Разпознаването на реч не се поддържа тук — APEX ще говори, ти пиши.':'Speech recognition isn’t supported here — APEX will speak, you type.');
+    this.greet();
+  },
+  stop(){ this.on=false; VoiceIn.stop(); VoiceOut.stop(); this.set('IDLE'); },
+  toggle(){ this.on ? this.stop() : this.start(); },
+
+  /* ── greeting via the SINGLE /chat entry point (SESSION_START) ── */
+  async greet(){
+    this.set('THINKING');
+    const h=new Date().getHours();
+    const daypart=h<5?'night':h<12?'morning':h<18?'afternoon':'evening';
+    const body={session_start:true,lang:lang,daypart:daypart,history:(typeof getHistory==='function'?getHistory():[])};
+    try{ const p=pfLoad(); if(p&&Object.keys(p).length)body.profile=p; }catch(_){}
+    const token=localStorage.getItem('apexToken')||''; if(token)body.token=token;
+    let full='';
+    try{
+      const res=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body)});
+      if((res.headers.get('content-type')||'').indexOf('text/event-stream')!==-1){
+        const target=appendCoach(); const reader=res.body.getReader(),dec=new TextDecoder(); let buf='';
+        while(true){ const{done,value}=await reader.read(); if(done)break;
+          buf+=dec.decode(value,{stream:true}); const parts=buf.split('\n\n'); buf=parts.pop();
+          for(const part of parts){ const line=part.trim(); if(!line.startsWith('data:'))continue;
+            let o; try{o=JSON.parse(line.slice(5).trim());}catch(e){continue;}
+            if(o.t){ witness('replyToken'); full+=o.t; target.innerHTML=streamRender(full); smartScroll(); }
+          } }
+        if(full) target.innerHTML=renderMarkdown(full);
+      }
+    }catch(e){ console.warn('[voice] greet failed',e); }
+    if(!this.on) return;
+    this.say(full);
+  },
+
+  /* ── SPEAK one reply — single stream, barge-in armed from the first word ── */
+  async say(text){
+    if(!this.on) return;
+    if(!text){ this.set('LISTENING'); this.listen(); return; }
+    this.set('SPEAKING'); this._spokeAt=Date.now();
+    this.listen();                       // arm recognizer NOW → barge-in possible immediately
+    try{
+      await VoiceOut.speak(text);        // exactly one active stream; a new say() cancels this
+    }catch(e){
+      if(this.on) this._ttsError(); return;
     }
-  }catch(e){ console.warn('[voice] greet failed',e); }
-  voiceBusy=false;
-  if(voiceMode){ await VoiceOut.speak(full); if(voiceMode) _listen(); }
-}
+    if(!this.on) return;
+    if(this.state==='SPEAKING'){ this.set('LISTENING'); this.listen(); }   // natural end → keep listening
+  },
+
+  /* ── LISTEN (arm/keep exactly one recognizer) ── */
+  listen(){
+    if(!this.on || !VoiceIn.supported) return;
+    if(VoiceIn.active) return;            // barge-in shares this recognizer; don't double-arm
+    VoiceIn.start({
+      onInterim:(t)=>this._onInterim(t),
+      onFinal:(t)=>this._onFinal(t),
+      onError:(err)=>this._onRecogError(err),
+      onEnd:()=>this._onRecogEnd()
+    });
+  },
+
+  /* user started talking → if APEX is speaking, cut it off this instant (barge-in) */
+  _onInterim(t){
+    if(!this.on) return;
+    if(this.state==='SPEAKING' && (Date.now()-this._spokeAt)>BARGE_GUARD_MS){
+      VoiceOut.stop();                   // stop TTS immediately
+      this.set('INTERRUPTED');           // transient marker
+      this.set('LISTENING');             // → straight back to listening (same recognizer keeps running)
+    }
+  },
+  /* final user utterance → THINKING, then the existing /chat pipeline */
+  _onFinal(t){
+    if(!this.on || !t) return;
+    if(this.state==='SPEAKING') VoiceOut.stop();   // barge-in caught only at the final result
+    this._retry=0;
+    VoiceIn.stop();
+    this.set('THINKING');
+    const inp=document.getElementById('user-in');
+    if(inp){ inp.value=t; send(); }      // EXISTING pipeline: Brain + Athlete + Personality + storage + Core facts
+  },
+  _onRecogError(err){
+    if(!this.on) return;
+    if(err==='not-allowed'||err==='service-not-allowed'){          // hard permission failure
+      this.set('ERROR'); toast(lang==='bg'?'Няма достъп до микрофона.':'Microphone access is blocked.'); this.stop(); return;
+    }
+    // soft failure (no-speech / aborted / network) → recover, bounded; never lock the mic
+    if(this.state==='LISTENING' && this._retry<MAX_RECOG_RETRY){ this._retry++; setTimeout(()=>{ if(this.on&&this.state==='LISTENING') this.listen(); },250); }
+    else if(this.state==='LISTENING'){ this.set('IDLE'); }         // give up quietly; a tap restarts
+  },
+  _onRecogEnd(){
+    // recognizer ended itself while we still want input → re-arm (bounded) so silence never locks the mic
+    if(this.on && this.state==='LISTENING' && !VoiceIn.active && this._retry<MAX_RECOG_RETRY){ this._retry++; setTimeout(()=>{ if(this.on&&this.state==='LISTENING'&&!VoiceIn.active) this.listen(); },200); }
+  },
+  _ttsError(){
+    this.set('ERROR');
+    toast(lang==='bg'?'Гласът е временно недостъпен — докосни, за да опиташ пак.':'Voice is temporarily unavailable — tap to retry.');
+    if(this.on) this.listen();           // never lock the mic — keep the conversation open
+  }
+};
+
+/* thin global wrappers — the mic button + reply bus keep their existing hooks */
+function voiceToggle(){ Voice.toggle(); }
+window.VoiceBus.on('reply', ({text})=>{ if(Voice.on) Voice.say(text); });
 
 /* ═══════════════════════════════════════════════════════════════════
    NOTICES + FEEDBACK
