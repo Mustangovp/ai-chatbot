@@ -1683,12 +1683,45 @@ function nutritionHeaderFor(columns){
 }
 function separatorlessNutritionBlock(lines,start){
   const rows=[];let i=start;
-  while(i<lines.length&&lines[i].includes('|')){rows.push(pipeCells(lines[i]));i++;}
+  while(i<lines.length&&lines[i].includes('|')&&!collapsedNutritionBlock(lines[i])){rows.push(pipeCells(lines[i]));i++;}
   if(rows.length<2||rows[0].length<3||!rows.every(r=>r.length===rows[0].length))return null;
   const first=rows[0];
   const isHeader=classifyTable(first)==='nutrition';
   if(!isHeader&&!isMealLabel(first[0]))return null;
   return {header:isHeader?first:nutritionHeaderFor(first.length),body:isHeader?rows.slice(1):rows,next:i};
+}
+/* Collapsed single-line nutrition blocks — some LLM replies emit a whole meal
+   (label + several foods) on ONE pipe line instead of one row per line, e.g.
+   "| Lunch: | | | | Chicken | 200 g | 46 | 0 | 6 | 210 | | Rice | ... |".
+   Detected safely: the line MUST start with a real meal label AND contain at
+   least one numeric food row. Ordinary prose that merely contains "|" never
+   matches (it has no numeric food rows), so it stays ordinary text. */
+function collapsedMealLabel(v){
+  return /^(breakfast|lunch|snack|dinner|закуска|обяд|следобедна|вечеря|допълнителни|междинно)/i.test((v||'').trim());
+}
+function collapsedNutritionBlock(line){
+  if(!line||line.indexOf('|')<0) return null;
+  const cells=pipeCells(line);
+  if(cells.length<6) return null;                       // too small to be a collapsed meal
+  const label=cells[0].replace(/[:：].*$/,'').trim();   // "Lunch:" → "Lunch"
+  if(!collapsedMealLabel(label)) return null;
+  const isNum=c=>/^\d+([.,]\d+)?$/.test(c);                                                        // macro / kcal
+  const isQty=c=>/\d/.test(c)&&/^\d+([.,]\d+)?\s*(g|г|гр|ml|мл|kg|кг|oz|бр|pcs|порц\.?)?$/i.test(c);// quantity
+  const rest=cells.slice(1).filter(c=>c!=='');
+  const body=[[label,'','','','']];                     // meal section row (name only)
+  let k=0, foods=0;
+  while(k<rest.length){
+    if(isNum(rest[k])||isQty(rest[k])){ k++; continue; }         // stray number with no name → skip
+    const name=rest[k]; k++;
+    const vals=[];
+    while(k<rest.length && (isQty(rest[k])||isNum(rest[k])) && vals.length<5){ vals.push(rest[k]); k++; }
+    if(vals.length<4) continue;                          // need P,C,F,kcal at least → not a food row
+    const m=vals.slice(vals.length-4);                   // last four = P,C,F,kcal (drop any leading qty)
+    body.push([name, m[0], m[1], m[2], m[3]]);
+    foods++;
+  }
+  if(foods<1) return null;                               // no real food row → leave as ordinary text
+  return { header:['Meal','Protein','Carbs','Fat','Kcal'], body };
 }
 function renderMarkdown(raw){
   const lines=raw.replace(/\r/g,'').split('\n');
@@ -1705,8 +1738,8 @@ function renderMarkdown(raw){
     if(inCode){codeBuf.push(ln);i++;continue;}
     const t=ln.trim();
     // table block
-    if(t.includes('|')&&i+1<lines.length&&/^[\s|:\-]+$/.test(lines[i+1].trim())&&lines[i+1].includes('-')){
-      const tb=[]; while(i<lines.length&&lines[i].includes('|')){tb.push(lines[i]);i++;}
+    if(t.includes('|')&&!collapsedNutritionBlock(ln)&&i+1<lines.length&&/^[\s|:\-]+$/.test(lines[i+1].trim())&&lines[i+1].includes('-')){
+      const tb=[]; while(i<lines.length&&lines[i].includes('|')&&!collapsedNutritionBlock(lines[i])){tb.push(lines[i]);i++;}
       const{header,body}=parseTable(tb); const kind=classifyTable(header);
       if(kind==='nutrition')html+=renderNutrition(header,body);
       else if(kind==='workout')html+=renderWorkout(header,body);
@@ -1715,6 +1748,8 @@ function renderMarkdown(raw){
     }
     const nutritionBlock=t.includes('|')?separatorlessNutritionBlock(lines,i):null;
     if(nutritionBlock){html+=renderNutrition(nutritionBlock.header,nutritionBlock.body);i=nutritionBlock.next;continue;}
+    const collapsedBlock=t.includes('|')?collapsedNutritionBlock(ln):null;
+    if(collapsedBlock){html+=renderNutrition(collapsedBlock.header,collapsedBlock.body);i++;continue;}
     // heading
     let mh=t.match(/^(#{1,4})\s+(.*)$/);
     if(mh){html+='<h'+mh[1].length+'>'+inlineMd(mh[2])+'</h'+mh[1].length+'>';i++;continue;}

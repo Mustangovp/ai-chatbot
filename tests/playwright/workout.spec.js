@@ -188,4 +188,80 @@ test.describe('APEX approved app shell — UX regression', () => {
     });
     expect(consoleErrors).toEqual([]);
   });
+
+  test('CP-1: collapsed Bulgarian day plan renders as cards with no raw pipes', async ({ page }) => {
+    await page.evaluate(() => {
+      const md = '| Обяд: | | | | Пиле | 200 г | 46 | 0 | 6 | 210 | | Ориз | 150 г | 4 | 45 | 1 | 200 |';
+      const el = appendCoach();
+      el.innerHTML = renderMarkdown(md);
+    });
+    // meal-label card + two food cards
+    await expect(page.locator('.nutri-meal')).toHaveCount(3);
+    const nutri = page.locator('.nutri').first();
+    await expect(nutri).toContainText('Обяд');
+    await expect(nutri).toContainText('Пиле');
+    await expect(nutri).toContainText('Ориз');
+    await expect(nutri).toContainText('Белтъчини');   // readability preserved (BG)
+    expect(await nutri.innerText()).not.toContain('|');
+  });
+
+  test('CP-2: collapsed English day plan renders as cards with no raw pipes', async ({ page }) => {
+    await page.evaluate(() => {
+      const md = '| Lunch: | | | | Chicken | 200 g | 46 | 0 | 6 | 210 | | Rice | 150 g | 4 | 45 | 1 | 200 |';
+      const el = appendCoach();
+      el.innerHTML = renderMarkdown(md);
+    });
+    await expect(page.locator('.nutri-meal')).toHaveCount(3);
+    const nutri = page.locator('.nutri').first();
+    await expect(nutri).toContainText('Lunch');
+    await expect(nutri).toContainText('Chicken');
+    await expect(nutri).toContainText('Rice');
+    expect(await nutri.innerText()).not.toContain('|');
+  });
+
+  test('CP-3: mixed normal breakfast + collapsed lunch — both render, no raw pipes', async ({ page }) => {
+    await page.evaluate(() => {
+      const md = [
+        '| Закуска | Протеин | Въглехидрати | Мазнини | Калории |',
+        '| --- | --- | --- | --- | --- |',
+        '| Овесена каша | 12 | 54 | 7 | 320 |',
+        '| Обяд: | | | | Пиле | 200 г | 46 | 0 | 6 | 210 | | Ориз | 150 г | 4 | 45 | 1 | 200 |'
+      ].join('\n');
+      const el = appendCoach();
+      el.innerHTML = renderMarkdown(md);
+    });
+    const nutriText = (await page.locator('.nutri').allInnerTexts()).join('\n');
+    expect(nutriText).toContain('Овесена каша');   // normal breakfast row
+    expect(nutriText).toContain('Обяд');            // collapsed lunch label
+    expect(nutriText).toContain('Пиле');
+    expect(nutriText).toContain('Ориз');
+    expect(nutriText).not.toContain('|');           // no raw pipes anywhere
+    await expect(page.locator('.nutri-meal').filter({ hasText: 'Пиле' })).toHaveCount(1);
+  });
+
+  test('CP-4: ordinary text containing pipes stays plain text (never nutrition)', async ({ page }) => {
+    await page.evaluate(() => {
+      // Starts with a meal word AND contains "|", but has no numeric food rows,
+      // so it must NOT be parsed as a collapsed nutrition block.
+      const md = 'Обядът беше страхотен | много вкусно | горещо препоръчвам';
+      const el = appendCoach();
+      el.innerHTML = renderMarkdown(md);
+    });
+    await expect(page.locator('.nutri-meal')).toHaveCount(0);
+    await expect(page.locator('.msg').last()).toContainText('много вкусно');
+  });
+
+  test('CP-5: collapsed plan has no horizontal overflow on mobile', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.evaluate(() => {
+      const md = '| Вечеря: | | | | Сьомга на фурна с гарнитура | 220 г | 44 | 2 | 18 | 360 | | Зелена салата | 150 г | 3 | 8 | 5 | 90 |';
+      const el = appendCoach();
+      el.innerHTML = renderMarkdown(md);
+    });
+    await expect(page.locator('.nutri-meal').first()).toBeVisible();
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+    );
+    expect(overflow).toBeLessThanOrEqual(1);
+  });
 });
