@@ -8,6 +8,9 @@ constraints) but never modifies it, the cascade, or enforcement. The LLM never
 sees these choices as open — only as a blueprint to phrase.
 """
 import datetime as _dt
+from dataclasses import dataclass
+from types import MappingProxyType
+from typing import Any, Mapping
 
 from recommend import diversity
 from recommend.blueprint import NutritionBlueprint, WorkoutBlueprint, RecoveryBlueprint
@@ -89,8 +92,35 @@ _FAMILIES = {
 }
 
 
-def _workout(decision, profile, prefs, subject, *, record=True) -> WorkoutBlueprint:
-    goal = _goal(profile)
+@dataclass(frozen=True)
+class WorkoutAuthority:
+    """Frozen, presentation-free boundaries for one active workout decision."""
+    intent: str
+    verified_facts: Mapping[str, Any]
+    explicit_facts: Mapping[str, Any]
+    locked_preferences: Mapping[str, tuple[str, ...]]
+    safety_constraints: tuple[str, ...]
+    equipment: tuple[str, ...]
+    experience: str | None
+    recovery_state: str | None
+    workout_history: tuple[Mapping[str, Any], ...]
+
+    def __post_init__(self):
+        if self.intent != "workout":
+            raise ValueError("workout authority requires workout intent")
+        object.__setattr__(self, "verified_facts", MappingProxyType(dict(self.verified_facts)))
+        object.__setattr__(self, "explicit_facts", MappingProxyType(dict(self.explicit_facts)))
+        object.__setattr__(self, "locked_preferences", MappingProxyType(
+            {key: tuple(values) for key, values in self.locked_preferences.items()}))
+        object.__setattr__(self, "safety_constraints", tuple(self.safety_constraints))
+        object.__setattr__(self, "equipment", tuple(self.equipment))
+        object.__setattr__(self, "workout_history", tuple(
+            MappingProxyType(dict(item)) for item in self.workout_history))
+
+
+def _workout(decision, profile, prefs, subject, *, record=True, expert_consensus=None,
+             persona_adaptation=None, authority: WorkoutAuthority | None = None) -> WorkoutBlueprint:
+    goal = str(authority.verified_facts.get("goal") or _goal(profile)).lower() if authority else _goal(profile)
     env = getattr(decision, "envelope", None)
     ic = float(getattr(env, "intensity_ceiling", 0.5)) if env is not None else 0.5
     supported = bool(getattr(env, "supported", False)) if env is not None else False
@@ -120,12 +150,50 @@ def _workout(decision, profile, prefs, subject, *, record=True) -> WorkoutBluepr
     if supported:
         ex.append(("Balance-supported", "balance demand"))
 
-    equip = (profile or {}).get("equipment") or ["bodyweight"]
+    equip = list(authority.equipment) if authority else (profile or {}).get("equipment") or ["bodyweight"]
     equip = [equip] if isinstance(equip, str) else list(equip)
     minutes = {"beginner": 20, "moderate": 35, "advanced": 50}[difficulty]
 
     anchor, recent = diversity.next_anchor(subject, "workout", record=record)
     families = [f for f in _FAMILIES.get(goal, _FAMILIES["general_fitness"])]
+    adaptation = persona_adaptation or {}
+    rules = set(getattr(expert_consensus, "applicable_rule_ids", ()))
+    explicit_experience = str(authority.explicit_facts.get("level") or
+                              authority.explicit_facts.get("experience_level") or "").lower() if authority else ""
+    recovery_state = str(authority.recovery_state or "").lower() if authority else ""
+    if adaptation and not explicit_experience:
+        if adaptation.get("beginner"):
+            difficulty = "beginner"
+            minutes = min(minutes, 25)
+            families = families[:3] + ["core"]
+        elif adaptation.get("advanced"):
+            difficulty = "advanced"
+            minutes = max(minutes, 50)
+        if adaptation.get("home_equipment"):
+            families = [family for family in families if family != "carry"] + ["core"]
+            families = list(dict.fromkeys(families))
+    if rules & {"GRV-001", "GRV-003", "WNK-003"} and recovery_state not in {"fresh", "good"}:
+        minutes = min(minutes, 25)
+        mobility_req = "gentle_rom"
+        families = list(dict.fromkeys(families + ["mobility"]))
+    if "MCG-001" in rules:
+        joint = "low"
+        mobility_req = "gentle_rom"
+        minutes = min(minutes, 25)
+        families = [family for family in families if family not in {"squat", "hinge", "conditioning"}]
+        movements.append("painful range")
+    if explicit_experience in {"beginner", "intermediate", "advanced"}:
+        difficulty = explicit_experience if explicit_experience != "intermediate" else "moderate"
+        minutes = {"beginner": min(minutes, 25), "moderate": 35, "advanced": max(minutes, 50)}[difficulty]
+    if authority:
+        locked_exclusions = set(authority.locked_preferences.get("exercise_exclusions", ()))
+        safety_exclusions = set(authority.safety_constraints)
+        blocked = locked_exclusions | safety_exclusions
+        if blocked:
+            families = [family for family in families if family not in blocked]
+            movements.extend(sorted(blocked))
+            joint = "low"
+            mobility_req = "gentle_rom"
     for m in movements:
         ex.append((f"Avoid {m}", "safety constraint"))
     return WorkoutBlueprint(
@@ -149,7 +217,8 @@ def _recovery(decision, profile, prefs, subject, *, record=True) -> RecoveryBlue
 _BUILDERS = {"nutrition": _nutrition, "workout": _workout, "recovery": _recovery}
 
 
-def design(kind=None, *, decision=None, profile=None, preferences=None, subject="anon", record=True):
+def design(kind=None, *, decision=None, profile=None, preferences=None, subject="anon", record=True,
+           expert_consensus=None, persona_adaptation=None, authority: WorkoutAuthority | None = None):
     """Design a Blueprint. `kind` (nutrition|workout|recovery) may be given explicitly
     or inferred from the Brain decision's intervention. Returns None when the decision
     routes/asks (medical_followup / crisis_support / conversation) — nothing to design."""
@@ -160,4 +229,10 @@ def design(kind=None, *, decision=None, profile=None, preferences=None, subject=
     builder = _BUILDERS.get(kind)
     if builder is None:
         return None
+    if kind == "workout":
+        if authority is not None and authority.intent != "workout":
+            raise ValueError("invalid workout authority")
+        return builder(decision, profile or {}, preferences or {}, subject, record=record,
+                       expert_consensus=expert_consensus,
+                       persona_adaptation=persona_adaptation, authority=authority)
     return builder(decision, profile or {}, preferences or {}, subject, record=record)

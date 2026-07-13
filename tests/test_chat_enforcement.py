@@ -756,12 +756,8 @@ def _nutrition_blueprint():
         medical_constraints=[], explanations=[])
 
 
-@pytest.mark.parametrize("message,blueprint,expected_title", [
-    ("build a workout", _workout_blueprint(), "**Workout**"),
-    ("plan my nutrition", _nutrition_blueprint(), "**Nutrition**"),
-])
-def test_active_recommendation_engine_delivers_only_verified_blueprint(client, captured, monkeypatch,
-                                                                         message, blueprint, expected_title):
+def test_active_recommendation_engine_delivers_only_verified_workout_blueprint(client, captured, monkeypatch):
+    message, blueprint, expected_title = "build a workout", _workout_blueprint(), "**Workout**"
     monkeypatch.setenv("RECOMMENDATION_ENGINE_ACTIVE", "true")
     monkeypatch.setattr(appmod.recommendation_architect, "design", lambda *args, **kwargs: blueprint)
     _set_stream(monkeypatch, captured, json.dumps({
@@ -777,6 +773,193 @@ def test_active_recommendation_engine_delivers_only_verified_blueprint(client, c
     assert len(events) == 2 and events[1] == {"done": True}
     assert events[0]["t"].startswith(expected_title)
     assert '"blueprint"' not in events[0]["t"]
+
+
+def test_active_recommendation_engine_keeps_nutrition_on_the_legacy_path(client, captured, monkeypatch):
+    profile = _profile()
+    expected = _legacy_messages(profile, [], [], "plan my nutrition", 12)
+    monkeypatch.setenv("RECOMMENDATION_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod.recommendation_architect, "design", lambda *args, **kwargs: pytest.fail("design ran"))
+
+    response = _post(client, "plan my nutrition", profile=profile)
+
+    assert captured["messages"] == expected
+    assert _events(response) == [{"t": "ok"}, {"done": True}]
+
+
+def _persona_expert_blueprint(profile):
+    snapshot = _shadow_snapshot(profile=profile)
+    decision = decision_engine.decide(snapshot, "workout")
+    match = persona_matcher.match(snapshot, "workout")
+    consensus = expert_consensus.evaluate(snapshot, match, "workout")
+    blueprint = appmod.recommendation_architect.design(
+        "workout", decision=decision, profile=profile, preferences={}, subject="persona-expert-test",
+        record=False, expert_consensus=consensus,
+        persona_adaptation=appmod._persona_adaptation(match))
+    return blueprint, match, consensus
+
+
+def _authority_blueprint(*, profile=None, locked=None, explicit=None, adaptation=None, consensus=None):
+    snapshot = _shadow_snapshot(profile=profile or {}, locked=locked, explicit=explicit)
+    decision = decision_engine.decide(snapshot, "workout")
+    authority = appmod._workout_authority(snapshot, decision)
+    assert authority is not None
+    return appmod.recommendation_architect.design(
+        "workout", decision=decision, profile={}, preferences={}, subject="authority-test", record=False,
+        authority=authority, persona_adaptation=adaptation or {}, expert_consensus=consensus), authority
+
+
+def test_workout_authority_locked_equipment_and_exclusions_override_lower_layers():
+    blueprint, authority = _authority_blueprint(
+        profile={"goal": "strength", "equipment": "gym"},
+        locked=LockedPreferences(equipment=("home",), exercise_exclusions=("squat",)),
+        adaptation={"advanced": True},
+    )
+    assert authority.equipment == ("home",)
+    assert blueprint.equipment == ["home"]
+    assert "squat" not in blueprint.exercise_families
+
+
+def test_workout_authority_explicit_facts_and_safety_override_persona_and_expert():
+    stale_consensus = types.SimpleNamespace(applicable_rule_ids=("GRV-001", "GRV-003", "WNK-003"))
+    beginner, _ = _authority_blueprint(
+        profile={"goal": "strength"}, explicit={"level": "beginner"},
+        adaptation={"advanced": True}, consensus=stale_consensus)
+    fresh, _ = _authority_blueprint(
+        profile={"goal": "strength", "sleepQuality": "poor", "stressLevel": "high"},
+        explicit={"recoveryFeel": "fresh"}, consensus=stale_consensus)
+    injury, _ = _authority_blueprint(profile={"injuries": "knee pain"})
+    assert beginner.difficulty == "beginner"
+    assert fresh.session_minutes == 35 and fresh.mobility_requirement == "standard"
+    assert not ({"squat", "hinge", "conditioning"} & set(injury.exercise_families))
+
+
+def test_workout_authority_conflict_fails_closed_to_legacy():
+    snapshot = _shadow_snapshot(profile={"goal": "strength"},
+                                locked=LockedPreferences(equipment=("home", "gym")))
+    decision = decision_engine.decide(snapshot, "workout")
+    assert appmod._workout_authority(snapshot, decision) is None
+
+
+def test_active_authority_conflict_falls_back_to_legacy_prompt(client, captured, monkeypatch):
+    profile = {"goal": "strength", "lockedEquipment": ["home", "gym"]}
+    expected = _legacy_messages(profile, [], [], "build a workout", 12)
+    monkeypatch.setenv("RECOMMENDATION_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod.recommendation_architect, "design", lambda *args, **kwargs: pytest.fail("design ran"))
+    response = _post(client, "build a workout", profile=profile)
+    assert _events(response) == [{"t": "ok"}, {"done": True}]
+    assert captured["messages"] == expected
+
+
+def test_recommendation_flag_is_resolved_once_per_normal_request(client, captured, monkeypatch):
+    calls = []
+    original = appmod.os.getenv
+
+    def getenv(name, default=None):
+        if name == "RECOMMENDATION_ENGINE_ACTIVE":
+            calls.append(name)
+        return original(name, default)
+
+    monkeypatch.setattr(appmod.os, "getenv", getenv)
+    _post(client, "build a workout", profile=_profile())
+    assert calls == ["RECOMMENDATION_ENGINE_ACTIVE"]
+
+
+def test_spoken_workout_uses_the_same_single_active_chat_path(client, captured, monkeypatch):
+    blueprint = _workout_blueprint()
+    calls = []
+    monkeypatch.setenv("RECOMMENDATION_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod.recommendation_architect, "design",
+                        lambda *args, **kwargs: calls.append((args, kwargs)) or blueprint)
+    _set_stream(monkeypatch, captured, json.dumps({"blueprint": to_dict(blueprint), "explanations": []}))
+    response = client.post("/chat", json={"message": "build a workout", "lang": "en",
+                                           "profile": _profile(), "voice": True})
+    assert response.status_code == 200
+    assert len(calls) == 1
+    assert _events(response)[-1] == {"done": True}
+
+
+def test_persona_expert_workout_blueprint_is_deterministic_and_changes_structure():
+    beginner, _, _ = _persona_expert_blueprint(_profile(level="beginner", equipment="gym"))
+    advanced, _, _ = _persona_expert_blueprint({"goal": "strength", "level": "advanced"})
+
+    repeat, _, _ = _persona_expert_blueprint(_profile(level="beginner", equipment="gym"))
+    assert beginner == repeat
+    assert beginner.difficulty == "beginner"
+    assert advanced.difficulty == "advanced"
+    assert beginner.session_minutes < advanced.session_minutes
+
+
+def test_persona_expert_adapts_equipment_recovery_and_injury_constraints():
+    home, _, _ = _persona_expert_blueprint(_profile(equipment="home", level="intermediate",
+                                                    sleepQuality="good", stressLevel="low", recoveryFeel="fresh"))
+    gym, _, _ = _persona_expert_blueprint(_profile(equipment="gym", level="intermediate",
+                                                   sleepQuality="good", stressLevel="low", recoveryFeel="fresh"))
+    recovering, _, recovery_consensus = _persona_expert_blueprint(_profile(level="intermediate"))
+    fresh, _, _ = _persona_expert_blueprint({"goal": "strength", "level": "advanced"})
+    injury, injury_match, injury_consensus = _persona_expert_blueprint({"injuries": "knee pain"})
+
+    assert home.exercise_families != gym.exercise_families
+    assert recovering.session_minutes < fresh.session_minutes
+    assert recovery_consensus.abstained is False
+    assert injury_match.abstained is True and injury_consensus.abstained is False
+    assert injury.joint_impact == "low"
+    assert "painful range" in injury.contraindications
+    assert not ({"squat", "hinge", "conditioning"} & set(injury.exercise_families))
+
+
+def _capture_shadow_traces(monkeypatch):
+    traces = []
+    monkeypatch.setattr(appmod, "_observe_shadow_trace_for_testing", traces.append)
+    return traces
+
+
+def test_active_persona_expert_path_uses_blueprint_without_changing_sse_or_persistence(
+        client, captured, monkeypatch):
+    blueprint = _workout_blueprint()
+    uid = _login_for_chat(client, _profile(level="beginner"))
+    monkeypatch.setenv("RECOMMENDATION_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod.recommendation_architect, "design", lambda *args, **kwargs: blueprint)
+    _set_stream(monkeypatch, captured, json.dumps({"blueprint": to_dict(blueprint), "explanations": []}))
+    traces = _capture_shadow_traces(monkeypatch)
+
+    response = _post(client, "build a workout")
+
+    assert _events(response) == [{"t": appmod.recommendation_renderer.render_delivery(blueprint, [], "en")},
+                                 {"done": True}]
+    assert captured["system"] == appmod.recommendation_renderer.render_prompt(blueprint)
+    assert len(traces) == 1 and traces[0].production_path_used == "persona_expert"
+    assert traces[0].blueprint_invoked is True
+    saved = store.list_conversation(uid, limit=10)
+    assert [(turn["role"], turn["content"]) for turn in saved] == [
+        ("user", "build a workout"), ("assistant", _events(response)[0]["t"]),
+    ]
+
+
+def test_active_persona_expert_abstention_falls_back_to_byte_identical_legacy_workout(client, captured, monkeypatch):
+    expected = _legacy_messages({}, [], [], "build a workout", 12)
+    monkeypatch.setenv("RECOMMENDATION_ENGINE_ACTIVE", "true")
+    traces = _capture_shadow_traces(monkeypatch)
+    monkeypatch.setattr(appmod.recommendation_architect, "design", lambda *args, **kwargs: pytest.fail("design ran"))
+
+    response = _post(client, "build a workout", profile={})
+
+    assert captured["messages"] == expected
+    assert _events(response) == [{"t": "ok"}, {"done": True}]
+    assert len(traces) == 1 and traces[0].production_path_used == "legacy"
+    assert traces[0].blueprint_invoked is False
+
+
+def test_active_recommendation_flag_does_not_change_voice_session_start(client, captured, monkeypatch):
+    monkeypatch.setenv("RECOMMENDATION_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod.recommendation_architect, "design", lambda *args, **kwargs: pytest.fail("design ran"))
+
+    response = client.post("/chat", json={"session_start": True, "lang": "en", "profile": _profile()})
+
+    events = _events(response)
+    assert events[0] == {"t": "What would you like help with today?"}
+    assert events[-1]["done"] is True
+    assert captured == {}
 
 
 def test_active_recommendation_engine_rejects_modified_blueprint(client, captured, monkeypatch):
@@ -988,9 +1171,10 @@ def test_shadow_flag_modes_keep_results_local(monkeypatch, matcher_enabled, cons
     monkeypatch.setenv("PERSONA_MATCHER_SHADOW", str(matcher_enabled).lower())
     monkeypatch.setenv("EXPERT_CONSENSUS_SHADOW", str(consensus_enabled).lower())
 
-    match, consensus = appmod._shadow_persona_expert(snapshot, decision)
+    match, consensus, trace = appmod._shadow_persona_expert(snapshot, decision, False)
 
     assert (match is not None, consensus is not None) == expected
+    assert trace is not None
 
 
 # Phase B2: clarify and route are fixed delivery contracts. They bypass OpenAI

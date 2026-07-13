@@ -162,9 +162,12 @@ class LockedPreferences:
     religious: tuple[str, ...] = ()
     permanent_injuries: tuple[str, ...] = ()
     accessibility: tuple[str, ...] = ()
+    equipment: tuple[str, ...] = ()
+    exercise_exclusions: tuple[str, ...] = ()
 
     def __post_init__(self):
-        for name in ("dietary", "allergies", "religious", "permanent_injuries", "accessibility"):
+        for name in ("dietary", "allergies", "religious", "permanent_injuries", "accessibility",
+                     "equipment", "exercise_exclusions"):
             values = tuple(sorted({str(v).strip() for v in getattr(self, name) if str(v).strip()}))
             object.__setattr__(self, name, values)
 
@@ -175,6 +178,8 @@ class LockedPreferences:
             "religious": self.religious,
             "permanent_injuries": self.permanent_injuries,
             "accessibility": self.accessibility,
+            "equipment": self.equipment,
+            "exercise_exclusions": self.exercise_exclusions,
         })
 
 
@@ -332,6 +337,9 @@ def _locked(profile: Mapping[str, Any], supplied: LockedPreferences | Mapping[st
         religious=tuple(supplied.get("religious", _as_values(profile.get("religiousRestrictions")))),
         permanent_injuries=tuple(supplied.get("permanent_injuries", _as_values(profile.get("permanentInjuries")))),
         accessibility=tuple(supplied.get("accessibility", _as_values(profile.get("accessibilityNeeds")))),
+        equipment=tuple(supplied.get("equipment", _as_values(profile.get("lockedEquipment")))),
+        exercise_exclusions=tuple(supplied.get("exercise_exclusions",
+                                                _as_values(profile.get("lockedExerciseExclusions")))),
     )
 
 

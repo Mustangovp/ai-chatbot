@@ -37,6 +37,8 @@ import decision_engine
 import nutrition_validation
 from recommend import architect as recommendation_architect, renderer as recommendation_renderer
 from brain.runtime_assets import expert_consensus, persona_matcher
+from brain.runtime_assets.personas import load_runtime_personas
+import brain.runtime_assets.shadow_trace as shadow_trace
 import athlete_store  # M0: Athlete Model substrate (failure-isolated observe wiring)
 import brain.config as brain_config             # M1: Brain shadow flags (default OFF)
 import brain.ledger as brain_ledger             # M1: shadow decision ledger
@@ -1629,15 +1631,114 @@ def _shadow_feature_enabled(name):
     return os.getenv(name, "false").strip().lower() == "true"
 
 
-def _shadow_persona_expert(snapshot, decision):
+def _observe_shadow_trace_for_testing(trace):
+    """No-op test seam; request-local traces are never retained or delivered."""
+    return None
+
+
+def _evaluate_persona_expert(snapshot, decision, recommendation_engine_active):
+    """Evaluate existing pure assets without persistence, delivery, or logging."""
+    try:
+        matcher_started = time.perf_counter()
+        match = persona_matcher.match(snapshot, decision.intent)
+        matcher_ms = (time.perf_counter() - matcher_started) * 1000
+        consensus_started = time.perf_counter()
+        consensus = expert_consensus.evaluate(snapshot, match, decision.intent)
+        consensus_ms = (time.perf_counter() - consensus_started) * 1000
+        trace = shadow_trace.build_shadow_trace(
+            request_id=_uuid.uuid4().hex,
+            timestamp=_dt.datetime.now(_dt.timezone.utc),
+            persona_match=match,
+            expert_consensus=consensus,
+            matcher_ms=matcher_ms,
+            consensus_ms=consensus_ms,
+            recommendation_engine_active=recommendation_engine_active,
+        )
+        return match, consensus, trace
+    except Exception:
+        return None, None, None
+
+
+def _shadow_persona_expert(snapshot, decision, recommendation_engine_active):
     """Run detached archetype/rule analysis only; it never changes chat delivery."""
     matcher_enabled = _shadow_feature_enabled("PERSONA_MATCHER_SHADOW")
     consensus_enabled = _shadow_feature_enabled("EXPERT_CONSENSUS_SHADOW")
     if decision.outcome != "recommend" or not (matcher_enabled or consensus_enabled):
-        return None, None
-    match = persona_matcher.match(snapshot, decision.intent)
-    consensus = expert_consensus.evaluate(snapshot, match, decision.intent) if consensus_enabled else None
-    return (match if matcher_enabled else None), consensus
+        return None, None, None
+    match, consensus, trace = _evaluate_persona_expert(snapshot, decision, recommendation_engine_active)
+    return (match if matcher_enabled else None), (consensus if consensus_enabled else None), trace
+
+
+def _persona_adaptation(match):
+    """Project a matched runtime persona into ID-free workout design inputs."""
+    persona_id = getattr(match, "primary_persona_id", None)
+    if not persona_id:
+        return None
+    persona = next((item for item in load_runtime_personas() if item.id == persona_id), None)
+    if persona is None:
+        return None
+    return {
+        "beginner": persona.experience_level == "beginner" or "beginners_deconditioned" in persona.cluster,
+        "advanced": persona.experience_level == "advanced" or "athletes_advanced" in persona.cluster,
+        "home_equipment": persona.equipment_context == "home",
+    }
+
+
+def _workout_authority(snapshot, decision):
+    """Project verified request facts into the architect's immutable boundary."""
+    if snapshot.intent != "workout" or decision.intent != "workout":
+        return None
+    facts = {key: fact.value for key, fact in snapshot.profile.items()}
+    explicit = {key: fact.value for key, fact in snapshot.profile.items()
+                if fact.source in {"explicit", "locked"}}
+    locked = snapshot.locked_preferences.as_dict()
+    locked_equipment = tuple(locked.get("equipment", ()))
+    if len(locked_equipment) > 1:
+        return None
+    equipment = locked_equipment or tuple(_as_list(facts.get("equipment")))
+    injury_values = tuple(_as_list(facts.get("injuries"))) + tuple(_as_list(facts.get("healthNotes")))
+    safety = {str(value).strip().lower() for value in injury_values if str(value).strip()}
+    if safety:
+        safety.update({"squat", "hinge", "conditioning"})
+    recovery = facts.get("recoveryFeel")
+    try:
+        return recommendation_architect.WorkoutAuthority(
+            intent="workout", verified_facts=facts, explicit_facts=explicit,
+            locked_preferences=locked, safety_constraints=tuple(sorted(safety)),
+            equipment=equipment, experience=str(facts.get("level") or facts.get("experience_level") or "") or None,
+            recovery_state=str(recovery) if recovery is not None else None,
+            workout_history=snapshot.workouts,
+        )
+    except Exception:
+        return None
+
+
+def _as_list(value):
+    if value is None:
+        return ()
+    if isinstance(value, (tuple, list, set, frozenset)):
+        return tuple(value)
+    return (value,)
+
+
+def _active_workout_recommendation(snapshot, decision, recommendation_engine_active):
+    """Use persona/expert evidence only when at least one system can act on it."""
+    authority = _workout_authority(snapshot, decision)
+    if authority is None:
+        return None, None, "legacy"
+    match, consensus, trace = _evaluate_persona_expert(snapshot, decision, recommendation_engine_active)
+    if match is None or consensus is None or (match.abstained and consensus.abstained):
+        return None, trace, "legacy"
+    try:
+        blueprint = recommendation_architect.design(
+            "workout", decision=decision, profile={},
+            preferences=dict(authority.locked_preferences), subject=snapshot.subject.identifier, record=False,
+            expert_consensus=consensus,
+            persona_adaptation=_persona_adaptation(match), authority=authority,
+        )
+        return blueprint, trace, "persona_expert" if blueprint is not None else "legacy"
+    except Exception:
+        return None, trace, "legacy"
 
 
 @app.route("/chat", methods=["POST"])
@@ -1718,6 +1819,9 @@ def chat():
         # consumed by the unchanged prompt assembly below. First-contact keeps its
         # established path until its own integration phase.
         _recommendation_blueprint = None
+        _recommendation_trace = None
+        _recommendation_path = "legacy"
+        _recommendation_active = _recommendation_engine_active()
         if not is_first_contact:
             _legacy_profile = profile if isinstance(profile, dict) else {}
             _legacy_history = history if isinstance(history, list) else []
@@ -1745,17 +1849,23 @@ def chat():
                 history = _legacy["history"]
             pers_workouts = _legacy["workouts"]
             _shadow_decision = decision_engine.decide(_snapshot, _shadow_intent)
-            _shadow_persona_match, _shadow_expert_consensus = _shadow_persona_expert(_snapshot, _shadow_decision)
-            if _recommendation_engine_active() and _shadow_decision.outcome == "recommend":
-                _recommendation_blueprint = _shadow_recommendation(_snapshot, _shadow_decision, profile)
+            _active_workout = (_recommendation_active and _shadow_decision.outcome == "recommend" and
+                               _shadow_decision.intent == "workout")
+            if _active_workout:
+                (_recommendation_blueprint, _recommendation_trace,
+                 _recommendation_path) = _active_workout_recommendation(
+                     _snapshot, _shadow_decision, _recommendation_active)
+            else:
+                (_shadow_persona_match, _shadow_expert_consensus,
+                 _recommendation_trace) = _shadow_persona_expert(
+                     _snapshot, _shadow_decision, _recommendation_active)
             _controlled_reply = decision_engine.controlled_response(_shadow_decision, lang)
-            if _recommendation_engine_active() and _shadow_decision.outcome == "recommend" and \
-                    _recommendation_blueprint is None:
-                _controlled_reply = decision_engine.controlled_response(
-                    decision_engine.DecisionResult("clarify", _shadow_decision.intent,
-                                                   "recommendation_integrity_contract", (), 1.0), lang)
-            if not _recommendation_engine_active():
+            if not _recommendation_active:
                 _shadow_recommendation(_snapshot, _shadow_decision, profile)
+            if _recommendation_trace is not None:
+                _observe_shadow_trace_for_testing(_recommendation_trace.with_delivery(
+                    blueprint_invoked=_recommendation_blueprint is not None,
+                    production_path_used=_recommendation_path))
         else:
             _controlled_reply = None
 
