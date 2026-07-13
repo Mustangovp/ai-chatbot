@@ -264,4 +264,200 @@ test.describe('APEX approved app shell — UX regression', () => {
     );
     expect(overflow).toBeLessThanOrEqual(1);
   });
+
+  // ── NUTRITION V4 — mixed-format recovery ──
+  async function enterEnglish(page) {
+    await page.goto('/app?lang=en');
+    await page.evaluate(() => {
+      try { if (typeof enterConsult === 'function') enterConsult(''); } catch (e) {}
+      const m = document.getElementById('profile-modal'); if (m) m.classList.remove('on');
+    });
+  }
+  const renderMd = (page, lines) => page.evaluate((md) => {
+    const el = appendCoach(); el.innerHTML = renderMarkdown(md);
+  }, Array.isArray(lines) ? lines.join('\n') : lines);
+  const lastMsgText = (page) => page.locator('.msg').last().innerText();
+
+  test('MR-1: normal → pipe → collapsed all merge into one plan (no raw pipes)', async ({ page }) => {
+    await renderMd(page, [
+      '**Вечеря**',
+      '| Пиле | 200 г | 46 | 0 | 6 | 210 |',
+      '| Броколи | 100 г | 3 | 6 | 0 | 35 |',
+      '| Закуска: | | | | Ябълка | 100 г | 0 | 25 | 0 | 95 | | Ядки | 30 г | 6 | 6 | 15 | 180 |'
+    ]);
+    const txt = (await page.locator('.nutri').allInnerTexts()).join('\n');
+    for (const f of ['Пиле', 'Броколи', 'Ябълка', 'Ядки']) expect(txt).toContain(f);
+    expect(await lastMsgText(page)).not.toContain('|');
+  });
+
+  test('MR-2: collapsed → markdown table continue as one plan', async ({ page }) => {
+    await renderMd(page, [
+      '| Обяд: | | | | Пиле | 200 г | 46 | 0 | 6 | 210 | | Ориз | 150 г | 4 | 45 | 1 | 200 |',
+      '| Продукт | Протеин | Въглехидрати | Мазнини | Калории |',
+      '| --- | --- | --- | --- | --- |',
+      '| Кисело мляко | 8 | 12 | 4 | 110 |'
+    ]);
+    const txt = (await page.locator('.nutri').allInnerTexts()).join('\n');
+    for (const f of ['Пиле', 'Ориз', 'Кисело мляко']) expect(txt).toContain(f);
+    expect(await lastMsgText(page)).not.toContain('|');
+  });
+
+  test('MR-3: Bulgarian mixed formats', async ({ page }) => {
+    await renderMd(page, [
+      'Закуска',
+      '| Овесена каша | 80 г | 12 | 54 | 7 | 320 |',
+      'Вечеря',
+      '| Сьомга | 200 г | 44 | 0 | 18 | 360 |'
+    ]);
+    const txt = (await page.locator('.nutri').allInnerTexts()).join('\n');
+    for (const s of ['Закуска', 'Овесена каша', 'Вечеря', 'Сьомга', 'Белтъчини']) expect(txt).toContain(s);
+    expect(await lastMsgText(page)).not.toContain('|');
+  });
+
+  test('MR-4: English mixed formats', async ({ page }) => {
+    await enterEnglish(page);
+    await renderMd(page, [
+      '**Breakfast**',
+      '| Oatmeal | 80 g | 12 | 54 | 7 | 320 |',
+      '| Lunch: | | | | Chicken | 200 g | 46 | 0 | 6 | 210 | | Rice | 150 g | 4 | 45 | 1 | 200 |'
+    ]);
+    const txt = (await page.locator('.nutri').allInnerTexts()).join('\n');
+    for (const f of ['Breakfast', 'Oatmeal', 'Chicken', 'Rice', 'Protein']) expect(txt).toContain(f);
+    expect(txt).not.toContain('**');
+    expect(await lastMsgText(page)).not.toContain('|');
+  });
+
+  test('MR-5: mixed Bulgarian + English meals in one plan', async ({ page }) => {
+    await renderMd(page, [
+      'Закуска',
+      '| Овесена каша | 80 г | 12 | 54 | 7 | 320 |',
+      '**Lunch**',
+      '| Chicken | 200 g | 46 | 0 | 6 | 210 |'
+    ]);
+    const txt = (await page.locator('.nutri').allInnerTexts()).join('\n');
+    for (const s of ['Закуска', 'Овесена каша', 'Lunch', 'Chicken']) expect(txt).toContain(s);
+    expect(await lastMsgText(page)).not.toContain('|');
+  });
+
+  test('MR-6: a broken row never rejects the whole meal', async ({ page }) => {
+    await renderMd(page, [
+      '**Обяд**',
+      '| Ориз | 150 г | 4 | 45 | 1 | 200 |',
+      '| ??? счупен ред |',
+      '| Боб | 100 г | 8 | 20 | 1 | 120 |'
+    ]);
+    const txt = (await page.locator('.nutri').allInnerTexts()).join('\n');
+    expect(txt).toContain('Ориз');
+    expect(txt).toContain('Боб');      // meal survived the broken row
+    expect(await lastMsgText(page)).not.toContain('|');
+  });
+
+  test('MR-7: totals in the middle still become the final summary', async ({ page }) => {
+    await renderMd(page, [
+      '**Закуска**',
+      '| Яйца | 100 г | 13 | 1 | 11 | 155 |',
+      '| Общо | | | 13 | 1 | 11 | 155 |',
+      '**Обяд**',
+      '| Риба тон | 100 г | 26 | 0 | 1 | 116 |'
+    ]);
+    await expect(page.locator('.nutri-total')).toHaveCount(1);
+    const txt = (await page.locator('.nutri').allInnerTexts()).join('\n');
+    expect(txt).toContain('Риба тон');   // meal after the mid-total still rendered
+    expect(await lastMsgText(page)).not.toContain('|');
+  });
+
+  test('MR-8: totals at the end become the summary card', async ({ page }) => {
+    await renderMd(page, [
+      '**Вечеря**',
+      '| Сьомга | 200 г | 44 | 0 | 18 | 360 |',
+      '| Общо | | | 44 | 0 | 18 | 360 |'
+    ]);
+    await expect(page.locator('.nutri-total')).toBeVisible();
+    await expect(page.locator('.nutri-total')).toContainText('360');
+    expect(await lastMsgText(page)).not.toContain('|');
+  });
+
+  test('MR-9: bold headers render without markdown markers', async ({ page }) => {
+    await renderMd(page, [
+      '**Закуска**',
+      '| Овесена каша | 80 г | 12 | 54 | 7 | 320 |'
+    ]);
+    const txt = (await page.locator('.nutri').allInnerTexts()).join('\n');
+    expect(txt).toContain('Закуска');
+    expect(txt).not.toContain('**');
+    expect(await lastMsgText(page)).not.toContain('|');
+  });
+
+  test('MR-10: plain headers are recognized', async ({ page }) => {
+    await renderMd(page, [
+      'Следобедна закуска',
+      '| Кисело мляко | 150 г | 8 | 12 | 4 | 110 |'
+    ]);
+    const titles = await page.locator('.nutri-title .nm-name').allInnerTexts();
+    expect(titles.join(' ')).toContain('Следобедна закуска');
+    expect(await lastMsgText(page)).not.toContain('|');
+  });
+
+  test('MR-11: repeated meal names keep their own foods', async ({ page }) => {
+    await renderMd(page, [
+      'Междинна закуска',
+      '| Ябълка | 100 г | 0 | 25 | 0 | 95 |',
+      'Обяд',
+      '| Пиле | 200 г | 46 | 0 | 6 | 210 |',
+      'Междинна закуска',
+      '| Ядки | 30 г | 6 | 6 | 15 | 180 |'
+    ]);
+    const txt = (await page.locator('.nutri').allInnerTexts()).join('\n');
+    for (const f of ['Ябълка', 'Пиле', 'Ядки']) expect(txt).toContain(f);
+    // both "Междинна закуска" sections are present
+    const titles = await page.locator('.nutri-title .nm-name').allInnerTexts();
+    expect(titles.filter((x) => /Междинна закуска/.test(x)).length).toBe(2);
+  });
+
+  test('MR-12: mixed plan has no horizontal overflow on mobile', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await renderMd(page, [
+      '**Вечеря**',
+      '| Сьомга на фурна с голяма зелена гарнитура | 220 г | 44 | 2 | 18 | 360 |',
+      '| Салата: | | | | Домати и краставици | 150 г | 3 | 8 | 5 | 90 | | Зехтин | 15 г | 0 | 0 | 15 | 135 |'
+    ]);
+    await expect(page.locator('.nutri-meal').first()).toBeVisible();
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(1);
+  });
+
+  test('MR-13: no visible raw pipes anywhere in a heavily-mixed plan', async ({ page }) => {
+    await renderMd(page, [
+      '**Закуска**',
+      '| Овесена каша | 80 г | 12 | 54 | 7 | 320 |',
+      '| Банан | 120 г | 1 | 27 | 0 | 105 |',
+      '| Обяд: | | | | Пиле | 200 г | 46 | 0 | 6 | 210 | | Ориз | 150 г | 4 | 45 | 1 | 200 |',
+      '| счупено |',
+      '| Общо | | | 63 | 126 | 13 | 835 |'
+    ]);
+    expect(await lastMsgText(page)).not.toContain('|');
+    await expect(page.locator('.nutri-meal').first()).toBeVisible();
+  });
+
+  test('MR-14: duplicated foods are not rendered twice', async ({ page }) => {
+    await renderMd(page, [
+      '**Закуска**',
+      '| Овесена каша | 80 г | 12 | 54 | 7 | 320 |',
+      '| Овесена каша | 80 г | 12 | 54 | 7 | 320 |'
+    ]);
+    await expect(page.locator('.nutri-meal').filter({ hasText: 'Овесена каша' })).toHaveCount(1);
+  });
+
+  test('MR-15: meal order is preserved', async ({ page }) => {
+    await enterEnglish(page);
+    await renderMd(page, [
+      '**Breakfast**', '| Oatmeal | 80 g | 12 | 54 | 7 | 320 |',
+      '**Lunch**', '| Chicken | 200 g | 46 | 0 | 6 | 210 |',
+      '**Dinner**', '| Salmon | 200 g | 44 | 0 | 18 | 360 |'
+    ]);
+    const names = await page.locator('.nutri .nm-name').allInnerTexts();
+    const order = names.join('\n');
+    expect(order.indexOf('Breakfast')).toBeLessThan(order.indexOf('Lunch'));
+    expect(order.indexOf('Lunch')).toBeLessThan(order.indexOf('Dinner'));
+  });
 });

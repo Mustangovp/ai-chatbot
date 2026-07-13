@@ -1723,6 +1723,144 @@ function collapsedNutritionBlock(line){
   if(foods<1) return null;                               // no real food row → leave as ordinary text
   return { header:['Meal','Protein','Carbs','Fat','Kcal'], body };
 }
+/* ═══════════════════════════════════════════════════════════════════════════
+   NUTRITION V4 — format-tolerant scanner. One nutrition plan may mix markdown
+   tables, separator-less tables, collapsed single-line meals, bold/plain meal
+   headers, free-text foods and totals — in any order, BG or EN. We scan the
+   whole region into ONE ordered model (meals → foods → total). It never leaves
+   a raw pipe: a valid food row always becomes a card; a malformed row is dropped
+   WITHOUT ending the meal; the region only stops at the next non-nutrition prose.
+   ═══════════════════════════════════════════════════════════════════════════ */
+function mdClean(v){return (v||'').replace(/\*\*|__|`/g,'').replace(/^\s*#{1,4}\s+/,'').replace(/^\s*[-*•]\s+/,'').trim();}
+const MEAL_RE=/^(breakfast|lunch|dinner|snacks?|morning snack|afternoon snack|evening snack|pre[-\s]?workout|post[-\s]?workout|закуска|обяд|вечеря|следобедна(\s+закуска)?|междинна(\s+закуска)?|междинно(\s+хранене)?|допълнителни(\s+закуск\w*)?|снак)$/i;
+function mealHeaderName(line){
+  let s=mdClean(line).replace(/\(.*?\)/g,'').replace(/[:：].*$/,'').trim();
+  return MEAL_RE.test(s)?s.replace(/\s+/g,' '):'';
+}
+function isMealCell(v){ return MEAL_RE.test(mdClean(v).replace(/[:：]\s*$/,'').trim()); }
+const _isPureNum=c=>/^\d+([.,]\d+)?$/.test((c||'').trim());
+const _isQty=c=>{c=(c||'').trim();return /\d/.test(c)&&/^\d+([.,]\d+)?\s*(g|г|гр|kg|кг|ml|мл|oz|бр|pcs|порц\.?|slices?|cup|чаша|tbsp|tsp|eggs?|яйц\w*)?\.?$/i.test(c);};
+const _isTotal=s=>/[\s(|:](total|totals|общо|сумарно|сума|итого|daily\s*total|дневн\w*)/i.test(' '+mdClean(s));
+function _nums(s){return (String(s).match(/\d+(?:[.,]\d+)?/g)||[]);}
+function isNutritionTableHeader(cells){
+  const h=(cells||[]).join(' ').toLowerCase();
+  if(/серии|sets|повторения|reps|упражнение|exercise/.test(h)) return false;
+  return /протеин|protein|въглехидрат|carb|мазнини|fat|ккал|kcal|калори|calor/.test(h) && (cells||[]).filter(c=>c&&!_isPureNum(c)).length>=2;
+}
+/* one pipe/collapsed row → ordered items (meal titles / foods / totals) */
+function itemsFromCells(cells){
+  cells=(cells||[]).map(mdClean);
+  const items=[]; let k=0;
+  while(k<cells.length){
+    const c=cells[k];
+    if(!c||_isPureNum(c)||_isQty(c)){k++;continue;}
+    const name=c; k++;
+    while(k<cells.length && cells[k]==='') k++;              // skip padding empties, e.g. "Total | | | 13 | 1 | 11 | 155"
+    const vals=[];
+    while(k<cells.length && (_isPureNum(cells[k])||_isQty(cells[k]))){ vals.push(cells[k]); k++; }
+    const nums=vals.filter(_isPureNum);
+    if(nums.length>=3){
+      const qty=vals.find(_isQty)||''; const m=nums.slice(-4);
+      if(_isTotal(name)) items.push({type:'total',p:m[0]||'',c:m[1]||'',f:m[2]||'',k:m.length>=4?m[3]:''});
+      else items.push({type:'food',name,qty,p:m[0]||'',c:m[1]||'',f:m[2]||'',k:m.length>=4?m[3]:''});
+    } else if(isMealCell(name)){
+      items.push({type:'meal',name:mealHeaderName(name)||mdClean(name).replace(/[:：]\s*$/,'')});
+    }
+  }
+  return items;
+}
+/* a free-text food line, e.g. "Oatmeal — 80 g, 12 g protein, 54 carbs, 7 fat, 320 kcal" */
+function foodFromText(t){
+  if(t.includes('|')) return null;
+  const s=mdClean(t); const nums=_nums(s);
+  if(nums.length<3 || !/(g\b|г\b|kcal|ккал|cal\b|калори)/i.test(s)) return null;
+  if(_isTotal(s)){ const m=nums.slice(-4); return {type:'total',p:m[0]||'',c:m[1]||'',f:m[2]||'',k:m.length>=4?m[3]:''}; }
+  const idx=s.search(/\d/); if(idx<=0) return null;
+  let name=s.slice(0,idx).replace(/[-—:,>·\s]+$/,'').trim();
+  if(!name||name.length>48||isMealCell(name)) return null;
+  const m=nums.slice(-4);
+  return {type:'food',name,qty:'',p:m[0]||'',c:m[1]||'',f:m[2]||'',k:m.length>=4?m[3]:''};
+}
+function _nutritionLine(t){
+  if(!t) return false;
+  if(mealHeaderName(t)) return true;
+  if(_isTotal(t)&&_nums(t).length>=3) return true;
+  if(t.includes('|')){ const c=pipeCells(t); return isNutritionTableHeader(c)||itemsFromCells(c).some(x=>x.type!=='meal'); }
+  return !!foodFromText(t);
+}
+function nutritionStarts(lines,i){
+  const t=(lines[i]||'').trim(); if(!t) return false;
+  if(mealHeaderName(t)) return true;
+  if(t.includes('|')){
+    const cells=pipeCells(t);
+    if(isNutritionTableHeader(cells)) return true;
+    if(/\b(sets?|reps?|серии|повторения)\b/i.test(t)) return false;
+    if(itemsFromCells(cells).some(x=>x.type==='food'||x.type==='total')) return true;
+  }
+  return false;
+}
+function nutritionScan(lines,start){
+  if(!nutritionStarts(lines,start)) return null;
+  const model=[]; let i=start;
+  while(i<lines.length){
+    const t=(lines[i]||'').trim();
+    if(t===''){ let j=i+1; while(j<lines.length&&lines[j].trim()==='')j++;
+      if(j>=lines.length||!_nutritionLine(lines[j].trim())) break; i=j; continue; }
+    if(t.includes('-')&&/^[\s|:\-]+$/.test(t)){ i++; continue; }                 // markdown separator row
+    const mh=mealHeaderName(t);
+    if(mh){ model.push({type:'meal',name:mh}); i++; continue; }
+    if(!t.includes('|')&&_isTotal(t)&&_nums(t).length>=3){ const m=_nums(t).slice(-4);
+      model.push({type:'total',p:m[0]||'',c:m[1]||'',f:m[2]||'',k:m.length>=4?m[3]:''}); i++; continue; }
+    if(t.includes('|')){
+      const cells=pipeCells(t);
+      if(isNutritionTableHeader(cells)){ i++; continue; }                        // column header → skip
+      const its=itemsFromCells(cells);
+      if(its.length){ its.forEach(x=>model.push(x)); i++; continue; }
+      if(model.length){ i++; continue; }                                         // malformed pipe row → drop (no raw pipes)
+      break;
+    }
+    const ft=foodFromText(t);
+    if(ft){ model.push(ft); i++; continue; }
+    break;                                                                       // prose boundary → region ends
+  }
+  if(!model.some(x=>x.type==='food'||x.type==='total')) return null;
+  return { html: renderNutritionModel(model), next:i };
+}
+function renderNutritionModel(model){
+  const L=(lang==='bg')
+    ?{p:'Белтъчини',c:'Въглехидрати',f:'Мазнини',k:'Калории',u:'г',cap:'Хранителна стойност'}
+    :{p:'Protein',c:'Carbs',f:'Fat',k:'Calories',u:'g',cap:'Nutrition value'};
+  const clip=v=>(v||'').toString().replace(/[^\d.,]/g,'');
+  const foodCard=it=>{
+    const b=[];
+    if(clip(it.p))b.push('<span class="macro p"><span class="mname">'+L.p+'</span><b>'+clip(it.p)+' '+L.u+'</b></span>');
+    if(clip(it.c))b.push('<span class="macro c"><span class="mname">'+L.c+'</span><b>'+clip(it.c)+' '+L.u+'</b></span>');
+    if(clip(it.f))b.push('<span class="macro f"><span class="mname">'+L.f+'</span><b>'+clip(it.f)+' '+L.u+'</b></span>');
+    if(clip(it.k))b.push('<span class="macro k"><span class="mname">'+L.k+'</span><b>'+clip(it.k)+' kcal</b></span>');
+    const q=it.qty?'<span class="nm-qty">'+esc(mdClean(it.qty))+'</span>':'';
+    return '<div class="nutri-meal"><div class="nm-head"><span class="nm-name">'+esc(mdClean(it.name))+'</span>'+q+'</div>'+
+      (b.length?'<div class="macros-cap">'+L.cap+'</div><div class="macros">'+b.join('')+'</div>':'')+'</div>';
+  };
+  const mealCard=nm=>'<div class="nutri-meal nutri-title"><div class="nm-head"><span class="nm-name">'+esc(nm)+'</span></div></div>';
+  let html='<div class="nutri">'; let total=null,curMeal=null; const seen=new Set();
+  for(const it of model){
+    if(it.type==='total'){ if(clip(it.p)||clip(it.c)||clip(it.f)||clip(it.k)) total=it; continue; }
+    if(it.type==='meal'){ const nm=mdClean(it.name); if(nm&&nm!==curMeal){curMeal=nm;html+=mealCard(nm);} continue; }
+    const nm=mdClean(it.name); if(!nm) continue;
+    const key=(curMeal||'')+'~'+nm.toLowerCase()+'~'+clip(it.p)+'~'+clip(it.c)+'~'+clip(it.f);   // dedupe within a meal
+    if(seen.has(key)) continue;
+    seen.add(key); html+=foodCard(it);
+  }
+  if(total){
+    html+='<div class="nutri-total"><div class="nt-label">'+tr().nutriTotal+'</div><div class="nt-grid">'+
+      (clip(total.p)?'<div class="nt-stat p"><div class="v">'+clip(total.p)+' '+L.u+'</div><div class="l">'+L.p+'</div></div>':'')+
+      (clip(total.c)?'<div class="nt-stat c"><div class="v">'+clip(total.c)+' '+L.u+'</div><div class="l">'+L.c+'</div></div>':'')+
+      (clip(total.f)?'<div class="nt-stat f"><div class="v">'+clip(total.f)+' '+L.u+'</div><div class="l">'+L.f+'</div></div>':'')+
+      (clip(total.k)?'<div class="nt-stat k"><div class="v">'+clip(total.k)+'</div><div class="l">'+L.k+'</div></div>':'')+
+      '</div></div>';
+  }
+  return html+'</div>';
+}
 function renderMarkdown(raw){
   const lines=raw.replace(/\r/g,'').split('\n');
   let html='',i=0,inCode=false,codeBuf=[];
@@ -1737,19 +1875,18 @@ function renderMarkdown(raw){
     }
     if(inCode){codeBuf.push(ln);i++;continue;}
     const t=ln.trim();
-    // table block
-    if(t.includes('|')&&!collapsedNutritionBlock(ln)&&i+1<lines.length&&/^[\s|:\-]+$/.test(lines[i+1].trim())&&lines[i+1].includes('-')){
-      const tb=[]; while(i<lines.length&&lines[i].includes('|')&&!collapsedNutritionBlock(lines[i])){tb.push(lines[i]);i++;}
+    // NUTRITION V4 — greedy, format-tolerant nutrition region (mixed formats → one coherent UI)
+    const nutriV4=nutritionStarts(lines,i)?nutritionScan(lines,i):null;
+    if(nutriV4){html+=nutriV4.html;i=nutriV4.next;continue;}
+    // table block (workout / generic; nutrition tables are handled by the scanner above)
+    if(t.includes('|')&&i+1<lines.length&&/^[\s|:\-]+$/.test(lines[i+1].trim())&&lines[i+1].includes('-')){
+      const tb=[]; while(i<lines.length&&lines[i].includes('|')){tb.push(lines[i]);i++;}
       const{header,body}=parseTable(tb); const kind=classifyTable(header);
       if(kind==='nutrition')html+=renderNutrition(header,body);
       else if(kind==='workout')html+=renderWorkout(header,body);
       else html+=renderGenericTable(header,body);
       continue;
     }
-    const nutritionBlock=t.includes('|')?separatorlessNutritionBlock(lines,i):null;
-    if(nutritionBlock){html+=renderNutrition(nutritionBlock.header,nutritionBlock.body);i=nutritionBlock.next;continue;}
-    const collapsedBlock=t.includes('|')?collapsedNutritionBlock(ln):null;
-    if(collapsedBlock){html+=renderNutrition(collapsedBlock.header,collapsedBlock.body);i++;continue;}
     // heading
     let mh=t.match(/^(#{1,4})\s+(.*)$/);
     if(mh){html+='<h'+mh[1].length+'>'+inlineMd(mh[2])+'</h'+mh[1].length+'>';i++;continue;}
@@ -1778,41 +1915,12 @@ function renderGenericTable(header,body){
 
 /* ── NUTRITION RENDERER — meal cards + macro badges + totals ── */
 function colIndex(header,res){return header.findIndex(c=>res.some(r=>r.test(c.toLowerCase())));}
+/* Adapter: an already-parsed table (header+body) → the V4 model → cards.
+   Column order is positional (name/food … P, C, F, kcal), same as the scanner. */
 function renderNutrition(header,body){
-  const iName=0;
-  const iQty=colIndex(header,[/количество|qty|amount|порция|grams|грам/]);
-  const iP=colIndex(header,[/протеин|protein/]);
-  const iC=colIndex(header,[/въглехидрат|carb/]);
-  const iF=colIndex(header,[/мазнини|fat/]);
-  const iK=colIndex(header,[/ккал|kcal|калории|cal/]);
-  const num=v=>(v||'').replace(/[^\d.,]/g,'');
-  // Full words + explicit unit, so a macro never reads as "grams of food to eat".
-  const L=(lang==='bg')
-    ?{p:'Белтъчини',c:'Въглехидрати',f:'Мазнини',k:'Калории',u:'г',cap:'Хранителна стойност'}
-    :{p:'Protein',c:'Carbs',f:'Fat',k:'Calories',u:'g',cap:'Nutrition value'};
-  let html='<div class="nutri">';let total=null;
-  body.forEach(r=>{
-    const name=r[iName]||''; if(!name)return;
-    const isTotal=/общо|total|сума|сумарно/i.test(name);
-    const badges=[];
-    if(iP>-1&&num(r[iP]))badges.push('<span class="macro p"><span class="mname">'+L.p+'</span><b>'+num(r[iP])+' '+L.u+'</b></span>');
-    if(iC>-1&&num(r[iC]))badges.push('<span class="macro c"><span class="mname">'+L.c+'</span><b>'+num(r[iC])+' '+L.u+'</b></span>');
-    if(iF>-1&&num(r[iF]))badges.push('<span class="macro f"><span class="mname">'+L.f+'</span><b>'+num(r[iF])+' '+L.u+'</b></span>');
-    if(iK>-1&&num(r[iK]))badges.push('<span class="macro k"><span class="mname">'+L.k+'</span><b>'+num(r[iK])+' kcal</b></span>');
-    if(isTotal){total={p:iP>-1?num(r[iP]):'',c:iC>-1?num(r[iC]):'',f:iF>-1?num(r[iF]):'',k:iK>-1?num(r[iK]):''};return;}
-    html+='<div class="nutri-meal"><div class="nm-head"><span class="nm-name">'+esc(name)+'</span>'+
-      (iQty>-1&&r[iQty]?'<span class="nm-qty">'+esc(r[iQty])+'</span>':'')+'</div>'+
-      (badges.length?'<div class="macros-cap">'+L.cap+'</div><div class="macros">'+badges.join('')+'</div>':'')+'</div>';
-  });
-  if(total){
-    html+='<div class="nutri-total"><div class="nt-label">'+tr().nutriTotal+'</div><div class="nt-grid">'+
-      (total.p?'<div class="nt-stat p"><div class="v">'+total.p+' '+L.u+'</div><div class="l">'+L.p+'</div></div>':'')+
-      (total.c?'<div class="nt-stat c"><div class="v">'+total.c+' '+L.u+'</div><div class="l">'+L.c+'</div></div>':'')+
-      (total.f?'<div class="nt-stat f"><div class="v">'+total.f+' '+L.u+'</div><div class="l">'+L.f+'</div></div>':'')+
-      (total.k?'<div class="nt-stat k"><div class="v">'+total.k+'</div><div class="l">'+L.k+'</div></div>':'')+
-      '</div></div>';
-  }
-  return html+'</div>';
+  const model=[];
+  (body||[]).forEach(r=>{ itemsFromCells(r).forEach(x=>model.push(x)); });
+  return renderNutritionModel(model);
 }
 
 /* ── WORKOUT RENDERER — exercise cards + start button ── */
