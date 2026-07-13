@@ -34,6 +34,7 @@ import db as store
 import personality
 import context_builder
 import decision_engine
+import nutrition_validation
 from recommend import architect as recommendation_architect, renderer as recommendation_renderer
 from brain.runtime_assets import expert_consensus, persona_matcher
 import athlete_store  # M0: Athlete Model substrate (failure-isolated observe wiring)
@@ -1520,53 +1521,19 @@ def _update_learning_engine(uid, user_msg, assistant_reply, current_profile):
             print(f"[learning] save_profile failed: {e}")
 
 
-_DAILY_NUTRITION_REQUEST = re.compile(
-    r"\b(?:daily|full[- ]day|complete menu|daily nutrition)\b|дневен|цял ден|пълно меню", re.IGNORECASE)
-_DAILY_TOTAL_LABEL = re.compile(r"^(?:daily\s+)?total$|^total\s+for\s+the\s+day$|^общо(?:\s+за\s+деня)?$", re.IGNORECASE)
-_MEAL_LABELS = (
-    ("breakfast", "закуска"),
-    ("lunch", "обяд"),
-    ("dinner", "вечеря"),
-)
-
-
-def _daily_nutrition_target(message, profile_block):
+def _daily_nutrition_target(message, profile_block, history=None):
     """Return the injected calorie target for an explicit full-day request."""
-    if not _DAILY_NUTRITION_REQUEST.search(str(message or "")):
+    if not nutrition_validation.is_full_day_request(message, history):
         return None
     match = re.search(r"(?:Calorie target|Калориен таргет):\s*([\d\s,]+)\s*(?:kcal|ккал)",
                       str(profile_block or ""), re.IGNORECASE)
     return int(re.sub(r"\D", "", match.group(1))) if match else 0
 
 
-def _declared_daily_calories(reply):
-    """Extract the final numeric cell from an explicit daily-total table row."""
-    text = str(reply or "")
-    if not re.search(r"ккал|kcal|калори", text, re.IGNORECASE):
+def _daily_nutrition_targets(message, profile_block, history=None):
+    if not nutrition_validation.is_full_day_request(message, history):
         return None
-    for line in text.splitlines():
-        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        if cells and _DAILY_TOTAL_LABEL.match(cells[0]):
-            for cell in reversed(cells[1:]):
-                numbers = re.findall(r"\d{2,5}", cell.replace(",", ""))
-                if numbers:
-                    return int(numbers[-1])
-    match = re.search(r"(?:daily\s+total|дневен\s+общо|общо\s+за\s+деня)\D{0,40}(\d{2,5})\s*(?:kcal|ккал)",
-                      text, re.IGNORECASE)
-    return int(match.group(1)) if match else None
-
-
-def _is_complete_daily_nutrition(reply, target):
-    """Validate an LLM-declared day plan without changing its content."""
-    if not target:
-        return False
-    text = str(reply or "")
-    for labels in _MEAL_LABELS:
-        if not any(re.search(r"(?:^|\||#\s*)\s*" + re.escape(label) + r"\b", text,
-                             re.IGNORECASE | re.MULTILINE) for label in labels):
-            return False
-    total = _declared_daily_calories(text)
-    return total is not None and abs(total - target) <= target * 0.10
+    return nutrition_validation.targets_from_profile_block(profile_block)
 
 
 def _shadow_recommendation(snapshot, decision, profile):
@@ -1802,8 +1769,12 @@ def chat():
             base = (profile_block + "\n\n" + SYSTEM_INSTRUCTIONS) if profile_block else SYSTEM_INSTRUCTIONS
             system_content = (personality_block + "\n\n" + base) if personality_block else base
 
-        nutrition_delivery_target = (_daily_nutrition_target(user_message, profile_block)
-                                     if not is_first_contact else None)
+        nutrition_delivery_targets = (_daily_nutrition_targets(user_message, profile_block, history)
+                                      if not is_first_contact else None)
+        nutrition_delivery_target = (int(nutrition_delivery_targets.kcal)
+                                     if nutrition_delivery_targets is not None else None)
+        if nutrition_delivery_targets is not None:
+            system_content = system_content + "\n\n" + nutrition_validation.generation_contract(nutrition_delivery_targets)
         if _recommendation_blueprint is not None:
             system_content = recommendation_renderer.render_prompt(_recommendation_blueprint)
 
@@ -2038,9 +2009,29 @@ def chat():
                                                            "recommendation_integrity_contract", (), 1.0), lang)
                     yield sse({"t": reply_text})
                 elif nutrition_delivery_target is not None:
-                    if not _is_complete_daily_nutrition(reply_text, nutrition_delivery_target):
-                        reply_text = decision_engine.controlled_response(
-                            decision_engine.DecisionResult("clarify", "nutrition", "nutrition_delivery_contract", (), 1.0), lang)
+                    validation = nutrition_validation.validate_daily_nutrition(reply_text, nutrition_delivery_targets)
+                    if not validation.valid:
+                        regenerated = []
+                        try:
+                            regeneration_messages = messages + [{"role": "user", "content": "\n".join(validation.failures)}]
+                            regeneration = client.chat.completions.create(
+                                model=model_to_use,
+                                messages=regeneration_messages,
+                                max_tokens=max_tokens,
+                                stream=True,
+                            )
+                            for chunk in regeneration:
+                                delta = chunk.choices[0].delta.content if chunk.choices and chunk.choices[0].delta else None
+                                if delta:
+                                    regenerated.append(delta)
+                            regenerated_reply = "".join(regenerated)
+                            if nutrition_validation.validate_daily_nutrition(regenerated_reply, nutrition_delivery_targets).valid:
+                                reply_text = regenerated_reply
+                            else:
+                                reply_text = nutrition_validation.failure_message(lang)
+                        except Exception as regeneration_error:
+                            print(f"[chat] nutrition regeneration failed: {regeneration_error}")
+                            reply_text = nutrition_validation.failure_message(lang)
                     yield sse({"t": reply_text})
                 _persist_reply(reply_text)
                 _update_learning_engine(chat_uid, user_message, reply_text, profile)
@@ -2060,6 +2051,16 @@ def chat():
                     yield sse({"done": True})
             except Exception as openai_error:
                 print(f"[chat] OpenAI error: {openai_error}")
+                if nutrition_delivery_targets is not None:
+                    reply_text = nutrition_validation.failure_message(lang)
+                    yield sse({"t": reply_text})
+                    _persist_reply(reply_text)
+                    _update_learning_engine(chat_uid, user_message, reply_text, profile)
+                    _shadow_log()
+                    _log_analytics(_t_start)
+                    _ingest_state()
+                    yield sse({"done": True})
+                    return
                 if full:
                     # Потребителят вече получи почти всичко — завършваме чисто
                     _bump_plans_today()
@@ -2077,9 +2078,7 @@ def chat():
                                                                "recommendation_integrity_contract", (), 1.0), lang)
                         yield sse({"t": reply_text})
                     elif nutrition_delivery_target is not None:
-                        if not _is_complete_daily_nutrition(reply_text, nutrition_delivery_target):
-                            reply_text = decision_engine.controlled_response(
-                                decision_engine.DecisionResult("clarify", "nutrition", "nutrition_delivery_contract", (), 1.0), lang)
+                        reply_text = nutrition_validation.failure_message(lang)
                         yield sse({"t": reply_text})
                     _persist_reply(reply_text)
                     _update_learning_engine(chat_uid, user_message, reply_text, profile)

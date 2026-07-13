@@ -17,6 +17,7 @@ import os
 import json
 import types
 from dataclasses import FrozenInstanceError, replace
+from decimal import Decimal
 import pytest
 
 import app as appmod
@@ -28,6 +29,7 @@ from context_builder import LockedPreferences, Subject, build_context
 from brain.runtime_assets import expert_consensus, persona_matcher
 from brain.runtime_assets.expert_rules import ExpertRulePack, load_expert_rule_packs
 from brain.runtime_assets.personas import load_runtime_personas
+from nutrition_validation import NutritionTargets, validate_daily_nutrition
 from brain.types import (Decision, Verdict, Intervention, S2State, ConstraintSet,
                          Constraint, ConstraintTier, CapacityEnvelope)
 from datetime import datetime, timedelta, timezone
@@ -1050,38 +1052,169 @@ def test_first_contact_does_not_compute_b2_controlled_response(client, monkeypat
     assert calls == []
 
 
-def _daily_plan(total=2800, meals=("Breakfast", "Lunch", "Dinner")):
-    rows = ["| Meal | Quantity | Protein | Carbs | Fat | Kcal |",
-            "| --- | --- | --- | --- | --- | --- |"]
-    rows.extend(f"| {meal} | food | 30 | 70 | 20 | 700 |" for meal in meals)
-    rows.append(f"| Total | | 120 | 280 | 80 | {total} |")
-    return "\n".join(rows)
+_NUTRITION_TARGETS = NutritionTargets(Decimal("2800"), Decimal("175"), Decimal("350"), Decimal("78"))
+_NUTRITION_ROWS = [
+    ("Breakfast", "Eggs and oats", "1 serving", "40", "100", "20", "700"),
+    ("Lunch", "Chicken and rice", "1 serving", "70", "140", "30", "1100"),
+    ("Dinner", "Salmon and potatoes", "1 serving", "65", "110", "28", "1000"),
+]
 
 
-@pytest.mark.parametrize("target", [2800, 2500])
-def test_daily_nutrition_contract_accepts_total_within_ten_percent(target):
-    profile_block = f"Calorie target: {target} kcal"
-    assert appmod._is_complete_daily_nutrition(_daily_plan(target), target)
-    assert appmod._daily_nutrition_target("give me a full-day nutrition plan", profile_block) == target
+def _daily_plan(rows=None, totals=("175", "350", "78", "2800"), include_total=True):
+    rows = rows or _NUTRITION_ROWS
+    output = ["| Meal | Food | Quantity | Protein (g) | Carbs (g) | Fat (g) | Kcal |",
+              "| --- | --- | --- | --- | --- | --- | --- |"]
+    output.extend("| " + " | ".join(row) + " |" for row in rows)
+    if include_total:
+        output.append("| Daily Total | | | " + " | ".join(totals) + " |")
+    return "\n".join(output)
 
 
-@pytest.mark.parametrize("reply", [
-    _daily_plan(1600),
-    _daily_plan(2800, ("Breakfast", "Dinner")),
-    _daily_plan(2800, ("Breakfast", "Lunch")),
-    "Breakfast, lunch, and dinner are included, but no daily calories are declared.",
+def _failures(reply):
+    return validate_daily_nutrition(reply, _NUTRITION_TARGETS).failures
+
+
+def test_daily_nutrition_validator_accepts_complete_target_matched_plan():
+    result = validate_daily_nutrition(_daily_plan(), _NUTRITION_TARGETS)
+    derived = appmod.nutrition_validation.targets_from_profile_block(
+        "Calorie target: 2800 kcal\nProtein target: minimum 175g/day")
+
+    assert result.valid is True
+    assert result.failures == ()
+    assert derived == NutritionTargets(Decimal("2800"), Decimal("175"), None, None)
+    assert appmod._daily_nutrition_target("give me a full-day nutrition plan", "Calorie target: 2800 kcal") == 2800
+
+
+@pytest.mark.parametrize("rows,totals,expected", [
+    (_NUTRITION_ROWS[:-1], ("110", "240", "50", "1800"), "Missing dinner."),
+    ((_NUTRITION_ROWS[0], _NUTRITION_ROWS[2]), ("105", "210", "48", "1700"), "Missing lunch."),
+    ((_NUTRITION_ROWS[1], _NUTRITION_ROWS[2]), ("135", "250", "58", "2100"), "Missing breakfast."),
+    ((_NUTRITION_ROWS[0], _NUTRITION_ROWS[1], ("Breakfast", "Toast", "1 serving", "5", "10", "2", "100"), _NUTRITION_ROWS[2]), ("180", "360", "80", "2900"), "Duplicate meal: breakfast."),
+    ((_NUTRITION_ROWS[1], _NUTRITION_ROWS[0], _NUTRITION_ROWS[2]), ("175", "350", "78", "2800"), "Meals are not in chronological order."),
 ])
-def test_daily_nutrition_contract_rejects_incomplete_or_under_target_plan(reply):
-    assert not appmod._is_complete_daily_nutrition(reply, 2800)
+def test_daily_nutrition_validator_rejects_missing_duplicate_or_out_of_order_meals(rows, totals, expected):
+    assert expected in _failures(_daily_plan(rows, totals))
 
 
-def test_daily_nutrition_contract_delivers_controlled_clarification(client, captured, monkeypatch):
-    monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: "Calorie target: 2800 kcal")
-    _set_stream(monkeypatch, captured, _daily_plan(1600))
+def test_daily_nutrition_validator_accepts_chronological_snacks():
+    rows = [
+        ("Breakfast", "Eggs and oats", "1 serving", "40", "100", "20", "700"),
+        ("Snack", "Yogurt", "1 serving", "10", "20", "5", "200"),
+        ("Lunch", "Chicken and rice", "1 serving", "60", "120", "28", "1000"),
+        ("Snack", "Fruit", "1 serving", "5", "10", "3", "100"),
+        ("Dinner", "Salmon and potatoes", "1 serving", "60", "100", "22", "800"),
+    ]
+
+    assert validate_daily_nutrition(_daily_plan(rows), _NUTRITION_TARGETS).valid is True
+
+
+@pytest.mark.parametrize("rows,totals,expected", [
+    ((_NUTRITION_ROWS[0], _NUTRITION_ROWS[1], ("Dinner", "Salmon and potatoes", "1 serving", "65", "110", "28", "700")), ("175", "350", "78", "2500"), "Calories outside 5% of target."),
+    ((_NUTRITION_ROWS[0], _NUTRITION_ROWS[1], ("Dinner", "Salmon and potatoes", "1 serving", "65", "110", "28", "1300")), ("175", "350", "78", "3100"), "Calories outside 5% of target."),
+    ((("Breakfast", "Eggs and oats", "1 serving", "20", "100", "20", "700"), ("Lunch", "Chicken and rice", "1 serving", "60", "140", "30", "1100"), ("Dinner", "Salmon and potatoes", "1 serving", "70", "110", "28", "1000")), ("150", "350", "78", "2800"), "Protein outside 5% of target."),
+    ((("Breakfast", "Eggs and oats", "1 serving", "40", "80", "20", "700"), ("Lunch", "Chicken and rice", "1 serving", "70", "120", "30", "1100"), ("Dinner", "Salmon and potatoes", "1 serving", "65", "100", "28", "1000")), ("175", "300", "78", "2800"), "Carbs outside 5% of target."),
+    ((("Breakfast", "Eggs and oats", "1 serving", "40", "100", "15", "700"), ("Lunch", "Chicken and rice", "1 serving", "70", "140", "25", "1100"), ("Dinner", "Salmon and potatoes", "1 serving", "65", "110", "20", "1000")), ("175", "350", "60", "2800"), "Fat outside 5% of target."),
+])
+def test_daily_nutrition_validator_rejects_targets_outside_five_percent(rows, totals, expected):
+    assert expected in _failures(_daily_plan(rows, totals))
+
+
+def test_daily_nutrition_validator_rejects_missing_or_inconsistent_totals():
+    assert "Missing daily totals." in _failures(_daily_plan(include_total=False))
+    assert "Daily kcal total does not equal meal totals." in _failures(_daily_plan(totals=("175", "350", "78", "2700")))
+
+
+@pytest.mark.parametrize("row,expected", [
+    (("Breakfast", "Eggs and oats", "", "40", "100", "20", "700"), "Breakfast has a food without quantity."),
+    (("Breakfast", "Eggs and oats", "1 serving", "", "100", "20", "700"), "Breakfast has a food without protein."),
+    (("Breakfast", "Eggs and oats", "1 serving", "40", "", "20", "700"), "Breakfast has a food without carbs."),
+    (("Breakfast", "Eggs and oats", "1 serving", "40", "100", "", "700"), "Breakfast has a food without fat."),
+    (("Breakfast", "Eggs and oats", "1 serving", "40", "100", "20", ""), "Breakfast has a food without kcal."),
+    (("Breakfast", "", "1 serving", "40", "100", "20", "700"), "Breakfast has a food without a name."),
+])
+def test_daily_nutrition_validator_requires_complete_food_rows(row, expected):
+    rows = (row, _NUTRITION_ROWS[1], _NUTRITION_ROWS[2])
+    assert expected in _failures(_daily_plan(rows))
+
+
+def test_daily_nutrition_validator_rejects_prohibited_completion_guidance():
+    reply = _daily_plan() + "\nYou can add more food if you are hungry."
+
+    assert "Plan includes prohibited completion guidance." in _failures(reply)
+
+
+def test_daily_nutrition_validator_accepts_bulgarian_headers_and_meals():
+    reply = "\n".join([
+        "| Хранене | Храна | Количество | Белтъчини | Въглехидрати | Мазнини | Ккал |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
+        "| Закуска | Яйца и овес | 1 порция | 40 | 100 | 20 | 700 |",
+        "| Обяд | Пиле и ориз | 1 порция | 70 | 140 | 30 | 1100 |",
+        "| Вечеря | Сьомга и картофи | 1 порция | 65 | 110 | 28 | 1000 |",
+        "| Общо | | | 175 | 350 | 78 | 2800 |",
+    ])
+
+    assert validate_daily_nutrition(reply, _NUTRITION_TARGETS).valid is True
+
+
+def _set_sequence_stream(monkeypatch, captured, replies):
+    calls = []
+    queue = iter(replies)
+
+    def fake_create(**kwargs):
+        calls.append(kwargs)
+        captured["system"] = kwargs["messages"][0]["content"]
+        captured["messages"] = kwargs["messages"]
+        reply = next(queue)
+        return iter([_Chunk(reply)])
+
+    monkeypatch.setattr(appmod.client.chat.completions, "create", fake_create)
+    return calls
+
+
+def test_daily_nutrition_contract_regenerates_once_and_delivers_only_corrected_plan(client, captured, monkeypatch):
+    profile_block = "Calorie target: 2800 kcal\nProtein target: minimum 175g/day"
+    invalid = _daily_plan(totals=("175", "350", "78", "2500"))
+    valid = _daily_plan()
+    monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: profile_block)
+    calls = _set_sequence_stream(monkeypatch, captured, [invalid, valid])
+
+    response = _post(client, "Give me a full-day nutrition plan", profile=_profile())
+
+    assert _events(response) == [{"t": valid}, {"done": True}]
+    assert len(calls) == 2
+    assert invalid not in calls[1]["messages"][-1]["content"]
+    assert calls[1]["messages"][-1]["content"] == "Daily kcal total does not equal meal totals.\nCalories outside 5% of target."
+
+
+def test_daily_nutrition_contract_fails_closed_after_one_invalid_regeneration(client, captured, monkeypatch):
+    profile_block = "Calorie target: 2800 kcal\nProtein target: minimum 175g/day"
+    invalid = _daily_plan(totals=("175", "350", "78", "2500"))
+    monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: profile_block)
+    calls = _set_sequence_stream(monkeypatch, captured, [invalid, invalid])
+
     response = _post(client, "Give me a full-day nutrition plan", profile=_profile())
     events = _events(response)
 
-    assert events == [{"t": "I couldn't generate a complete nutrition plan that matches your current calorie target. I'll regenerate it."}, {"done": True}]
+    assert events == [{"t": "Unable to generate a nutritionally complete plan.\nPlease try again."}, {"done": True}]
+    assert len(calls) == 2
+    assert invalid not in events[0]["t"]
+
+
+def test_daily_nutrition_contract_never_persists_rejected_plan(client, captured, monkeypatch):
+    profile_block = "Calorie target: 2800 kcal\nProtein target: minimum 175g/day"
+    invalid = _daily_plan(totals=("175", "350", "78", "2500"))
+    uid = _login_for_chat(client, _profile())
+    monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: profile_block)
+    _set_sequence_stream(monkeypatch, captured, [invalid, invalid])
+
+    response = _post(client, "Give me a full-day nutrition plan")
+    response.get_data()
+
+    saved = store.list_conversation(uid, limit=10)
+    assert [turn["content"] for turn in saved] == [
+        "Give me a full-day nutrition plan",
+        "Unable to generate a nutritionally complete plan.\nPlease try again.",
+    ]
 
 
 @pytest.mark.parametrize("message", ["give me a strength workout", "how much water should I drink?"])
@@ -1089,3 +1222,131 @@ def test_daily_nutrition_contract_does_not_affect_non_daily_responses(client, ca
     response = _post(client, message, profile=_profile())
     assert captured["messages"][-1] == {"role": "user", "content": message}
     assert any(event.get("t") == "ok" for event in _events(response))
+
+
+def test_nutrition_targets_only_use_explicit_profile_authority():
+    calorie_only = appmod.nutrition_validation.targets_from_profile_block("Calorie target: 2800 kcal")
+    calorie_protein = appmod.nutrition_validation.targets_from_profile_block(
+        "Calorie target: 2800 kcal\nProtein target: minimum 175g/day")
+    explicit_macros = appmod.nutrition_validation.targets_from_profile_block(
+        "Calorie target: 2800 kcal\nProtein target: minimum 175g/day\n"
+        "Carbohydrate target: 350g\nFat target: 78g")
+
+    assert calorie_only == NutritionTargets(Decimal("2800"), None, None, None)
+    assert calorie_protein == NutritionTargets(Decimal("2800"), Decimal("175"), None, None)
+    assert explicit_macros == _NUTRITION_TARGETS
+
+
+def test_missing_macro_targets_do_not_create_macro_validation_requirements():
+    rows = [
+        ("Breakfast", "Eggs and oats", "1 serving", "40", "80", "15", "700"),
+        ("Lunch", "Chicken and rice", "1 serving", "70", "90", "20", "1100"),
+        ("Dinner", "Salmon and potatoes", "1 serving", "65", "70", "10", "1000"),
+    ]
+    plan = _daily_plan(rows, totals=("175", "240", "45", "2800"))
+
+    assert validate_daily_nutrition(plan, NutritionTargets(Decimal("2800"))).valid is True
+    assert validate_daily_nutrition(plan, NutritionTargets(Decimal("2800"), Decimal("175"))).valid is True
+
+
+def test_nutrition_validator_accepts_display_rounding_and_decimal_comma():
+    rounded_rows = [
+        ("Breakfast", "Eggs and oats", "1 serving", "40.4", "100", "20", "700"),
+        _NUTRITION_ROWS[1], _NUTRITION_ROWS[2],
+    ]
+    assert validate_daily_nutrition(_daily_plan(rounded_rows), _NUTRITION_TARGETS).valid is True
+    assert validate_daily_nutrition(_daily_plan(totals=("175", "350", "78", "2809")), _NUTRITION_TARGETS).valid is True
+
+    comma = _daily_plan().replace("40 | 100 | 20 | 700", "40,0 | 100,0 | 20,0 | 700,0")
+    assert validate_daily_nutrition(comma, _NUTRITION_TARGETS).valid is True
+    assert "Daily kcal total does not equal meal totals." in _failures(_daily_plan(totals=("175", "350", "78", "2760")))
+
+    display_rounding = _daily_plan([
+        ("Breakfast", "Food A", "100 g", "40.4", "100", "20", "700"),
+        ("Lunch", "Food B", "100 g", "40", "100", "20", "800"),
+        ("Dinner", "Food C", "100 g", "30", "80", "10", "759"),
+    ], totals=("110", "280", "50", "2261"))
+    assert validate_daily_nutrition(display_rounding, NutritionTargets(Decimal("2260"))).valid is True
+
+
+@pytest.mark.parametrize("plan", [
+    "\n".join([
+        "**Breakfast**", "| Food | Protein | Carbs | Fat | Kcal |", "| Oats 100 g | 40 | 100 | 20 | 700 |",
+        "**Lunch**", "| Chicken rice 100 g | 70 | 140 | 30 | 1100 |",
+        "**Dinner**", "| Salmon potato 100 g | 65 | 110 | 28 | 1000 |",
+        "| Daily Total | 175 | 350 | 78 | 2800 |",
+    ]),
+    "\n".join([
+        "Breakfast", "| Food | Quantity | Protein | Carbs | Fat | Kcal |", "| Oats | 100 g | 40 | 100 | 20 | 700 |",
+        "Lunch", "| Chicken rice | 100 g | 70 | 140 | 30 | 1100 |",
+        "Dinner", "| Salmon potato | 100 g | 65 | 110 | 28 | 1000 |",
+        "| Daily Total | | 175 | 350 | 78 | 2800 |",
+    ]),
+    "\n".join([
+        "| Breakfast: | | | | Oats | 100 g | 40 | 100 | 20 | 700 |",
+        "| Обяд: | | | | Chicken rice | 100 g | 70 | 140 | 30 | 1100 |",
+        "| Dinner: | | | | Salmon potato | 100 g | 65 | 110 | 28 | 1000 |",
+        "| Общо | | | 175 | 350 | 78 | 2800 |",
+    ]),
+    "\n".join([
+        "**Закуска**", "Oats — 100 г, 40 g protein, 100 carbs, 20 fat, 700 kcal",
+        "Lunch", "| Chicken rice | 100 g | 70 | 140 | 30 | 1100 |",
+        "**Вечеря**", "Salmon potato — 100 g, 65 g protein, 110 carbs, 28 fat, 1000 kcal",
+        "Общо: 175 350 78 2800",
+    ]),
+])
+def test_nutrition_validator_parses_renderer_v4_plan_formats(plan):
+    assert validate_daily_nutrition(plan, _NUTRITION_TARGETS).valid is True
+
+
+def test_nutrition_validator_accepts_one_total_in_middle_and_rejects_conflicting_duplicates():
+    middle = "\n".join([
+        "Breakfast", "| Oats | 100 g | 40 | 100 | 20 | 700 |",
+        "| Daily Total | | | 175 | 350 | 78 | 2800 |",
+        "Lunch", "| Chicken rice | 100 g | 70 | 140 | 30 | 1100 |",
+        "Dinner", "| Salmon potato | 100 g | 65 | 110 | 28 | 1000 |",
+    ])
+    duplicate = middle + "\n| Total | | | 175 | 350 | 78 | 2700 |"
+    assert validate_daily_nutrition(middle, _NUTRITION_TARGETS).valid is True
+    assert "Duplicate daily totals." in _failures(duplicate)
+
+
+@pytest.mark.parametrize("message", [
+    "хранителен план за деня", "дневен хранителен план", "дневен хранителен режим",
+    "меню за днес", "хранителен режим", "искам хранителен режим",
+    "друг хранителен режим", "алтернативен хранителен план", "алтернативно дневно меню",
+    "пълен хранителен план", "meal plan for today", "daily meal plan", "full-day meal plan",
+    "full day meal plan", "meal menu for today", "nutrition plan for today", "alternative meal plan",
+    "alternative daily menu", "complete daily meal plan",
+])
+def test_full_day_request_detection_recognizes_required_direct_phrases(message):
+    assert appmod.nutrition_validation.is_full_day_request(message) is True
+
+
+@pytest.mark.parametrize("message", ["закуска", "идея за обяд", "рецепта", "breakfast only", "lunch suggestion", "dinner recipe"])
+def test_single_meal_requests_bypass_full_day_validation(message):
+    assert appmod.nutrition_validation.is_full_day_request(message) is False
+
+
+def test_contextual_replacement_requests_require_immediate_nutrition_context():
+    history = [{"role": "assistant", "content": "Your daily nutrition plan is 2800 kcal."}]
+    assert appmod.nutrition_validation.is_full_day_request("искам друг хранителен режим", history) is True
+    assert appmod.nutrition_validation.is_full_day_request("another meal plan", history) is True
+    assert appmod.nutrition_validation.is_full_day_request("another meal plan", []) is False
+
+
+def test_daily_nutrition_contract_accounts_for_one_request_and_localizes_failure(client, captured, monkeypatch):
+    invalid = _daily_plan(totals=("175", "350", "78", "2500"))
+    profile_block = "Калориен таргет: 2800 ккал\nПротеин таргет: минимум 175г/ден"
+    free_calls, plan_calls = [], []
+    monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: profile_block)
+    monkeypatch.setattr(store, "free_usage_consume", lambda *args: free_calls.append(args) or {"allowed": True})
+    monkeypatch.setattr(appmod, "_bump_plans_today", lambda: plan_calls.append(True))
+    calls = _set_sequence_stream(monkeypatch, captured, [invalid, invalid])
+
+    response = client.post("/chat", json={"message": "пълен хранителен план", "lang": "bg", "profile": _profile()})
+
+    assert _events(response) == [{"t": "Не успях да създам пълен хранителен план, който отговаря на текущите ти цели. Моля, опитай отново."}, {"done": True}]
+    assert len(calls) == 2
+    assert len(free_calls) == 1
+    assert len(plan_calls) == 1
