@@ -35,6 +35,7 @@ import personality
 import context_builder
 import decision_engine
 from recommend import architect as recommendation_architect, renderer as recommendation_renderer
+from brain.runtime_assets import expert_consensus, persona_matcher
 import athlete_store  # M0: Athlete Model substrate (failure-isolated observe wiring)
 import brain.config as brain_config             # M1: Brain shadow flags (default OFF)
 import brain.ledger as brain_ledger             # M1: shadow decision ledger
@@ -1597,6 +1598,21 @@ def _recommendation_engine_active():
     return os.getenv("RECOMMENDATION_ENGINE_ACTIVE", "false").strip().lower() == "true"
 
 
+def _shadow_feature_enabled(name):
+    return os.getenv(name, "false").strip().lower() == "true"
+
+
+def _shadow_persona_expert(snapshot, decision):
+    """Run detached archetype/rule analysis only; it never changes chat delivery."""
+    matcher_enabled = _shadow_feature_enabled("PERSONA_MATCHER_SHADOW")
+    consensus_enabled = _shadow_feature_enabled("EXPERT_CONSENSUS_SHADOW")
+    if decision.outcome != "recommend" or not (matcher_enabled or consensus_enabled):
+        return None, None
+    match = persona_matcher.match(snapshot, decision.intent)
+    consensus = expert_consensus.evaluate(snapshot, match, decision.intent) if consensus_enabled else None
+    return (match if matcher_enabled else None), consensus
+
+
 @app.route("/chat", methods=["POST"])
 def chat():
     try:
@@ -1702,6 +1718,7 @@ def chat():
                 history = _legacy["history"]
             pers_workouts = _legacy["workouts"]
             _shadow_decision = decision_engine.decide(_snapshot, _shadow_intent)
+            _shadow_persona_match, _shadow_expert_consensus = _shadow_persona_expert(_snapshot, _shadow_decision)
             if _recommendation_engine_active() and _shadow_decision.outcome == "recommend":
                 _recommendation_blueprint = _shadow_recommendation(_snapshot, _shadow_decision, profile)
             _controlled_reply = decision_engine.controlled_response(_shadow_decision, lang)

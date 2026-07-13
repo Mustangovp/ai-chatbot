@@ -158,8 +158,10 @@ def test_expert_rule_validation_fails_closed_for_duplicate_missing_or_unresolved
         validate_expert_rule_packs((replace(packs[0], rules=(unresolved, *packs[0].rules[1:])), *packs[1:]))
 
 
-def test_runtime_assets_remain_detached_from_production_execution_modules():
-    for filename in ("app.py", "decision_engine.py"):
+def test_runtime_assets_are_limited_to_the_approved_shadow_boundary():
+    app_source = (_ROOT / "app.py").read_text(encoding="utf-8")
+    assert "persona_matcher" in app_source and "expert_consensus" in app_source
+    for filename in ("decision_engine.py", "recommend/architect.py"):
         source = (_ROOT / filename).read_text(encoding="utf-8")
         assert "runtime_assets" not in source
     assert EXPERT_RULE_PACK_VERSION == "expert-rule-packs-v1"

@@ -16,7 +16,7 @@ WIRING for a permitted-but-constrained decision is exercised end-to-end.
 import os
 import json
 import types
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
 import pytest
 
 import app as appmod
@@ -25,6 +25,9 @@ import decision_engine
 from recommend import diversity as recommendation_diversity
 from recommend.blueprint import NutritionBlueprint, WorkoutBlueprint, to_dict
 from context_builder import LockedPreferences, Subject, build_context
+from brain.runtime_assets import expert_consensus, persona_matcher
+from brain.runtime_assets.expert_rules import ExpertRulePack, load_expert_rule_packs
+from brain.runtime_assets.personas import load_runtime_personas
 from brain.types import (Decision, Verdict, Intervention, S2State, ConstraintSet,
                          Constraint, ConstraintTier, CapacityEnvelope)
 from datetime import datetime, timedelta, timezone
@@ -65,6 +68,8 @@ def client():
 def _enforce_off_by_default(monkeypatch):
     monkeypatch.delenv("BRAIN_ENFORCE", raising=False)        # default OFF for every test
     monkeypatch.delenv("RECOMMENDATION_ENGINE_ACTIVE", raising=False)
+    monkeypatch.delenv("PERSONA_MATCHER_SHADOW", raising=False)
+    monkeypatch.delenv("EXPERT_CONSENSUS_SHADOW", raising=False)
     yield
 
 
@@ -815,6 +820,175 @@ def test_active_recommendation_engine_does_not_run_for_non_recommend_outcomes(cl
     assert calls == []
     if "messages" in captured:
         assert "BLUEPRINT (render exactly, do not alter values)" not in captured["system"]
+
+
+# Persona and expert assets are observational only. These tests exercise their
+# pure contracts and prove their shadow invocation cannot influence /chat.
+def _shadow_snapshot(*, intent="workout", profile=None, locked=None, explicit=None, history=None):
+    return build_context(
+        intent=intent,
+        subject=_device("persona-shadow"),
+        request_time=_NOW,
+        browser_profile=profile if profile is not None else _profile(),
+        locked_preferences=locked,
+        explicit_facts=explicit,
+        recommendation_history=history,
+    )
+
+
+def test_persona_matcher_is_deterministic_for_beginner_and_advanced_contexts():
+    beginner = _shadow_snapshot(profile=_profile(level="beginner", goal="strength"))
+    advanced = _shadow_snapshot(profile={"level": "advanced", "goal": "strength"})
+
+    beginner_result = persona_matcher.match(beginner, "workout")
+    assert beginner_result == persona_matcher.match(beginner, "workout")
+    assert beginner_result.primary_persona_id == "P-067"
+    assert beginner_result.abstained is False
+
+    advanced_result = persona_matcher.match(advanced, "workout")
+    assert advanced_result.abstained is False
+    assert advanced_result.primary_persona_id is not None
+    assert "athletes_advanced" in next(persona.cluster for persona in load_runtime_personas()
+                                        if persona.id == advanced_result.primary_persona_id)
+
+
+@pytest.mark.parametrize("profile,locked,expected_abstention", [
+    ({"injuries": "knee pain"}, None, True),
+    (_profile(equipment="home"), None, False),
+    ({"age": 69}, None, True),
+    ({}, LockedPreferences(dietary=("vegetarian",), allergies=("peanuts",)), True),
+    ({}, None, True),
+    ({"sleepQuality": "poor", "stressLevel": "high", "recoveryFeel": "tired"}, None, False),
+])
+def test_persona_matcher_handles_injury_home_older_locked_budget_and_recovery(profile, locked, expected_abstention):
+    explicit = {"budget": "low"} if profile == {} and locked is None else None
+    result = persona_matcher.match(_shadow_snapshot(profile=profile, locked=locked, explicit=explicit), "workout")
+    assert result.abstained is expected_abstention
+    if locked:
+        assert "locked:allergies" in result.evidence_refs
+
+
+def test_persona_matcher_abstains_after_a_long_break_without_source_backed_similarity():
+    snapshot = _shadow_snapshot(profile={}, history=[{"date": "2024-01-01", "kind": "workout"}])
+    result = persona_matcher.match(snapshot, "workout")
+    assert result.abstained is True
+    assert result.primary_persona_id is None
+
+
+def test_explicit_facts_and_locked_preferences_never_be_overridden_by_persona_matching():
+    snapshot = _shadow_snapshot(profile=_profile(level="beginner"),
+                                locked=LockedPreferences(dietary=("vegan",), allergies=("soy",)),
+                                explicit={"level": "advanced"})
+    result = persona_matcher.match(snapshot, "workout")
+    assert result.primary_persona_id != "P-067"
+    assert "locked:dietary" in result.evidence_refs
+    assert "locked:allergies" in result.evidence_refs
+
+
+def test_locked_preferences_remain_authoritative_during_nutrition_consensus():
+    locked = LockedPreferences(dietary=("vegan",), allergies=("soy",))
+    snapshot = _shadow_snapshot(intent="nutrition", profile={"goal": "fat_loss"}, locked=locked)
+    result = expert_consensus.evaluate(snapshot, persona_matcher.match(snapshot, "nutrition"), "nutrition")
+    assert snapshot.locked_preferences == locked
+    assert result.applicable_rule_ids == ()
+    assert result.abstained is True
+
+
+def test_expert_consensus_uses_only_ready_rules_and_never_activates_unresolved_rules():
+    snapshot = _shadow_snapshot(profile=_profile(level="beginner", injuries="knee pain", stressLevel="high"))
+    match = persona_matcher.match(snapshot, "workout")
+    result = expert_consensus.evaluate(snapshot, match, "workout")
+    packs = load_expert_rule_packs()
+    unresolved = {rule.rule_id for pack in packs for rule in pack.rules if not rule.runtime_ready}
+
+    assert set(result.unresolved_rule_ids) == unresolved
+    assert not (set(result.applicable_rule_ids) & unresolved)
+    assert "MCG-001" in result.applicable_rule_ids
+
+
+def test_expert_consensus_conflicts_and_safety_are_resolved_deterministically():
+    snapshot = _shadow_snapshot(profile=_profile(level="beginner", injuries="knee pain"))
+    match = persona_matcher.match(snapshot, "workout")
+    packs = list(load_expert_rule_packs())
+    mcg = packs[2].rules[0]
+    winkelman = replace(packs[6].rules[0], conflict_group=mcg.conflict_group)
+    packs[6] = ExpertRulePack(packs[6].lineage, packs[6].version, (winkelman, *packs[6].rules[1:]))
+    conflict = expert_consensus.evaluate(snapshot, match, "workout", packs=tuple(packs))
+    assert mcg.rule_id in conflict.applicable_rule_ids
+    assert winkelman.rule_id in conflict.rejected_rule_ids
+    assert mcg.conflict_group in conflict.conflict_groups
+
+    safety = _shadow_snapshot(profile=_profile(), explicit={"red_flag": True})
+    blocked = expert_consensus.evaluate(safety, persona_matcher.match(safety, "workout"), "workout")
+    assert blocked.abstained is True
+    assert blocked.applicable_rule_ids == ()
+
+
+def test_persona_and_expert_shadow_flags_preserve_prompt_sse_and_persistence(client, captured, monkeypatch):
+    profile = _profile(level="beginner")
+    expected = _legacy_messages(profile, [], [], "build a workout", 12)
+    matcher_calls, consensus_calls = [], []
+    original_match = appmod.persona_matcher.match
+    original_consensus = appmod.expert_consensus.evaluate
+    monkeypatch.setenv("PERSONA_MATCHER_SHADOW", "true")
+    monkeypatch.setenv("EXPERT_CONSENSUS_SHADOW", "true")
+    monkeypatch.setattr(appmod.persona_matcher, "match", lambda *args, **kwargs:
+                        (matcher_calls.append(args), original_match(*args, **kwargs))[1])
+    monkeypatch.setattr(appmod.expert_consensus, "evaluate", lambda *args, **kwargs:
+                        (consensus_calls.append(args), original_consensus(*args, **kwargs))[1])
+
+    response = _post(client, "build a workout", profile=profile)
+    assert len(matcher_calls) == len(consensus_calls) == 1
+    assert captured["messages"] == expected
+    assert _events(response) == [{"t": "ok"}, {"done": True}]
+
+
+def test_persona_and_expert_shadow_do_not_add_persistence_writes(client, captured, monkeypatch):
+    profile = _profile(level="beginner")
+    uid = _login_for_chat(client, profile)
+    monkeypatch.setenv("PERSONA_MATCHER_SHADOW", "true")
+    monkeypatch.setenv("EXPERT_CONSENSUS_SHADOW", "true")
+
+    response = _post(client, "build a workout")
+    response.get_data()
+
+    saved = store.list_conversation(uid, limit=10)
+    assert [(turn["role"], turn["content"]) for turn in saved] == [
+        ("user", "build a workout"), ("assistant", "ok"),
+    ]
+
+
+@pytest.mark.parametrize("message", ["hello", "I need recovery today", "I have chest pain", "???"])
+def test_persona_and_expert_shadow_do_not_run_for_non_recommend_outcomes(client, monkeypatch, message):
+    monkeypatch.setenv("PERSONA_MATCHER_SHADOW", "true")
+    monkeypatch.setenv("EXPERT_CONSENSUS_SHADOW", "true")
+    monkeypatch.setattr(appmod.persona_matcher, "match", lambda *args, **kwargs: pytest.fail("matcher ran"))
+    monkeypatch.setattr(appmod.expert_consensus, "evaluate", lambda *args, **kwargs: pytest.fail("consensus ran"))
+    assert _post(client, message, profile=_profile()).status_code == 200
+
+
+def test_shadow_flags_off_do_not_invoke_new_modules(client, captured, monkeypatch):
+    monkeypatch.setattr(appmod.persona_matcher, "match", lambda *args, **kwargs: pytest.fail("matcher ran"))
+    monkeypatch.setattr(appmod.expert_consensus, "evaluate", lambda *args, **kwargs: pytest.fail("consensus ran"))
+    response = _post(client, "build a workout", profile=_profile())
+    assert response.status_code == 200
+    assert "BLUEPRINT (render exactly, do not alter values)" not in captured["system"]
+
+
+@pytest.mark.parametrize("matcher_enabled,consensus_enabled,expected", [
+    (True, False, (True, False)),
+    (False, True, (False, True)),
+    (True, True, (True, True)),
+])
+def test_shadow_flag_modes_keep_results_local(monkeypatch, matcher_enabled, consensus_enabled, expected):
+    snapshot = _shadow_snapshot(profile={"level": "beginner", "goal": "strength"})
+    decision = decision_engine.decide(snapshot, "workout")
+    monkeypatch.setenv("PERSONA_MATCHER_SHADOW", str(matcher_enabled).lower())
+    monkeypatch.setenv("EXPERT_CONSENSUS_SHADOW", str(consensus_enabled).lower())
+
+    match, consensus = appmod._shadow_persona_expert(snapshot, decision)
+
+    assert (match is not None, consensus is not None) == expected
 
 
 # Phase B2: clarify and route are fixed delivery contracts. They bypass OpenAI
