@@ -1536,6 +1536,66 @@ def _daily_nutrition_targets(message, profile_block, history=None):
     return nutrition_validation.targets_from_profile_block(profile_block)
 
 
+def _daily_nutrition_format_rules(targets, lang):
+    """Strict, model-facing output rules so the FIRST daily-plan generation
+    naturally satisfies the deterministic validator. The validator itself is
+    never weakened or bypassed — this only teaches the model the exact shape and
+    arithmetic the validator already requires (structure, complete food rows,
+    one reconciled Daily Total within 5% of the authoritative targets)."""
+    def _n(v):
+        return None if v is None else str(int(v))
+    tlines = ["Calories: %s kcal" % _n(targets.kcal)]
+    if getattr(targets, "protein", None) is not None: tlines.append("Protein: %s g" % _n(targets.protein))
+    if getattr(targets, "carbs", None) is not None: tlines.append("Carbs: %s g" % _n(targets.carbs))
+    if getattr(targets, "fat", None) is not None: tlines.append("Fat: %s g" % _n(targets.fat))
+    targets_txt = "\n".join("- " + t for t in tlines)
+    if str(lang).lower() == "bg":
+        return (
+            "[ФОРМАТ НА ДНЕВНИЯ ХРАНИТЕЛЕН ПЛАН — ЗАДЪЛЖИТЕЛЕН]\n"
+            "Върни САМО един дневен план: заглавия на храненията на отделни редове + редове с храни в pipe формат. "
+            "Без въведение, без заключение, без коментари и БЕЗ изречения, че потребителят може да добави/увеличи/промени "
+            "храна, порции или калории, и без да го наричаш „базов план“.\n"
+            "Структура (точно този ред): Закуска, после Обяд, после Вечеря — и трите са ЗАДЪЛЖИТЕЛНИ и всяко има поне една храна. "
+            "„Снак“ е по избор и само МЕЖДУ Закуска и Обяд или МЕЖДУ Обяд и Вечеря. Вечеря винаги е последното хранене. "
+            "Никога снак след Вечеря. Никога не повтаряй хранене.\n"
+            "Всяко хранене е един ред само със заглавието на отделен ред: Закуска / Обяд / Вечеря / Снак.\n"
+            "Всяка храна е един ред с точно тези шест клетки в този ред:\n"
+            "| Име на храната | Количество | Протеин | Въглехидрати | Мазнини | Калории |\n"
+            "Количеството съдържа число и мерна единица, напр. „80 г“. Протеин, Въглехидрати и Мазнини са грамове, Калории са kcal — "
+            "всички са положителни числа, всяка клетка е попълнена, а Калории > 0.\n"
+            "Завърши с точно ЕДИН ред за общото и нищо след него:\n"
+            "| Общо за деня | <сумаПротеин> | <сумаВъглехидрати> | <сумаМазнини> | <сумаКалории> |\n"
+            "Събери всяка колона по ВСИЧКИ храни и запиши точните аритметични суми. Редът „Общо за деня“ ТРЯБВА да е равен на сумите "
+            "(протеин/въглехидрати/мазнини с точност до 1 г, калории до 10 kcal).\n"
+            "Постигни тези дневни таргети — „Общо за деня“ трябва да е в рамките на 5% от всеки:\n"
+            + targets_txt + "\n"
+            "Преди да завършиш: събери колоните сам, потвърди че „Общо за деня“ съвпада със сумите и е в 5% от всеки таргет, и че "
+            "Закуска, Обяд и Вечеря присъстват. Ако нещо не съвпада, коригирай грамажите на храните и събери отново."
+        )
+    return (
+        "[DAILY NUTRITION PLAN FORMAT — MANDATORY]\n"
+        "Return ONLY one daily plan: meal headers on their own lines + pipe-delimited food rows. "
+        "No introduction, no closing text, no coaching notes, and NO sentence suggesting the user add, increase or adjust "
+        "food, portions or calories, and never call it a \"base plan\".\n"
+        "Structure (this exact order): Breakfast, then Lunch, then Dinner — all three are REQUIRED and each has at least one food. "
+        "A \"Snack\" is optional and only BETWEEN Breakfast and Lunch or BETWEEN Lunch and Dinner. Dinner is always the last meal. "
+        "Never a snack after Dinner. Never repeat a meal.\n"
+        "Each meal is one line with only its header on its own line: Breakfast / Lunch / Dinner / Snack.\n"
+        "Each food is one row with exactly these six cells in this order:\n"
+        "| Food name | Quantity | Protein | Carbs | Fat | Kcal |\n"
+        "Quantity includes a number and unit, e.g. \"80 g\". Protein, Carbs and Fat are grams and Kcal is calories — "
+        "all positive numbers, every cell filled, and Kcal > 0.\n"
+        "End with exactly ONE totals row and nothing after it:\n"
+        "| Daily Total | <sumProtein> | <sumCarbs> | <sumFat> | <sumKcal> |\n"
+        "Add each column across ALL foods and write the exact arithmetic sums. The Daily Total MUST equal the summed foods "
+        "(protein/carbs/fat within 1 g, calories within 10 kcal).\n"
+        "Hit these daily targets — the Daily Total must be within 5% of each:\n"
+        + targets_txt + "\n"
+        "Before finishing: sum the columns yourself, confirm the Daily Total matches the sums and is within 5% of every target, "
+        "and confirm Breakfast, Lunch and Dinner are all present. If anything is off, adjust the food amounts and re-sum."
+    )
+
+
 def _shadow_recommendation(snapshot, decision, profile):
     """Generate a non-persistent blueprint without affecting chat delivery."""
     if decision.outcome != "recommend":
@@ -1775,6 +1835,7 @@ def chat():
                                      if nutrition_delivery_targets is not None else None)
         if nutrition_delivery_targets is not None:
             system_content = system_content + "\n\n" + nutrition_validation.generation_contract(nutrition_delivery_targets)
+            system_content = system_content + "\n\n" + _daily_nutrition_format_rules(nutrition_delivery_targets, lang)
         if _recommendation_blueprint is not None:
             system_content = recommendation_renderer.render_prompt(_recommendation_blueprint)
 
