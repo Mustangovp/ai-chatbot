@@ -89,7 +89,7 @@ nav{position:sticky;top:0;z-index:50;background:rgba(5,5,12,0.92);backdrop-filte
 .eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--lime);box-shadow:0 0 10px rgba(182,255,60,.7);animation:blink 1.8s infinite;}
 @media(max-width:480px){.eyebrow{font-size:10px;letter-spacing:1.8px;gap:10px;}.eyebrow::before,.eyebrow::after{width:20px;}}
 @keyframes blink{0%,100%{opacity:1;}50%{opacity:.35;}}
-h1{font-family:'Unbounded';font-weight:900;font-size:clamp(40px,8.5vw,104px);line-height:.96;letter-spacing:-.035em;position:relative;z-index:2;margin:0 auto;max-width:920px;}
+h1{font-family:'Unbounded';font-weight:900;font-size:clamp(32px,5.8vw,72px);line-height:1.02;letter-spacing:-.03em;position:relative;z-index:2;margin:0 auto;max-width:980px;}
 h1 .h1-line{display:block;overflow:hidden;padding:0 .04em;}
 h1 .h1-word{display:inline-block;transform:translateY(110%);opacity:0;animation:h1-rise .9s cubic-bezier(.2,.7,.2,1) forwards;}
 h1 .h1-line:nth-child(1) .h1-word{animation-delay:.25s;}
@@ -108,8 +108,71 @@ h1 .grad{background:linear-gradient(90deg,#F5212D 0%,#FF6A3C 45%,#FFB13C 100%);b
 .goal-line .gl-btn{display:block;width:100%;margin-top:16px;background:var(--pulse);color:#fff;border:none;font-family:'Manrope';font-weight:800;font-size:17px;padding:16px;border-radius:14px;cursor:pointer;box-shadow:0 8px 28px rgba(245,33,45,.38);transition:transform .15s,box-shadow .15s;}
 .goal-line .gl-btn:hover{transform:translateY(-1px);box-shadow:0 12px 34px rgba(245,33,45,.48);}
 .goal-line .gl-btn:active{transform:scale(.98);}
-.goal-line .gl-alt{margin-top:12px;font-size:13px;color:var(--muted);}
-.goal-line .gl-alt a{color:var(--cyan);font-weight:700;text-decoration:none;}
+/* Goal chips — the visible, thumb-friendly replacement of the old invisible "Different goal?" link */
+.gl-chips{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:16px;}
+.gl-chips button{font-family:'Manrope';font-weight:800;font-size:13.5px;color:var(--muted);background:var(--surface2);border:1.5px solid rgba(255,255,255,.14);border-radius:30px;padding:11px 16px;cursor:pointer;min-height:44px;transition:color .15s,border-color .15s,background .15s,transform .15s;}
+.gl-chips button:hover{color:var(--text);border-color:rgba(255,255,255,.3);transform:translateY(-1px);}
+.gl-chips button[aria-checked="true"]{color:#fff;border-color:rgba(245,33,45,.65);background:linear-gradient(135deg,rgba(245,33,45,.22),rgba(255,106,60,.14));box-shadow:0 6px 20px rgba(245,33,45,.25);}
+.gl-other{color:var(--text);font-weight:700;min-height:52px;align-items:center;}
+/* THINK CARD — proof that the recommendation changes when the facts change */
+.think-card{margin:34px auto 0;max-width:min(560px,100%);text-align:left;background:linear-gradient(160deg,rgba(26,33,51,.92),rgba(18,23,36,.96));border:1px solid rgba(255,255,255,.13);border-radius:var(--radius);padding:22px 22px 20px;position:relative;z-index:2;box-shadow:0 18px 60px rgba(0,0,0,.45);opacity:0;animation:hero-fadeup .8s 1.15s cubic-bezier(.2,.7,.2,1) forwards;}
+.tc-label{font-family:'Unbounded';font-weight:800;font-size:10.5px;letter-spacing:2.2px;text-transform:uppercase;color:var(--gold);display:flex;align-items:center;justify-content:space-between;}
+.tc-live{color:var(--lime);font-size:9.5px;letter-spacing:1.4px;}
+.tc-goal{margin-top:14px;font-size:15px;color:var(--muted);}
+.tc-goal b{color:var(--text);}
+.tc-facts{margin-top:12px;display:flex;flex-direction:column;gap:8px;}
+.tc-fact{display:flex;align-items:center;gap:10px;font-size:14.5px;font-weight:700;color:#C9D0DF;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);border-left:3px solid var(--gold);border-radius:10px;padding:9px 12px;opacity:0;transform:translateX(-8px);}
+.tc-fact .ic{font-size:15px;}
+.tc-fact.f2{border-left-color:var(--cyan);}
+.tc-fact.f3{border-left-color:var(--ember);}
+.think-card.play .tc-fact.f1{animation:tc-in .4s .3s cubic-bezier(.2,.7,.2,1) forwards;}
+.think-card.play .tc-fact.f2{animation:tc-in .4s .9s cubic-bezier(.2,.7,.2,1) forwards;}
+.think-card.play .tc-fact.f3{animation:tc-in .4s 1.5s cubic-bezier(.2,.7,.2,1) forwards;}
+.tc-old{margin-top:16px;font-size:16px;font-weight:700;color:var(--muted);position:relative;display:inline-block;}
+.tc-old::after{content:'';position:absolute;left:0;right:100%;top:52%;height:2px;background:var(--brand);}
+.think-card.play .tc-old::after{animation:tc-strike .35s 2.1s ease-out forwards;}
+.tc-new{margin-top:8px;font-family:'Unbounded';font-weight:800;font-size:clamp(17px,4vw,21px);line-height:1.25;color:var(--text);opacity:0;transform:translateY(6px);}
+.think-card.play .tc-new{animation:tc-in .45s 2.5s cubic-bezier(.2,.7,.2,1) forwards;}
+.tc-new::before{content:'→ ';color:var(--brand);}
+.tc-why{margin-top:10px;font-size:14px;color:var(--muted);line-height:1.5;opacity:0;}
+.think-card.play .tc-why{animation:tc-in .4s 2.9s ease-out forwards;}
+.think-card.done .tc-fact,.think-card.done .tc-new,.think-card.done .tc-why{opacity:1;transform:none;animation:none;}
+.think-card.done .tc-old::after{right:0;animation:none;}
+@keyframes tc-in{to{opacity:1;transform:none;}}
+@keyframes tc-strike{to{right:0;}}
+@media(prefers-reduced-motion:reduce){
+  .think-card{animation:none;opacity:1;}
+  .think-card .tc-fact,.think-card .tc-new,.think-card .tc-why{animation:none !important;opacity:1;transform:none;}
+  .think-card .tc-old::after{right:0;animation:none !important;}
+}
+/* ═══ SECTION 2 — receive cards ═══ */
+.rc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-top:30px;}
+.rc-card{background:linear-gradient(160deg,rgba(26,33,51,.9),rgba(18,23,36,.95));border:1px solid rgba(255,255,255,.12);border-radius:var(--radius);padding:22px;box-shadow:0 14px 44px rgba(0,0,0,.35);}
+.rc-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;}
+.rc-title{font-family:'Unbounded';font-weight:800;font-size:12px;letter-spacing:1.8px;text-transform:uppercase;color:var(--gold);}
+.rc-meta{font-size:12.5px;font-weight:700;color:var(--muted);}
+.rc-obj{margin-top:12px;font-size:14px;font-weight:700;color:var(--cyan);}
+.rc-rows{margin-top:12px;display:flex;flex-direction:column;}
+.rc-row{display:flex;justify-content:space-between;gap:14px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.07);font-size:14.5px;color:#C9D0DF;}
+.rc-row:last-child{border-bottom:none;}
+.rc-row b{color:var(--text);font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:800;}
+.rc-adapt{margin-top:12px;font-size:13px;font-weight:700;color:var(--gold);background:rgba(255,177,60,.08);border:1px solid rgba(255,177,60,.25);border-radius:10px;padding:9px 12px;}
+.rc-total{display:flex;justify-content:space-between;gap:14px;margin-top:6px;padding:11px 12px;font-size:14.5px;font-weight:800;color:var(--lime);background:rgba(182,255,60,.06);border:1px solid rgba(182,255,60,.25);border-radius:10px;}
+.rc-note{margin-top:10px;font-size:12.5px;color:var(--muted);}
+/* ═══ SECTION 3 — four proof moments ═══ */
+.df-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;margin-top:30px;}
+.df-item{background:var(--surface);border:1px solid rgba(255,255,255,.1);border-radius:var(--radius);padding:20px;}
+.df-item h3{font-family:'Unbounded';font-weight:700;font-size:14.5px;margin-bottom:8px;}
+.df-item p{font-size:14px;color:var(--muted);line-height:1.5;}
+.df-proof{margin-top:12px;font-size:12.5px;font-weight:700;color:var(--cyan);background:rgba(56,224,255,.07);border:1px solid rgba(56,224,255,.22);border-radius:8px;padding:8px 11px;}
+/* ═══ FINAL CTA ═══ */
+.final-cta{text-align:center;padding-bottom:24px;}
+.final-btn{display:inline-block;width:auto;min-width:min(340px,90%);margin-top:22px;text-decoration:none;background:var(--pulse);color:#fff;font-family:'Manrope';font-weight:800;font-size:17px;padding:16px 34px;border-radius:14px;box-shadow:0 8px 28px rgba(245,33,45,.38);transition:transform .15s,box-shadow .15s;}
+.final-btn:hover{transform:translateY(-1px);box-shadow:0 12px 34px rgba(245,33,45,.48);}
+/* ═══ Reveal on first view — once, then still ═══ */
+.rv{opacity:0;transform:translateY(14px);transition:opacity .45s ease-out,transform .45s ease-out;}
+.rv.in{opacity:1;transform:none;}
+@media(prefers-reduced-motion:reduce){.rv{opacity:1;transform:none;transition:none;}}
 .micro{color:#6B7185;font-size:11.5px;letter-spacing:1.8px;text-transform:uppercase;font-weight:700;margin-top:28px;position:relative;z-index:2;opacity:0;animation:hero-fadeup 1s 1.4s cubic-bezier(.2,.7,.2,1) forwards;}
 .ph-badge{display:flex;justify-content:center;align-items:center;gap:14px;flex-wrap:wrap;margin:22px auto 0;position:relative;z-index:2;opacity:0;animation:hero-fadeup 1s 1.5s cubic-bezier(.2,.7,.2,1) forwards;}
 .ph-badge img{height:54px;width:auto;transition:transform .2s,filter .2s;}
@@ -331,14 +394,20 @@ footer a:hover{color:var(--text);}
   <div class="hero-grid" aria-hidden="true"></div>
   <div class="proof" id="proof"><span class="p-num" id="proof-num">0</span> plans built today</div>
   <div class="eyebrow"><span class="dot"></span> Coach-grade · No app · Available 24/7</div>
-  <h1><span class="h1-line"><span class="h1-word">Your goal.</span></span><span class="h1-line"><span class="h1-word"><span class="grad">Your plan.</span></span></span><span class="h1-line"><span class="h1-word">60 seconds.</span></span></h1>
-  <p class="sub">Coach-grade nutrition and training plans, built from your goal, your body, and your daily reality. No app to install. No gym contract. No fluff.</p>
+  <h1><span class="h1-line"><span class="h1-word">A coach</span></span><span class="h1-line"><span class="h1-word">that <span class="grad">thinks</span></span></span><span class="h1-line"><span class="h1-word">before giving you a plan.</span></span></h1>
+  <p class="sub">Fat loss, muscle, or starting from zero — nutrition and movement built for your body, your level, and your day.</p>
 
-  <!-- INTERACTIVE GOAL LINE -->
+  <!-- INTERACTIVE GOAL ENTRY: pick a goal, act in 3 seconds -->
   <div class="goal-line">
-    <div class="gl-text">
+    <div class="gl-chips" role="radiogroup" aria-label="What is your goal?">
+      <button role="radio" aria-checked="true" data-goal="burn" onclick="heroPick(this)">🔥 Fat loss</button>
+      <button role="radio" aria-checked="false" data-goal="growth" onclick="heroPick(this)">💪 Muscle</button>
+      <button role="radio" aria-checked="false" data-goal="build" onclick="heroPick(this)">⚡ Better shape</button>
+      <button role="radio" aria-checked="false" data-goal="zero" onclick="heroPick(this)">🌱 Starting from zero</button>
+    </div>
+    <div class="gl-text" id="gl-burn">
       <span>I want to lose</span>
-      <select id="gl-kg">
+      <select id="gl-kg" aria-label="How many kilograms">
         <option value="3">3 kg</option>
         <option value="5" selected>5 kg</option>
         <option value="8">8 kg</option>
@@ -347,17 +416,31 @@ footer a:hover{color:var(--text);}
         <option value="20">20+ kg</option>
       </select>
       <span>in</span>
-      <select id="gl-time">
+      <select id="gl-time" aria-label="In how much time">
         <option value="2w">2 weeks</option>
         <option value="1m" selected>1 month</option>
         <option value="2m">2 months</option>
         <option value="3m">3+ months</option>
       </select>
     </div>
-    <button class="gl-btn" onclick="heroGo()">Generate my plan →</button>
-    <div class="gl-alt">Different goal? <a href="#goals">Muscle, tone or starting from zero ↓</a></div>
+    <div class="gl-text gl-other" id="gl-other" hidden></div>
+    <button class="gl-btn" onclick="heroGo()">Get my plan — free →</button>
   </div>
   <div class="micro">10 free plans every day · No credit card · GDPR-aligned</div>
+
+  <!-- PRODUCT PROOF: the recommendation visibly changes when the facts change -->
+  <div class="think-card" id="think-card">
+    <div class="tc-label">Watch it think <span class="tc-live">● live</span></div>
+    <div class="tc-goal">Goal: <b>“Build strength”</b></div>
+    <div class="tc-facts">
+      <div class="tc-fact f1"><span class="ic">🏋️</span> Heavy training yesterday</div>
+      <div class="tc-fact f2"><span class="ic">😮‍💨</span> Poor recovery</div>
+      <div class="tc-fact f3"><span class="ic">🏠</span> Home equipment only</div>
+    </div>
+    <div class="tc-old">Full strength session</div>
+    <div class="tc-new">Reduced-load home session</div>
+    <div class="tc-why">Your body is still recovering — today, lighter is smarter.</div>
+  </div>
 
   <div class="ph-badge">
     <a href="https://www.producthunt.com/posts/apex-pulse-pro" target="_blank" rel="noopener" onclick="track('ph_badge_click',{place:'hero'})">
@@ -425,25 +508,63 @@ footer a:hover{color:var(--text);}
   </div>
 </div>
 
-<section class="wrap" id="how">
-  <div class="sec-label">How it works</div>
-  <h2>Three steps. Zero fluff.</h2>
-  <div class="steps">
-    <div class="step"><div class="s-num">1</div><h3>State your goal</h3><p>Plain English. "Lose 5 kg", "build mass", "start from zero" — whatever you actually mean.</p></div>
-    <div class="step"><div class="s-num">2</div><h3>We ask back</h3><p>2–3 sharp questions about your body, level, and daily life. No questionnaire fatigue.</p></div>
-    <div class="step"><div class="s-num">3</div><h3>Get the plan</h3><p>Nutrition and training built for your week. Ask, adjust, iterate. It learns you.</p></div>
+<!-- ═══ SECTION 2 — WHAT YOU RECEIVE ═══ -->
+<section class="wrap" id="receive">
+  <div class="sec-label">What you receive</div>
+  <h2>Workouts and meals you can actually follow.</h2>
+  <p class="sec-sub">Not just an answer. A plan built for your body, your level, and your day.</p>
+  <div class="rc-grid">
+    <div class="rc-card rv">
+      <div class="rc-head"><span class="rc-title">Today's workout</span><span class="rc-meta">40 min · Moderate · Home</span></div>
+      <div class="rc-obj">Goal: Strength — lower body</div>
+      <div class="rc-rows">
+        <div class="rc-row"><span>Goblet squat with dumbbell</span><b>4 × 10</b></div>
+        <div class="rc-row"><span>Dumbbell Romanian deadlift</span><b>3 × 12</b></div>
+        <div class="rc-row"><span>Reverse lunge</span><b>3 × 10</b></div>
+        <div class="rc-row"><span>Plank</span><b>3 × 40 s</b></div>
+      </div>
+      <div class="rc-adapt">⚠ Jumping movements excluded — protecting your knee.</div>
+    </div>
+    <div class="rc-card rv">
+      <div class="rc-head"><span class="rc-title">Daily nutrition</span><span class="rc-meta">1820 kcal · 140 g protein</span></div>
+      <div class="rc-rows">
+        <div class="rc-row"><span>Breakfast — oats, yogurt, apple</span><b>446 kcal · 32 g</b></div>
+        <div class="rc-row"><span>Lunch — chicken fillet, brown rice, salad</span><b>535 kcal · 45 g</b></div>
+        <div class="rc-row"><span>Snack — cottage cheese and nuts</span><b>272 kcal · 20 g</b></div>
+        <div class="rc-row"><span>Dinner — salmon, potatoes, broccoli</span><b>567 kcal · 43 g</b></div>
+      </div>
+      <div class="rc-total"><span>Daily total</span><b>1820 kcal · 140 g ✓</b></div>
+      <div class="rc-note">The numbers add up — otherwise APEX won't hand it to you as a finished plan.</div>
+    </div>
   </div>
 </section>
 
-<section class="wrap" id="goals">
-  <div class="sec-label">Pick a goal</div>
-  <h2>Where do we start?</h2>
-  <p class="sec-sub">Tap a card. The AI coach asks what it needs and hands you a plan built around your week. That's it.</p>
-  <div class="goals">
-    <a class="goal burn" href="/app?lang=en&goal=burn" onclick="track('goal_click',{goal:'burn'})"><div class="g-ico">🔥</div><h3>Lose weight</h3><p>Drop the kilos with a menu and movement that fit your week — not someone else's protocol.</p><div class="go">Generate my plan →</div></a>
-    <a class="goal zero" href="/app?lang=en&goal=zero" onclick="track('goal_click',{goal:'zero'})"><div class="g-ico">⚡</div><h3>Start from zero</h3><p>Never trained before? We start where you are and build up. Step-by-step, no ego.</p><div class="go">Begin now →</div></a>
-    <a class="goal muscle" href="/app?lang=en&goal=growth" onclick="track('goal_click',{goal:'growth'})"><div class="g-ico">💪</div><h3>Build muscle</h3><p>Strength and mass with progressive overload, precise macros, and recovery that actually works.</p><div class="go">Show me →</div></a>
-    <a class="goal elite" href="/app?lang=en&goal=build" onclick="track('goal_click',{goal:'build'})"><div class="g-ico">🏆</div><h3>Elite mode</h3><p>Periodization, precision macros, performance metrics. For people who already train.</p><div class="go">I'm in →</div></a>
+<!-- ═══ SECTION 3 — WHY APEX IS DIFFERENT ═══ -->
+<section class="wrap" id="different">
+  <div class="sec-label">Why APEX</div>
+  <h2>Not another generic AI fitness chat.</h2>
+  <p class="sec-sub">Four things you feel in the first week.</p>
+  <div class="df-grid">
+    <div class="df-item rv">
+      <h3>🔁 It adapts</h3>
+      <p>Change a fact that matters and the plan changes — not just the wording.</p>
+      <div class="df-proof">heavy training yesterday → lighter day today</div>
+    </div>
+    <div class="df-item rv">
+      <h3>🧠 It remembers</h3>
+      <p>Your goals, limitations, and progress stay part of every next plan.</p>
+      <div class="df-proof">2 weeks ago: knee → still in today's plan</div>
+    </div>
+    <div class="df-item rv">
+      <h3>🚫 It refuses half-done</h3>
+      <p>If a daily meal plan doesn't add up, it won't be presented as finished.</p>
+      <div class="df-proof">1500 ≠ 1820 kcal → it rebuilds the plan</div>
+    </div>
+    <div class="df-item rv">
+      <h3>🎤 It speaks</h3>
+      <p>Say it out loud — same coach, same context, no keyboard.</p>
+      <div class="df-proof">“Make it shorter” → the plan gets shorter</div>
+    </div>
   </div>
 </section>
 
@@ -515,17 +636,12 @@ footer a:hover{color:var(--text);}
   </div>
 </section>
 
-<section class="wrap" id="faq">
-  <div class="sec-label">FAQ</div>
-  <h2>Straight answers.</h2>
-  <div style="margin-top:24px;">
-    <details class="faq-item"><summary>Is this just ChatGPT in a skin?</summary><div class="fa-body">No. Apex Pulse PRO runs custom system instructions tuned for fitness, nutrition, and progressive training. It asks clarifying questions, remembers your goals between sessions, and returns precise programs with macros, sets, reps, and progression rules — not generic essay answers.</div></details>
-    <details class="faq-item"><summary>What happens to my data?</summary><div class="fa-body">Conversations are processed by OpenAI under their privacy terms. We do not store your card data — Stripe handles all payments. Server logs are auto-deleted after 30 days. You retain full GDPR rights: request access, export, or deletion of your data at apexpulsepro@gmail.com.</div></details>
-    <details class="faq-item"><summary>Does it actually work?</summary><div class="fa-body">It works if you follow it. Plans are realistic and adapt to what you'll actually do — not idealized protocols you'll abandon by week two. Most people who stick with the program see meaningful change in the first 30 days. Results depend on your consistency, not on us.</div></details>
-    <details class="faq-item"><summary>Is this a subscription?</summary><div class="fa-body">No. One payment buys you 30 days. Nothing auto-renews. You don't need to remember to cancel. When the 30 days are up, you decide whether to renew — by paying again. That's the whole model.</div></details>
-    <details class="faq-item"><summary>Do I need a gym?</summary><div class="fa-body">No. Most plans default to bodyweight or minimal equipment (resistance bands, a single kettlebell). If you have gym access, tell the coach in your first message and the program adjusts to use it.</div></details>
-    <details class="faq-item"><summary>Does it replace a doctor or dietitian?</summary><div class="fa-body">No. The AI coach provides general training and nutrition guidance — it is not medical advice. If you have any health condition, are pregnant, nursing, or have a history of eating disorders, consult a qualified professional before starting any program.</div></details>
-  </div>
+<!-- ═══ FINAL START FREE ═══ -->
+<section class="wrap final-cta rv" id="start">
+  <h2>Start free. Continue when you're ready.</h2>
+  <p class="sec-sub" style="margin:10px auto 0;">Say your goal in your own words — your first plan is ready in a minute.</p>
+  <a class="gl-btn final-btn" href="/app?lang=en" onclick="track('cta_click',{place:'final'})">Start Free →</a>
+  <div class="micro" style="animation:none;opacity:1;">10 free plans every day · No credit card · GDPR-aligned</div>
 </section>
 
 <footer class="wrap">
@@ -561,14 +677,56 @@ footer a:hover{color:var(--text);}
 function track(name,params){try{gtag('event',name,params||{});}catch(e){}}
 
 /* ═══════════ HERO GOAL → CHAT ═══════════ */
-function heroGo(){
-  const kg=document.getElementById('gl-kg').value;
-  const tmEl=document.getElementById('gl-time');
-  const tmTxt=tmEl.options[tmEl.selectedIndex].text;
-  const msg=`I want to lose ${kg==='20'?'20+':kg} kg in ${tmTxt}. Give me a realistic nutrition and movement plan that fits everyday life.`;
-  track('hero_goal_click',{kg:kg,time:tmEl.value});
-  window.location.href='/app?lang=en&q='+encodeURIComponent(msg);
+let heroGoal='burn';
+const HERO_OTHER={
+  growth:{line:'I want to gain muscle — clean and realistic.',
+          msg:'I want to gain muscle. Give me a training and nutrition plan for my level and equipment.'},
+  build:{line:'I want better shape and more energy.',
+         msg:'I want better shape and more energy. Give me a realistic movement and nutrition plan for my everyday life.'},
+  zero:{line:'Starting from zero — I want a clear, achievable start.',
+        msg:'I am starting from zero. Give me an easy, achievable plan for the first 2 weeks — movement and nutrition without extremes.'}
+};
+function heroPick(btn){
+  heroGoal=btn.dataset.goal;
+  document.querySelectorAll('.gl-chips button').forEach(b=>b.setAttribute('aria-checked','false'));
+  btn.setAttribute('aria-checked','true');
+  const burn=document.getElementById('gl-burn'), other=document.getElementById('gl-other');
+  if(heroGoal==='burn'){ burn.hidden=false; burn.style.display=''; other.hidden=true; }
+  else{ burn.hidden=true; burn.style.display='none'; other.hidden=false; other.style.display='flex'; other.textContent=HERO_OTHER[heroGoal].line; }
+  track('hero_goal_pick',{goal:heroGoal});
 }
+function heroGo(){
+  let msg;
+  if(heroGoal==='burn'){
+    const kg=document.getElementById('gl-kg').value;
+    const tmEl=document.getElementById('gl-time');
+    const tmTxt=tmEl.options[tmEl.selectedIndex].text;
+    msg=`I want to lose ${kg==='20'?'20+':kg} kg in ${tmTxt}. Give me a realistic nutrition and movement plan that fits everyday life.`;
+    track('hero_goal_click',{goal:'burn',kg:kg,time:tmEl.value});
+  }else{
+    msg=HERO_OTHER[heroGoal].msg;
+    track('hero_goal_click',{goal:heroGoal});
+  }
+  window.location.href='/app?lang=en&goal='+heroGoal+'&q='+encodeURIComponent(msg);
+}
+/* THINK CARD — plays once after the hero settles, then is completely still */
+(function(){
+  const tc=document.getElementById('think-card'); if(!tc)return;
+  const reduced=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if(reduced){ tc.classList.add('done'); return; }
+  setTimeout(()=>{ tc.classList.add('play'); }, 1300);
+  setTimeout(()=>{ tc.classList.add('done'); tc.classList.remove('play'); }, 4800);
+})();
+/* SECTIONS — reveal once when first entering view, then completely still */
+(function(){
+  const els=[...document.querySelectorAll('.rv')]; if(!els.length)return;
+  const reduced=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if(reduced||!('IntersectionObserver' in window)){ els.forEach(e=>e.classList.add('in')); return; }
+  const io=new IntersectionObserver((entries)=>{
+    entries.forEach(en=>{ if(en.isIntersecting){ en.target.classList.add('in'); io.unobserve(en.target); } });
+  },{threshold:.15});
+  els.forEach(e=>io.observe(e));
+})();
 
 /* ═══════════ PAID PLAN → STRIPE CHECKOUT ═══════════ */
 async function goCheckout(btn,plan){
