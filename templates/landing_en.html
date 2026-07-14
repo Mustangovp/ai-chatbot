@@ -78,6 +78,9 @@ nav{position:sticky;top:0;z-index:50;background:rgba(5,5,12,0.92);backdrop-filte
 .logo{line-height:1.25;}
 .logo-slogan{font-family:'Manrope';font-size:9px;font-weight:700;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;}
 .nav-right{display:flex;align-items:center;gap:12px;}
+.lang-toggle{display:flex;border:1px solid rgba(255,255,255,.15);border-radius:20px;overflow:hidden;font-size:12px;font-weight:800;}
+.lang-toggle a,.lang-toggle span{padding:6px 11px;color:var(--muted);text-decoration:none;cursor:pointer;}
+.lang-toggle .active{background:var(--pulse);color:#fff;}
 .nav-cta{background:var(--pulse);color:#fff;font-weight:800;font-size:13px;padding:10px 18px;border-radius:30px;text-decoration:none;box-shadow:0 4px 16px rgba(245,33,45,.3);white-space:nowrap;transition:transform .15s,box-shadow .15s;}
 .nav-cta:hover{transform:translateY(-1px);box-shadow:0 6px 22px rgba(245,33,45,.48);}
 
@@ -384,6 +387,10 @@ footer a:hover{color:var(--text);}
       <span><span style="color:var(--brand);">APEX</span> PULSE PRO<br><span class="logo-slogan">Your peak. Your pulse.</span></span>
     </a>
     <div class="nav-right">
+      <div class="lang-toggle" id="lang-toggle" aria-label="Language">
+        <a href="/" data-lang="bg" onclick="try{localStorage.setItem('apexLang','bg');}catch(e){};track('lang_switch',{to:'bg'})">BG</a>
+        <span class="active">EN</span>
+      </div>
       <a href="/app?lang=en" class="nav-cta" onclick="track('cta_click',{place:'nav'})">Get started</a>
     </div>
   </div>

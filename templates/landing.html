@@ -758,17 +758,15 @@ function applyLang(){
     tm.options[0].text='2 седмици';tm.options[1].text='1 месец';tm.options[2].text='2 месеца';tm.options[3].text='3+ месеца';
   }
 }
-// Запазваме BG оригиналите преди първа смяна
-document.addEventListener('DOMContentLoaded',()=>{
-  document.querySelectorAll('[data-key],[data-key-html]').forEach(el=>{el.dataset.bg=el.innerHTML;});
-  if(lang==='en')applyLang();
-});
+// EN has its own dedicated page (/en) with the full authored translation.
+// The in-page dictionary above is legacy and no longer applied — switching
+// language NAVIGATES instead, so the hybrid hero is never half-translated.
 document.getElementById('lang-toggle').addEventListener('click',e=>{
-  if(e.target.dataset.lang&&e.target.dataset.lang!==lang){
-    lang=e.target.dataset.lang;
-    try{localStorage.setItem('apexLang',lang);}catch(err){}
-    applyLang();
-    track('lang_switch',{to:lang});
+  const to=e.target.dataset.lang;
+  if(to&&to!==lang){
+    try{localStorage.setItem('apexLang',to);}catch(err){}
+    track('lang_switch',{to:to});
+    if(to==='en'){location.href='/en';}
   }
 });
 
