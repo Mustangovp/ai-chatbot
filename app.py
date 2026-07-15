@@ -2043,10 +2043,12 @@ def chat():
         def sse(obj):
             return "data: " + _json.dumps(obj, ensure_ascii=False) + "\n\n"
 
-        def _speech_event(reply_text, *, safety_response=False):
+        def _speech_event(reply_text, *, safety_response=False, preserve_visible=False):
             """Produce a separate voice-only projection without changing delivery."""
             if not voice_requested or not _conversation_composer_active_for_request:
                 return None
+            if preserve_visible:
+                return {"speech_text": reply_text} if reply_text else None
             try:
                 kind = "workout" if _recommendation_blueprint is not None else (
                     "nutrition" if nutrition_delivery_target is not None else None)
@@ -2208,7 +2210,7 @@ def chat():
                     reply_text = decision_engine.controlled_response(
                         decision_engine.DecisionResult("clarify", "nutrition", "nutrition_delivery_contract", (), 1.0), lang)
                     yield sse({"t": reply_text})
-                    speech_event = _speech_event(reply_text)
+                    speech_event = _speech_event(reply_text, preserve_visible=True)
                     if speech_event:
                         yield sse(speech_event)
                     _persist_reply(reply_text)
@@ -2249,6 +2251,7 @@ def chat():
                     yield sse({"t": reply_text})
                 elif nutrition_delivery_target is not None:
                     validation = nutrition_validation.validate_daily_nutrition(reply_text, nutrition_delivery_targets)
+                    nutrition_delivery_failed = False
                     if not validation.valid:
                         regenerated = []
                         try:
@@ -2268,11 +2271,16 @@ def chat():
                                 reply_text = regenerated_reply
                             else:
                                 reply_text = nutrition_validation.failure_message(lang)
+                                nutrition_delivery_failed = True
                         except Exception as regeneration_error:
                             print(f"[chat] nutrition regeneration failed: {regeneration_error}")
                             reply_text = nutrition_validation.failure_message(lang)
+                            nutrition_delivery_failed = True
                     yield sse({"t": reply_text})
-                speech_event = _speech_event(reply_text)
+                speech_event = _speech_event(
+                    reply_text,
+                    preserve_visible=nutrition_delivery_target is not None and nutrition_delivery_failed,
+                )
                 if speech_event:
                     yield sse(speech_event)
                 _persist_reply(reply_text)
@@ -2296,7 +2304,7 @@ def chat():
                 if nutrition_delivery_targets is not None:
                     reply_text = nutrition_validation.failure_message(lang)
                     yield sse({"t": reply_text})
-                    speech_event = _speech_event(reply_text)
+                    speech_event = _speech_event(reply_text, preserve_visible=True)
                     if speech_event:
                         yield sse(speech_event)
                     _persist_reply(reply_text)
@@ -2325,7 +2333,10 @@ def chat():
                     elif nutrition_delivery_target is not None:
                         reply_text = nutrition_validation.failure_message(lang)
                         yield sse({"t": reply_text})
-                    speech_event = _speech_event(reply_text)
+                    speech_event = _speech_event(
+                        reply_text,
+                        preserve_visible=nutrition_delivery_target is not None,
+                    )
                     if speech_event:
                         yield sse(speech_event)
                     _persist_reply(reply_text)

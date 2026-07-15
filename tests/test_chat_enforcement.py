@@ -1672,6 +1672,30 @@ def test_daily_nutrition_contract_fails_closed_after_one_invalid_regeneration(cl
     assert invalid not in events[0]["t"]
 
 
+def test_voice_nutrition_failure_speaks_only_the_visible_failure_once(client, captured, monkeypatch):
+    profile_block = "Calorie target: 2800 kcal\nProtein target: minimum 175g/day"
+    invalid = _daily_plan(totals=("175", "350", "78", "2500"))
+    uid = _login_for_chat(client, _profile())
+    quota_calls = []
+    monkeypatch.setenv("CONVERSATION_COMPOSER_ACTIVE", "true")
+    monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: profile_block)
+    monkeypatch.setattr(store, "free_usage_consume",
+                        lambda *args: quota_calls.append(args) or {"allowed": True})
+    calls = _set_sequence_stream(monkeypatch, captured, [invalid, invalid])
+
+    events = _events(_post(client, "Give me a full-day nutrition plan", voice=True))
+    failure = appmod.nutrition_validation.failure_message("en")
+
+    assert events == [{"t": failure}, {"speech_text": failure}, {"done": True}]
+    assert len(calls) == 2  # one initial generation and the existing single regeneration
+    assert len(quota_calls) == 1
+    assert "plan is ready" not in events[1]["speech_text"].lower()
+    saved = store.list_conversation(uid, limit=10)
+    assert [(turn["role"], turn["content"]) for turn in saved] == [
+        ("user", "Give me a full-day nutrition plan"), ("assistant", failure),
+    ]
+
+
 def test_daily_nutrition_contract_never_persists_rejected_plan(client, captured, monkeypatch):
     profile_block = "Calorie target: 2800 kcal\nProtein target: minimum 175g/day"
     invalid = _daily_plan(totals=("175", "350", "78", "2500"))
