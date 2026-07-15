@@ -2095,13 +2095,14 @@ function appendCoach(){const feed=document.getElementById('feed');const d=docume
 function getHistory(){try{return JSON.parse(localStorage.getItem('apexHistory')||'[]');}catch(e){return[];}}
 function saveHistory(role,content){const h=getHistory();h.push({role,content});localStorage.setItem('apexHistory',JSON.stringify(h.slice(-40)));}
 let sending=false;
-async function send(){
+async function send(options={}){
   if(sending)return;
   if(sendLocked){ showLimit(); return; }   // limit reached → route to unlock, never a dead end
   const inp=document.getElementById('user-in');const val=inp.value.trim();if(!val)return;
   sending=true; inp.value=''; appendUser(val);
   const token=localStorage.getItem('apexToken')||'';
   const body={message:val,lang:lang};
+  if(options.voice===true)body.voice=true;
   const p=pfLoad();
   const wctx=buildWorkoutContext(lang==='en'); if(wctx)p.workoutContext=wctx;
   if(Object.keys(p).length)body.profile=p;
@@ -2120,7 +2121,7 @@ async function send(){
     const res=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',signal:ac.signal,body:JSON.stringify(body)});
     const ct=res.headers.get('content-type')||'';
     if(ct.indexOf('text/event-stream')!==-1){
-      ty.remove(); const target=appendCoach(); let full='',aborted=false;
+      ty.remove(); const target=appendCoach(); let full='',speechText='',aborted=false;
       const reader=res.body.getReader(),dec=new TextDecoder();let buf='';
       // STREAMING: paint a CHEAP lightweight render, throttled to ≤20fps, so the
       // main thread stays free and the tab never freezes. The expensive component
@@ -2131,12 +2132,13 @@ async function send(){
         for(const part of parts){const line=part.trim();if(!line.startsWith('data:'))continue;
           let o;try{o=JSON.parse(line.slice(5).trim());}catch(e){continue;}
           if(o.t){kick();witness('replyToken');full+=o.t;const now=performance.now();if(now-lastPaint>80){target.innerHTML=streamRender(full);smartScroll();lastPaint=now;}}
+          else if(o.speech_text){speechText=o.speech_text;}
           else if(o.limit_reached){const m=target.closest('.msg');if(m)m.remove();showLimit(o.hours_left||24);aborted=true;}
           else if(o.error){full+=(o.reply||'');}
         }
       }
       // FINAL render — full component renderer → cards, no raw markdown
-      if(full&&!aborted){target.innerHTML=renderMarkdown(full);smartScroll();saveHistory('assistant',full);afterReply(full);}
+      if(full&&!aborted){target.innerHTML=renderMarkdown(full);smartScroll();saveHistory('assistant',full);afterReply(full,speechText);}
     } else {
       const data=await res.json();ty.remove();
       if(data.limit_reached)showLimit(data.hours_left||24);
@@ -2150,13 +2152,13 @@ async function send(){
   }
   finally{clearTimeout(watchdog);sending=false;inp.focus();witness('exchangeClosed');}
 }
-function afterReply(text){
+function afterReply(text,speechText=''){
   const m=memLoad();
   if(/ккал|kcal|калории|protein|протеин/i.test(text)&&/\|/.test(text)){m.lastNutritionAt=Date.now();witness('modelChanged');}
   m.lastConsultationAt=Date.now(); memSave(m);
   // Event-driven: the conversation pipeline announces a completed reply. The Voice
   // Controller (below) subscribes; nothing here knows or cares that voice exists.
-  try{ if(window.VoiceBus) window.VoiceBus.emit('reply',{text:text}); }catch(_){}
+  try{ if(window.VoiceBus) window.VoiceBus.emit('reply',{text:speechText||text}); }catch(_){}
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -2346,7 +2348,7 @@ const Voice = {
     VoiceIn.stop();
     this.set('THINKING');
     const inp=document.getElementById('user-in');
-    if(inp){ inp.value=t; send(); }      // EXISTING pipeline: Brain + Athlete + Personality + storage + Core facts
+    if(inp){ inp.value=t; send({voice:true}); }      // EXISTING pipeline: Brain + Athlete + Personality + storage + Core facts
   },
   _onRecogError(err){
     if(!this.on) return;

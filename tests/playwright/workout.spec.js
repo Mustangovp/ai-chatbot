@@ -157,6 +157,59 @@ test.describe('APEX approved app shell — UX regression', () => {
     expect(sel.ls).toBe('calm');
   });
 
+  test('VX-2: spoken turns mark one chat request and speak the separate delivery projection', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      const chatPayloads = [];
+      let spoken = null;
+      const originalFetch = window.fetch;
+      const originalSpeak = VoiceOut.speak;
+      const originalStop = VoiceIn.stop;
+      window.fetch = async (url, options) => {
+        if (url === '/chat') {
+          chatPayloads.push(JSON.parse(options.body));
+          return new Response(
+            'data: {"t":"Visible reply"}\n\ndata: {"speech_text":"Voice-safe reply"}\n\ndata: {"done":true}\n\n',
+            { headers: { 'content-type': 'text/event-stream' } }
+          );
+        }
+        return originalFetch(url, options);
+      };
+      VoiceOut.speak = async (text) => { spoken = text; };
+      VoiceIn.stop = () => {};
+      Voice.on = true;
+      Voice._onFinal('spoken request');
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      Voice.on = false;
+      document.getElementById('user-in').value = 'typed request';
+      await send();
+      window.fetch = originalFetch;
+      VoiceOut.speak = originalSpeak;
+      VoiceIn.stop = originalStop;
+      return { chatPayloads, spoken };
+    });
+
+    expect(result.chatPayloads).toHaveLength(2);
+    expect(result.chatPayloads[0]).toMatchObject({ message: 'spoken request', voice: true });
+    expect(result.chatPayloads[1]).toMatchObject({ message: 'typed request' });
+    expect(result.chatPayloads[1]).not.toHaveProperty('voice');
+    expect(result.spoken).toBe('Voice-safe reply');
+  });
+
+  test('VX-3: voice playback falls back to the visible reply only when projection is absent', async ({ page }) => {
+    const spoken = await page.evaluate(() => {
+      let delivered = null;
+      const originalSay = Voice.say;
+      Voice.say = (text) => { delivered = text; };
+      Voice.on = true;
+      afterReply('Visible fallback');
+      Voice.on = false;
+      Voice.say = originalSay;
+      return delivered;
+    });
+
+    expect(spoken).toBe('Visible fallback');
+  });
+
   test('MB-1: no horizontal overflow on a mobile viewport', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.evaluate(() => {

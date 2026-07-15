@@ -85,8 +85,11 @@ def _events(resp):
     return out
 
 
-def _post(client, message, profile=None):
-    return client.post("/chat", json={"message": message, "lang": "en", "profile": profile or {}})
+def _post(client, message, profile=None, *, voice=False):
+    payload = {"message": message, "lang": "en", "profile": profile or {}}
+    if voice:
+        payload["voice"] = True
+    return client.post("/chat", json=payload)
 
 
 def _set_stream(monkeypatch, captured, reply):
@@ -122,6 +125,46 @@ def test_conversation_composer_respects_plan_only_and_voice_summary():
     assert voice.verbal_summary_only is True
     assert "Never read tables" in conversation_composer.render_prompt(
         conversation_composer.compose(voice), "en")
+
+
+@pytest.mark.parametrize("bg,en", [
+    ("омръзна ми", "I’m tired of this"),
+    ("писна ми", "I’m fed up"),
+    ("не ми харесва", "I don’t like this"),
+    ("не това имах предвид", "that’s not what I meant"),
+])
+def test_conversation_composer_recognizes_equivalent_bulgarian_and_english_repair_requests(bg, en):
+    decision = types.SimpleNamespace(outcome="converse", reason="general conversation")
+
+    bg_policy = conversation_composer.build_policy(decision=decision, message=bg)
+    en_policy = conversation_composer.build_policy(decision=decision, message=en)
+
+    assert bg_policy.mode == en_policy.mode == "acknowledge_then_ask"
+    assert bg_policy.question == en_policy.question in {"change", "obstacle"}
+
+
+def test_conversation_composer_voice_projection_is_structured_safe_and_language_aware():
+    decision = types.SimpleNamespace(outcome="recommend", reason="coaching request")
+    frame = conversation_composer.compose(
+        conversation_composer.build_policy(decision=decision, message="build a workout", voice=True))
+    workout = conversation_composer.speech_projection(
+        "**Workout**\n- **Push-up**: 3 sets\n- Why: This keeps today's effort manageable.",
+        frame, "en", structured_kind="workout")
+    nutrition = conversation_composer.speech_projection(
+        "| Meal | Food | Kcal |\n| Breakfast | Oats | 700 |\n| Daily Total | | 2800 |",
+        frame, "bg", structured_kind="nutrition")
+
+    assert workout == "Your workout is ready. This keeps today's effort manageable. The full plan is visible on screen."
+    assert nutrition == "Пълният ти хранителен план за деня е готов. Храненията и точните стойности са на екрана."
+    assert not any(term in workout.lower() for term in ("push-up", "sets", "blueprint"))
+    assert not any(term in nutrition.lower() for term in ("kcal", "oats", "|"))
+
+
+def test_conversation_composer_voice_projection_preserves_complete_safety_message():
+    safety = "I can't assess urgent medical symptoms here. Please contact a qualified medical professional."
+
+    assert conversation_composer.speech_projection(
+        safety, None, "en", safety_response=True) == safety
 
 
 def test_conversation_composer_references_memory_only_when_relevant_and_never_repeats_greetings():
@@ -265,7 +308,7 @@ def test_blueprint_prompt_precedes_communication_projection_and_preserves_apex_t
     assert captured["system"] == renderer_prompt + "\n\n" + captured["system"][len(renderer_prompt) + 2:]
     assert "CONVERSATION COMPOSER V1" in captured["system"]
     assert "APEX is calm, observant, direct" in captured["system"]
-    assert "Do not change, omit, add, reorder, or reinterpret any blueprint value." in captured["system"]
+    assert "Do not change, omit, add, reorder, or reinterpret any supplied value." in captured["system"]
 
 
 def test_composer_failure_after_blueprint_falls_back_to_blueprint_only_prompt(client, captured, monkeypatch):
@@ -1406,6 +1449,66 @@ def test_controlled_route_persists_only_delivered_response(client, captured):
     assert [(turn["role"], turn["content"]) for turn in saved] == [
         ("user", "I have chest pain"), ("assistant", events[0]["t"]),
     ]
+
+
+def test_voice_request_gets_one_separate_speech_projection_without_changing_persistence(client, captured, monkeypatch):
+    uid = _login_for_chat(client, _profile())
+    monkeypatch.setenv("CONVERSATION_COMPOSER_ACTIVE", "true")
+
+    response = _post(client, "hello", voice=True)
+    events = _events(response)
+
+    assert events == [{"t": "ok"}, {"speech_text": "ok"}, {"done": True}]
+    saved = store.list_conversation(uid, limit=10)
+    assert [(turn["role"], turn["content"]) for turn in saved] == [
+        ("user", "hello"), ("assistant", "ok"),
+    ]
+
+
+def test_voice_medical_route_projects_the_complete_safety_reply_without_openai(client, captured, monkeypatch):
+    monkeypatch.setenv("CONVERSATION_COMPOSER_ACTIVE", "true")
+
+    response = _post(client, "I have chest pain", voice=True)
+    events = _events(response)
+
+    assert "messages" not in captured
+    assert events[1] == {"speech_text": events[0]["t"]}
+    assert events[-1] == {"done": True}
+
+
+def test_voice_workout_and_nutrition_keep_visible_delivery_separate_from_speech(client, captured, monkeypatch):
+    blueprint = _workout_blueprint()
+    monkeypatch.setenv("CONVERSATION_COMPOSER_ACTIVE", "true")
+    monkeypatch.setenv("RECOMMENDATION_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod.recommendation_architect, "design", lambda *args, **kwargs: blueprint)
+    _set_stream(monkeypatch, captured, json.dumps({"blueprint": to_dict(blueprint), "explanations": []}))
+
+    workout_events = _events(_post(client, "build a workout", profile=_profile(), voice=True))
+    workout_visible = workout_events[0]["t"]
+    workout_speech = workout_events[1]["speech_text"]
+    assert "**" in workout_visible
+    assert workout_speech == "Your workout is ready. The full plan is visible on screen."
+    assert "**" not in workout_speech and "sets" not in workout_speech.lower()
+
+    monkeypatch.delenv("RECOMMENDATION_ENGINE_ACTIVE", raising=False)
+    monkeypatch.setattr(appmod, "_build_profile_block",
+                        lambda profile, lang: "Calorie target: 2800 kcal\nProtein target: minimum 175g/day")
+    _set_stream(monkeypatch, captured, _daily_plan())
+    nutrition_events = _events(_post(client, "Give me a full-day nutrition plan", profile=_profile(), voice=True))
+    nutrition_visible = nutrition_events[0]["t"]
+    nutrition_speech = nutrition_events[1]["speech_text"]
+    assert "|" in nutrition_visible
+    assert nutrition_speech == "Your complete daily nutrition plan is ready. The meals and exact values are visible on screen."
+    assert "|" not in nutrition_speech and "kcal" not in nutrition_speech.lower()
+
+
+def test_voice_stop_has_no_speech_projection_and_composer_off_uses_visible_fallback(client, captured, monkeypatch):
+    stop_events = _events(_post(client, "Stop.", voice=True))
+    assert stop_events == [{"done": True}]
+
+    monkeypatch.delenv("CONVERSATION_COMPOSER_ACTIVE", raising=False)
+    events = _events(_post(client, "hello", voice=True))
+    assert events == [{"t": "ok"}, {"done": True}]
 
 
 def test_first_contact_does_not_compute_b2_controlled_response(client, monkeypatch):

@@ -6,6 +6,7 @@ decision, recommendation, nutrition contract, memory record, or renderer value.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Iterable, Literal, Mapping
 
 
@@ -62,10 +63,11 @@ class ConversationFrame:
 
 _FRUSTRATION = (
     "frustrat", "giving up", "fed up", "sick of", "not working", "hopeless",
-    "писна ми", "омръзна", "не се получава", "разочарован", "демотивир",
+    "i'm tired of", "i’m tired of", "i am tired of", "i don't like this", "i don’t like this",
+    "писна ми", "омръзна", "омръзна ми", "не ми харесва", "не се получава", "разочарован", "демотивир",
 )
 _MISUNDERSTOOD = (
-    "not what i meant", "not what i had in mind", "not this", "не това имах предвид",
+    "not what i meant", "that’s not what i meant", "that's not what i meant", "not what i had in mind", "not this", "не това имах предвид",
     "не това", "не така",
 )
 _WHY = ("why", "tell me why", "кажи ми защо", "защо")
@@ -187,7 +189,7 @@ def render_prompt(frame: ConversationFrame, lang: str) -> str:
     lines = [
         "[CONVERSATION COMPOSER V1 — COMMUNICATION ONLY]",
         "APEX is calm, observant, direct, and never theatrical, overly familiar, or hype-driven.",
-        "Do not change any decision, verified fact, safety boundary, validated nutrition requirement, or fixed recommendation.",
+        "Do not change the agreed coaching direction, verified fact, safety boundary, validated nutrition requirement, or structured plan.",
         f"Use a {frame.tone} coaching tone. Change language only, never facts.",
         f"Response depth: {frame.answer_depth}.",
     ]
@@ -215,7 +217,83 @@ def render_prompt(frame: ConversationFrame, lang: str) -> str:
     if frame.spoken_summary:
         lines.append("For spoken delivery, give one conclusion and at most one reason. Never read tables, lists, macros, sets, reps, or full plan contents aloud; the complete plan remains visual.")
     if frame.preserve_blueprint:
-        lines.append("The fixed recommendation blueprint remains authoritative. Do not change, omit, add, reorder, or reinterpret any blueprint value. Communication instructions affect wording only; if they conflict with the blueprint, the blueprint wins.")
+        lines.append("The supplied structured plan remains authoritative. Do not change, omit, add, reorder, or reinterpret any supplied value. These communication instructions affect wording only; the supplied plan wins if they conflict.")
     if frame.nutrition_contract_present:
         lines.append("The existing nutrition delivery contract remains authoritative. Never present an incomplete nutrition plan as complete.")
     return "\n".join(lines)
+
+
+_MARKDOWN = re.compile(r"[*_`#>|]+")
+_SPACE = re.compile(r"\s+")
+_SENTENCE = re.compile(r"(?<=[.!?])\s+")
+_INTERNAL_LANGUAGE = re.compile(
+    r"\b(?:verdict|confidence|rule|intervention|decision layer|engine)\b",
+    re.IGNORECASE,
+)
+
+
+def _plain_text(text: str) -> str:
+    """Turn delivered text into a single safe spoken sentence stream."""
+    lines = []
+    for raw in str(text or "").splitlines():
+        line = raw.strip()
+        if not line or "|" in line:
+            continue
+        line = _MARKDOWN.sub("", line).strip(" -:")
+        if line:
+            lines.append(line)
+    plain = _SPACE.sub(" ", " ".join(lines)).strip()
+    return _INTERNAL_LANGUAGE.sub("", plain).strip(" ,:-")
+
+
+def _visible_reason(reply: str, frame: ConversationFrame | None) -> str | None:
+    """Use one reason only when the delivered wording already contains one."""
+    if frame is None or frame.reason_style != "one_short_reason":
+        return None
+    for raw in str(reply or "").splitlines():
+        line = raw.strip()
+        if not line.startswith("-") or "|" in line or "**" in line or ":" not in line:
+            continue
+        _, reason = line.split(":", 1)
+        reason = _plain_text(reason)
+        if reason and len(reason) <= 180:
+            return reason.rstrip(".") + "."
+    return None
+
+
+def speech_projection(reply: str, frame: ConversationFrame | None, lang: str, *,
+                      structured_kind: str | None = None, safety_response: bool = False) -> str | None:
+    """Create a deterministic, non-persisted voice delivery projection.
+
+    The visible reply remains the record.  This projection never asks the model
+    for another response and deliberately abstains if a safe short delivery is
+    not available.
+    """
+    if not str(reply or "").strip():
+        return None
+    if safety_response:
+        return str(reply).strip()
+    if frame is None or not frame.spoken_summary:
+        return None
+
+    english = str(lang).lower() == "en"
+    kind = str(structured_kind or "").lower()
+    if kind == "workout":
+        intro = "Your workout is ready." if english else "Тренировката ти е готова."
+        ending = ("The full plan is visible on screen." if english
+                  else "Пълният план е на екрана.")
+        reason = _visible_reason(reply, frame)
+        return " ".join(part for part in (intro, reason, ending) if part)
+    if kind == "nutrition":
+        intro = ("Your complete daily nutrition plan is ready." if english
+                 else "Пълният ти хранителен план за деня е готов.")
+        ending = ("The meals and exact values are visible on screen." if english
+                  else "Храненията и точните стойности са на екрана.")
+        return f"{intro} {ending}"
+
+    visible = _plain_text(reply)
+    if not visible:
+        return None
+    sentences = _SENTENCE.split(visible)
+    short_reply = " ".join(sentences[:2]).strip()
+    return short_reply[:420].rstrip()

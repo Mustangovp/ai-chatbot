@@ -1771,6 +1771,7 @@ def chat():
         # so the greeting is produced by the very same Personality + profile + history
         # (+ Brain, when enforced) as every other turn. Single reasoning entry point.
         session_start = bool(data.get("session_start"))
+        voice_requested = bool(data.get("voice"))
         daypart = str(data.get("daypart", ""))[:12]
 
         msg_limit = 4000 if is_elite else 1000
@@ -1881,7 +1882,7 @@ def chat():
                 try:
                     _conversation_policy = conversation_composer.build_policy(
                         decision=_shadow_decision, message=user_message, conversation=history,
-                        voice=bool(data.get("voice")), session_start=session_start,
+                        voice=voice_requested, session_start=session_start,
                         blueprint_present=_recommendation_blueprint is not None,
                         recommendation_kind=getattr(_recommendation_blueprint, "kind", None),
                         structured_delivery=_recommendation_blueprint is not None,
@@ -2042,6 +2043,23 @@ def chat():
         def sse(obj):
             return "data: " + _json.dumps(obj, ensure_ascii=False) + "\n\n"
 
+        def _speech_event(reply_text, *, safety_response=False):
+            """Produce a separate voice-only projection without changing delivery."""
+            if not voice_requested or not _conversation_composer_active_for_request:
+                return None
+            try:
+                kind = "workout" if _recommendation_blueprint is not None else (
+                    "nutrition" if nutrition_delivery_target is not None else None)
+                speech_text = conversation_composer.speech_projection(
+                    reply_text, _conversation_frame, lang,
+                    structured_kind=kind,
+                    safety_response=safety_response,
+                )
+                return {"speech_text": speech_text} if speech_text else None
+            except Exception as _speech_error:
+                print(f"[conversation-composer] speech projection failed: {_speech_error}")
+                return None
+
         # Captured for post-stream persistence (no request context inside generator).
         persist_uid = chat_uid
         persist_user_msg = user_message
@@ -2173,6 +2191,12 @@ def chat():
                 if _controlled_reply is not None:
                     full.append(_controlled_reply)
                     yield sse({"t": _controlled_reply})
+                    speech_event = _speech_event(
+                        _controlled_reply,
+                        safety_response=getattr(_shadow_decision, "outcome", None) == "route",
+                    )
+                    if speech_event:
+                        yield sse(speech_event)
                     _persist_reply(_controlled_reply)
                     _update_learning_engine(chat_uid, user_message, _controlled_reply, profile)
                     _shadow_log()
@@ -2184,6 +2208,9 @@ def chat():
                     reply_text = decision_engine.controlled_response(
                         decision_engine.DecisionResult("clarify", "nutrition", "nutrition_delivery_contract", (), 1.0), lang)
                     yield sse({"t": reply_text})
+                    speech_event = _speech_event(reply_text)
+                    if speech_event:
+                        yield sse(speech_event)
                     _persist_reply(reply_text)
                     _update_learning_engine(chat_uid, user_message, reply_text, profile)
                     yield sse({"done": True})
@@ -2245,6 +2272,9 @@ def chat():
                             print(f"[chat] nutrition regeneration failed: {regeneration_error}")
                             reply_text = nutrition_validation.failure_message(lang)
                     yield sse({"t": reply_text})
+                speech_event = _speech_event(reply_text)
+                if speech_event:
+                    yield sse(speech_event)
                 _persist_reply(reply_text)
                 _update_learning_engine(chat_uid, user_message, reply_text, profile)
                 _shadow_log()        # SHADOW (BRAIN_SHADOW off by default; no-op in prod)
@@ -2266,6 +2296,9 @@ def chat():
                 if nutrition_delivery_targets is not None:
                     reply_text = nutrition_validation.failure_message(lang)
                     yield sse({"t": reply_text})
+                    speech_event = _speech_event(reply_text)
+                    if speech_event:
+                        yield sse(speech_event)
                     _persist_reply(reply_text)
                     _update_learning_engine(chat_uid, user_message, reply_text, profile)
                     _shadow_log()
@@ -2292,6 +2325,9 @@ def chat():
                     elif nutrition_delivery_target is not None:
                         reply_text = nutrition_validation.failure_message(lang)
                         yield sse({"t": reply_text})
+                    speech_event = _speech_event(reply_text)
+                    if speech_event:
+                        yield sse(speech_event)
                     _persist_reply(reply_text)
                     _update_learning_engine(chat_uid, user_message, reply_text, profile)
                     _shadow_log()     # SHADOW (BRAIN_SHADOW off by default; no-op in prod)
