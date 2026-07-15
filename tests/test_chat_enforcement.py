@@ -23,6 +23,7 @@ import pytest
 import app as appmod
 import db as store
 import decision_engine
+import conversation_composer
 from recommend import diversity as recommendation_diversity
 from recommend.blueprint import NutritionBlueprint, WorkoutBlueprint, to_dict
 from context_builder import LockedPreferences, Subject, build_context
@@ -70,6 +71,7 @@ def client():
 def _enforce_off_by_default(monkeypatch):
     monkeypatch.delenv("BRAIN_ENFORCE", raising=False)        # default OFF for every test
     monkeypatch.delenv("RECOMMENDATION_ENGINE_ACTIVE", raising=False)
+    monkeypatch.delenv("CONVERSATION_COMPOSER_ACTIVE", raising=False)
     monkeypatch.delenv("PERSONA_MATCHER_SHADOW", raising=False)
     monkeypatch.delenv("EXPERT_CONSENSUS_SHADOW", raising=False)
     yield
@@ -96,6 +98,189 @@ def _set_stream(monkeypatch, captured, reply):
         return stream()
 
     monkeypatch.setattr(appmod.client.chat.completions, "create", fake_create)
+
+
+def test_conversation_composer_frames_acknowledgement_and_one_question():
+    decision = types.SimpleNamespace(outcome="converse", reason="general conversation")
+    policy = conversation_composer.build_policy(
+        decision=decision, message="Писна ми, нищо не се получава.",
+        conversation=[{"role": "assistant", "content": "A prior plan"}])
+    frame = conversation_composer.compose(policy, verified_memory=[{"role": "assistant", "content": "A prior plan"}])
+    assert frame.mode == "acknowledge_then_ask"
+    assert frame.acknowledgement is True
+    assert frame.question == "obstacle"
+    assert frame.closing_style == "one_question"
+    assert frame.must_not_generate_plan is True
+
+
+def test_conversation_composer_respects_plan_only_and_voice_summary():
+    decision = types.SimpleNamespace(outcome="recommend", reason="coaching request")
+    plan_only = conversation_composer.build_policy(decision=decision, message="Само плана.")
+    voice = conversation_composer.build_policy(decision=decision, message="Говори накратко.", voice=True)
+    assert plan_only.explain_why is False
+    assert plan_only.mode == "deliver_structured_plan"
+    assert voice.verbal_summary_only is True
+    assert "Never read tables" in conversation_composer.render_prompt(
+        conversation_composer.compose(voice), "en")
+
+
+def test_conversation_composer_references_memory_only_when_relevant_and_never_repeats_greetings():
+    decision = types.SimpleNamespace(outcome="converse", reason="general conversation")
+    without_memory = conversation_composer.build_policy(
+        decision=decision, message="Tell me why", conversation=[])
+    with_memory = conversation_composer.build_policy(
+        decision=decision, message="Tell me why", conversation=[{"role": "assistant", "content": "A plan"}])
+    opening = conversation_composer.build_policy(
+        decision=decision, message="continue", session_start=True)
+    assert conversation_composer.compose(without_memory, verified_memory=[]).reference_memory is False
+    assert conversation_composer.compose(
+        with_memory, verified_memory=[{"role": "assistant", "content": "A plan"}]).reference_memory is True
+    assert opening.must_not_greet is True
+
+
+def test_conversation_composer_never_accepts_internal_persona_or_expert_data():
+    decision = types.SimpleNamespace(outcome="recommend", reason="coaching request")
+    policy = conversation_composer.build_policy(decision=decision, message="build a workout")
+    frame = conversation_composer.compose(
+        policy, authority_facts={"goal": "strength", "recoveryFeel": "tired"},
+        persona_projection={"primary_persona_id": "P-001", "confidence": 0.99},
+        expert_communication_constraints=("rule-id",),
+    )
+    prompt = conversation_composer.render_prompt(frame, "en")
+    assert "P-001" not in prompt and "rule-id" not in prompt and "0.99" not in prompt
+    assert frame.reference_fact == "recoveryFeel"
+
+
+def test_conversation_composer_flag_off_preserves_legacy_prompt(client, captured, monkeypatch):
+    monkeypatch.delenv("CONVERSATION_COMPOSER_ACTIVE", raising=False)
+    response = _post(client, "hello", profile=_profile())
+    assert response.status_code == 200
+    assert "CONVERSATION COMPOSER V1" not in captured["system"]
+
+
+def test_conversation_composer_flag_on_appends_without_replacing_blueprint(client, captured, monkeypatch):
+    blueprint = _workout_blueprint()
+    monkeypatch.setenv("CONVERSATION_COMPOSER_ACTIVE", "true")
+    monkeypatch.setenv("RECOMMENDATION_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod.recommendation_architect, "design", lambda *args, **kwargs: blueprint)
+    _set_stream(monkeypatch, captured, json.dumps({"blueprint": to_dict(blueprint), "explanations": []}))
+    response = _post(client, "build a workout", profile=_profile())
+    assert response.status_code == 200
+    assert appmod.recommendation_renderer.render_prompt(blueprint) in captured["system"]
+    assert "CONVERSATION COMPOSER V1" in captured["system"]
+    assert _events(response)[0]["t"] == appmod.recommendation_renderer.render_delivery(blueprint, [], "en")
+
+
+def test_conversation_composer_preserves_nutrition_contract_and_single_delivery_write(client, captured, monkeypatch):
+    uid = _login_for_chat(client, _profile())
+    monkeypatch.setenv("CONVERSATION_COMPOSER_ACTIVE", "true")
+    profile_block = "Calorie target: 2800 kcal\nProtein target: minimum 175g/day"
+    monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: profile_block)
+    _set_stream(monkeypatch, captured, _daily_plan())
+
+    response = _post(client, "Give me a full-day nutrition plan")
+
+    assert response.status_code == 200
+    response.get_data()
+    assert "CONVERSATION COMPOSER V1" in captured["system"]
+    assert "Daily Total" in captured["system"]
+    saved = store.list_conversation(uid, limit=10)
+    assert [(turn["role"], turn["content"]) for turn in saved] == [
+        ("user", "Give me a full-day nutrition plan"), ("assistant", _daily_plan()),
+    ]
+
+
+def test_conversation_composer_active_consumes_free_quota_once(client, captured, monkeypatch):
+    calls = []
+    monkeypatch.setenv("CONVERSATION_COMPOSER_ACTIVE", "true")
+    monkeypatch.setattr(appmod.store, "free_usage_consume",
+                        lambda *args: calls.append(args) or {"allowed": True})
+
+    response = _post(client, "hello", profile=_profile())
+
+    assert response.status_code == 200
+    assert len(calls) == 1
+    assert "CONVERSATION COMPOSER V1" in captured["system"]
+
+
+@pytest.mark.parametrize("message", ["Спри.", "Stop."])
+def test_exact_stop_command_bypasses_generation_quota_persistence_and_learning(client, captured, monkeypatch, message):
+    quota_calls, persistence_calls, learning_calls = [], [], []
+    monkeypatch.setattr(appmod.store, "free_usage_consume",
+                        lambda *args: quota_calls.append(args) or {"allowed": True})
+    monkeypatch.setattr(appmod.store, "add_conversation",
+                        lambda *args: persistence_calls.append(args))
+    monkeypatch.setattr(appmod, "_update_learning_engine",
+                        lambda *args: learning_calls.append(args))
+
+    response = _post(client, message, profile=_profile())
+
+    assert _events(response) == [{"done": True}]
+    assert "messages" not in captured
+    assert quota_calls == []
+    assert persistence_calls == []
+    assert learning_calls == []
+
+
+@pytest.mark.parametrize("message", [
+    "Защо спря прогресът ми?", "Не искам да спирам тренировките.",
+    "Stop giving me squats.", "I cannot stop eating sweets.",
+])
+def test_semantic_stop_phrases_remain_normal_conversation(client, captured, message):
+    response = _post(client, message, profile=_profile())
+    assert any(event.get("t") == "ok" for event in _events(response))
+    assert "messages" in captured
+
+
+def test_conversation_policy_is_built_after_active_workout_blueprint(client, captured, monkeypatch):
+    blueprint = _workout_blueprint()
+    order = []
+    original_policy = appmod.conversation_composer.build_policy
+    monkeypatch.setenv("CONVERSATION_COMPOSER_ACTIVE", "true")
+    monkeypatch.setenv("RECOMMENDATION_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod, "_active_workout_recommendation",
+                        lambda *args: order.append("blueprint") or (blueprint, None, "persona_expert"))
+    monkeypatch.setattr(appmod.conversation_composer, "build_policy",
+                        lambda **kwargs: order.append("policy") or original_policy(**kwargs))
+    _set_stream(monkeypatch, captured, json.dumps({"blueprint": to_dict(blueprint), "explanations": []}))
+
+    response = _post(client, "build a workout", profile=_profile())
+
+    assert response.status_code == 200
+    assert order == ["blueprint", "policy"]
+
+
+def test_blueprint_prompt_precedes_communication_projection_and_preserves_apex_tone(client, captured, monkeypatch):
+    blueprint = _workout_blueprint()
+    monkeypatch.setenv("CONVERSATION_COMPOSER_ACTIVE", "true")
+    monkeypatch.setenv("RECOMMENDATION_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod.recommendation_architect, "design", lambda *args, **kwargs: blueprint)
+    _set_stream(monkeypatch, captured, json.dumps({"blueprint": to_dict(blueprint), "explanations": []}))
+
+    response = _post(client, "build a workout", profile=_profile())
+
+    assert response.status_code == 200
+    renderer_prompt = appmod.recommendation_renderer.render_prompt(blueprint)
+    assert captured["system"].startswith(renderer_prompt)
+    assert captured["system"] == renderer_prompt + "\n\n" + captured["system"][len(renderer_prompt) + 2:]
+    assert "CONVERSATION COMPOSER V1" in captured["system"]
+    assert "APEX is calm, observant, direct" in captured["system"]
+    assert "Do not change, omit, add, reorder, or reinterpret any blueprint value." in captured["system"]
+
+
+def test_composer_failure_after_blueprint_falls_back_to_blueprint_only_prompt(client, captured, monkeypatch):
+    blueprint = _workout_blueprint()
+    monkeypatch.setenv("CONVERSATION_COMPOSER_ACTIVE", "true")
+    monkeypatch.setenv("RECOMMENDATION_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod.recommendation_architect, "design", lambda *args, **kwargs: blueprint)
+    monkeypatch.setattr(appmod.conversation_composer, "compose",
+                        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("composer failure")))
+    _set_stream(monkeypatch, captured, json.dumps({"blueprint": to_dict(blueprint), "explanations": []}))
+
+    response = _post(client, "build a workout", profile=_profile())
+
+    assert response.status_code == 200
+    assert captured["system"] == appmod.recommendation_renderer.render_prompt(blueprint)
 
 
 # ── OFF = byte-identical ─────────────────────────────────────────────────────

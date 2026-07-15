@@ -34,6 +34,7 @@ import db as store
 import personality
 import context_builder
 import decision_engine
+import conversation_composer
 import nutrition_validation
 from recommend import architect as recommendation_architect, renderer as recommendation_renderer
 from brain.runtime_assets import expert_consensus, persona_matcher
@@ -1627,6 +1628,10 @@ def _recommendation_engine_active():
     return os.getenv("RECOMMENDATION_ENGINE_ACTIVE", "false").strip().lower() == "true"
 
 
+def _conversation_composer_active():
+    return os.getenv("CONVERSATION_COMPOSER_ACTIVE", "false").strip().lower() == "true"
+
+
 def _shadow_feature_enabled(name):
     return os.getenv(name, "false").strip().lower() == "true"
 
@@ -1776,6 +1781,15 @@ def chat():
         if lang not in ("bg", "en"):
             lang = "bg"
 
+        # Transport stop is intentionally not a coaching turn. It settles the
+        # existing browser stream without invoking quota, persistence, or the LLM.
+        if not session_start and conversation_composer.is_exact_stop_command(user_message):
+            return Response(
+                'data: {"done": true}\n\n',
+                mimetype="text/event-stream",
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            )
+
         # ── SERVER-AUTHORITATIVE FREE LIMIT ──
         free_subject = None
         if not is_elite and not session_start:   # a greeting is free — it never spends a daily message
@@ -1822,6 +1836,9 @@ def chat():
         _recommendation_trace = None
         _recommendation_path = "legacy"
         _recommendation_active = _recommendation_engine_active()
+        _conversation_composer_active_for_request = _conversation_composer_active()
+        _conversation_policy = None
+        _conversation_frame = None
         if not is_first_contact:
             _legacy_profile = profile if isinstance(profile, dict) else {}
             _legacy_history = history if isinstance(history, list) else []
@@ -1860,6 +1877,17 @@ def chat():
                  _recommendation_trace) = _shadow_persona_expert(
                      _snapshot, _shadow_decision, _recommendation_active)
             _controlled_reply = decision_engine.controlled_response(_shadow_decision, lang)
+            if _conversation_composer_active_for_request:
+                try:
+                    _conversation_policy = conversation_composer.build_policy(
+                        decision=_shadow_decision, message=user_message, conversation=history,
+                        voice=bool(data.get("voice")), session_start=session_start,
+                        blueprint_present=_recommendation_blueprint is not None,
+                        recommendation_kind=getattr(_recommendation_blueprint, "kind", None),
+                        structured_delivery=_recommendation_blueprint is not None,
+                    )
+                except Exception as _composer_error:
+                    print(f"[conversation-composer] policy failed: {_composer_error}")
             if not _recommendation_active:
                 _shadow_recommendation(_snapshot, _shadow_decision, profile)
             if _recommendation_trace is not None:
@@ -1948,6 +1976,19 @@ def chat():
             system_content = system_content + "\n\n" + _daily_nutrition_format_rules(nutrition_delivery_targets, lang)
         if _recommendation_blueprint is not None:
             system_content = recommendation_renderer.render_prompt(_recommendation_blueprint)
+        if _conversation_policy is not None and _controlled_reply is None:
+            try:
+                _conversation_frame = conversation_composer.compose(
+                    _conversation_policy,
+                    verified_memory=history,
+                    validated_blueprint=_recommendation_blueprint,
+                    validated_nutrition_contract=nutrition_delivery_targets is not None,
+                    authority_facts=profile if isinstance(profile, dict) else {},
+                )
+                system_content = system_content + "\n\n" + conversation_composer.render_prompt(
+                    _conversation_frame, lang)
+            except Exception as _composer_error:
+                print(f"[conversation-composer] frame failed: {_composer_error}")
 
         messages = [{"role": "system", "content": system_content}]
 
