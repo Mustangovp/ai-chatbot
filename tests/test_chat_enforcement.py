@@ -28,6 +28,7 @@ from recommend import diversity as recommendation_diversity
 from recommend.blueprint import NutritionBlueprint, WorkoutBlueprint, to_dict
 from context_builder import LockedPreferences, Subject, build_context
 from brain.runtime_assets import expert_consensus, persona_matcher
+from brain.runtime_assets import persona_expert_projection
 from brain.runtime_assets.expert_rules import ExpertRulePack, load_expert_rule_packs
 from brain.runtime_assets.personas import load_runtime_personas
 from nutrition_validation import NutritionTargets, validate_daily_nutrition
@@ -74,6 +75,7 @@ def _enforce_off_by_default(monkeypatch):
     monkeypatch.delenv("CONVERSATION_COMPOSER_ACTIVE", raising=False)
     monkeypatch.delenv("PERSONA_MATCHER_SHADOW", raising=False)
     monkeypatch.delenv("EXPERT_CONSENSUS_SHADOW", raising=False)
+    monkeypatch.delenv("PERSONA_EXPERT_COMMUNICATION_ACTIVE", raising=False)
     yield
 
 
@@ -282,7 +284,7 @@ def test_conversation_policy_is_built_after_active_workout_blueprint(client, cap
     monkeypatch.setenv("CONVERSATION_COMPOSER_ACTIVE", "true")
     monkeypatch.setenv("RECOMMENDATION_ENGINE_ACTIVE", "true")
     monkeypatch.setattr(appmod, "_active_workout_recommendation",
-                        lambda *args: order.append("blueprint") or (blueprint, None, "persona_expert"))
+                        lambda *args: order.append("blueprint") or (blueprint, None, "persona_expert", None, None))
     monkeypatch.setattr(appmod.conversation_composer, "build_policy",
                         lambda **kwargs: order.append("policy") or original_policy(**kwargs))
     _set_stream(monkeypatch, captured, json.dumps({"blueprint": to_dict(blueprint), "explanations": []}))
@@ -1829,6 +1831,144 @@ def test_contextual_replacement_requests_require_immediate_nutrition_context():
     assert appmod.nutrition_validation.is_full_day_request("искам друг хранителен режим", history) is True
     assert appmod.nutrition_validation.is_full_day_request("another meal plan", history) is True
     assert appmod.nutrition_validation.is_full_day_request("another meal plan", []) is False
+
+
+def _communication_projections(*, adaptation=None, recovery="fresh", blueprint=None, rules=()):
+    authority = types.SimpleNamespace(recovery_state=recovery)
+    consensus = types.SimpleNamespace(applicable_rule_ids=tuple(rules))
+    return persona_expert_projection.build_projections(
+        persona_adaptation=adaptation or {}, authority=authority,
+        blueprint=blueprint or _workout_blueprint(), expert_consensus=consensus)
+
+
+def test_persona_expert_communication_projection_is_id_free_and_limited_to_supported_signals():
+    persona, expert = _communication_projections(
+        adaptation={"beginner": True, "home_equipment": True}, recovery="tired",
+        blueprint=replace(_workout_blueprint(), equipment=["home"], session_minutes=25,
+                          mobility_requirement="gentle_rom", contraindications=["painful range"]),
+        rules=("MCG-001", "GRV-003", "WNK-003", "CLR-002", "CLR-004", "GLP-001"),
+    )
+
+    assert persona.guided_explanation and persona.equipment_reality and persona.recovery_sensitive
+    assert expert.state_exclusion_reason and expert.state_recovery_reason and expert.single_actionable_cue
+    rendered = repr((persona, expert))
+    assert all(token not in rendered for token in ("P-", "GRV-", "MCG-", "CLR-", "confidence", "cluster", "tag"))
+
+
+def test_persona_expert_communication_projection_keeps_recovery_and_exclusion_reasons_grounded():
+    unchanged = replace(_workout_blueprint(), session_minutes=35, mobility_requirement="standard")
+    no_exclusion = replace(_workout_blueprint(), contraindications=[])
+    persona, expert = _communication_projections(recovery="tired", blueprint=unchanged,
+                                                  rules=("GRV-001", "GRV-003", "WNK-003"))
+    assert persona.recovery_sensitive is False and expert.state_recovery_reason is False
+    _, expert = _communication_projections(blueprint=no_exclusion, rules=("MCG-001",))
+    assert expert.state_exclusion_reason is False
+
+
+def test_non_effective_and_unresolved_expert_rules_cannot_change_communication_projection():
+    persona, expert = _communication_projections(rules=("CLR-002", "CLR-004", "GLP-001", "HLM-012"))
+    assert persona.is_none is True
+    assert expert.is_none is True
+
+
+def test_communication_policy_explicit_short_requests_disable_optional_projection_prose():
+    decision = types.SimpleNamespace(outcome="recommend")
+    persona, expert = _communication_projections(adaptation={"beginner": True}, rules=("WNK-003",))
+    for message in ("just the plan", "no explanation", "keep it brief", "само плана", "без обяснение", "говори накратко"):
+        policy = conversation_composer.build_policy(
+            decision=decision, message=message, respect_projection_preferences=True)
+        frame = conversation_composer.compose(policy, validated_blueprint=_workout_blueprint(),
+                                              persona_projection=persona,
+                                              expert_communication_constraints=expert)
+        prompt = conversation_composer.render_prompt(frame, "en")
+        assert frame.optional_prose_allowed is False
+        assert "ADDITIONAL PRESENTATION CONSTRAINTS" not in prompt
+
+
+def test_persona_expert_communication_flag_is_resolved_once_and_off_keeps_active_prompt_identical(
+        client, captured, monkeypatch):
+    blueprint = _workout_blueprint()
+    calls = []
+    original = appmod.os.getenv
+
+    def getenv(name, default=None):
+        if name == "PERSONA_EXPERT_COMMUNICATION_ACTIVE":
+            calls.append(name)
+        return original(name, default)
+
+    monkeypatch.setattr(appmod.os, "getenv", getenv)
+    monkeypatch.setenv("RECOMMENDATION_ENGINE_ACTIVE", "true")
+    monkeypatch.setenv("CONVERSATION_COMPOSER_ACTIVE", "true")
+    monkeypatch.setattr(appmod.recommendation_architect, "design", lambda *args, **kwargs: blueprint)
+    _set_stream(monkeypatch, captured, json.dumps({"blueprint": to_dict(blueprint), "explanations": []}))
+
+    response = _post(client, "build a workout", profile=_profile(level="beginner"))
+
+    assert response.status_code == 200
+    assert calls == ["PERSONA_EXPERT_COMMUNICATION_ACTIVE"]
+    assert "ADDITIONAL PRESENTATION CONSTRAINTS" not in captured["system"]
+    assert captured["system"] == (appmod.recommendation_renderer.render_prompt(blueprint) + "\n\n" +
+                                   conversation_composer.render_prompt(
+                                       conversation_composer.compose(
+                                           conversation_composer.build_policy(
+                                               decision=types.SimpleNamespace(outcome="recommend"),
+                                               message="build a workout"),
+                                           validated_blueprint=blueprint,
+                                           authority_facts=_profile(level="beginner")), "en"))
+
+
+def test_active_persona_expert_communication_appends_id_free_wording_after_blueprint_and_frame(
+        client, captured, monkeypatch):
+    blueprint = replace(_workout_blueprint(), equipment=["home"])
+    monkeypatch.setenv("RECOMMENDATION_ENGINE_ACTIVE", "true")
+    monkeypatch.setenv("CONVERSATION_COMPOSER_ACTIVE", "true")
+    monkeypatch.setenv("PERSONA_EXPERT_COMMUNICATION_ACTIVE", "true")
+    monkeypatch.setattr(appmod.recommendation_architect, "design", lambda *args, **kwargs: blueprint)
+    _set_stream(monkeypatch, captured, json.dumps({"blueprint": to_dict(blueprint), "explanations": []}))
+
+    response = _post(client, "build a workout", profile=_profile(level="intermediate", equipment="home"))
+
+    assert response.status_code == 200
+    system = captured["system"]
+    assert system.startswith(appmod.recommendation_renderer.render_prompt(blueprint))
+    assert system.index("CONVERSATION COMPOSER V1") < system.index("ADDITIONAL PRESENTATION CONSTRAINTS")
+    assert "Do not assume gym access" in system
+    assert all(token not in system for token in ("P-", "WNK-003", "GRV-", "MCG-", "confidence", "cluster"))
+
+
+def test_persona_expert_communication_failure_preserves_existing_composer_prompt(client, captured, monkeypatch):
+    blueprint = _workout_blueprint()
+    monkeypatch.setenv("RECOMMENDATION_ENGINE_ACTIVE", "true")
+    monkeypatch.setenv("CONVERSATION_COMPOSER_ACTIVE", "true")
+    monkeypatch.setenv("PERSONA_EXPERT_COMMUNICATION_ACTIVE", "true")
+    monkeypatch.setattr(appmod.recommendation_architect, "design", lambda *args, **kwargs: blueprint)
+    monkeypatch.setattr(appmod.persona_expert_projection, "build_projections",
+                        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("projection failure")))
+    _set_stream(monkeypatch, captured, json.dumps({"blueprint": to_dict(blueprint), "explanations": []}))
+
+    response = _post(client, "build a workout", profile=_profile(level="beginner"))
+
+    assert response.status_code == 200
+    assert "ADDITIONAL PRESENTATION CONSTRAINTS" not in captured["system"]
+    assert "CONVERSATION COMPOSER V1" in captured["system"]
+
+
+def test_voice_summary_uses_the_same_id_free_projection_without_reading_the_workout():
+    decision = types.SimpleNamespace(outcome="recommend")
+    persona, expert = _communication_projections(adaptation={"beginner": True}, rules=("WNK-003",))
+    frame = conversation_composer.compose(
+        conversation_composer.build_policy(decision=decision, message="build a workout", voice=True),
+        validated_blueprint=_workout_blueprint(), persona_projection=persona,
+        expert_communication_constraints=expert)
+    prompt = conversation_composer.render_prompt(frame, "en")
+    speech = conversation_composer.speech_projection(
+        "**Workout**\n| Exercise | Sets |\n| Squat | 3 |\n- Why: Today stays manageable.",
+        frame, "en", structured_kind="workout")
+
+    assert "one short practical movement cue" in prompt
+    assert "P-" not in prompt and "WNK-003" not in prompt
+    assert speech == "Your workout is ready. Today stays manageable. The full plan is visible on screen."
+    assert "Squat" not in speech and "|" not in speech
 
 
 def test_daily_nutrition_contract_accounts_for_one_request_and_localizes_failure(client, captured, monkeypatch):

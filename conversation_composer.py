@@ -38,6 +38,7 @@ class ConversationPolicy:
     must_not_greet: bool
     safety_boundary: bool
     fallback_to_legacy: bool
+    optional_prose_allowed: bool = True
 
 
 @dataclass(frozen=True)
@@ -59,6 +60,9 @@ class ConversationFrame:
     must_not_greet: bool
     preserve_blueprint: bool
     nutrition_contract_present: bool
+    optional_prose_allowed: bool = True
+    persona_projection: object | None = None
+    expert_communication_constraints: object | None = None
 
 
 _FRUSTRATION = (
@@ -72,7 +76,9 @@ _MISUNDERSTOOD = (
 )
 _WHY = ("why", "tell me why", "кажи ми защо", "защо")
 _PLAN_ONLY = ("just the plan", "only the plan", "само плана", "само план")
+_NO_EXPLANATION = ("no explanation", "without explanation", "без обяснение")
 _BRIEF = ("briefly", "short", "talk briefly", "говори накратко", "накратко")
+_PROJECTION_BRIEF = ("keep it brief",)
 _TABLE_AVOIDANCE = ("don't read the table", "do not read the table", "не ми чети таблицата")
 _ALTERNATIVE = ("another plan", "another regime", "different plan", "друг режим", "друг вариант")
 _STOP_COMMANDS = frozenset({
@@ -106,7 +112,8 @@ def _has_relevant_memory(conversation: Iterable[Mapping[str, object]] | None) ->
 def build_policy(*, decision, message: str, conversation: Iterable[Mapping[str, object]] | None = None,
                  voice: bool = False, session_start: bool = False,
                  blueprint_present: bool = False, recommendation_kind: str | None = None,
-                 structured_delivery: bool = False) -> ConversationPolicy:
+                 structured_delivery: bool = False,
+                 respect_projection_preferences: bool = False) -> ConversationPolicy:
     """Classify communication needs without changing the existing decision result."""
     outcome = str(getattr(decision, "outcome", "converse"))
     has_memory = _has_relevant_memory(conversation)
@@ -114,7 +121,8 @@ def build_policy(*, decision, message: str, conversation: Iterable[Mapping[str, 
     misunderstood = _contains(message, _MISUNDERSTOOD)
     wants_why = _contains(message, _WHY)
     plan_only = _contains(message, _PLAN_ONLY)
-    brief = _contains(message, _BRIEF)
+    no_explanation = respect_projection_preferences and _contains(message, _NO_EXPLANATION)
+    brief = _contains(message, _BRIEF) or (respect_projection_preferences and _contains(message, _PROJECTION_BRIEF))
     table_avoidance = _contains(message, _TABLE_AVOIDANCE)
     alternative = _contains(message, _ALTERNATIVE)
     del blueprint_present, recommendation_kind, structured_delivery
@@ -125,16 +133,16 @@ def build_policy(*, decision, message: str, conversation: Iterable[Mapping[str, 
     if outcome == "clarify":
         return ConversationPolicy("ask_one_question", "calm", False, True, "request", "brief", False,
                                   False, False, True, True, True, True, False, False)
-    if wants_why:
+    if wants_why and not no_explanation:
         return ConversationPolicy("explain_decision", "calm", False, False, None, "brief", has_memory,
                                   True, bool(voice), True, True, True, True, False, False)
-    if plan_only:
+    if plan_only or no_explanation:
         return ConversationPolicy("deliver_structured_plan", "direct", False, False, None, "structured",
-                                  False, False, bool(voice), True, False, True, True, False, False)
+                                  False, False, bool(voice), True, False, True, True, False, False, False)
     if table_avoidance or brief:
         return ConversationPolicy("verbal_summary" if voice else "answer_directly", "calm", False, False,
                                   None, "brief", has_memory and wants_why, wants_why, True, True, True,
-                                  True, True, False, False)
+                                  True, True, False, False, not brief)
     if misunderstood or alternative:
         return ConversationPolicy("acknowledge_then_ask", "supportive", True, True, "change", "brief",
                                   has_memory, False, bool(voice), True, True, True, True, False, False)
@@ -154,10 +162,9 @@ def build_policy(*, decision, message: str, conversation: Iterable[Mapping[str, 
 def compose(policy: ConversationPolicy, *, verified_memory: Iterable[Mapping[str, object]] | None = None,
             validated_blueprint=None, validated_nutrition_contract: bool = False,
             authority_facts: Mapping[str, object] | None = None,
-            persona_projection: Mapping[str, object] | None = None,
-            expert_communication_constraints: Iterable[str] | None = None) -> ConversationFrame:
+            persona_projection: object | None = None,
+            expert_communication_constraints: object | None = None) -> ConversationFrame:
     """Create a safe communication frame from approved, non-internal inputs only."""
-    del persona_projection, expert_communication_constraints
     facts = authority_facts or {}
     reference_fact = next((key for key in ("recoveryFeel", "sleepQuality", "stressLevel", "goal")
                            if facts.get(key) not in (None, "", (), [])), None)
@@ -180,6 +187,10 @@ def compose(policy: ConversationPolicy, *, verified_memory: Iterable[Mapping[str
         must_not_greet=policy.must_not_greet,
         preserve_blueprint=policy.preserve_blueprint and blueprint_present,
         nutrition_contract_present=bool(validated_nutrition_contract),
+        optional_prose_allowed=policy.optional_prose_allowed,
+        persona_projection=persona_projection if policy.optional_prose_allowed else None,
+        expert_communication_constraints=(expert_communication_constraints
+                                          if policy.optional_prose_allowed else None),
     )
 
 
@@ -220,6 +231,24 @@ def render_prompt(frame: ConversationFrame, lang: str) -> str:
         lines.append("The supplied structured plan remains authoritative. Do not change, omit, add, reorder, or reinterpret any supplied value. These communication instructions affect wording only; the supplied plan wins if they conflict.")
     if frame.nutrition_contract_present:
         lines.append("The existing nutrition delivery contract remains authoritative. Never present an incomplete nutrition plan as complete.")
+    persona = frame.persona_projection
+    expert = frame.expert_communication_constraints
+    if persona is not None or expert is not None:
+        lines.append("[ADDITIONAL PRESENTATION CONSTRAINTS]")
+        lines.append("Wording only: never alter, add, remove, reorder, reinterpret, or replace any plan value. The structured plan wins on conflict, and an explicit user response-length preference wins on presentation.")
+        has_reason = (bool(getattr(expert, "state_exclusion_reason", False)) or
+                      bool(getattr(expert, "state_recovery_reason", False)) or
+                      bool(getattr(persona, "recovery_sensitive", False)))
+        if has_reason:
+            lines.append("Give at most one plain-language reason total, and only for an existing exclusion or a demand reduction already present in the structured plan.")
+        if bool(getattr(expert, "single_actionable_cue", False)) or bool(getattr(persona, "guided_explanation", False)):
+            lines.append("Give at most one short practical movement cue, only for a movement already present in the structured plan. Do not add a movement.")
+        if bool(getattr(persona, "guided_explanation", False)):
+            lines.append("Use clear practical language without condescension or unnecessary definitions.")
+        if bool(getattr(persona, "advanced_autonomy", False)):
+            lines.append("Be concise and autonomous: do not add basic definitions or step-by-step instruction unless the user asks.")
+        if bool(getattr(persona, "equipment_reality", False)):
+            lines.append("When referring to equipment, mention only equipment already present in the structured plan. Do not assume gym access or offer alternatives.")
     return "\n".join(lines)
 
 

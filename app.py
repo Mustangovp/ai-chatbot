@@ -40,6 +40,7 @@ from recommend import architect as recommendation_architect, renderer as recomme
 from brain.runtime_assets import expert_consensus, persona_matcher
 from brain.runtime_assets.personas import load_runtime_personas
 import brain.runtime_assets.shadow_trace as shadow_trace
+import brain.runtime_assets.persona_expert_projection as persona_expert_projection
 import athlete_store  # M0: Athlete Model substrate (failure-isolated observe wiring)
 import brain.config as brain_config             # M1: Brain shadow flags (default OFF)
 import brain.ledger as brain_ledger             # M1: shadow decision ledger
@@ -1628,6 +1629,10 @@ def _recommendation_engine_active():
     return os.getenv("RECOMMENDATION_ENGINE_ACTIVE", "false").strip().lower() == "true"
 
 
+def _persona_expert_communication_active():
+    return os.getenv("PERSONA_EXPERT_COMMUNICATION_ACTIVE", "false").strip().lower() == "true"
+
+
 def _conversation_composer_active():
     return os.getenv("CONVERSATION_COMPOSER_ACTIVE", "false").strip().lower() == "true"
 
@@ -1726,14 +1731,15 @@ def _as_list(value):
     return (value,)
 
 
-def _active_workout_recommendation(snapshot, decision, recommendation_engine_active):
+def _active_workout_recommendation(snapshot, decision, recommendation_engine_active,
+                                   communication_active=False):
     """Use persona/expert evidence only when at least one system can act on it."""
     authority = _workout_authority(snapshot, decision)
     if authority is None:
-        return None, None, "legacy"
+        return None, None, "legacy", None, None
     match, consensus, trace = _evaluate_persona_expert(snapshot, decision, recommendation_engine_active)
     if match is None or consensus is None or (match.abstained and consensus.abstained):
-        return None, trace, "legacy"
+        return None, trace, "legacy", None, None
     try:
         blueprint = recommendation_architect.design(
             "workout", decision=decision, profile={},
@@ -1741,9 +1747,20 @@ def _active_workout_recommendation(snapshot, decision, recommendation_engine_act
             expert_consensus=consensus,
             persona_adaptation=_persona_adaptation(match), authority=authority,
         )
-        return blueprint, trace, "persona_expert" if blueprint is not None else "legacy"
+        persona_projection = expert_constraints = None
+        if blueprint is not None and communication_active:
+            try:
+                persona_projection, expert_constraints = persona_expert_projection.build_projections(
+                    persona_adaptation=_persona_adaptation(match), authority=authority,
+                    blueprint=blueprint, expert_consensus=consensus)
+                if persona_projection.is_none and expert_constraints.is_none:
+                    persona_projection = expert_constraints = None
+            except Exception:
+                persona_projection = expert_constraints = None
+        return (blueprint, trace, "persona_expert" if blueprint is not None else "legacy",
+                persona_projection, expert_constraints)
     except Exception:
-        return None, trace, "legacy"
+        return None, trace, "legacy", None, None
 
 
 @app.route("/chat", methods=["POST"])
@@ -1837,6 +1854,9 @@ def chat():
         _recommendation_trace = None
         _recommendation_path = "legacy"
         _recommendation_active = _recommendation_engine_active()
+        _persona_expert_communication_active_for_request = _persona_expert_communication_active()
+        _persona_projection = None
+        _expert_communication_constraints = None
         _conversation_composer_active_for_request = _conversation_composer_active()
         _conversation_policy = None
         _conversation_frame = None
@@ -1871,8 +1891,10 @@ def chat():
                                _shadow_decision.intent == "workout")
             if _active_workout:
                 (_recommendation_blueprint, _recommendation_trace,
-                 _recommendation_path) = _active_workout_recommendation(
-                     _snapshot, _shadow_decision, _recommendation_active)
+                 _recommendation_path, _persona_projection,
+                 _expert_communication_constraints) = _active_workout_recommendation(
+                     _snapshot, _shadow_decision, _recommendation_active,
+                     _persona_expert_communication_active_for_request)
             else:
                 (_shadow_persona_match, _shadow_expert_consensus,
                  _recommendation_trace) = _shadow_persona_expert(
@@ -1886,6 +1908,7 @@ def chat():
                         blueprint_present=_recommendation_blueprint is not None,
                         recommendation_kind=getattr(_recommendation_blueprint, "kind", None),
                         structured_delivery=_recommendation_blueprint is not None,
+                        respect_projection_preferences=_persona_expert_communication_active_for_request,
                     )
                 except Exception as _composer_error:
                     print(f"[conversation-composer] policy failed: {_composer_error}")
@@ -1985,6 +2008,8 @@ def chat():
                     validated_blueprint=_recommendation_blueprint,
                     validated_nutrition_contract=nutrition_delivery_targets is not None,
                     authority_facts=profile if isinstance(profile, dict) else {},
+                    persona_projection=_persona_projection,
+                    expert_communication_constraints=_expert_communication_constraints,
                 )
                 system_content = system_content + "\n\n" + conversation_composer.render_prompt(
                     _conversation_frame, lang)
