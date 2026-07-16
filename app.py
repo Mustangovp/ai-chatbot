@@ -1921,6 +1921,7 @@ def chat():
         else:
             _controlled_reply = None
 
+        profile_block = ""
         decision_state = "CONTINUE_CONVERSATION"
         if is_first_contact:
             # 1. Understanding: Silent extraction (updates the Human State profile)
@@ -1991,8 +1992,19 @@ def chat():
             base = (profile_block + "\n\n" + SYSTEM_INSTRUCTIONS) if profile_block else SYSTEM_INSTRUCTIONS
             system_content = (personality_block + "\n\n" + base) if personality_block else base
 
+        nutrition_request_full_day = nutrition_validation.is_full_day_request(user_message, history)
         nutrition_delivery_targets = (_daily_nutrition_targets(user_message, profile_block, history)
-                                      if not is_first_contact else None)
+                                      if nutrition_request_full_day else None)
+        # Nutrition intent is buffered even when a request phrase was missed.  The
+        # completed response then decides whether it is a daily plan; no possible
+        # daily plan is exposed token-by-token before that determination.
+        nutrition_response_guard = bool(
+            nutrition_request_full_day or
+            (not is_first_contact and getattr(_shadow_decision, "intent", None) == "nutrition")
+        )
+        nutrition_guard_targets = (nutrition_delivery_targets or
+                                   (nutrition_validation.targets_from_profile_block(profile_block)
+                                    if nutrition_response_guard else None))
         nutrition_delivery_target = (int(nutrition_delivery_targets.kcal)
                                      if nutrition_delivery_targets is not None else None)
         if nutrition_delivery_targets is not None:
@@ -2246,6 +2258,7 @@ def chat():
                     # Backward-compatible leading event; unknown events are ignored by
                     # the current frontend. Only emitted when BRAIN_ENFORCE is ON.
                     yield sse({"decision": enforce_event})
+                nutrition_delivery_failed = False
                 stream = client.chat.completions.create(
                     model=model_to_use,
                     messages=messages,
@@ -2258,7 +2271,8 @@ def chat():
                         delta = chunk.choices[0].delta.content
                     if delta:
                         full.append(delta)
-                        if nutrition_delivery_target is None and _recommendation_blueprint is None:
+                        if (not nutrition_response_guard and nutrition_delivery_target is None and
+                                _recommendation_blueprint is None):
                             yield sse({"t": delta})
                 _bump_plans_today()  # honest landing counter: +1 real AI plan
                 reply_text = "".join(full)
@@ -2274,13 +2288,16 @@ def chat():
                             decision_engine.DecisionResult("clarify", _shadow_decision.intent,
                                                            "recommendation_integrity_contract", (), 1.0), lang)
                     yield sse({"t": reply_text})
-                elif nutrition_delivery_target is not None:
-                    validation = nutrition_validation.validate_daily_nutrition(reply_text, nutrition_delivery_targets)
-                    nutrition_delivery_failed = False
-                    if not validation.valid:
+                elif nutrition_request_full_day or nutrition_delivery_target is not None or (
+                        nutrition_response_guard and nutrition_validation.appears_complete_daily_plan(reply_text)):
+                    validation = (nutrition_validation.validate_daily_nutrition(reply_text, nutrition_guard_targets)
+                                  if nutrition_guard_targets is not None else None)
+                    if validation is None or not validation.valid:
                         regenerated = []
                         try:
-                            regeneration_messages = messages + [{"role": "user", "content": "\n".join(validation.failures)}]
+                            failures = (validation.failures if validation is not None else
+                                        ("Missing authoritative daily nutrition targets.",))
+                            regeneration_messages = messages + [{"role": "user", "content": "\n".join(failures)}]
                             regeneration = client.chat.completions.create(
                                 model=model_to_use,
                                 messages=regeneration_messages,
@@ -2292,8 +2309,11 @@ def chat():
                                 if delta:
                                     regenerated.append(delta)
                             regenerated_reply = "".join(regenerated)
-                            if nutrition_validation.validate_daily_nutrition(regenerated_reply, nutrition_delivery_targets).valid:
-                                reply_text = regenerated_reply
+                            regenerated_validation = (nutrition_validation.validate_daily_nutrition(
+                                regenerated_reply, nutrition_guard_targets)
+                                if nutrition_guard_targets is not None else None)
+                            if regenerated_validation is not None and regenerated_validation.valid:
+                                reply_text = regenerated_validation.delivery
                             else:
                                 reply_text = nutrition_validation.failure_message(lang)
                                 nutrition_delivery_failed = True
@@ -2301,10 +2321,16 @@ def chat():
                             print(f"[chat] nutrition regeneration failed: {regeneration_error}")
                             reply_text = nutrition_validation.failure_message(lang)
                             nutrition_delivery_failed = True
+                    elif validation is not None:
+                        reply_text = validation.delivery
+                    yield sse({"t": reply_text})
+                elif nutrition_response_guard:
+                    # A nutrition request that is not a complete daily plan remains
+                    # ordinary nutrition guidance, but it was intentionally buffered.
                     yield sse({"t": reply_text})
                 speech_event = _speech_event(
                     reply_text,
-                    preserve_visible=nutrition_delivery_target is not None and nutrition_delivery_failed,
+                    preserve_visible=nutrition_delivery_failed,
                 )
                 if speech_event:
                     yield sse(speech_event)

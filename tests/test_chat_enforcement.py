@@ -2061,3 +2061,233 @@ def test_daily_nutrition_contract_accounts_for_one_request_and_localizes_failure
     assert len(calls) == 2
     assert len(free_calls) == 1
     assert len(plan_calls) == 1
+
+
+_PRODUCTION_MALFORMED_NUTRITION = """При 99 кг и цел сваляне на мазнини — ето предложен хранителен план, който отговаря на твоите калорийни и протеинови нужди. Целта е да достигнеш 1914 ккал на ден с минимум 198 г протеин.
+
+Закуска
+Овесени ядки
+100 г
+Хранителна стойност
+Белтъчини
+13 г
+Въглехидрати
+66 г
+Мазнини
+7 г
+Калории
+389 kcal
+Прясно мляко
+200 мл
+Хранителна стойност
+Белтъчини
+6 г
+Въглехидрати
+9 г
+Мазнини
+8 г
+Калории
+122 kcal
+1 брой
+0.5
+Хранителна стойност
+Белтъчини
+0.5 г
+Въглехидрати
+25 г
+Мазнини
+0.3 г
+Калории
+95 kcal
+Обяд
+Пилешко филе
+150 г
+Хранителна стойност
+Белтъчини
+31 г
+Въглехидрати
+0 г
+Мазнини
+3.6 г
+Калории
+165 kcal
+Зеленчуци (на пара)
+200 г
+Хранителна стойност
+Белтъчини
+5 г
+Въглехидрати
+10 г
+Мазнини
+0.5 г
+Калории
+50 kcal
+Олио
+10 мл
+Хранителна стойност
+Белтъчини
+0 г
+Въглехидрати
+0 г
+Мазнини
+9 г
+Калории
+90 kcal
+Закуска
+Вечеря
+Телешка кайма
+150 г
+Хранителна стойност
+Белтъчини
+28 г
+Въглехидрати
+0 г
+Мазнини
+10 г
+Калории
+210 kcal
+Авокадо
+100 г
+Хранителна стойност
+Белтъчини
+2 г
+Въглехидрати
+9 г
+Мазнини
+15 г
+Калории
+160 kcal
+Броколи
+200 г
+Хранителна стойност
+Белтъчини
+5 г
+Въглехидрати
+10 г
+Мазнини
+0.5 г
+Калории
+55 kcal
+Дневни общо
+114.0 г
+Белтъчини
+211 г
+Въглехидрати
+54.4 г
+Мазнини
+1914
+Калории
+Този план осигурява балансирано хранене с необходимите макроси."""
+
+
+def test_production_multiline_fixture_is_one_rejected_canonical_day():
+    targets = NutritionTargets(Decimal("1914"), Decimal("198"))
+    result = validate_daily_nutrition(_PRODUCTION_MALFORMED_NUTRITION, targets)
+
+    assert result.valid is False
+    assert dict(result.day.computed_totals) == {
+        "protein": Decimal("90.5"), "carbs": Decimal("129"),
+        "fat": Decimal("53.9"), "kcal": Decimal("1336"),
+    }
+    assert [(meal.key, len(meal.foods)) for meal in result.day.meals] == [
+        ("breakfast", 3), ("lunch", 3), ("breakfast", 0), ("dinner", 3)]
+    for failure in (
+        "Breakfast has a food name is a quantity.",
+        "Breakfast has a food with an unsupported quantity unit.",
+        "Duplicate meal: breakfast.",
+        "Empty meal: breakfast.",
+        "Malformed daily totals: expected protein label before value.",
+        "Calories outside 5% of target.",
+        "Protein outside 5% of target.",
+    ):
+        assert failure in result.failures
+
+
+@pytest.mark.parametrize("message", [
+    "направи ми хранителен режим", "искам хранителен режим", "дай ми меню",
+    "направи ми меню", "направи ми дневно меню", "дай ми хранителен план",
+    "хранителен план за мен", "искам режим за отслабване", "направи ми друг режим",
+    "искам друго меню", "меню за сваляне на мазнини", "какво да ям през деня",
+    "при 99 кг направи ми меню за отслабване", "make me a meal plan", "give me a diet",
+    "make me a menu", "what should I eat today", "give me another diet",
+    "meal plan for fat loss", "make a plan for my day",
+])
+def test_real_daily_plan_request_phrases_never_bypass_the_full_day_gate(message):
+    assert appmod.nutrition_validation.is_full_day_request(message) is True
+
+
+def test_response_side_detection_buffers_only_complete_daily_plan_evidence():
+    assert appmod.nutrition_validation.appears_complete_daily_plan(_PRODUCTION_MALFORMED_NUTRITION) is True
+    assert appmod.nutrition_validation.appears_complete_daily_plan(_daily_plan()) is True
+    assert appmod.nutrition_validation.appears_complete_daily_plan("Закуска\nЯйца\n2 бр.") is False
+    assert appmod.nutrition_validation.appears_complete_daily_plan("Chicken recipe | 200 g | 40 | 0 | 5 | 250") is False
+
+
+def test_missed_menu_phrase_never_streams_or_persists_rejected_daily_plan(client, captured, monkeypatch):
+    uid = _login_for_chat(client, _profile())
+    monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang:
+                        "Калориен таргет: 1914 ккал\nПротеин таргет: минимум 198г/ден")
+    _set_sequence_stream(monkeypatch, captured, [_PRODUCTION_MALFORMED_NUTRITION,
+                                                   _PRODUCTION_MALFORMED_NUTRITION])
+
+    events = _events(_post(client, "дай ми меню", profile=_profile()))
+    failure = appmod.nutrition_validation.failure_message("en")
+
+    assert events == [{"t": failure}, {"done": True}]
+    assert _PRODUCTION_MALFORMED_NUTRITION not in str(events)
+    saved = store.list_conversation(uid, limit=10)
+    assert [turn["content"] for turn in saved] == ["дай ми меню", failure]
+
+
+def test_valid_multiline_day_serializes_the_validated_canonical_model():
+    multiline = """Breakfast
+Eggs
+2 pcs
+Nutrition value
+Protein
+40 g
+Carbs
+100 g
+Fat
+20 g
+Calories
+700 kcal
+Lunch
+Chicken rice
+1 serving
+Nutrition value
+Protein
+70 g
+Carbs
+140 g
+Fat
+30 g
+Calories
+1100 kcal
+Dinner
+Salmon potatoes
+1 serving
+Nutrition value
+Protein
+65 g
+Carbs
+110 g
+Fat
+28 g
+Calories
+1000 kcal
+Daily Total
+Protein
+175 g
+Carbs
+350 g
+Fat
+78 g
+Calories
+2800 kcal"""
+    result = validate_daily_nutrition(multiline, _NUTRITION_TARGETS)
+
+    assert result.valid is True
+    assert result.delivery == appmod.nutrition_validation.serialize_nutrition_day(result.day)
+    assert result.delivery.startswith("| Meal | Food | Quantity | Protein (g) |")
+    assert "| Daily Total | | | 175 | 350 | 78 | 2800 |" in result.delivery

@@ -33,14 +33,14 @@ _PROHIBITED_COMPLETION_GUIDANCE = (
     re.compile(r"\b\u0442\u043e\u0432\u0430\s+\u0435\s+\u0431\u0430\u0437\u043e\u0432\s+\u043f\u043b\u0430\u043d\b", re.I),
 )
 _DIRECT_FULL_DAY = (
-    re.compile(r"\b(?:meal\s+plan\s+for\s+today|daily\s+(?:meal|nutrition)\s+plan|full[- ]day\s+(?:meal|nutrition)\s+plan|meal\s+menu\s+for\s+today|nutrition\s+plan\s+for\s+today|alternative\s+meal\s+plan|alternative\s+daily\s+menu|complete\s+daily\s+meal\s+plan)\b", re.I),
-    re.compile(r"(?:\u0445\u0440\u0430\u043d\u0438\u0442\u0435\u043b\u0435\u043d\s+\u043f\u043b\u0430\u043d\s+\u0437\u0430\s+\u0434\u0435\u043d\u044f|\u0434\u043d\u0435\u0432\u0435\u043d\s+\u0445\u0440\u0430\u043d\u0438\u0442\u0435\u043b\u0435\u043d\s+(?:\u043f\u043b\u0430\u043d|\u0440\u0435\u0436\u0438\u043c)|\u043c\u0435\u043d\u044e\s+\u0437\u0430\s+\u0434\u043d\u0435\u0441|(?:\u0438\u0441\u043a\u0430\u043c\s+)?\u0445\u0440\u0430\u043d\u0438\u0442\u0435\u043b\u0435\u043d\s+\u0440\u0435\u0436\u0438\u043c|\u0434\u0440\u0443\u0433\s+\u0445\u0440\u0430\u043d\u0438\u0442\u0435\u043b\u0435\u043d\s+\u0440\u0435\u0436\u0438\u043c|\u0430\u043b\u0442\u0435\u0440\u043d\u0430\u0442\u0438\u0432\u0435\u043d\s+\u0445\u0440\u0430\u043d\u0438\u0442\u0435\u043b\u0435\u043d\s+\u043f\u043b\u0430\u043d|\u0430\u043b\u0442\u0435\u0440\u043d\u0430\u0442\u0438\u0432\u043d\u043e\s+\u0434\u043d\u0435\u0432\u043d\u043e\s+\u043c\u0435\u043d\u044e|\u043f\u044a\u043b\u0435\u043d\s+\u0445\u0440\u0430\u043d\u0438\u0442\u0435\u043b\u0435\u043d\s+\u043f\u043b\u0430\u043d)", re.I),
+    re.compile(r"\b(?:meal\s+plan(?:\s+for\s+(?:today|fat\s+loss))?|daily\s+(?:meal|nutrition)\s+plan|full[- ]day\s+(?:meal|nutrition)\s+plan|meal\s+menu\s+for\s+today|nutrition\s+plan\s+for\s+today|alternative\s+meal\s+plan|alternative\s+daily\s+menu|complete\s+daily\s+meal\s+plan|give\s+me\s+(?:a\s+)?diet|make\s+me\s+(?:a\s+)?menu|what\s+should\s+i\s+eat\s+today|give\s+me\s+another\s+diet|make\s+(?:a\s+)?plan\s+for\s+my\s+day)\b", re.I),
+    re.compile(r"(?:\u0445\u0440\u0430\u043d\u0438\u0442\u0435\u043b\u0435\u043d\s+\u043f\u043b\u0430\u043d(?:\s+\u0437\u0430\s+\u0434\u0435\u043d\u044f|\s+\u0437\u0430\s+\u043c\u0435\u043d)?|\u0434\u043d\u0435\u0432\u0435\u043d\s+\u0445\u0440\u0430\u043d\u0438\u0442\u0435\u043b\u0435\u043d\s+(?:\u043f\u043b\u0430\u043d|\u0440\u0435\u0436\u0438\u043c)|\u043c\u0435\u043d\u044e\s+\u0437\u0430\s+(?:\u0434\u043d\u0435\u0441|\u0441\u0432\u0430\u043b\u044f\u043d\u0435\s+\u043d\u0430\s+\u043c\u0430\u0437\u043d\u0438\u043d\u0438)|(?:\u0438\u0441\u043a\u0430\u043c\s+)?\u0445\u0440\u0430\u043d\u0438\u0442\u0435\u043b\u0435\u043d\s+\u0440\u0435\u0436\u0438\u043c|\u0434\u0440\u0443\u0433\s+\u0445\u0440\u0430\u043d\u0438\u0442\u0435\u043b\u0435\u043d\s+\u0440\u0435\u0436\u0438\u043c|\u0430\u043b\u0442\u0435\u0440\u043d\u0430\u0442\u0438\u0432\u0435\u043d\s+\u0445\u0440\u0430\u043d\u0438\u0442\u0435\u043b\u0435\u043d\s+\u043f\u043b\u0430\u043d|\u0430\u043b\u0442\u0435\u0440\u043d\u0430\u0442\u0438\u0432\u043d\u043e\s+\u0434\u043d\u0435\u0432\u043d\u043e\s+\u043c\u0435\u043d\u044e|\u043f\u044a\u043b\u0435\u043d\s+\u0445\u0440\u0430\u043d\u0438\u0442\u0435\u043b\u0435\u043d\s+\u043f\u043b\u0430\u043d|\u0438\u0441\u043a\u0430\u043c\s+\u0440\u0435\u0436\u0438\u043c\s+\u0437\u0430\s+\u043e\u0442\u0441\u043b\u0430\u0431\u0432\u0430\u043d\u0435|\u043a\u0430\u043a\u0432\u043e\s+\u0434\u0430\s+\u044f\u043c\s+\u043f\u0440\u0435\u0437\s+\u0434\u0435\u043d\u044f|(?:\u0434\u0430\u0439|\u043d\u0430\u043f\u0440\u0430\u0432\u0438)\s+\u043c\u0438\s+(?:\u0434\u043d\u0435\u0432\u043d\u043e\s+)?\u043c\u0435\u043d\u044e|\u0438\u0441\u043a\u0430\u043c\s+\u0434\u0440\u0443\u0433\u043e\s+\u043c\u0435\u043d\u044e|\u043d\u0430\u043f\u0440\u0430\u0432\u0438\s+\u043c\u0438\s+\u0434\u0440\u0443\u0433\s+\u0440\u0435\u0436\u0438\u043c)", re.I),
 )
 _CONTEXTUAL_FULL_DAY = re.compile(r"\b(?:another\s+meal\s+plan)\b|\u0438\u0441\u043a\u0430\u043c\s+\u0434\u0440\u0443\u0433\s+\u0445\u0440\u0430\u043d\u0438\u0442\u0435\u043b\u0435\u043d\s+\u0440\u0435\u0436\u0438\u043c", re.I)
 _NUTRITION_CONTEXT = re.compile(r"\b(?:nutrition|meal\s+plan|daily\s+menu|kcal|calorie|protein)\b|\u0445\u0440\u0430\u043d\u0438\u0442\u0435\u043b|\u043c\u0435\u043d\u044e|\u043a\u0430\u043b\u043e\u0440|\u043f\u0440\u043e\u0442\u0435\u0438\u043d", re.I)
 _QUANTITY_ONLY = re.compile(
     r"^\s*\d+(?:[.,]\d+)?\s*(?:g|\u0433|\u0433\u0440|kg|\u043a\u0433|ml|\u043c\u043b|"
-    r"pcs?\.?|\u0431\u0440\.?|servings?|portions?|\u043f\u043e\u0440\u0446\u0438\u044f|\u043f\u043e\u0440\u0446\u0438\u0438|"
+    r"pcs?\.?|\u0431\u0440\.?|\u0431\u0440\u043e\u0439|servings?|portions?|\u043f\u043e\u0440\u0446\u0438\u044f|\u043f\u043e\u0440\u0446\u0438\u0438|"
     r"medium|large|small|\u0441\u0440\u0435\u0434\u0435\u043d|\u0433\u043e\u043b\u044f\u043c|\u043c\u0430\u043b\u044a\u043a)\s*$",
     re.I,
 )
@@ -85,12 +85,16 @@ class NutritionMeal:
 class NutritionDay:
     meals: tuple[NutritionMeal, ...]
     declared_totals: tuple[dict[str, Decimal | None], ...]
+    computed_totals: tuple[tuple[str, Decimal], ...] = ()
+    validation_metadata: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
 class NutritionValidationResult:
     valid: bool
     failures: tuple[str, ...]
+    day: NutritionDay | None = None
+    delivery: str | None = None
 
 
 def _decimal(value: str | Decimal | None) -> Decimal | None:
@@ -121,7 +125,7 @@ def _meal_key(value: str) -> str | None:
 
 def _is_total(value: str) -> bool:
     normalized = _normalized(value)
-    return normalized in _TOTALS or normalized.startswith("dnev")
+    return normalized in _TOTALS or normalized.startswith(("dnev", "\u0434\u043d\u0435\u0432"))
 
 
 def _cells(line: str) -> list[str]:
@@ -183,6 +187,8 @@ def _food_name_failure(name: str) -> str | None:
         return "food name is preparation only"
     if normalized in _VAGUE_FOOD_NAMES:
         return "food name is too vague"
+    if normalized.startswith(("vegetables", "\u0437\u0435\u043b\u0435\u043d\u0447\u0443\u0446\u0438")) and ":" not in clean:
+        return "food name is too vague"
     return None
 
 
@@ -227,8 +233,126 @@ def _source_fragment_failures(text: str) -> list[str]:
     return failures
 
 
+_NUTRITION_VALUE_HEADINGS = {"хранителнастойност", "nutritionvalue", "nutritionvalues", "nutritionfacts"}
+
+
+def _totals_from_meals(meals: tuple[NutritionMeal, ...]) -> tuple[tuple[str, Decimal], ...]:
+    totals = {"protein": Decimal("0"), "carbs": Decimal("0"), "fat": Decimal("0"), "kcal": Decimal("0")}
+    for meal in meals:
+        for food in meal.foods:
+            for key, value in (("protein", food.protein), ("carbs", food.carbs),
+                               ("fat", food.fat), ("kcal", food.kcal)):
+                if value is not None:
+                    totals[key] += value
+    return tuple((key, totals[key]) for key in ("protein", "carbs", "fat", "kcal"))
+
+
+def _parse_multiline_label_value(text: str) -> NutritionDay:
+    """Parse the label/value format as one strict state machine.
+
+    A malformed block is retained as a food or meal plus metadata.  Validation can
+    therefore reject the whole plan without silently dropping the evidence that
+    made it malformed.
+    """
+    lines = [_clean(line) for line in str(text or "").replace("\r", "").splitlines()]
+    lines = [line for line in lines if line]
+    meals: list[dict[str, object]] = []
+    declared: list[dict[str, Decimal | None]] = []
+    metadata: list[str] = []
+    current: dict[str, object] | None = None
+    index = 0
+
+    def next_line(offset: int) -> str:
+        return lines[offset] if offset < len(lines) else ""
+
+    def add_meal(label: str) -> None:
+        nonlocal current
+        key = _meal_key(label.rstrip(":"))
+        current = {"key": key, "label": label.rstrip(":"), "foods": []}
+        meals.append(current)
+
+    def add_food(name: str, quantity: str, values: dict[str, Decimal | None]) -> None:
+        if current is None:
+            metadata.append("Food block appears before a meal heading.")
+            return
+        current["foods"].append(NutritionFood(
+            name, quantity, values.get("protein"), values.get("carbs"),
+            values.get("fat"), values.get("kcal")))
+
+    while index < len(lines):
+        line = lines[index]
+        if _meal_key(line.rstrip(":")):
+            add_meal(line)
+            index += 1
+            continue
+        if _is_total(line):
+            values: dict[str, Decimal | None] = {}
+            index += 1
+            for expected in ("protein", "carbs", "fat", "kcal"):
+                label = next_line(index)
+                if _column_key(label) != expected:
+                    metadata.append(f"Malformed daily totals: expected {expected} label before value.")
+                    break
+                value = next_line(index + 1)
+                parsed = _decimal(value)
+                if parsed is None:
+                    metadata.append(f"Malformed daily totals: missing {expected} value.")
+                    break
+                values[expected] = parsed
+                index += 2
+            if len(values) == 4:
+                declared.append(values)
+            else:
+                while index < len(lines) and not _meal_key(lines[index].rstrip(":")):
+                    index += 1
+            continue
+        if current is None:
+            index += 1
+            continue
+
+        name = line
+        quantity = next_line(index + 1)
+        values: dict[str, Decimal | None] = {}
+        if not quantity or _meal_key(quantity.rstrip(":")) or _is_total(quantity):
+            metadata.append(f"Malformed food block for {name}: missing quantity.")
+            add_food(name, "", values)
+            index += 1
+            continue
+        marker = next_line(index + 2)
+        if _normalized(marker) not in _NUTRITION_VALUE_HEADINGS:
+            metadata.append(f"Malformed food block for {name}: missing nutrition-value heading.")
+            add_food(name, quantity, values)
+            index += 2
+            continue
+        cursor = index + 3
+        complete = True
+        for expected in ("protein", "carbs", "fat", "kcal"):
+            label = next_line(cursor)
+            if _column_key(label) != expected:
+                metadata.append(f"Malformed food block for {name}: expected {expected} label before value.")
+                complete = False
+                break
+            value = next_line(cursor + 1)
+            parsed = _decimal(value)
+            if parsed is None:
+                metadata.append(f"Malformed food block for {name}: missing {expected} value.")
+                complete = False
+                break
+            values[expected] = parsed
+            cursor += 2
+        add_food(name, quantity, values)
+        index = cursor if complete else max(cursor, index + 3)
+
+    parsed_meals = tuple(NutritionMeal(
+        str(meal["key"]), str(meal["label"]), tuple(meal["foods"])) for meal in meals)
+    return NutritionDay(parsed_meals, tuple(declared), _totals_from_meals(parsed_meals), tuple(metadata))
+
+
 def parse_nutrition_day(text: str) -> NutritionDay:
     """Parse renderer-compatible nutrition input into a pure canonical model."""
+    if any(_normalized(line) in _NUTRITION_VALUE_HEADINGS
+           for line in str(text or "").replace("\r", "").splitlines()):
+        return _parse_multiline_label_value(text)
     mutable_meals: list[dict[str, object]] = []
     totals: list[dict[str, Decimal | None]] = []
     current: dict[str, object] | None = None
@@ -354,7 +478,7 @@ def parse_nutrition_day(text: str) -> NutritionDay:
                 pending_preparation = ""
 
     meals = tuple(NutritionMeal(meal["key"], meal["label"], tuple(meal["foods"])) for meal in mutable_meals)  # type: ignore[arg-type]
-    return NutritionDay(meals, tuple(totals))
+    return NutritionDay(meals, tuple(totals), _totals_from_meals(meals))
 
 
 def targets_from_profile_block(profile_block: str) -> NutritionTargets | None:
@@ -376,13 +500,57 @@ def targets_from_profile_block(profile_block: str) -> NutritionTargets | None:
 
 def is_full_day_request(message: str, history: object = None) -> bool:
     text = str(message or "")
+    if _CONTEXTUAL_FULL_DAY.search(text):
+        turns = history[-2:] if isinstance(history, list) else []
+        return any(_NUTRITION_CONTEXT.search(str(turn.get("content", "")))
+                   for turn in turns if isinstance(turn, dict))
     if any(pattern.search(text) for pattern in _DIRECT_FULL_DAY):
         return True
-    if not _CONTEXTUAL_FULL_DAY.search(text):
-        return False
-    turns = history[-2:] if isinstance(history, list) else []
-    return any(_NUTRITION_CONTEXT.search(str(turn.get("content", "")))
-               for turn in turns if isinstance(turn, dict))
+    return False
+
+
+def appears_complete_daily_plan(text: str) -> bool:
+    """Return true only for responses that carry strong daily-plan evidence."""
+    lines = [_clean(line) for line in str(text or "").replace("\r", "").splitlines() if _clean(line)]
+    cells_by_line = [_cells(line) if "|" in line else [line] for line in lines]
+    meal_count = sum(1 for cells in cells_by_line
+                     if any(_meal_key(cell.rstrip(":")) for cell in cells))
+    macro_count = sum(1 for cells in cells_by_line for cell in cells
+                      if _column_key(cell) in {"protein", "carbs", "fat", "kcal"})
+    total_present = any(_is_total(cell) for cells in cells_by_line for cell in cells)
+    quantity_count = sum(1 for cells in cells_by_line for cell in cells
+                         if _SUPPORTED_QUANTITY.fullmatch(cell))
+    return meal_count >= 2 and (macro_count >= 3 or total_present or quantity_count >= 2)
+
+
+def _format_decimal(value: Decimal) -> str:
+    rendered = format(value.normalize(), "f")
+    return rendered.rstrip("0").rstrip(".") if "." in rendered else rendered
+
+
+def serialize_nutrition_day(day: NutritionDay) -> str:
+    """Deliver only the same canonical model that passed deterministic validation."""
+    computed = dict(day.computed_totals)
+    lines = [
+        "| Meal | Food | Quantity | Protein (g) | Carbs (g) | Fat (g) | Kcal |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for meal in day.meals:
+        for position, food in enumerate(meal.foods):
+            lines.append("| {} | {} | {} | {} | {} | {} | {} |".format(
+                meal.label if position == 0 else "", food.name, food.quantity,
+                _format_decimal(food.protein or Decimal("0")),
+                _format_decimal(food.carbs or Decimal("0")),
+                _format_decimal(food.fat or Decimal("0")),
+                _format_decimal(food.kcal or Decimal("0")),
+            ))
+    lines.append("| Daily Total | | | {} | {} | {} | {} |".format(
+        _format_decimal(computed.get("protein", Decimal("0"))),
+        _format_decimal(computed.get("carbs", Decimal("0"))),
+        _format_decimal(computed.get("fat", Decimal("0"))),
+        _format_decimal(computed.get("kcal", Decimal("0"))),
+    ))
+    return "\n".join(lines)
 
 
 def generation_contract(targets: NutritionTargets) -> str:
@@ -422,13 +590,15 @@ def validate_daily_nutrition(text: str, targets: NutritionTargets) -> NutritionV
         failures.append("Plan includes prohibited completion guidance.")
 
     day = parse_nutrition_day(text)
+    failures.extend(day.validation_metadata)
     failures.extend(_source_fragment_failures(text))
     foods_by_meal = {key: [] for key in _MEALS}
     meal_sequence: list[str] = []
     for meal in day.meals:
         foods_by_meal[meal.key].extend(meal.foods)
-        if meal.foods:
-            meal_sequence.append(meal.key)
+        meal_sequence.append(meal.key)
+        if not meal.foods:
+            failures.append(f"Empty meal: {meal.key}.")
 
     for key in ("breakfast", "lunch", "dinner"):
         if not foods_by_meal[key]:
@@ -464,7 +634,7 @@ def validate_daily_nutrition(text: str, targets: NutritionTargets) -> NutritionV
             seen_primary.add(key)
             phase = 5
 
-    sums = {"protein": Decimal("0"), "carbs": Decimal("0"), "fat": Decimal("0"), "kcal": Decimal("0")}
+    sums = dict(day.computed_totals)
     for key, foods in foods_by_meal.items():
         for food in foods:
             name_failure = _food_name_failure(food.name)
@@ -479,7 +649,7 @@ def validate_daily_nutrition(text: str, targets: NutritionTargets) -> NutritionV
                 if value is None or (field == "kcal" and value <= 0) or (field != "kcal" and value < 0):
                     failures.append(f"{key.title()} has a food without {field}.")
                 else:
-                    sums[field] += value
+                    pass
 
     if not day.declared_totals:
         failures.append("Missing daily totals.")
@@ -493,11 +663,17 @@ def validate_daily_nutrition(text: str, targets: NutritionTargets) -> NutritionV
                 continue
             if abs(sums[field] - total) > _reconciliation_tolerance(field, total):
                 failures.append(f"Daily {field} total does not equal meal totals.")
-        target_values = {"kcal": targets.kcal, "protein": targets.protein, "carbs": targets.carbs, "fat": targets.fat}
-        names = {"kcal": "Calories", "protein": "Protein", "carbs": "Carbs", "fat": "Fat"}
-        for field, target in target_values.items():
-            total = totals.get(field)
-            if target is not None and total is not None and abs(total - target) > target * Decimal("0.05"):
-                failures.append(f"{names[field]} outside 5% of target.")
+            target = getattr(targets, field)
+            if target is not None and abs(total - target) > target * Decimal("0.05"):
+                failures.append(f"{ {'kcal': 'Calories', 'protein': 'Protein', 'carbs': 'Carbs', 'fat': 'Fat'}[field] } outside 5% of target.")
+    target_values = {"kcal": targets.kcal, "protein": targets.protein, "carbs": targets.carbs, "fat": targets.fat}
+    names = {"kcal": "Calories", "protein": "Protein", "carbs": "Carbs", "fat": "Fat"}
+    for field, target in target_values.items():
+        if target is not None and abs(sums.get(field, Decimal("0")) - target) > target * Decimal("0.05"):
+            failures.append(f"{names[field]} outside 5% of target.")
 
-    return NutritionValidationResult(not failures, tuple(dict.fromkeys(failures)))
+    unique_failures = tuple(dict.fromkeys(failures))
+    return NutritionValidationResult(
+        not unique_failures, unique_failures, day,
+        serialize_nutrition_day(day) if not unique_failures else None,
+    )
