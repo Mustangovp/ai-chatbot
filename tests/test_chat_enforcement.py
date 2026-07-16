@@ -1575,7 +1575,7 @@ def test_daily_nutrition_validator_accepts_chronological_snacks():
         ("Breakfast", "Eggs and oats", "1 serving", "40", "100", "20", "700"),
         ("Snack", "Yogurt", "1 serving", "10", "20", "5", "200"),
         ("Lunch", "Chicken and rice", "1 serving", "60", "120", "28", "1000"),
-        ("Snack", "Fruit", "1 serving", "5", "10", "3", "100"),
+        ("Snack", "Banana", "1 serving", "5", "10", "3", "100"),
         ("Dinner", "Salmon and potatoes", "1 serving", "60", "100", "22", "800"),
     ]
 
@@ -1831,6 +1831,81 @@ def test_contextual_replacement_requests_require_immediate_nutrition_context():
     assert appmod.nutrition_validation.is_full_day_request("искам друг хранителен режим", history) is True
     assert appmod.nutrition_validation.is_full_day_request("another meal plan", history) is True
     assert appmod.nutrition_validation.is_full_day_request("another meal plan", []) is False
+
+
+@pytest.mark.parametrize("name,reason", [
+    ("2 pcs", "food name is a quantity"),
+    ("150 g", "food name is a quantity"),
+    ("boiled", "food name is preparation only"),
+    ("сварено", "food name is preparation only"),
+    ("vegetables", "food name is too vague"),
+    ("Зеленчуци", "food name is too vague"),
+    ("protein", "food name is too vague"),
+    ("По избор", "food name is too vague"),
+])
+def test_nutrition_validator_rejects_incomplete_or_vague_food_identity(name, reason):
+    rows = [("Breakfast", name, "70 g", "40", "100", "20", "700"),
+            _NUTRITION_ROWS[1], _NUTRITION_ROWS[2]]
+    assert f"Breakfast has a {reason}." in _failures(_daily_plan(rows))
+
+
+@pytest.mark.parametrize("fragment,reason", [
+    ("| 2 pcs | 12 | 1 | 10 | 140 |", "Dangling quantity without a food name."),
+    ("| 150 g | 12 | 1 | 10 | 140 |", "Dangling quantity without a food name."),
+    ("| boiled | 12 | 1 | 10 | 140 |", "Dangling preparation without a food name."),
+    ("| печено | 12 | 1 | 10 | 140 |", "Dangling preparation without a food name."),
+])
+def test_nutrition_validator_rejects_dangling_quantity_or_preparation_cards(fragment, reason):
+    plan = _daily_plan() + "\n" + fragment
+    assert reason in _failures(plan)
+
+
+@pytest.mark.parametrize("name,quantity", [
+    ("Whole eggs", "2 pcs"),
+    ("Сварен ориз", "200 г"),
+    ("Печено пилешко филе", "180 г"),
+    ("Яйца на очи", "3 бр."),
+    ("Зеленчуци: броколи, моркови и чушки", "200 г"),
+    ("Mixed vegetables: broccoli, carrots and peppers", "200 g"),
+])
+def test_nutrition_validator_accepts_actionable_food_identities(name, quantity):
+    rows = [("Breakfast", name, quantity, "40", "100", "20", "700"),
+            _NUTRITION_ROWS[1], _NUTRITION_ROWS[2]]
+    assert validate_daily_nutrition(_daily_plan(rows), _NUTRITION_TARGETS).valid is True
+
+
+def test_nutrition_validator_deterministically_joins_a_named_food_with_its_next_quantity_row():
+    plan = "\n".join([
+        "Breakfast", "Whole eggs", "| 2 pcs | 12 | 1 | 10 | 140 |",
+        "Lunch", "| Chicken rice | 100 g | 70 | 140 | 30 | 1100 |",
+        "Dinner", "| Salmon potato | 100 g | 65 | 110 | 28 | 1000 |",
+        "| Daily Total | | 147 | 251 | 68 | 2240 |",
+    ])
+    targets = NutritionTargets(Decimal("2240"), Decimal("147"), Decimal("251"), Decimal("68"))
+    day = appmod.nutrition_validation.parse_nutrition_day(plan)
+
+    assert day.meals[0].foods[0].name == "Whole eggs"
+    assert day.meals[0].foods[0].quantity == "2 pcs"
+    assert validate_daily_nutrition(plan, targets).valid is True
+
+
+def test_daily_nutrition_semantic_failure_regenerates_once_without_leaking_or_persisting_rejected_plan(
+        client, captured, monkeypatch):
+    profile_block = "Calorie target: 2800 kcal\nProtein target: minimum 175g/day"
+    invalid_rows = [("Breakfast", "2 pcs", "70 g", "40", "100", "20", "700"),
+                    _NUTRITION_ROWS[1], _NUTRITION_ROWS[2]]
+    invalid, corrected = _daily_plan(invalid_rows), _daily_plan()
+    uid = _login_for_chat(client, _profile())
+    monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: profile_block)
+    calls = _set_sequence_stream(monkeypatch, captured, [invalid, corrected])
+
+    response = _post(client, "Give me a full-day nutrition plan")
+
+    assert _events(response) == [{"t": corrected}, {"done": True}]
+    assert len(calls) == 2
+    assert "food name is a quantity" in calls[1]["messages"][-1]["content"]
+    saved = store.list_conversation(uid, limit=10)
+    assert [turn["content"] for turn in saved] == ["Give me a full-day nutrition plan", corrected]
 
 
 def _communication_projections(*, adaptation=None, recovery="fresh", blueprint=None, rules=()):

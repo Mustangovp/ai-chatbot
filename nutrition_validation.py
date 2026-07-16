@@ -38,6 +38,22 @@ _DIRECT_FULL_DAY = (
 )
 _CONTEXTUAL_FULL_DAY = re.compile(r"\b(?:another\s+meal\s+plan)\b|\u0438\u0441\u043a\u0430\u043c\s+\u0434\u0440\u0443\u0433\s+\u0445\u0440\u0430\u043d\u0438\u0442\u0435\u043b\u0435\u043d\s+\u0440\u0435\u0436\u0438\u043c", re.I)
 _NUTRITION_CONTEXT = re.compile(r"\b(?:nutrition|meal\s+plan|daily\s+menu|kcal|calorie|protein)\b|\u0445\u0440\u0430\u043d\u0438\u0442\u0435\u043b|\u043c\u0435\u043d\u044e|\u043a\u0430\u043b\u043e\u0440|\u043f\u0440\u043e\u0442\u0435\u0438\u043d", re.I)
+_QUANTITY_ONLY = re.compile(
+    r"^\s*\d+(?:[.,]\d+)?\s*(?:g|\u0433|\u0433\u0440|kg|\u043a\u0433|ml|\u043c\u043b|"
+    r"pcs?\.?|\u0431\u0440\.?|servings?|portions?|\u043f\u043e\u0440\u0446\u0438\u044f|\u043f\u043e\u0440\u0446\u0438\u0438|"
+    r"medium|large|small|\u0441\u0440\u0435\u0434\u0435\u043d|\u0433\u043e\u043b\u044f\u043c|\u043c\u0430\u043b\u044a\u043a)\s*$",
+    re.I,
+)
+_SUPPORTED_QUANTITY = _QUANTITY_ONLY
+_PREPARATION_ONLY = frozenset({
+    "boiled", "cooked", "grilled", "fried", "baked", "roasted",
+    "\u0441\u0432\u0430\u0440\u0435\u043d", "\u0441\u0432\u0430\u0440\u0435\u043d\u043e", "\u043f\u0435\u0447\u0435\u043d", "\u043f\u0435\u0447\u0435\u043d\u043e", "\u0432\u0430\u0440\u0435\u043d", "\u043f\u044a\u0440\u0436\u0435\u043d", "\u043d\u0430 \u0441\u043a\u0430\u0440\u0430",
+})
+_VAGUE_FOOD_NAMES = frozenset({
+    "protein", "carbs", "vegetables", "meat", "fruit", "snack", "optional",
+    "one serving", "one bowl", "any fruit", "food of choice", "something light",
+    "\u0435\u0434\u043d\u0430 \u043f\u043e\u0440\u0446\u0438\u044f", "\u0435\u0434\u043d\u0430 \u043a\u0443\u043f\u0438\u0447\u043a\u0430", "\u043f\u043e \u0438\u0437\u0431\u043e\u0440", "\u043d\u044f\u043a\u0430\u043a\u044a\u0432 \u043f\u043b\u043e\u0434", "\u043f\u0440\u043e\u0442\u0435\u0438\u043d", "\u0437\u0435\u043b\u0435\u043d\u0447\u0443\u0446\u0438",
+})
 
 
 @dataclass(frozen=True)
@@ -144,10 +160,71 @@ def _numbers_after(cells: list[str], start: int) -> tuple[str, list[Decimal]]:
         parsed = _decimal(value)
         if parsed is None:
             break
-        if not quantity and re.search(r"\d\s*(?:g|\u0433|\u0433\u0440|kg|\u043a\u0433|ml|\u043c\u043b|serving|portion|\u043f\u043e\u0440\u0446)", value, re.I):
+        if not quantity and re.search(
+                r"\d\s*(?:g|\u0433|\u0433\u0440|kg|\u043a\u0433|ml|\u043c\u043b|pcs?\.?|\u0431\u0440\.?|"
+                r"serving|portion|\u043f\u043e\u0440\u0446\u0438\u044f|\u043f\u043e\u0440\u0446\u0438\u0438|medium|large|small)", value, re.I):
             quantity = value
         values.append(parsed)
     return quantity, values
+
+
+def _is_quantity_only(value: str) -> bool:
+    return bool(_QUANTITY_ONLY.fullmatch(_clean(value)))
+
+
+def _food_name_failure(name: str) -> str | None:
+    clean = _clean(name).strip("| -–—,:;")
+    normalized = clean.lower()
+    if not clean:
+        return "food without a name"
+    if _is_quantity_only(clean) or (not _NORMALIZER.sub("", clean)):
+        return "food name is a quantity"
+    if normalized in _PREPARATION_ONLY:
+        return "food name is preparation only"
+    if normalized in _VAGUE_FOOD_NAMES:
+        return "food name is too vague"
+    return None
+
+
+def _food_quantity_failure(quantity: str) -> bool:
+    return not _SUPPORTED_QUANTITY.fullmatch(_clean(quantity))
+
+
+def _source_fragment_failures(text: str) -> list[str]:
+    """Find standalone quantity/preparation cards that the permissive parser may skip."""
+    failures: list[str] = []
+    pending_named_food = False
+    for raw_line in str(text or "").replace("\r", "").splitlines():
+        line = _clean(raw_line)
+        if not line:
+            continue
+        cells = _cells(line) if "|" in line else [line]
+        if _is_separator(cells) or _header_mapping(cells) is not None:
+            continue
+        candidates = [cell for cell in cells if _clean(cell)]
+        if not candidates:
+            continue
+        meal_row = _meal_key(candidates[0].rstrip(":")) is not None
+        if meal_row:
+            if "|" in line and len(cells) > 1 and not _clean(cells[1]):
+                continue
+            candidates = candidates[1:]
+        if not candidates or _is_total(candidates[0]):
+            continue
+        candidate = _clean(candidates[0])
+        if _is_quantity_only(candidate):
+            if pending_named_food:
+                pending_named_food = False
+            else:
+                failures.append("Dangling quantity without a food name.")
+        elif candidate.lower() in _PREPARATION_ONLY:
+            if not pending_named_food:
+                failures.append("Dangling preparation without a food name.")
+        elif "|" not in line:
+            pending_named_food = True
+        else:
+            pending_named_food = False
+    return failures
 
 
 def parse_nutrition_day(text: str) -> NutritionDay:
@@ -156,6 +233,8 @@ def parse_nutrition_day(text: str) -> NutritionDay:
     totals: list[dict[str, Decimal | None]] = []
     current: dict[str, object] | None = None
     header: dict[str, int] | None = None
+    pending_name = ""
+    pending_preparation = ""
 
     def set_meal(label: str) -> None:
         nonlocal current
@@ -238,6 +317,13 @@ def parse_nutrition_day(text: str) -> NutritionDay:
             if mapping is not None:
                 header = mapping
                 continue
+            if pending_name:
+                first = next((index for index, cell in enumerate(cells) if _clean(cell)), None)
+                if first is not None and _is_quantity_only(cells[first]):
+                    cells[first] = pending_name + (", " + pending_preparation if pending_preparation else "")
+                    cells.insert(first + 1, _clean(raw_line).strip().strip("|").split("|")[first].strip())
+                pending_name = ""
+                pending_preparation = ""
             if header is not None and len(cells) >= max(header.values()) + 1:
                 consume_mapped(cells, header)
             else:
@@ -257,6 +343,15 @@ def parse_nutrition_day(text: str) -> NutritionDay:
                 quantity_match = re.search(r"\d+(?:[.,]\d+)?\s*(?:g|\u0433|\u0433\u0440|kg|\u043a\u0433|ml|\u043c\u043b)", line, re.I)
                 protein, carbs, fat, kcal = numbers[-4:]
                 add_food(name, quantity_match.group(0) if quantity_match else "", protein, carbs, fat, kcal)
+                pending_name = ""
+                pending_preparation = ""
+                continue
+        if current is not None and not _is_total(line):
+            if line.lower() in _PREPARATION_ONLY and pending_name:
+                pending_preparation = line
+            elif not _is_quantity_only(line):
+                pending_name = line
+                pending_preparation = ""
 
     meals = tuple(NutritionMeal(meal["key"], meal["label"], tuple(meal["foods"])) for meal in mutable_meals)  # type: ignore[arg-type]
     return NutritionDay(meals, tuple(totals))
@@ -302,7 +397,9 @@ def generation_contract(targets: NutritionTargets) -> str:
     return (
         "[DAILY NUTRITION DELIVERY CONTRACT]\n"
         "Return one complete pipe-delimited daily plan. Include Breakfast, optional Snack, Lunch, optional Snack, Dinner in chronological order. "
-        "Each food needs a name, quantity, protein, carbs, fat, and kcal. Include exactly one Daily Total row. "
+        "Each food needs an explicit food name, numeric quantity with a supported unit/count, protein, carbs, fat, and kcal. "
+        "Never output a quantity or preparation as a separate food: write 'Whole eggs | 2 pcs' and 'Rice, cooked | 200 g'. "
+        "Never use placeholders such as protein, vegetables, food of choice, or any fruit. Include exactly one Daily Total row. "
         "Do not add instructions to increase food, portions, or calories.\n"
         f"Required daily totals: {'; '.join(required)}."
     )
@@ -325,6 +422,7 @@ def validate_daily_nutrition(text: str, targets: NutritionTargets) -> NutritionV
         failures.append("Plan includes prohibited completion guidance.")
 
     day = parse_nutrition_day(text)
+    failures.extend(_source_fragment_failures(text))
     foods_by_meal = {key: [] for key in _MEALS}
     meal_sequence: list[str] = []
     for meal in day.meals:
@@ -369,10 +467,13 @@ def validate_daily_nutrition(text: str, targets: NutritionTargets) -> NutritionV
     sums = {"protein": Decimal("0"), "carbs": Decimal("0"), "fat": Decimal("0"), "kcal": Decimal("0")}
     for key, foods in foods_by_meal.items():
         for food in foods:
-            if not food.name:
-                failures.append(f"{key.title()} has a food without a name.")
+            name_failure = _food_name_failure(food.name)
+            if name_failure:
+                failures.append(f"{key.title()} has a {name_failure}.")
             if not food.quantity or _decimal(food.quantity) is None:
                 failures.append(f"{key.title()} has a food without quantity.")
+            elif _food_quantity_failure(food.quantity):
+                failures.append(f"{key.title()} has a food with an unsupported quantity unit.")
             values = {"protein": food.protein, "carbs": food.carbs, "fat": food.fat, "kcal": food.kcal}
             for field, value in values.items():
                 if value is None or (field == "kcal" and value <= 0) or (field != "kcal" and value < 0):
