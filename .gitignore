@@ -85,3 +85,7 @@ data/*.db
 
 # Regression test for Stripe Checkout session replay protection.
 !tests/test_poll_token.py
+
+# Nutrition Engine V2 — isolated Phase 1 foundation (pure library, no production
+# integration). Committed so the deterministic optimizer/feasibility gates run in CI.
+!tests/test_nutrition_engine.py
