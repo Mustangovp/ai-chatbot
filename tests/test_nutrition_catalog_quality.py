@@ -59,7 +59,7 @@ def _result(catalog):
 
 
 def test_source_backed_records_have_explicit_reviewable_provenance(catalog):
-    assert len(catalog.foods) == 20
+    assert len(catalog.foods) == 45
     assert {food.review_status for food in catalog.foods} == {"NUTRIENTS_REVIEWED"}
     assert all(food.source_name and food.source_record_id and food.source_version and food.data_basis
                for food in catalog.foods)

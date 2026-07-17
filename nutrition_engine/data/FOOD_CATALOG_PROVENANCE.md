@@ -67,6 +67,20 @@ portion. No record uses milliliters in this catalog, so the engine does not
 infer food density. All min/max/default/increment values are caller-test inputs
 labeled `TEST_POLICY_ONLY`, pending product and clinical policy approval.
 
+## Phase 3 expansion
+
+Phase 3 extends the development catalog to 45 `NUTRIENTS_REVIEWED` records.
+New records use FNDDS 2021-2023 (2024-10-31), Foundation Foods (2026-04-30),
+or SR Legacy (2018-04) FDC identifiers retained in each JSON record. The
+expansion includes turkey, lean pork, salmon, tuna, nonfat Greek yogurt, milk,
+legumes, firm tofu, cooked grains, sweet potato, berries, orange, walnuts, and
+additional vegetables. Firm tofu (172448) and cooked zucchini (169292) are
+SR Legacy records because no exact newer-download record was available.
+
+Pumpkin seeds (2707581) and peanut butter (2707537) were deliberately excluded:
+their source Energy values exceeded the catalog's documented macro-consistency
+tolerance. Source kcal values were not changed to force admission.
+
 ## Known limitations — why this blocks runtime integration
 
 These results are recorded here so the foundation is not mistaken for a
@@ -87,6 +101,31 @@ both lunch and dinner and drives portions to the development boundary values.
 Menu variety, culinary sanity, and portion realism are explicitly out of scope
 for this phase.
 
-**Nothing here is production-ready.** No record is `PRODUCTION_READY`; all 20
-are `NUTRIENTS_REVIEWED` with `TEST_POLICY_ONLY` portion bounds, and
+**Nothing here is production-ready.** No record is `PRODUCTION_READY`; all
+records are `NUTRIENTS_REVIEWED` with `TEST_POLICY_ONLY` portion bounds, and
 `production_ready=True` loading rejects every current record by design.
+
+### Phase 3 update to these limitations
+
+The 45-record catalog and the candidate builder raise coverage on the supported
+matrix to 150/150 (100%), which supersedes the Phase 2 41% figure above for
+*supported* requests. It does **not** make the engine runtime-eligible:
+
+* **Technical feasibility is not nutritional approval.** A `feasible` result and
+  an `acceptable` quality score mean the solver found portions that hit the
+  arithmetic targets without a hard practicality violation. They do not mean the
+  plan is nutritionally, medically, or culturally appropriate for a person. That
+  judgement is out of scope for this library.
+* **The 99 kg result is only a technical solver result** — deterministic,
+  1913.5 kcal with protein above the 198 g floor, distinct lunch/dinner protein
+  and starch — not a coach-approved menu.
+* **Unsupported diets fail closed.** `vegan` requests and requests that exclude
+  the entire `protein` category return no candidate plan (the builder yields
+  `None` before optimization); the caller must surface a controlled refusal.
+  This is intended, not a coverage gap to paper over.
+* **Latency is not yet within a runtime budget.** The recorded 200-scenario
+  benchmark passed its P95 threshold but the **worst single solve exceeded
+  250 ms** (development machine). A user-facing path needs a hard per-request
+  time bound before this could be considered.
+* **No record is `PRODUCTION_READY`; portion bounds remain `TEST_POLICY_ONLY`;
+  the engine is not connected to runtime.**
