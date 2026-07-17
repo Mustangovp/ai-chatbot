@@ -96,3 +96,6 @@ data/*.db
 
 # Isolated Nutrition Engine V2 Phase 3 feasibility and practicality gates.
 !tests/test_nutrition_engine_phase3.py
+
+# Isolated Nutrition Engine V2 Phase 4 selector/templates/library/rotation gates.
+!tests/test_nutrition_engine_phase4.py
