@@ -80,6 +80,8 @@ class FoodItem:
     source_record_id: str
     source_version: str
     review_status: str
+    reviewer_note: str
+    data_basis: str
 
 
 @dataclass(frozen=True)
@@ -98,6 +100,7 @@ class PracticalityPolicy:
     maximum_supplement_items: int = 0
     category_portion_overrides: tuple[tuple[str, Decimal, Decimal, Decimal], ...] = ()
     max_search_nodes: int = 1_000_000
+    allow_duplicate_food_ids_per_meal: bool = False
 
     def __post_init__(self) -> None:
         if self.maximum_foods_per_meal < 1 or self.max_search_nodes < 1:

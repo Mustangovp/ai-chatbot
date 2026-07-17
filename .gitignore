@@ -89,3 +89,7 @@ data/*.db
 # Nutrition Engine V2 — isolated Phase 1 foundation (pure library, no production
 # integration). Committed so the deterministic optimizer/feasibility gates run in CI.
 !tests/test_nutrition_engine.py
+
+# Isolated Nutrition Engine V2 Phase 2 quality gates.
+!tests/test_nutrition_catalog_quality.py
+!tests/test_nutrition_engine_performance.py

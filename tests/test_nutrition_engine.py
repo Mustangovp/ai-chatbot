@@ -21,9 +21,10 @@ from nutrition_engine.models import localized_food_name
 
 
 CATALOG_PATH = Path(__file__).parents[1] / "nutrition_engine" / "data" / "food_catalog_v1.json"
-# Fixture values are deliberately non-production data. Their explicitly broad
-# development tolerance must never be reused for a reviewed catalog release.
-GOVERNANCE = CatalogGovernance(True, False, Decimal("20"))
+# Source-backed development data remain non-production because portion bounds
+# are explicitly TEST_POLICY_ONLY; the tolerance is catalog-quality policy only.
+CATALOG_VERSION = "development-v2-source-backed"
+GOVERNANCE = CatalogGovernance(True, False, Decimal("15"))
 
 
 @pytest.fixture
@@ -70,7 +71,7 @@ def test_catalog_rejects_duplicate_food_ids():
     records = _records()
     records.append(deepcopy(records[0]))
     with pytest.raises(ValueError, match="duplicate food ID"):
-        load_catalog_records("development-v1", records, GOVERNANCE)
+        load_catalog_records(CATALOG_VERSION, records, GOVERNANCE)
 
 
 @pytest.mark.parametrize("field, value, message", [
@@ -84,23 +85,23 @@ def test_catalog_governance_rejects_invalid_records(field, value, message):
     records = _records()
     records[0][field] = value
     with pytest.raises(ValueError, match=message):
-        load_catalog_records("development-v1", records, GOVERNANCE)
+        load_catalog_records(CATALOG_VERSION, records, GOVERNANCE)
 
 
 def test_catalog_rejects_version_mismatch_and_pending_production_records():
     records = _records()
     records[0]["catalog_version"] = "wrong"
     with pytest.raises(ValueError, match="catalog-version mismatch"):
-        load_catalog_records("development-v1", records, GOVERNANCE)
+        load_catalog_records(CATALOG_VERSION, records, GOVERNANCE)
     with pytest.raises(ValueError, match="unreviewed records"):
-        load_catalog_records("development-v1", _records(), CatalogGovernance(False, True, Decimal("20")))
+        load_catalog_records(CATALOG_VERSION, _records(), CatalogGovernance(False, True, Decimal("15")))
 
 
 def test_raw_and_cooked_records_remain_distinct_and_names_are_localized(catalog):
     rice = catalog.by_id("dev_rice_cooked")
     oats = catalog.by_id("dev_oats_dry")
-    assert rice.preparation_state == "cooked"
-    assert oats.preparation_state == "dry"
+    assert rice.preparation_state == "cooked_not_further_specified"
+    assert oats.preparation_state == "raw_dry"
     assert localized_food_name(rice, "bg") == "Ориз, сварен"
     assert localized_food_name(rice, "en") == "Cooked rice"
     assert "dev_rice_cooked" not in localized_food_name(rice, "en")
@@ -181,7 +182,7 @@ def test_99kg_case_is_technical_feasibility_only(catalog):
     assert result.feasible, result
     assert result.day.daily_totals.protein_g >= Decimal("198")
     assert abs(result.day.daily_totals.kcal - Decimal("1914")) <= Decimal("1914") * Decimal("0.05")
-    assert result.day.catalog_version == "development-v1"
+    assert result.day.catalog_version == CATALOG_VERSION
 
 
 def test_no_production_imports_network_or_database_calls():

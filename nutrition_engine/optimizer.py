@@ -102,7 +102,9 @@ def optimize(catalog: Catalog, targets: NutritionTargets, constraints: DietConst
     candidates: list[tuple[str, FoodItem, tuple[Decimal, ...]]] = []
     selected_protein_source = False
     for selection in selections:
-        if len(selection.ordered_food_ids) > policy.maximum_foods_per_meal or not selection.ordered_food_ids:
+        if (len(selection.ordered_food_ids) > policy.maximum_foods_per_meal or not selection.ordered_food_ids or
+                (not policy.allow_duplicate_food_ids_per_meal and
+                 len(set(selection.ordered_food_ids)) != len(selection.ordered_food_ids))):
             return FeasibilityResult(FeasibilityCode.MEAL_STRUCTURE_INFEASIBLE)
         for food_id in selection.ordered_food_ids:
             food = catalog.by_id(food_id)
@@ -119,7 +121,9 @@ def optimize(catalog: Catalog, targets: NutritionTargets, constraints: DietConst
     if targets.protein_min_g is not None and not selected_protein_source:
         return FeasibilityResult(FeasibilityCode.EXCLUSIONS_REMOVE_ALL_PROTEIN_SOURCES)
 
-    options = [entry[2] for entry in candidates]
+    supplement_count = sum("supplement" in food.dietary_tags for _, food, _ in candidates)
+    if supplement_count > policy.maximum_supplement_items:
+        return FeasibilityResult(FeasibilityCode.MEAL_STRUCTURE_INFEASIBLE)
     minimums = [_nutrients(food, min(portions)) for _, food, portions in candidates]
     maximums = [_nutrients(food, max(portions)) for _, food, portions in candidates]
     remaining_min = [Nutrients.zero()] * (len(candidates) + 1)
@@ -199,8 +203,11 @@ def optimize(catalog: Catalog, targets: NutritionTargets, constraints: DietConst
     _, resolved, totals, meal_totals = best
     meals = []
     for selection in selections:
-        foods = tuple(OptimizedFood(item.food.food_id, item.grams, item.food.default_unit, item.grams, item.nutrients)
-                      for item in resolved if item.meal_type == selection.meal_type)
+        foods = tuple(OptimizedFood(
+            item.food.food_id,
+            item.grams / item.food.grams_per_piece if item.food.default_unit == "pcs" else item.grams,
+            item.food.default_unit, item.grams, item.nutrients,
+        ) for item in resolved if item.meal_type == selection.meal_type)
         meals.append(OptimizedMeal(selection.meal_type, foods, meal_totals[selection.meal_type]))
     deviations = (("calories", totals.kcal - targets.calories_target),)
     if targets.protein_min_g is not None:
