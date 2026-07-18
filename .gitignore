@@ -102,3 +102,6 @@ data/*.db
 
 # Isolated Nutrition Engine V2 Phase 5 service/projection/shadow gates.
 !tests/test_nutrition_engine_phase5.py
+
+# Isolated Nutrition Engine V2 Phase 6C read-only shadow-hook gates.
+!tests/test_nutrition_engine_shadow_hook.py

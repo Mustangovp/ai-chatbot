@@ -1637,6 +1637,11 @@ def _conversation_composer_active():
     return os.getenv("CONVERSATION_COMPOSER_ACTIVE", "false").strip().lower() == "true"
 
 
+def _nutrition_engine_v2_shadow_active():
+    # Read-only Nutrition Engine V2 shadow. Fail-closed: default/invalid/missing → off.
+    return os.getenv("NUTRITION_ENGINE_V2_SHADOW", "false").strip().lower() == "true"
+
+
 def _shadow_feature_enabled(name):
     return os.getenv(name, "false").strip().lower() == "true"
 
@@ -2007,6 +2012,46 @@ def chat():
                                     if nutrition_response_guard else None))
         nutrition_delivery_target = (int(nutrition_delivery_targets.kcal)
                                      if nutrition_delivery_targets is not None else None)
+
+        # ── Nutrition Engine V2 SHADOW (read-only, flag-off by default) ──────
+        # Non-blocking: reuses the already-computed canonical typed targets, builds
+        # an immutable projection, and submits it to an isolated bounded background
+        # worker. It never touches quota, persistence, SSE payloads/order, voice,
+        # or the response. All V2 output is discarded (bounded counters only).
+        # When the flag is off (default) nothing here runs — the module is not even
+        # imported — so canonical behavior is byte-identical.
+        if _nutrition_engine_v2_shadow_active():
+            try:
+                from nutrition_engine import shadow_hook as _v2_shadow
+                if not getattr(g, "nutrition_v2_shadow_attempted", False):
+                    _v2_elig = _v2_shadow.classify_eligibility(
+                        flag_enabled=True,
+                        is_nutrition=nutrition_request_full_day,
+                        is_full_day=nutrition_request_full_day,
+                        calorie_target=(nutrition_delivery_targets.kcal if nutrition_delivery_targets is not None else None),
+                        protein_target=(nutrition_delivery_targets.protein if nutrition_delivery_targets is not None else None),
+                        route_is_medical=(getattr(_shadow_decision, "outcome", None) == "route"),
+                        session_start=session_start,
+                        already_attempted=False,
+                        allergy_prose=(profile.get("allergies") if isinstance(profile, dict) else None),
+                        preference_tokens=(profile.get("foodPreferences") if isinstance(profile, dict) else None),
+                    )
+                    if _v2_elig.eligible:
+                        g.nutrition_v2_shadow_attempted = True  # marks ATTEMPT, before dispatch
+                        _v2_proj = _v2_shadow.build_projection(
+                            language=lang,
+                            calorie_target=nutrition_delivery_targets.kcal,
+                            protein_target=nutrition_delivery_targets.protein,
+                            carbs_target=nutrition_delivery_targets.carbs,
+                            fat_target=nutrition_delivery_targets.fat,
+                        )
+                        if not _v2_shadow.dispatch(_v2_proj):
+                            _v2_shadow.record_skip(_v2_shadow.ShadowSkipReason.DISPATCH_SATURATED)
+                    else:
+                        _v2_shadow.record_skip(_v2_elig.reason)
+            except Exception as _v2_err:  # hook can never affect the request
+                print(f"[nutrition-v2-shadow] hook error ignored: {type(_v2_err).__name__}")
+
         if nutrition_delivery_targets is not None:
             system_content = system_content + "\n\n" + nutrition_validation.generation_contract(nutrition_delivery_targets)
             system_content = system_content + "\n\n" + _daily_nutrition_format_rules(nutrition_delivery_targets, lang)
