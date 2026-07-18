@@ -7,9 +7,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
+from enum import Enum
 
 
 MEAL_TYPES = ("breakfast", "lunch", "dinner", "snack")
+LANGUAGES = ("bg", "en")
 
 
 def _non_negative(name: str, value: Decimal | None) -> None:
@@ -152,3 +154,131 @@ class OptimizedNutritionDay:
 def localized_food_name(food: FoodItem, language: str) -> str:
     """The sole Phase-1 presentation helper: it never reveals internal IDs."""
     return food.display_name_bg if str(language).lower() == "bg" else food.display_name_en
+
+
+# ── Phase 5 isolated service contract types ─────────────────────────────────
+
+class CatalogMode(str, Enum):
+    DEVELOPMENT = "development"
+    PRODUCTION_READY = "production_ready"
+
+
+class CallerRouteStatus(str, Enum):
+    ELIGIBLE = "eligible"
+    MEDICAL_ROUTING_REQUIRED = "medical_routing_required"
+    UNSUPPORTED_PROFILE_AUTHORITY = "unsupported_profile_authority"
+
+
+class NutritionPlanOutcome(str, Enum):
+    SUCCESS = "success"
+    CLARIFICATION_REQUIRED = "clarification_required"
+    UNSUPPORTED = "unsupported"
+    INFEASIBLE = "infeasible"
+    CATALOG_NOT_READY = "catalog_not_ready"
+    INTERNAL_FAIL_CLOSED = "internal_fail_closed"
+
+
+class NutritionPlanCode(str, Enum):
+    SUCCESS = "success"
+    INVALID_REQUEST = "invalid_request"
+    MISSING_TARGET_AUTHORITY = "missing_target_authority"
+    MEDICAL_ROUTING_REQUIRED = "medical_routing_required"
+    UNSUPPORTED_PROFILE_AUTHORITY = "unsupported_profile_authority"
+    UNSUPPORTED_DIET = "unsupported_diet"
+    UNSUPPORTED_ALLERGY = "unsupported_allergy"
+    CATALOG_NOT_READY = "catalog_not_ready"
+    CATALOG_VERSION_MISMATCH = "catalog_version_mismatch"
+    CANDIDATE_COVERAGE_INSUFFICIENT = "candidate_coverage_insufficient"
+    CALORIE_TARGET_UNREACHABLE = "calorie_target_unreachable"
+    PROTEIN_MINIMUM_UNREACHABLE = "protein_minimum_unreachable"
+    PROTEIN_CAP_CONFLICT = "protein_cap_conflict"
+    MEAL_STRUCTURE_INFEASIBLE = "meal_structure_infeasible"
+    QUALITY_CONSTRAINTS_INFEASIBLE = "quality_constraints_infeasible"
+    SEARCH_LIMIT_REACHED = "search_limit_reached"
+    INTERNAL_FAIL_CLOSED = "internal_fail_closed"
+
+
+def _bounded_weight(name: str, value: Decimal) -> None:
+    if not (Decimal("0") <= value <= Decimal("1")):
+        raise ValueError(f"{name} must be within [0, 1]")
+
+
+@dataclass(frozen=True)
+class RotationContext:
+    """Deterministic, bounded, sanitized variety history. No persistence, no PII."""
+
+    recent_breakfast_signatures: tuple[str, ...] = ()
+    recent_lunch_signatures: tuple[str, ...] = ()
+    recent_dinner_signatures: tuple[str, ...] = ()
+    recent_main_protein_ids: tuple[str, ...] = ()
+    recent_starch_ids: tuple[str, ...] = ()
+    maximum_history_depth: int = 14
+
+    def __post_init__(self) -> None:
+        if self.maximum_history_depth < 0:
+            raise ValueError("maximum_history_depth must be non-negative")
+
+    def sanitized(self) -> "RotationContext":
+        """Truncate every history list to the bounded depth. Deterministic."""
+        depth = self.maximum_history_depth
+
+        def clip(values: tuple[str, ...]) -> tuple[str, ...]:
+            cleaned = tuple(str(v) for v in values if str(v).strip())
+            return cleaned[:depth] if depth else ()
+
+        return RotationContext(
+            clip(self.recent_breakfast_signatures), clip(self.recent_lunch_signatures),
+            clip(self.recent_dinner_signatures), clip(self.recent_main_protein_ids),
+            clip(self.recent_starch_ids), depth)
+
+
+@dataclass(frozen=True)
+class PreferenceWeights:
+    """Bounded preference signals that may only reorder candidates, never exclude."""
+
+    preferred_food_ids: frozenset[str] = frozenset()
+    disliked_food_ids: frozenset[str] = frozenset()
+    preferred_categories: frozenset[str] = frozenset()
+    budget_preference: Decimal = Decimal("0")
+    preparation_preference: Decimal = Decimal("0")
+    meal_size_preference: Decimal = Decimal("0")
+
+    def __post_init__(self) -> None:
+        _bounded_weight("budget_preference", self.budget_preference)
+        _bounded_weight("preparation_preference", self.preparation_preference)
+        _bounded_weight("meal_size_preference", self.meal_size_preference)
+
+
+@dataclass(frozen=True)
+class NutritionPlanRequest:
+    """Immutable, fully typed service request. No raw user text and no identity."""
+
+    language: str
+    catalog_version: str
+    catalog_mode: CatalogMode
+    diet_constraints: DietConstraints
+    required_meals: tuple[str, ...]
+    practicality_policy: PracticalityPolicy
+    caller_route_status: CallerRouteStatus
+    service_version: str
+    targets: NutritionTargets | None = None
+    rotation_context: RotationContext | None = None
+    preference_weights: PreferenceWeights | None = None
+
+    def __post_init__(self) -> None:
+        if self.language not in LANGUAGES:
+            raise ValueError("language must be bg or en")
+        if not isinstance(self.catalog_mode, CatalogMode):
+            raise ValueError("catalog_mode must be a CatalogMode")
+        if not isinstance(self.caller_route_status, CallerRouteStatus):
+            raise ValueError("caller_route_status must be a CallerRouteStatus")
+        if not self.required_meals:
+            raise ValueError("required_meals must not be empty")
+        if any(meal not in MEAL_TYPES for meal in self.required_meals):
+            raise ValueError("required_meals contains an unknown meal type")
+        if len(set(self.required_meals)) != len(self.required_meals):
+            raise ValueError("required_meals must not repeat")
+        if not str(self.catalog_version).strip():
+            raise ValueError("catalog_version is required")
+        if not str(self.service_version).strip():
+            raise ValueError("service_version is required")
