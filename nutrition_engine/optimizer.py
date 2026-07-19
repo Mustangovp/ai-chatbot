@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
+from time import monotonic
+from typing import Callable
 
 from .catalog import Catalog
 from .feasibility import FeasibilityCode, FeasibilityResult
@@ -87,7 +89,9 @@ def _score(candidates: tuple[_Candidate, ...], totals: Nutrients, targets: Nutri
 
 
 def optimize(catalog: Catalog, targets: NutritionTargets, constraints: DietConstraints,
-             selections: tuple[MealSelection, ...], policy: PracticalityPolicy) -> FeasibilityResult:
+             selections: tuple[MealSelection, ...], policy: PracticalityPolicy,
+             *, deadline_monotonic: float | None = None,
+             clock: Callable[[], float] = monotonic) -> FeasibilityResult:
     """Solve only caller-selected food IDs; performs no I/O, LLM, DB, or network work."""
     if constraints.allowed_catalog_version and constraints.allowed_catalog_version != catalog.version:
         return FeasibilityResult(FeasibilityCode.CATALOG_VERSION_MISMATCH)
@@ -159,13 +163,17 @@ def optimize(catalog: Catalog, targets: NutritionTargets, constraints: DietConst
         return None
 
     searched = 0
+    timed_out = False
     best: tuple[tuple, tuple[_Candidate, ...], Nutrients, dict[str, Nutrients]] | None = None
     last_failure: FeasibilityCode | None = None
     initial_meals = {selection.meal_type: Nutrients.zero() for selection in selections}
 
     def search(index: int, resolved: tuple[_Candidate, ...], totals: Nutrients,
                meal_totals: dict[str, Nutrients]) -> None:
-        nonlocal searched, best, last_failure
+        nonlocal searched, best, last_failure, timed_out
+        if deadline_monotonic is not None and clock() >= deadline_monotonic:
+            timed_out = True
+            return
         pruned = cannot_reach(index, totals)
         if pruned is not None:
             last_failure = pruned
@@ -185,6 +193,9 @@ def optimize(catalog: Catalog, targets: NutritionTargets, constraints: DietConst
         meal, food, portions = candidates[index]
         lower, upper, _ = _bounds(food, policy)
         for grams in portions:
+            if deadline_monotonic is not None and clock() >= deadline_monotonic:
+                timed_out = True
+                return
             if searched > policy.max_search_nodes:
                 return
             nutrients = _nutrients(food, grams)
@@ -195,6 +206,8 @@ def optimize(catalog: Catalog, targets: NutritionTargets, constraints: DietConst
                    totals.plus(nutrients), next_meals)
 
     search(0, (), Nutrients.zero(), initial_meals)
+    if timed_out:
+        return FeasibilityResult(FeasibilityCode.SHADOW_TIMEOUT)
     if searched > policy.max_search_nodes:
         return FeasibilityResult(FeasibilityCode.SEARCH_LIMIT_REACHED)
     if best is None:

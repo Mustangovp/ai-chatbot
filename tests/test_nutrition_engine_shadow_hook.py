@@ -16,6 +16,8 @@ import pytest
 
 import app as appmod
 from nutrition_engine import shadow_hook as sh
+from nutrition_engine.feasibility import FeasibilityCode
+from nutrition_engine.optimizer import optimize
 from nutrition_engine.shadow_hook import ShadowSkipReason
 
 
@@ -23,23 +25,13 @@ from nutrition_engine.shadow_hook import ShadowSkipReason
 
 @pytest.fixture(autouse=True)
 def _reset_shadow_state():
-    with sh._counters_lock:
-        sh._counters.clear()
-    if sh._executor is not None:
-        sh._executor.shutdown(wait=True)
-        sh._executor = None
-    sh._semaphore = threading.BoundedSemaphore(sh._MAX_INFLIGHT)
+    sh._reset_runtime_for_testing()
     yield
-    if sh._executor is not None:
-        sh._executor.shutdown(wait=True)
-        sh._executor = None
-    sh._semaphore = threading.BoundedSemaphore(sh._MAX_INFLIGHT)
+    sh._reset_runtime_for_testing()
 
 
 def _drain():
-    if sh._executor is not None:
-        sh._executor.shutdown(wait=True)
-        sh._executor = None
+    sh.shutdown_runtime(wait=True)
 
 
 def _proj():
@@ -119,12 +111,35 @@ def test_executor_created_once_per_process():
     assert e1 is e2
 
 
+def test_executor_shutdown_is_idempotent_and_prevents_reinitialization():
+    sh._ensure_executor()
+    sh.shutdown_runtime(wait=True)
+    sh.shutdown_runtime(wait=True)
+    assert sh._executor is None
+    with pytest.raises(RuntimeError, match="shut down"):
+        sh._ensure_executor()
+
+
+def test_runtime_self_validation_fails_closed_without_leaking_a_permit(monkeypatch):
+    monkeypatch.setattr(sh, "_MAX_WORKERS", 2)
+    assert sh.dispatch(_proj()) is False
+    telemetry = sh.snapshot_telemetry()
+    assert telemetry["initialization_failure"] == 1
+    assert telemetry["dropped"] == 1
+    for _ in range(sh._MAX_INFLIGHT):
+        assert sh._semaphore.acquire(blocking=False) is True
+
+
 def test_dispatch_submits_and_runs_in_background(tmp_path):
     records = []
     assert sh.dispatch(_proj(), sink=records.append) is True
     _drain()
     assert len(records) == 1 and records[0].outcome == "success"
-    assert sh.snapshot_counters().get("shadow_success") == 1
+    telemetry = sh.snapshot_telemetry()
+    assert telemetry["dispatched"] == 1
+    assert telemetry["completed"] == 1
+    assert telemetry["current_inflight"] == 0
+    assert telemetry["current_queue_depth"] == 0
 
 
 def test_dispatch_is_non_blocking():
@@ -162,7 +177,9 @@ def test_saturated_queue_drops_without_blocking_or_inline_execution():
     assert time.perf_counter() - t0 < 0.2
     assert ok is False
     assert dropped_sink_called == []
-    assert sh.snapshot_counters().get("shadow_dispatch_dropped") == 1
+    telemetry = sh.snapshot_telemetry()
+    assert telemetry["dropped"] == 1
+    assert telemetry["maximum_queue_depth"] <= 1
     gate.set()
     _drain()
 
@@ -175,12 +192,71 @@ def test_semaphore_released_after_success_and_after_exception(monkeypatch):
         assert sh._semaphore.acquire(blocking=False) is True
     for _ in range(sh._MAX_INFLIGHT):
         sh._semaphore.release()
+    sh._reset_runtime_for_testing()
     # exception in the engine still releases and never escapes
     monkeypatch.setattr(sh, "build_nutrition_plan",
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
     assert sh.dispatch(_proj()) is True
     _drain()
-    assert sh.snapshot_counters().get("shadow_exception") == 1
+    assert sh.snapshot_telemetry()["exception"] == 1
+    for _ in range(sh._MAX_INFLIGHT):
+        assert sh._semaphore.acquire(blocking=False) is True
+
+
+def test_optimizer_cooperatively_returns_dedicated_timeout():
+    from tests.test_nutrition_engine_phase5 import CATALOG, POLICY
+    from nutrition_engine.candidate_builder import build_candidates
+    from nutrition_engine.models import DietConstraints, NutritionTargets
+
+    targets = NutritionTargets(Decimal("1914"), Decimal("0.05"), Decimal("198"))
+    plan = build_candidates(CATALOG, targets, DietConstraints(), ("breakfast", "lunch", "dinner"), POLICY)
+    assert plan is not None
+    result = optimize(CATALOG, targets, DietConstraints(), plan.selections, POLICY,
+                      deadline_monotonic=0.0, clock=lambda: 1.0)
+    assert result.code is FeasibilityCode.SHADOW_TIMEOUT
+
+
+def test_timeout_telemetry_and_permit_release(monkeypatch):
+    from nutrition_engine.models import NutritionPlanCode, NutritionPlanOutcome
+    from nutrition_engine.service import NutritionPlanResult
+
+    timeout = NutritionPlanResult(
+        NutritionPlanOutcome.TIMEOUT, NutritionPlanCode.SHADOW_TIMEOUT,
+        "test", "test",
+    )
+    monkeypatch.setattr(sh, "build_nutrition_plan", lambda *a, **k: timeout)
+    assert sh.dispatch(_proj()) is True
+    _drain()
+    telemetry = sh.snapshot_telemetry()
+    assert telemetry["timeout"] == 1
+    assert telemetry["completed"] == 1
+    for _ in range(sh._MAX_INFLIGHT):
+        assert sh._semaphore.acquire(blocking=False) is True
+
+
+def test_shutdown_cancels_queued_work_and_releases_every_permit(monkeypatch):
+    gate = threading.Event()
+    started = threading.Event()
+
+    def blocking_build(*args, **kwargs):
+        started.set()
+        gate.wait(1.0)
+        from nutrition_engine.service import build_nutrition_plan as real_build
+        return real_build(*args, **kwargs)
+
+    monkeypatch.setattr(sh, "build_nutrition_plan", blocking_build)
+    assert sh.dispatch(_proj()) is True
+    assert started.wait(0.5)
+    assert sh.dispatch(_proj()) is True
+    shutdown = threading.Thread(target=sh.shutdown_runtime, kwargs={"wait": True})
+    shutdown.start()
+    gate.set()
+    shutdown.join(1.0)
+    assert not shutdown.is_alive()
+    telemetry = sh.snapshot_telemetry()
+    assert telemetry["shutdown_cancelled"] == 1
+    assert telemetry["current_inflight"] == 0
+    assert telemetry["current_queue_depth"] == 0
     for _ in range(sh._MAX_INFLIGHT):
         assert sh._semaphore.acquire(blocking=False) is True
 

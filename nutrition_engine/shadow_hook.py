@@ -14,18 +14,20 @@ Design (approved Phase 6B):
 """
 from __future__ import annotations
 
+import atexit
+import logging
 import os
 import threading
-from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum
+from time import monotonic
 from typing import Callable
 
 from .models import (
-    CallerRouteStatus, CatalogMode, DietConstraints, NutritionPlanRequest,
-    NutritionTargets, PracticalityPolicy,
+    CallerRouteStatus, CatalogMode, DietConstraints, NutritionPlanCode,
+    NutritionPlanOutcome, NutritionPlanRequest, NutritionTargets, PracticalityPolicy,
 )
 from .service import SERVICE_VERSION, build_nutrition_plan
 from .shadow import build_shadow_record
@@ -45,6 +47,12 @@ _SHADOW_POLICY = PracticalityPolicy(
     ),
     max_search_nodes=200_000,
 )
+_MAX_WORKERS = 1
+_MAX_INFLIGHT = 2  # one executing + one queued; hard bound on admitted work
+_SEMAPHORE_CAPACITY = _MAX_INFLIGHT
+_SHADOW_TIMEOUT_SECONDS = 0.75
+_STALL_THRESHOLD_SECONDS = 0.50
+_LOGGER = logging.getLogger("apex.nutrition_v2_shadow")
 
 
 # ── flag ────────────────────────────────────────────────────────────────────
@@ -167,71 +175,238 @@ def to_request(projection: NutritionShadowTargetProjection) -> NutritionPlanRequ
     )
 
 
-# ── bounded, non-blocking dispatcher ────────────────────────────────────────
+# ── bounded runtime lifecycle and telemetry ─────────────────────────────────
 
-_MAX_INFLIGHT = 2  # one executing + one queued; hard bound on admitted work
+_TELEMETRY_COUNTERS = (
+    "eligible", "skipped", "dispatched", "dropped", "completed", "timeout",
+    "exception", "internal_fail_closed", "optimizer_failure", "catalog_failure",
+    "quality_failure", "stalled", "initialization_failure", "shutdown_cancelled",
+)
+
+
+def _new_telemetry() -> dict[str, int | float]:
+    telemetry: dict[str, int | float] = {name: 0 for name in _TELEMETRY_COUNTERS}
+    telemetry.update({
+        "current_inflight": 0,
+        "current_queue_depth": 0,
+        "maximum_inflight": 0,
+        "maximum_queue_depth": 0,
+        "longest_execution_ms": 0.0,
+    })
+    return telemetry
+
+
+@dataclass
+class _TaskState:
+    released: bool = False
+    started: bool = False
+    queued: bool = True
+    future: object | None = None
+
+
 _executor: ThreadPoolExecutor | None = None
-_semaphore = threading.BoundedSemaphore(_MAX_INFLIGHT)
-_init_lock = threading.Lock()
-_counters: Counter = Counter()
-_counters_lock = threading.Lock()
+_semaphore = threading.BoundedSemaphore(_SEMAPHORE_CAPACITY)
+_runtime_lock = threading.RLock()
+_telemetry_lock = threading.Lock()
+_telemetry = _new_telemetry()
+_task_states: dict[int, _TaskState] = {}
+_runtime_closed = False
 
 
-def _bump(name: str) -> None:
-    with _counters_lock:
-        _counters[name] += 1
+def _record(**changes: int | float) -> None:
+    with _telemetry_lock:
+        for key, amount in changes.items():
+            _telemetry[key] = _telemetry.get(key, 0) + amount
+
+
+def _validate_runtime_configuration() -> None:
+    if _MAX_WORKERS != 1:
+        raise RuntimeError("shadow runtime requires exactly one worker")
+    if _MAX_INFLIGHT < _MAX_WORKERS or _SEMAPHORE_CAPACITY != _MAX_INFLIGHT:
+        raise RuntimeError("shadow runtime admission capacity is invalid")
+    if _SHADOW_TIMEOUT_SECONDS <= 0 or _STALL_THRESHOLD_SECONDS <= 0:
+        raise RuntimeError("shadow runtime timeout configuration is invalid")
+    with _telemetry_lock:
+        if any(name not in _telemetry for name in _TELEMETRY_COUNTERS):
+            raise RuntimeError("shadow telemetry is not initialized")
 
 
 def _ensure_executor() -> ThreadPoolExecutor:
+    """Create exactly one process-local executor after validating runtime state."""
     global _executor
-    if _executor is None:
-        with _init_lock:
-            if _executor is None:
-                _executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="nutri-v2-shadow")
-    return _executor
+    with _runtime_lock:
+        if _runtime_closed:
+            raise RuntimeError("shadow runtime is shut down")
+        _validate_runtime_configuration()
+        if _executor is None:
+            _executor = ThreadPoolExecutor(
+                max_workers=_MAX_WORKERS,
+                thread_name_prefix="nutri-v2-shadow",
+            )
+        return _executor
+
+
+def _release_task(task_id: int, state: _TaskState) -> None:
+    with _runtime_lock:
+        if state.released:
+            return
+        state.released = True
+        _task_states.pop(task_id, None)
+    _semaphore.release()
+
+
+def _mark_started(task_id: int, state: _TaskState) -> None:
+    with _runtime_lock:
+        if state.released or state.started:
+            return
+        state.started = True
+        state.queued = False
+    with _telemetry_lock:
+        _telemetry["current_queue_depth"] = max(0, _telemetry["current_queue_depth"] - 1)
+        _telemetry["current_inflight"] += 1
+        _telemetry["maximum_inflight"] = max(
+            _telemetry["maximum_inflight"], _telemetry["current_inflight"])
+
+
+def _mark_finished(state: _TaskState, duration_ms: float) -> None:
+    if state.started:
+        with _telemetry_lock:
+            _telemetry["current_inflight"] = max(0, _telemetry["current_inflight"] - 1)
+            _telemetry["longest_execution_ms"] = max(_telemetry["longest_execution_ms"], duration_ms)
+    if duration_ms >= _STALL_THRESHOLD_SECONDS * 1000:
+        _record(stalled=1)
+
+
+def log_runtime_error(event: str, error: BaseException | None = None,
+                      *, reason: str = "runtime_error") -> None:
+    """Emit a compact, PII-free diagnostic only for unexpected runtime failures."""
+    exception_type = type(error).__name__ if error is not None else "none"
+    _LOGGER.warning(
+        "[nutrition-v2-shadow] event=%s reason=%s exception=%s worker_id=%s",
+        event, reason, exception_type, os.getpid(),
+    )
+
+
+def record_eligible() -> None:
+    _record(eligible=1)
 
 
 def dispatch(projection: NutritionShadowTargetProjection, *,
              sink: Callable[[object], None] | None = None) -> bool:
-    """Admit at most _MAX_INFLIGHT tasks without ever blocking the caller.
-
-    Returns True if admitted, False if dropped. On drop it does NOT block, retry,
-    or run inline. Any exception path releases the semaphore.
-    """
+    """Admit bounded work without blocking the request thread or retrying inline."""
     if not _semaphore.acquire(blocking=False):
-        _bump("shadow_dispatch_dropped")
+        _record(dropped=1)
         return False
+    state = _TaskState()
+    task_id = id(state)
     try:
-        _ensure_executor().submit(_run, projection, sink)
-    except Exception:
-        _semaphore.release()
-        _bump("shadow_dispatch_dropped")
+        executor = _ensure_executor()
+        with _runtime_lock:
+            _task_states[task_id] = state
+        with _telemetry_lock:
+            _telemetry["dispatched"] += 1
+            _telemetry["current_queue_depth"] += 1
+            _telemetry["maximum_queue_depth"] = max(
+                _telemetry["maximum_queue_depth"], _telemetry["current_queue_depth"])
+        state.future = executor.submit(_run, task_id, state, projection, sink)
+        return True
+    except Exception as error:
+        _record(dropped=1, initialization_failure=1)
+        log_runtime_error("dispatch_failed", error)
+        if state.queued:
+            with _telemetry_lock:
+                _telemetry["current_queue_depth"] = max(0, _telemetry["current_queue_depth"] - 1)
+        _release_task(task_id, state)
         return False
-    return True
 
 
-def _run(projection: NutritionShadowTargetProjection,
+def _record_result(result) -> None:
+    _record(completed=1)
+    if result.outcome is NutritionPlanOutcome.TIMEOUT:
+        _record(timeout=1)
+    elif result.outcome is NutritionPlanOutcome.INTERNAL_FAIL_CLOSED:
+        _record(internal_fail_closed=1)
+    elif result.code is NutritionPlanCode.CATALOG_NOT_READY:
+        _record(catalog_failure=1)
+    elif result.code is NutritionPlanCode.QUALITY_CONSTRAINTS_INFEASIBLE:
+        _record(quality_failure=1)
+    elif result.outcome is NutritionPlanOutcome.INFEASIBLE:
+        _record(optimizer_failure=1)
+
+
+def _run(task_id: int, state: _TaskState, projection: NutritionShadowTargetProjection,
          sink: Callable[[object], None] | None) -> None:
-    """Background task. Isolated: no Flask, no persistence, no network."""
+    """Run one deadline-bound, isolated task with guaranteed cleanup."""
+    started = monotonic()
+    _mark_started(task_id, state)
     try:
         request = to_request(projection)
-        result = build_nutrition_plan(request)  # catalog=None → loads dev catalog
-        _bump("shadow_" + result.outcome.value)
-        if result.internal_metrics is not None and result.internal_metrics.hard_quality_findings:
-            _bump("shadow_hard_quality")
+        result = build_nutrition_plan(
+            request,
+            deadline_monotonic=started + _SHADOW_TIMEOUT_SECONDS,
+        )
+        duration_ms = (monotonic() - started) * 1000
+        _record_result(result)
         if sink is not None:  # offline tests only; production passes sink=None
-            sink(build_shadow_record(request, result, None))
-    except Exception:
-        _bump("shadow_exception")
+            sink(build_shadow_record(request, result, duration_ms))
+    except Exception as error:
+        duration_ms = (monotonic() - started) * 1000
+        _record(exception=1)
+        log_runtime_error("worker_failed", error)
     finally:
-        _semaphore.release()
+        _mark_finished(state, duration_ms)
+        _release_task(task_id, state)
 
 
-def snapshot_counters() -> dict:
-    """Bounded, enum-keyed counters. No fingerprint/hash/identity labels."""
-    with _counters_lock:
-        return dict(_counters)
+def shutdown_runtime(*, wait: bool = True) -> None:
+    """Stop admission, cancel queued work, and join the sole executor deterministically."""
+    global _executor, _runtime_closed
+    with _runtime_lock:
+        _runtime_closed = True
+        executor = _executor
+        states = tuple((task_id, state) for task_id, state in _task_states.items())
+    for task_id, state in states:
+        future = state.future
+        if future is not None and getattr(future, "cancel")():
+            if state.queued:
+                with _telemetry_lock:
+                    _telemetry["current_queue_depth"] = max(0, _telemetry["current_queue_depth"] - 1)
+            _record(shutdown_cancelled=1)
+            _release_task(task_id, state)
+    if executor is not None:
+        executor.shutdown(wait=wait, cancel_futures=True)
+    with _runtime_lock:
+        if _executor is executor:
+            _executor = None
+
+
+def _reset_runtime_for_testing() -> None:
+    """Test-only reset; production lifecycle is process ownership plus atexit cleanup."""
+    global _runtime_closed, _semaphore, _telemetry
+    shutdown_runtime(wait=True)
+    with _runtime_lock:
+        _runtime_closed = False
+        _semaphore = threading.BoundedSemaphore(_SEMAPHORE_CAPACITY)
+        _task_states.clear()
+    with _telemetry_lock:
+        _telemetry = _new_telemetry()
+
+
+def snapshot_telemetry() -> dict[str, int | float]:
+    """Return PII-free process-local telemetry; no values are persisted or exposed."""
+    with _telemetry_lock:
+        return dict(_telemetry)
+
+
+def snapshot_counters() -> dict[str, int | float]:
+    """Backward-compatible alias for Phase 6 test-only telemetry access."""
+    return snapshot_telemetry()
 
 
 def record_skip(reason: ShadowSkipReason) -> None:
-    _bump(reason.value)
+    _record(skipped=1)
+    with _telemetry_lock:
+        _telemetry[reason.value] = _telemetry.get(reason.value, 0) + 1
+
+
+atexit.register(shutdown_runtime)

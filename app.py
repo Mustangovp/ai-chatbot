@@ -2087,6 +2087,7 @@ def chat():
                     )
                     if _v2_elig.eligible:
                         g.nutrition_v2_shadow_attempted = True  # marks ATTEMPT, before dispatch
+                        _v2_shadow.record_eligible()
                         _v2_proj = _v2_shadow.build_projection(
                             language=lang,
                             calorie_target=nutrition_delivery_targets.kcal,
@@ -2099,7 +2100,14 @@ def chat():
                     else:
                         _v2_shadow.record_skip(_v2_elig.reason)
             except Exception as _v2_err:  # hook can never affect the request
-                print(f"[nutrition-v2-shadow] hook error ignored: {type(_v2_err).__name__}")
+                _v2_runtime = locals().get("_v2_shadow")
+                if _v2_runtime is not None:
+                    _v2_runtime.log_runtime_error("hook_error", _v2_err)
+                else:
+                    import logging as _logging
+                    _logging.getLogger("apex.nutrition_v2_shadow").warning(
+                        "[nutrition-v2-shadow] event=hook_import_failed reason=runtime_error "
+                        "exception=%s worker_id=unknown", type(_v2_err).__name__)
 
         if nutrition_delivery_targets is not None:
             system_content = system_content + "\n\n" + nutrition_plan.generation_contract(nutrition_delivery_targets)

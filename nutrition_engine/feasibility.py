@@ -19,6 +19,7 @@ class FeasibilityCode(str, Enum):
     CATALOG_NOT_PRODUCTION_READY = "catalog_not_production_ready"
     CATALOG_VERSION_MISMATCH = "catalog_version_mismatch"
     SEARCH_LIMIT_REACHED = "search_limit_reached"
+    SHADOW_TIMEOUT = "shadow_timeout"
     CATALOG_ROLE_COVERAGE_INSUFFICIENT = "catalog_role_coverage_insufficient"
     QUALITY_CONSTRAINTS_INFEASIBLE = "quality_constraints_infeasible"
 

@@ -32,7 +32,8 @@ import hashlib
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
-from typing import Sequence
+from time import monotonic
+from typing import Callable, Sequence
 
 from .candidate_builder import build_candidates
 from .catalog import Catalog, CatalogGovernance, load_catalog_file
@@ -144,6 +145,8 @@ _FEASIBILITY_MAP = {
         (NutritionPlanOutcome.INFEASIBLE, NutritionPlanCode.MEAL_STRUCTURE_INFEASIBLE),
     FeasibilityCode.SEARCH_LIMIT_REACHED:
         (NutritionPlanOutcome.INFEASIBLE, NutritionPlanCode.SEARCH_LIMIT_REACHED),
+    FeasibilityCode.SHADOW_TIMEOUT:
+        (NutritionPlanOutcome.TIMEOUT, NutritionPlanCode.SHADOW_TIMEOUT),
     FeasibilityCode.QUALITY_CONSTRAINTS_INFEASIBLE:
         (NutritionPlanOutcome.INFEASIBLE, NutritionPlanCode.QUALITY_CONSTRAINTS_INFEASIBLE),
     FeasibilityCode.UNSUPPORTED_DIET:
@@ -212,10 +215,20 @@ def _rotation_findings(catalog: Catalog, day, rotation: RotationContext | None,
 # ── the pure service ────────────────────────────────────────────────────────
 
 def build_nutrition_plan(request: NutritionPlanRequest, *,
-                         catalog: Catalog | None = None) -> NutritionPlanResult:
+                         catalog: Catalog | None = None,
+                         deadline_monotonic: float | None = None,
+                         clock: Callable[[], float] = monotonic) -> NutritionPlanResult:
     """Compose the isolated engine into one typed, deterministic result."""
     service_version = request.service_version
     catalog_version = request.catalog_version
+
+    def timed_out() -> bool:
+        return deadline_monotonic is not None and clock() >= deadline_monotonic
+
+    def timeout_result() -> NutritionPlanResult:
+        return _fail(NutritionPlanOutcome.TIMEOUT, NutritionPlanCode.SHADOW_TIMEOUT,
+                     catalog_version, service_version)
+
     try:
         # 1 — caller route status (highest precedence; before catalog/optimizer)
         if request.caller_route_status is CallerRouteStatus.MEDICAL_ROUTING_REQUIRED:
@@ -224,6 +237,8 @@ def build_nutrition_plan(request: NutritionPlanRequest, *,
         if request.caller_route_status is CallerRouteStatus.UNSUPPORTED_PROFILE_AUTHORITY:
             return _fail(NutritionPlanOutcome.UNSUPPORTED,
                          NutritionPlanCode.UNSUPPORTED_PROFILE_AUTHORITY, catalog_version, service_version)
+        if timed_out():
+            return timeout_result()
 
         # 4 — catalog governance / readiness / version (precedence above targets)
         resolved, catalog_error = _resolve_catalog(request, catalog)
@@ -232,12 +247,16 @@ def build_nutrition_plan(request: NutritionPlanRequest, *,
         catalog = resolved
         catalog_version = catalog.version
         development_only = request.catalog_mode is CatalogMode.DEVELOPMENT
+        if timed_out():
+            return timeout_result()
 
         # 5 — calorie & protein target authority
         targets = request.targets
         if targets is None or targets.protein_min_g is None:
             return _fail(NutritionPlanOutcome.CLARIFICATION_REQUIRED,
                          NutritionPlanCode.MISSING_TARGET_AUTHORITY, catalog_version, service_version)
+        if timed_out():
+            return timeout_result()
 
         constraints = request.diet_constraints
         exclusions = _hard_exclusions(catalog, constraints)
@@ -247,14 +266,19 @@ def build_nutrition_plan(request: NutritionPlanRequest, *,
                                 tuple(request.required_meals), request.practicality_policy)
         if plan is None:
             return _classify_candidate_failure(constraints, catalog_version, service_version)
+        if timed_out():
+            return timeout_result()
 
         # 5/6/7 — optimizer is the single authority for numbers
-        result = optimize(catalog, targets, constraints, plan.selections, request.practicality_policy)
+        result = optimize(catalog, targets, constraints, plan.selections, request.practicality_policy,
+                          deadline_monotonic=deadline_monotonic, clock=clock)
         if not result.feasible or result.day is None:
             outcome, code = _FEASIBILITY_MAP.get(
                 result.code, (NutritionPlanOutcome.INFEASIBLE, NutritionPlanCode.MEAL_STRUCTURE_INFEASIBLE))
             return _fail(outcome, code, catalog_version, service_version)
         day = result.day
+        if timed_out():
+            return timeout_result()
 
         # 9 — quality: hard failure blocks success; soft findings are recorded only
         quality = evaluate_quality(catalog, day)
@@ -263,9 +287,13 @@ def build_nutrition_plan(request: NutritionPlanRequest, *,
                          NutritionPlanCode.QUALITY_CONSTRAINTS_INFEASIBLE,
                          catalog_version, service_version,
                          quality_findings=quality.hard_violations)
+        if timed_out():
+            return timeout_result()
 
         # 8 — canonical assembly (never changes numbers)
         meal_day = assemble_meal_day(catalog, result)
+        if timed_out():
+            return timeout_result()
 
         # 10 — lower-priority ordering-only signals (never alter the plan)
         preference_findings = _preference_findings(catalog, request.preference_weights)
@@ -274,6 +302,8 @@ def build_nutrition_plan(request: NutritionPlanRequest, *,
         # 9/10 — the single user-safe projection + deterministic hash
         projection = project_meal_day(meal_day, request.language)
         output_hash = hashlib.sha256(canonical_bytes(projection)).hexdigest()
+        if timed_out():
+            return timeout_result()
 
         metrics = InternalMetrics(
             development_only=development_only,

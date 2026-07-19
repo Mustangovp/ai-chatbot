@@ -175,6 +175,7 @@ class NutritionPlanOutcome(str, Enum):
     UNSUPPORTED = "unsupported"
     INFEASIBLE = "infeasible"
     CATALOG_NOT_READY = "catalog_not_ready"
+    TIMEOUT = "timeout"
     INTERNAL_FAIL_CLOSED = "internal_fail_closed"
 
 
@@ -195,6 +196,7 @@ class NutritionPlanCode(str, Enum):
     MEAL_STRUCTURE_INFEASIBLE = "meal_structure_infeasible"
     QUALITY_CONSTRAINTS_INFEASIBLE = "quality_constraints_infeasible"
     SEARCH_LIMIT_REACHED = "search_limit_reached"
+    SHADOW_TIMEOUT = "shadow_timeout"
     INTERNAL_FAIL_CLOSED = "internal_fail_closed"
 
 
