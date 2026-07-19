@@ -24,6 +24,8 @@ import app as appmod
 import db as store
 import decision_engine
 import conversation_composer
+import nutrition_conversation
+import nutrition_plan
 from recommend import diversity as recommendation_diversity
 from recommend.blueprint import NutritionBlueprint, WorkoutBlueprint, to_dict
 from context_builder import LockedPreferences, Subject, build_context
@@ -44,6 +46,12 @@ class _Choice:
     def __init__(self, c): self.delta = _Delta(c)
 class _Chunk:
     def __init__(self, c): self.choices = [_Choice(c)]
+
+
+class _StructuredCompletion:
+    def __init__(self, payload):
+        message = type("Message", (), {"content": json.dumps(payload)})()
+        self.choices = [type("Choice", (), {"message": message})()]
 
 
 @pytest.fixture
@@ -98,6 +106,8 @@ def _set_stream(monkeypatch, captured, reply):
     def fake_create(**kwargs):
         captured["system"] = kwargs["messages"][0]["content"]
         captured["messages"] = kwargs["messages"]
+        if kwargs.get("response_format"):
+            return _StructuredCompletion(reply)
         def stream():
             yield _Chunk(reply)
         return stream()
@@ -221,17 +231,17 @@ def test_conversation_composer_preserves_nutrition_contract_and_single_delivery_
     monkeypatch.setenv("CONVERSATION_COMPOSER_ACTIVE", "true")
     profile_block = "Calorie target: 2800 kcal\nProtein target: minimum 175g/day"
     monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: profile_block)
-    _set_stream(monkeypatch, captured, _daily_plan())
+    _set_stream(monkeypatch, captured, _structured_plan_payload())
 
     response = _post(client, "Give me a full-day nutrition plan")
 
     assert response.status_code == 200
     response.get_data()
     assert "CONVERSATION COMPOSER V1" in captured["system"]
-    assert "Daily Total" in captured["system"]
+    assert "Return a JSON object only" in captured["system"]
     saved = store.list_conversation(uid, limit=10)
     assert [(turn["role"], turn["content"]) for turn in saved] == [
-        ("user", "Give me a full-day nutrition plan"), ("assistant", _daily_plan()),
+        ("user", "Give me a full-day nutrition plan"), ("assistant", _structured_plan_text()),
     ]
 
 
@@ -1495,7 +1505,7 @@ def test_voice_workout_and_nutrition_keep_visible_delivery_separate_from_speech(
     monkeypatch.delenv("RECOMMENDATION_ENGINE_ACTIVE", raising=False)
     monkeypatch.setattr(appmod, "_build_profile_block",
                         lambda profile, lang: "Calorie target: 2800 kcal\nProtein target: minimum 175g/day")
-    _set_stream(monkeypatch, captured, _daily_plan())
+    _set_stream(monkeypatch, captured, _structured_plan_payload())
     nutrition_events = _events(_post(client, "Give me a full-day nutrition plan", profile=_profile(), voice=True))
     nutrition_visible = nutrition_events[0]["t"]
     nutrition_speech = nutrition_events[1]["speech_text"]
@@ -1542,6 +1552,59 @@ def _daily_plan(rows=None, totals=("175", "350", "78", "2800"), include_total=Tr
     if include_total:
         output.append("| Daily Total | | | " + " | ".join(totals) + " |")
     return "\n".join(output)
+
+
+def _structured_plan_payload(*, total_kcal="2800"):
+    """One-food rows prove the generated object never depends on display parsing."""
+    dinner_kcal = str(400 + (int(total_kcal) - 2800))
+    return {
+        "meals": [
+            {"meal_type": "breakfast", "name": "Breakfast", "time": "08:00", "foods": [
+                {"display_name": "Whole eggs", "catalog_id": None, "grams": "200", "protein_g": "40", "carbs_g": "0", "fat_g": "20", "kcal": "340"},
+                {"display_name": "Oats", "catalog_id": None, "grams": "100", "protein_g": "0", "carbs_g": "100", "fat_g": "0", "kcal": "360"},
+            ]},
+            {"meal_type": "lunch", "name": "Lunch", "time": "13:00", "foods": [
+                {"display_name": "Chicken breast", "catalog_id": None, "grams": "200", "protein_g": "70", "carbs_g": "0", "fat_g": "15", "kcal": "500"},
+                {"display_name": "Rice", "catalog_id": None, "grams": "200", "protein_g": "0", "carbs_g": "140", "fat_g": "15", "kcal": "600"},
+            ]},
+            {"meal_type": "dinner", "name": "Dinner", "time": "19:00", "foods": [
+                {"display_name": "Salmon", "catalog_id": None, "grams": "200", "protein_g": "65", "carbs_g": "0", "fat_g": "28", "kcal": "600"},
+                {"display_name": "Potatoes", "catalog_id": None, "grams": "300", "protein_g": "0", "carbs_g": "110", "fat_g": "0", "kcal": dinner_kcal},
+            ]},
+        ]
+    }
+
+
+def _structured_plan_text(lang="en"):
+    plan = nutrition_plan.build_plan(
+        _structured_plan_payload(), _NUTRITION_TARGETS,
+        restrictions=(), provenance={"test": "structured"})
+    return nutrition_plan.render(plan, lang)
+
+
+def test_nutrition_plan_is_immutable_structured_authority_with_deterministic_rendering():
+    plan = nutrition_plan.build_plan(
+        _structured_plan_payload(), _NUTRITION_TARGETS,
+        restrictions=("dairy", "dairy"), provenance={"generator": "test"})
+
+    assert plan.version == "nutrition-plan-v1"
+    assert plan.restrictions == ("dairy",)
+    assert all(food.catalog_id is None for meal in plan.meals for food in meal.foods)
+    assert len({meal.id for meal in plan.meals}) == 3
+    assert len({food.id for meal in plan.meals for food in meal.foods}) == 6
+    assert nutrition_plan.render(plan, "en") == nutrition_plan.render(plan, "en")
+    assert plan.id not in nutrition_plan.render(plan, "en")
+    assert nutrition_plan.to_record(plan)["meals"][0]["foods"][0]["catalog_id"] is None
+    with pytest.raises(FrozenInstanceError):
+        plan.version = "mutated"
+
+
+def test_nutrition_plan_rejects_compound_food_rows_without_display_parsing():
+    payload = _structured_plan_payload()
+    payload["meals"][0]["foods"][0]["display_name"] = "Eggs and oats"
+
+    with pytest.raises(nutrition_plan.NutritionPlanError, match="compound food"):
+        nutrition_plan.build_plan(payload, _NUTRITION_TARGETS, restrictions=(), provenance={})
 
 
 def _failures(reply):
@@ -1639,57 +1702,54 @@ def _set_sequence_stream(monkeypatch, captured, replies):
         captured["system"] = kwargs["messages"][0]["content"]
         captured["messages"] = kwargs["messages"]
         reply = next(queue)
-        return iter([_Chunk(reply)])
+        return _StructuredCompletion(reply)
 
     monkeypatch.setattr(appmod.client.chat.completions, "create", fake_create)
     return calls
 
 
-def test_daily_nutrition_contract_regenerates_once_and_delivers_only_corrected_plan(client, captured, monkeypatch):
+def test_daily_nutrition_contract_fails_closed_without_a_second_generation(client, captured, monkeypatch):
     profile_block = "Calorie target: 2800 kcal\nProtein target: minimum 175g/day"
-    invalid = _daily_plan(totals=("175", "350", "78", "2500"))
-    valid = _daily_plan()
+    invalid = _structured_plan_payload(total_kcal="2500")
     monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: profile_block)
-    calls = _set_sequence_stream(monkeypatch, captured, [invalid, valid])
+    calls = _set_sequence_stream(monkeypatch, captured, [invalid])
 
     response = _post(client, "Give me a full-day nutrition plan", profile=_profile())
 
-    assert _events(response) == [{"t": valid}, {"done": True}]
-    assert len(calls) == 2
-    assert invalid not in calls[1]["messages"][-1]["content"]
-    assert calls[1]["messages"][-1]["content"] == "Daily kcal total does not equal meal totals.\nCalories outside 5% of target."
+    assert _events(response) == [{"t": nutrition_conversation.failed_message("en")}, {"done": True}]
+    assert len(calls) == 1
 
 
-def test_daily_nutrition_contract_fails_closed_after_one_invalid_regeneration(client, captured, monkeypatch):
+def test_daily_nutrition_contract_has_one_terminal_failure_after_invalid_delivery(client, captured, monkeypatch):
     profile_block = "Calorie target: 2800 kcal\nProtein target: minimum 175g/day"
-    invalid = _daily_plan(totals=("175", "350", "78", "2500"))
+    invalid = _structured_plan_payload(total_kcal="2500")
     monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: profile_block)
-    calls = _set_sequence_stream(monkeypatch, captured, [invalid, invalid])
+    calls = _set_sequence_stream(monkeypatch, captured, [invalid])
 
     response = _post(client, "Give me a full-day nutrition plan", profile=_profile())
     events = _events(response)
 
-    assert events == [{"t": "Unable to generate a nutritionally complete plan.\nPlease try again."}, {"done": True}]
-    assert len(calls) == 2
-    assert invalid not in events[0]["t"]
+    assert events == [{"t": nutrition_conversation.failed_message("en")}, {"done": True}]
+    assert len(calls) == 1
+    assert json.dumps(invalid) not in events[0]["t"]
 
 
 def test_voice_nutrition_failure_speaks_only_the_visible_failure_once(client, captured, monkeypatch):
     profile_block = "Calorie target: 2800 kcal\nProtein target: minimum 175g/day"
-    invalid = _daily_plan(totals=("175", "350", "78", "2500"))
+    invalid = _structured_plan_payload(total_kcal="2500")
     uid = _login_for_chat(client, _profile())
     quota_calls = []
     monkeypatch.setenv("CONVERSATION_COMPOSER_ACTIVE", "true")
     monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: profile_block)
     monkeypatch.setattr(store, "free_usage_consume",
                         lambda *args: quota_calls.append(args) or {"allowed": True})
-    calls = _set_sequence_stream(monkeypatch, captured, [invalid, invalid])
+    calls = _set_sequence_stream(monkeypatch, captured, [invalid])
 
     events = _events(_post(client, "Give me a full-day nutrition plan", voice=True))
-    failure = appmod.nutrition_validation.failure_message("en")
+    failure = nutrition_conversation.failed_message("en")
 
     assert events == [{"t": failure}, {"speech_text": failure}, {"done": True}]
-    assert len(calls) == 2  # one initial generation and the existing single regeneration
+    assert len(calls) == 1
     assert len(quota_calls) == 1
     assert "plan is ready" not in events[1]["speech_text"].lower()
     saved = store.list_conversation(uid, limit=10)
@@ -1700,10 +1760,10 @@ def test_voice_nutrition_failure_speaks_only_the_visible_failure_once(client, ca
 
 def test_daily_nutrition_contract_never_persists_rejected_plan(client, captured, monkeypatch):
     profile_block = "Calorie target: 2800 kcal\nProtein target: minimum 175g/day"
-    invalid = _daily_plan(totals=("175", "350", "78", "2500"))
+    invalid = _structured_plan_payload(total_kcal="2500")
     uid = _login_for_chat(client, _profile())
     monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: profile_block)
-    _set_sequence_stream(monkeypatch, captured, [invalid, invalid])
+    _set_sequence_stream(monkeypatch, captured, [invalid])
 
     response = _post(client, "Give me a full-day nutrition plan")
     response.get_data()
@@ -1711,8 +1771,189 @@ def test_daily_nutrition_contract_never_persists_rejected_plan(client, captured,
     saved = store.list_conversation(uid, limit=10)
     assert [turn["content"] for turn in saved] == [
         "Give me a full-day nutrition plan",
-        "Unable to generate a nutritionally complete plan.\nPlease try again.",
+        nutrition_conversation.failed_message("en"),
     ]
+
+
+def test_nutrition_plan_intake_asks_one_precise_question_without_generation(client, captured):
+    message = "\u0418\u0441\u043a\u0430\u043c \u0445\u0440\u0430\u043d\u0438\u0442\u0435\u043b\u0435\u043d \u043f\u043b\u0430\u043d"
+    response = client.post("/chat", json={"message": message, "lang": "bg", "profile": _profile()})
+    events = _events(response)
+
+    assert events == [{"t": nutrition_conversation.clarification_message(
+        ("\u0432\u044a\u0437\u0440\u0430\u0441\u0442", "\u043f\u043e\u043b", "\u0440\u044a\u0441\u0442", "\u0442\u0435\u0433\u043b\u043e"), "bg")}, {"done": True}]
+    assert "messages" not in captured
+
+
+def test_nutrition_plan_retry_after_same_clarification_becomes_one_unsupported_outcome(client, captured):
+    message = "I want a nutrition plan"
+    clarification = nutrition_conversation.clarification_message(("age", "sex", "height", "weight"), "en")
+    response = client.post("/chat", json={
+        "message": message,
+        "lang": "en",
+        "profile": _profile(),
+        "history": [{"role": "assistant", "content": clarification}],
+    })
+
+    assert _events(response) == [{"t": nutrition_conversation.unsupported_message("en")}, {"done": True}]
+    assert "messages" not in captured
+
+
+def test_nutrition_plan_with_confirmed_targets_generates_once_and_delivers_one_plan(client, captured, monkeypatch):
+    profile_block = "Calorie target: 2800 kcal\nProtein target: minimum 175g/day"
+    monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: profile_block)
+    calls = _set_sequence_stream(monkeypatch, captured, [_structured_plan_payload()])
+
+    response = _post(client, "I want a nutrition plan", profile=_profile())
+
+    assert _events(response) == [{"t": _structured_plan_text()}, {"done": True}]
+    assert len(calls) == 1
+
+
+def test_structured_nutrition_generation_never_parses_display_text_and_persists_canonical_plan(
+        client, captured, monkeypatch):
+    uid = _login_for_chat(client, _profile())
+    profile_block = (
+        "Calorie target: 2800 kcal\nProtein target: minimum 175g/day\n"
+        "Carbohydrate target: 350g\nFat target: 78g"
+    )
+    monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: profile_block)
+    monkeypatch.setattr(
+        appmod.nutrition_validation, "parse_nutrition_day",
+        lambda *_args, **_kwargs: pytest.fail("new structured plan must not parse rendered text"),
+    )
+    monkeypatch.setattr(
+        appmod.nutrition_validation, "appears_complete_daily_plan",
+        lambda *_args, **_kwargs: pytest.fail("new structured plan must not inspect rendered text"),
+    )
+    calls = _set_sequence_stream(monkeypatch, captured, [_structured_plan_payload()])
+
+    events = _events(_post(client, "Give me a full-day nutrition plan", profile=_profile()))
+
+    assert events == [{"t": _structured_plan_text()}, {"done": True}]
+    assert len(calls) == 1
+    assert calls[0]["response_format"] == {"type": "json_object"}
+    assert "stream" not in calls[0]
+    assert json.dumps(_structured_plan_payload()) not in events[0]["t"]
+    records = store.list_nutrition_plans(uid)
+    assert len(records) == 1
+    record = records[0]["plan"]
+    assert record["version"] == "nutrition-plan-v1"
+    assert record["totals"] == {"protein_g": "175", "carbs_g": "350", "fat_g": "78", "kcal": "2800"}
+    assert record["meals"][0]["foods"][0]["catalog_id"] is None
+    assert store.list_nutrition(uid) == []
+    assert store.list_conversation(uid, limit=10)[-1] == {
+        "role": "assistant", "content": _structured_plan_text()}
+
+
+@pytest.mark.parametrize("message", [
+    "\u0440\u0435\u0436\u0438\u043c", "\u0445\u0440\u0430\u043d\u0438\u0442\u0435\u043b\u0435\u043d \u0440\u0435\u0436\u0438\u043c", "\u0440\u0435\u0436\u0438\u043c \u0437\u0430 \u043c\u0430\u0441\u0430", "\u0440\u0435\u0436\u0438\u043c \u0437\u0430 \u0447\u0438\u0441\u0442\u0435\u043d\u0435",
+    "\u043c\u0435\u043d\u044e", "\u0434\u043d\u0435\u0432\u043d\u043e \u043c\u0435\u043d\u044e", "\u0434\u0438\u0435\u0442\u0430", "\u0445\u0440\u0430\u043d\u0438\u0442\u0435\u043b\u0435\u043d \u043f\u043b\u0430\u043d",
+])
+def test_bulgarian_nutrition_request_vocabulary_has_one_orchestration_entry(message):
+    assert nutrition_conversation.is_plan_request(message) is True
+
+
+def test_structured_nutrition_revisions_update_only_the_requested_objects_without_generation(
+        client, captured, monkeypatch):
+    uid = _login_for_chat(client, _profile(age="30", gender="male", height="180", weight="80"), plan="core")
+    profile_block = (
+        "Calorie target: 2800 kcal\nProtein target: minimum 175g/day\n"
+        "Carbohydrate target: 350g\nFat target: 78g"
+    )
+    monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: profile_block)
+    calls = _set_sequence_stream(monkeypatch, captured, [_structured_plan_payload()])
+
+    initial = _events(_post(client, "\u0418\u0441\u043a\u0430\u043c \u0445\u0440\u0430\u043d\u0438\u0442\u0435\u043b\u0435\u043d \u043f\u043b\u0430\u043d"))
+    assert initial[-1] == {"done": True}
+    initial_record = store.list_nutrition_plans(uid)[0]["plan"]
+
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("revision invoked generation"))
+    without_chicken = _events(_post(client, "\u0411\u0435\u0437 \u043f\u0438\u043b\u0435\u0448\u043a\u043e"))
+    chicken_revision = store.list_nutrition_plans(uid)[0]["plan"]
+    assert "Chicken" not in without_chicken[0]["t"]
+    assert "Turkey breast" in without_chicken[0]["t"]
+    assert chicken_revision["provenance"]["parent_plan_id"] == initial_record["id"]
+    assert chicken_revision["totals"] == initial_record["totals"]
+
+    more_rice = _events(_post(client, "\u0414\u043e\u0431\u0430\u0432\u0438 \u043f\u043e\u0432\u0435\u0447\u0435 \u043e\u0440\u0438\u0437"))
+    rice_revision = store.list_nutrition_plans(uid)[0]["plan"]
+    previous_rice = next(food for meal in chicken_revision["meals"] for food in meal["foods"]
+                         if food["display_name"] == "Rice")
+    updated_rice = next(food for meal in rice_revision["meals"] for food in meal["foods"]
+                        if food["display_name"] == "Rice")
+    assert previous_rice["grams"] == "200"
+    assert updated_rice["grams"] == "210.00"
+    assert rice_revision["totals"]["kcal"] == "2830.00"
+    assert [food for meal in rice_revision["meals"] for food in meal["foods"]
+            if food["id"] != updated_rice["id"]] == [
+                food for meal in chicken_revision["meals"] for food in meal["foods"]
+                if food["id"] != previous_rice["id"]]
+    assert "210 g" in more_rice[0]["t"]
+
+    breakfast = _events(_post(client, "\u0417\u0430\u043c\u0435\u043d\u0438 \u0437\u0430\u043a\u0443\u0441\u043a\u0430\u0442\u0430"))
+    breakfast_revision = store.list_nutrition_plans(uid)[0]["plan"]
+    assert "Whole eggs" not in breakfast[0]["t"]
+    assert breakfast_revision["meals"][1:] == rice_revision["meals"][1:]
+    assert breakfast_revision["totals"] == rice_revision["totals"]
+    assert len(calls) == 1
+    assert len(store.list_nutrition_plans(uid)) == 4
+    assert len(store.list_conversation(uid, limit=20)) == 8
+
+
+@pytest.mark.parametrize("message,profile", [
+    ("I want a vegan keto nutrition plan", _profile()),
+    ("I want a carnivore vegan nutrition plan", _profile()),
+    ("I want a nutrition plan using only peanuts", _profile(allergies="peanuts")),
+])
+def test_unsupported_diet_policy_is_terminal_and_never_generates(client, captured, message, profile):
+    response = _post(client, message, profile=profile)
+
+    assert _events(response) == [{"t": nutrition_conversation.unsupported_diet_message("en")}, {"done": True}]
+    assert "messages" not in captured
+
+
+@pytest.mark.parametrize("profile_key,profile_value", [
+    ("allergies", "peanuts"),
+    ("foodPreferences", "vegetarian"),
+])
+def test_known_nutrition_constraints_do_not_trigger_a_duplicate_clarification_or_generation(
+        client, captured, monkeypatch, profile_key, profile_value):
+    profile_block = "Calorie target: 2800 kcal\nProtein target: minimum 175g/day"
+    monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: profile_block)
+    calls = _set_sequence_stream(monkeypatch, captured, [_structured_plan_payload()])
+
+    response = _post(client, "I want a nutrition plan", profile=_profile(**{profile_key: profile_value}))
+
+    assert _events(response) == [{"t": _structured_plan_text()}, {"done": True}]
+    assert len(calls) == 1
+
+
+def test_nutrition_plan_with_complete_profile_but_no_target_is_terminally_unsupported(client, captured, monkeypatch):
+    monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: "")
+    complete = _profile(age="30", gender="male", height="180", weight="80")
+
+    response = _post(client, "I want a nutrition plan", profile=complete)
+
+    assert _events(response) == [{"t": nutrition_conversation.unsupported_message("en")}, {"done": True}]
+    assert "messages" not in captured
+
+
+def test_nutrition_shadow_flag_does_not_change_the_orchestrated_plan_outcome(client, captured, monkeypatch):
+    import nutrition_engine.shadow_hook as shadow_hook
+
+    profile_block = "Calorie target: 2800 kcal\nProtein target: minimum 175g/day"
+    monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: profile_block)
+    monkeypatch.setenv("NUTRITION_ENGINE_V2_SHADOW", "true")
+    dispatched = []
+    monkeypatch.setattr(shadow_hook, "dispatch", lambda *args, **kwargs: dispatched.append(args) or True)
+    calls = _set_sequence_stream(monkeypatch, captured, [_structured_plan_payload()])
+
+    response = _post(client, "Give me a full-day nutrition plan", profile=_profile())
+
+    assert _events(response) == [{"t": _structured_plan_text()}, {"done": True}]
+    assert len(calls) == 1
+    assert len(dispatched) == 1
 
 
 @pytest.mark.parametrize("message", ["give me a strength workout", "how much water should I drink?"])
@@ -1889,23 +2130,23 @@ def test_nutrition_validator_deterministically_joins_a_named_food_with_its_next_
     assert validate_daily_nutrition(plan, targets).valid is True
 
 
-def test_daily_nutrition_semantic_failure_regenerates_once_without_leaking_or_persisting_rejected_plan(
+def test_daily_nutrition_semantic_failure_is_terminal_without_leaking_or_persisting_rejected_plan(
         client, captured, monkeypatch):
     profile_block = "Calorie target: 2800 kcal\nProtein target: minimum 175g/day"
     invalid_rows = [("Breakfast", "2 pcs", "70 g", "40", "100", "20", "700"),
                     _NUTRITION_ROWS[1], _NUTRITION_ROWS[2]]
-    invalid, corrected = _daily_plan(invalid_rows), _daily_plan()
+    invalid = _daily_plan(invalid_rows)
     uid = _login_for_chat(client, _profile())
     monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: profile_block)
-    calls = _set_sequence_stream(monkeypatch, captured, [invalid, corrected])
+    calls = _set_sequence_stream(monkeypatch, captured, [invalid])
 
     response = _post(client, "Give me a full-day nutrition plan")
 
-    assert _events(response) == [{"t": corrected}, {"done": True}]
-    assert len(calls) == 2
-    assert "food name is a quantity" in calls[1]["messages"][-1]["content"]
+    failure = nutrition_conversation.failed_message("en")
+    assert _events(response) == [{"t": failure}, {"done": True}]
+    assert len(calls) == 1
     saved = store.list_conversation(uid, limit=10)
-    assert [turn["content"] for turn in saved] == ["Give me a full-day nutrition plan", corrected]
+    assert [turn["content"] for turn in saved] == ["Give me a full-day nutrition plan", failure]
 
 
 def _communication_projections(*, adaptation=None, recovery="fresh", blueprint=None, rules=()):
@@ -2047,18 +2288,18 @@ def test_voice_summary_uses_the_same_id_free_projection_without_reading_the_work
 
 
 def test_daily_nutrition_contract_accounts_for_one_request_and_localizes_failure(client, captured, monkeypatch):
-    invalid = _daily_plan(totals=("175", "350", "78", "2500"))
+    invalid = _structured_plan_payload(total_kcal="2500")
     profile_block = "Калориен таргет: 2800 ккал\nПротеин таргет: минимум 175г/ден"
     free_calls, plan_calls = [], []
     monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: profile_block)
     monkeypatch.setattr(store, "free_usage_consume", lambda *args: free_calls.append(args) or {"allowed": True})
     monkeypatch.setattr(appmod, "_bump_plans_today", lambda: plan_calls.append(True))
-    calls = _set_sequence_stream(monkeypatch, captured, [invalid, invalid])
+    calls = _set_sequence_stream(monkeypatch, captured, [invalid])
 
     response = client.post("/chat", json={"message": "пълен хранителен план", "lang": "bg", "profile": _profile()})
 
-    assert _events(response) == [{"t": "Не успях да създам пълен хранителен план, който отговаря на текущите ти цели. Моля, опитай отново."}, {"done": True}]
-    assert len(calls) == 2
+    assert _events(response) == [{"t": nutrition_conversation.failed_message("bg")}, {"done": True}]
+    assert len(calls) == 1
     assert len(free_calls) == 1
     assert len(plan_calls) == 1
 
@@ -2227,11 +2468,10 @@ def test_missed_menu_phrase_never_streams_or_persists_rejected_daily_plan(client
     uid = _login_for_chat(client, _profile())
     monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang:
                         "Калориен таргет: 1914 ккал\nПротеин таргет: минимум 198г/ден")
-    _set_sequence_stream(monkeypatch, captured, [_PRODUCTION_MALFORMED_NUTRITION,
-                                                   _PRODUCTION_MALFORMED_NUTRITION])
+    _set_sequence_stream(monkeypatch, captured, [_PRODUCTION_MALFORMED_NUTRITION])
 
     events = _events(_post(client, "дай ми меню", profile=_profile()))
-    failure = appmod.nutrition_validation.failure_message("en")
+    failure = nutrition_conversation.failed_message("en")
 
     assert events == [{"t": failure}, {"done": True}]
     assert _PRODUCTION_MALFORMED_NUTRITION not in str(events)

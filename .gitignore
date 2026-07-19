@@ -105,3 +105,6 @@ data/*.db
 
 # Isolated Nutrition Engine V2 Phase 6C read-only shadow-hook gates.
 !tests/test_nutrition_engine_shadow_hook.py
+
+# Nutrition Engine V2 Phase 10 real-user acceptance coverage.
+!tests/test_nutrition_acceptance.py

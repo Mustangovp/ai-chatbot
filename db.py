@@ -153,6 +153,18 @@ nutrition_history = Table("nutrition_history", metadata,
     Index("ix_nutrition_user_created", "user_id", "created_at"),
 )
 
+# Canonical records for new structured nutrition generation. Legacy
+# nutrition_history.content remains a display archive and is never upgraded.
+nutrition_plans = Table("nutrition_plans", metadata,
+    _uuid_col(),
+    Column("user_id", Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+    Column("plan_id", String(64), nullable=False, unique=True),
+    Column("version", String(32), nullable=False),
+    Column("plan", JSON, nullable=False),
+    Column("created_at", DateTime(timezone=True), server_default=func.now()),
+    Index("ix_nutrition_plans_user_created", "user_id", "created_at"),
+)
+
 # Durable long-term coaching memory — the timeline. One row per meaningful event.
 coach_memory = Table("coach_memory", metadata,
     _uuid_col(),
@@ -298,6 +310,7 @@ _MIGRATIONS = [
     (7, lambda c: None),  # BUILD-001: human_state table (created by create_all)
     (8, lambda c: None),  # BUILD-002: human_state_events table (created by create_all)
     (9, lambda c: None),  # BUILD-002: human_state_reviews table (created by create_all)
+    (10, lambda c: None), # NutritionPlan v1 table (created by create_all)
 ]
 
 def run_migrations():
@@ -605,10 +618,29 @@ def save_nutrition(user_id, content, macros=None):
             kind="nutrition", source="app", payload={"macros": macros}))
     return str(nid)
 
+def save_nutrition_plan(user_id, plan: dict):
+    """Persist a new canonical NutritionPlan without touching legacy text rows."""
+    if not isinstance(plan, dict) or not plan.get("id") or not plan.get("version"):
+        raise ValueError("structured nutrition plan is required")
+    nid = uuid.uuid4()
+    with engine.begin() as c:
+        c.execute(insert(nutrition_plans).values(
+            id=nid, user_id=_as_uuid(user_id), plan_id=str(plan["id"]),
+            version=str(plan["version"]), plan=plan))
+        c.execute(insert(coach_memory).values(id=uuid.uuid4(), user_id=_as_uuid(user_id),
+            kind="nutrition", source="app", payload={"plan_id": plan["id"], "version": plan["version"]}))
+    return str(nid)
+
 def list_nutrition(user_id, limit=30):
     with engine.begin() as c:
         rows = c.execute(select(nutrition_history).where(nutrition_history.c.user_id == _as_uuid(user_id))
                          .order_by(nutrition_history.c.created_at.desc()).limit(limit)).mappings().all()
+    return [_serial(r) for r in rows]
+
+def list_nutrition_plans(user_id, limit=30):
+    with engine.begin() as c:
+        rows = c.execute(select(nutrition_plans).where(nutrition_plans.c.user_id == _as_uuid(user_id))
+                         .order_by(nutrition_plans.c.created_at.desc()).limit(limit)).mappings().all()
     return [_serial(r) for r in rows]
 
 def add_conversation(user_id, role, content, lang=None):
