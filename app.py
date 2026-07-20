@@ -1712,6 +1712,31 @@ def _active_training_plan(snapshot, planning_blueprint):
     )
 
 
+def _cold_start_workout_reply(lang):
+    """Deliver the Brain-approved starter session without model ambiguity."""
+    if str(lang).lower() == "en":
+        return (
+            "**Starter Workout · 15 minutes**\n"
+            "1. Easy march in place — 3 minutes\n"
+            "2. Chair squat — 2 sets of 6–8\n"
+            "3. Wall push-up — 2 sets of 6–8\n"
+            "4. Glute bridge — 2 sets of 8\n"
+            "5. Bird-dog — 2 sets of 6 per side\n\n"
+            "Move slowly, rest as needed, and stop if you feel chest pain, dizziness, or unusual shortness of breath. "
+            "Share your goal and any health conditions so the next session can be tailored."
+        )
+    return (
+        "**Начална тренировка · 15 минути**\n"
+        "1. Леко ходене на място — 3 минути\n"
+        "2. Клек до стол — 2 серии по 6–8\n"
+        "3. Лицеви опори на стена — 2 серии по 6–8\n"
+        "4. Глутеус мост — 2 серии по 8\n"
+        "5. Bird-dog — 2 серии по 6 на страна\n\n"
+        "Движи се бавно, почивай при нужда и спри при болка в гърдите, замайване или необичаен задух. "
+        "Сподели целта си и здравословни ограничения, за да персонализирам следващата тренировка."
+    )
+
+
 def _advance_active_training_plan(plan, payload):
     """Apply traceable completed-workout evidence to one active training plan.
 
@@ -2053,7 +2078,9 @@ def chat():
             _controlled_reply = (
                 _planning_reply
                 if (_planning_reply is not None and
-                    (_planning_request_intent == "nutrition" or not brain_config.brain_enforce()))
+                    ((_planning_request_intent == "nutrition" and
+                      nutrition_conversation.is_plan_request(user_message, history))
+                     or not brain_config.brain_enforce()))
                 else decision_engine.controlled_response(_shadow_decision, lang)
             )
             if _training_engine_failure is not None and _controlled_reply is None:
@@ -2417,11 +2444,11 @@ def chat():
                     or _training_plan_blueprint is not None
                 )
                 if _add and _brain_training_turn:
-                    if _directive["mode"] == "cold_start":
+                    if _directive["mode"] == "cold_start" and _training_engine_active_for_request:
                         # Cold start is an explicit, conservative exception to
-                        # legacy profile collection. It must take precedence so
-                        # a new athlete receives the authorized starter session.
-                        messages[0]["content"] = _add + "\n\n" + messages[0]["content"]
+                        # profile collection. Deliver its fixed safe session
+                        # rather than letting a model reinterpret the policy.
+                        _controlled_reply = _cold_start_workout_reply(lang)
                     elif _directive["should_generate_workout"]:
                         messages[0]["content"] = messages[0]["content"] + "\n\n" + _add   # constraints
                     else:
