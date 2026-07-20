@@ -1233,8 +1233,7 @@ def test_training_engine_profile_contract_failure_delivers_actionable_starter_wo
     response = _post(client, "build a workout", profile=profile)
 
     assert _events(response) == [{"t": appmod._cold_start_workout_reply("en")}, {"done": True}]
-    assert "| Exercise | Sets | Reps | Rest | Note |" in appmod._cold_start_workout_reply("en")
-    assert "**Why this session:**" in appmod._cold_start_workout_reply("en")
+    assert "| Exercise | Sets | Reps | Rest | Note |" not in appmod._cold_start_workout_reply("en")
     assert captured == {}
 
 
@@ -1269,6 +1268,23 @@ def test_training_engine_active_is_deterministic_and_keeps_traceability_internal
     assert all(item.exercise_id and item.exercise_version and item.selection_policy_version
                and item.prescription_policy_version
                for item in plan.sessions[0].prescriptions)
+
+
+def test_training_engine_active_builds_a_traceable_home_beginner_session(client, captured, monkeypatch):
+    profile = {
+        "goal": "strength", "age": "30", "height": "180", "weight": "80",
+        "level": "beginner", "equipment": "home", "recoveryFeel": "fresh",
+    }
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": []}))
+
+    events = _events(_post(client, "build a workout", profile=profile))
+
+    assert "Wall Push-Up" in events[0]["t"]
+    assert "**Why this workout:**" in events[0]["t"]
+    assert events[1]["training_completion"]["sessions"][0]["exercises"][1]["exercise_id"] == "bodyweight.wall_push_up"
+    assert appmod._cold_start_workout_reply("en") != events[0]["t"]
+    assert captured["system"].startswith("[FIXED TRAINING PLAN]")
 
 
 def test_training_engine_active_preserves_verified_upper_lower_split_through_chat(client, captured, monkeypatch):
@@ -1898,6 +1914,17 @@ def test_nutrition_plan_rejects_compound_food_rows_without_display_parsing():
         nutrition_plan.build_plan(payload, _NUTRITION_TARGETS, restrictions=(), provenance={})
 
 
+def test_nutrition_plan_rejects_mixed_food_display_languages_for_bulgarian_delivery():
+    with pytest.raises(nutrition_plan.NutritionPlanError, match="Bulgarian"):
+        nutrition_plan.build_plan(
+            _structured_plan_payload(), _NUTRITION_TARGETS,
+            restrictions=(), provenance={}, language="bg")
+
+    contract = nutrition_plan.generation_contract(_NUTRITION_TARGETS, "bg")
+    assert "Bulgarian only" in contract
+    assert "mix English food names" in contract
+
+
 def _failures(reply):
     return validate_daily_nutrition(reply, _NUTRITION_TARGETS).failures
 
@@ -2189,7 +2216,15 @@ def test_recommendation_pipeline_uses_complete_profile_cards_before_one_nutritio
         appmod, "_build_profile_block",
         lambda _profile, _lang: "Calorie target: 2800 kcal\nProtein target: minimum 175g/day",
     )
-    calls = _set_sequence_stream(monkeypatch, captured, [_structured_plan_payload()])
+    payload = _structured_plan_payload()
+    food_names = {
+        "Whole eggs": "Яйца", "Oats": "Овесени ядки", "Chicken breast": "Пилешко филе",
+        "Rice": "Ориз", "Salmon": "Сьомга", "Potatoes": "Картофи",
+    }
+    for meal in payload["meals"]:
+        for food in meal["foods"]:
+            food["display_name"] = food_names[food["display_name"]]
+    calls = _set_sequence_stream(monkeypatch, captured, [payload])
 
     response = client.post("/chat", json={
         "message": "\u041d\u0430\u043f\u0440\u0430\u0432\u0438 \u043c\u0438 \u0445\u0440\u0430\u043d\u0438\u0442\u0435\u043b\u0435\u043d \u043f\u043b\u0430\u043d.",

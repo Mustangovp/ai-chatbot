@@ -47,9 +47,11 @@ def test_renderer_accepts_only_explanatory_llm_json_and_never_changes_plan_value
     plan = build_training_plan(recommendation_blueprint_id="rec-runtime", facts=_PROFILE)
     prompt = renderer.render_prompt(plan, "en")
     assert "Do not add, remove, reorder, or change exercises" in prompt
+    assert "one to three non-empty explanation strings" in prompt
     assert renderer.verified_explanations(json.dumps({"explanations": ["Keep each rep controlled."]})) == (
         "Keep each rep controlled.",
     )
+    assert "Why this workout:" in renderer.default_explanations(plan, "en")[0]
     with pytest.raises(ValueError, match="response contract"):
         renderer.verified_explanations(json.dumps({"explanations": [], "plan": "modified"}))
 
@@ -86,14 +88,15 @@ def test_runtime_constructs_the_explicit_requested_split_deterministically(
                for item in session.prescriptions)
 
 
-def test_home_beginner_profile_uses_the_new_bodyweight_horizontal_pull():
+def test_home_beginner_profile_uses_the_bodyweight_push_and_horizontal_pull():
     plan = build_training_plan(
         recommendation_blueprint_id="rec-home", facts={
-            "goal": "strength", "level": "beginner", "equipment": "bodyweight, bench",
+            "goal": "strength", "level": "beginner", "equipment": "home",
             "recoveryFeel": "fresh",
         })
 
-    assert "bodyweight.table_row" in {item.exercise_id for item in plan.sessions[0].prescriptions}
+    exercise_ids = {item.exercise_id for item in plan.sessions[0].prescriptions}
+    assert {"bodyweight.wall_push_up", "bodyweight.table_row"}.issubset(exercise_ids)
     exercise = load_exercise_library().require("bodyweight.table_row")
     assert exercise.movement_pattern is MovementPattern.HORIZONTAL_PULL
     assert exercise.safety_notes and exercise.progression.next_exercise_ids

@@ -20,7 +20,7 @@ from .models import (
 )
 
 
-EXERCISE_LIBRARY_VERSION = "1.0.0"
+EXERCISE_LIBRARY_VERSION = "1.1.0"
 
 
 @dataclass(frozen=True)
@@ -98,10 +98,15 @@ def _exercise(exercise_id: str, name: str, primary: tuple[str, ...], secondary: 
 
 
 _EXERCISES = (
+    _exercise("bodyweight.wall_push_up", "Wall Push-Up", ("chest",), ("triceps", "anterior_deltoid"),
+              MovementPattern.HORIZONTAL_PUSH, frozenset({Equipment.BODYWEIGHT}), Difficulty.BEGINNER,
+              ("upper_body", "push", "home"),
+              ("Keep the body in one line and use a pain-free range.",),
+              progression=("bodyweight.incline_push_up",)),
     _exercise("bodyweight.incline_push_up", "Incline Push-Up", ("chest",), ("triceps", "anterior_deltoid"),
               MovementPattern.HORIZONTAL_PUSH, frozenset({Equipment.BODYWEIGHT, Equipment.BENCH}), Difficulty.BEGINNER,
               ("upper_body", "push", "home"), ("Use a stable elevated surface.",),
-              progression=("bodyweight.push_up",)),
+              progression=("bodyweight.push_up",), regression=("bodyweight.wall_push_up",)),
     _exercise("bodyweight.push_up", "Push-Up", ("chest",), ("triceps", "anterior_deltoid"),
               MovementPattern.HORIZONTAL_PUSH, frozenset({Equipment.BODYWEIGHT}), Difficulty.INTERMEDIATE,
               ("upper_body", "push", "home"), ("Maintain a neutral trunk.",),

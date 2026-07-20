@@ -13,7 +13,7 @@ def render_prompt(plan: TrainingPlanBlueprintV2, language: str) -> str:
     payload = {
         "plan_id": plan.plan_id,
         "language": "en" if str(language).lower() == "en" else "bg",
-        "instruction": "Return JSON only: {\"explanations\": [string]}. Explain motivation or form awareness only. Do not add, remove, reorder, or change exercises, sets, reps, tempo, rest, intensity, duration, or volume.",
+        "instruction": "Return JSON only: {\"explanations\": [string]}. Return one to three non-empty explanation strings. Explain motivation or form awareness only. Do not add, remove, reorder, or change exercises, sets, reps, tempo, rest, intensity, duration, or volume.",
     }
     return "[FIXED TRAINING PLAN]\n" + json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
@@ -26,6 +26,17 @@ def verified_explanations(response: str) -> tuple[str, ...]:
     if any(not isinstance(item, str) or not item.strip() for item in explanations):
         raise ValueError("training explanations must be non-empty strings")
     return explanations
+
+
+def default_explanations(plan: TrainingPlanBlueprintV2, language: str) -> tuple[str, ...]:
+    """Supply delivery text only when the explanation-only model returns no prose."""
+    if str(language).lower() == "en":
+        return (
+            "**Why this workout:** this session follows the confirmed plan and keeps the prescribed exercise order, effort, and recovery boundaries intact.",
+        )
+    return (
+        "**Защо тази тренировка:** сесията следва потвърдения план и запазва предписаните упражнения, ред, натоварване и граници за възстановяване.",
+    )
 
 
 def _render_text_delivery(plan: TrainingPlanBlueprintV2, library: ExerciseLibrary,

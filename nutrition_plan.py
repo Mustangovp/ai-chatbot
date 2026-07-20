@@ -87,6 +87,8 @@ class NutritionPlan:
 _MEALS = ("breakfast", "lunch", "dinner")
 _OPTIONAL_MEALS = ("snack",)
 _COMPOUND_NAME = re.compile(r"\s(?:and|with)\s|\s\u0438\s|[&+/]", re.I)
+_CYRILLIC = re.compile(r"[\u0400-\u04ff]")
+_LATIN = re.compile(r"[A-Za-z]")
 
 
 def _decimal(value: object, field: str) -> Decimal:
@@ -126,12 +128,16 @@ def _validate_totals(totals: NutritionMacros, targets: NutritionTargets) -> None
 
 
 def _food_from_payload(value: Mapping[str, object], plan_id: str, meal_index: int,
-                       food_index: int) -> NutritionFood:
+                       food_index: int, language: str | None) -> NutritionFood:
     name = str(value.get("display_name") or "").strip()
     if not name:
         raise NutritionPlanError("food.display_name is required")
     if _COMPOUND_NAME.search(name):
         raise NutritionPlanError("compound food rows are not supported")
+    if language == "bg" and _LATIN.search(name):
+        raise NutritionPlanError("food.display_name must use Bulgarian when Bulgarian delivery is requested")
+    if language == "en" and _CYRILLIC.search(name):
+        raise NutritionPlanError("food.display_name must use English when English delivery is requested")
     grams = _decimal(value.get("grams"), "food.grams")
     if grams <= 0:
         raise NutritionPlanError("food.grams must be positive")
@@ -152,7 +158,7 @@ def _food_from_payload(value: Mapping[str, object], plan_id: str, meal_index: in
 
 def build_plan(payload: Mapping[str, object], targets: NutritionTargets, *,
                restrictions: tuple[str, ...], provenance: Mapping[str, str],
-               now: dt.datetime | None = None) -> NutritionPlan:
+               now: dt.datetime | None = None, language: str | None = None) -> NutritionPlan:
     """Validate structured generator output into the sole authoritative plan."""
     raw_meals = payload.get("meals")
     if not isinstance(raw_meals, list):
@@ -172,7 +178,7 @@ def build_plan(payload: Mapping[str, object], targets: NutritionTargets, *,
         raw_foods = raw_meal.get("foods")
         if not isinstance(raw_foods, list) or not raw_foods:
             raise NutritionPlanError("meal must contain at least one food")
-        foods = tuple(_food_from_payload(food, plan_id, meal_index, food_index)
+        foods = tuple(_food_from_payload(food, plan_id, meal_index, food_index, language)
                       for food_index, food in enumerate(raw_foods)
                       if isinstance(food, Mapping))
         if len(foods) != len(raw_foods):
@@ -370,6 +376,7 @@ def build_source_backed_plan(targets: NutritionTargets, lang: str, *,
                 "catalog_version": catalog.version,
                 "service_version": SERVICE_VERSION,
             },
+            language="en" if str(lang).lower() == "en" else "bg",
         )
     except Exception:
         return None
@@ -656,7 +663,7 @@ def to_record(plan: NutritionPlan) -> dict[str, object]:
     }
 
 
-def generation_contract(targets: NutritionTargets) -> str:
+def generation_contract(targets: NutritionTargets, lang: str) -> str:
     """The only model contract for canonical daily-plan generation."""
     return (
         "[STRUCTURED DAILY NUTRITION PLAN]\n"
@@ -664,6 +671,9 @@ def generation_contract(targets: NutritionTargets) -> str:
         "Each meal has meal_type (breakfast, optional snack, lunch, dinner), name, time, and foods. "
         "Each food has display_name, optional catalog_id, grams, protein_g, carbs_g, fat_g, and kcal. "
         "Every food is exactly one food ingredient; never combine foods in one name. "
+        + ("Every display_name must be English only. " if str(lang).lower() == "en"
+           else "Every display_name must be Bulgarian only; do not mix English food names. ")
+        +
         "Breakfast, lunch, and dinner are required and chronological. All numbers are positive. "
         "The summed food totals must meet these confirmed targets within 5%: "
         f"{targets.kcal} kcal; protein {targets.protein if targets.protein is not None else 'unspecified'}g; "
@@ -672,7 +682,7 @@ def generation_contract(targets: NutritionTargets) -> str:
     )
 
 
-def regeneration_contract(validation_failure: Exception, targets: NutritionTargets) -> str:
+def regeneration_contract(validation_failure: Exception, targets: NutritionTargets, lang: str) -> str:
     """Request one repair without ever returning the rejected structured plan."""
     reason = str(validation_failure).strip() or "structured nutrition validation failed"
     allocations = (
@@ -696,6 +706,9 @@ def regeneration_contract(validation_failure: Exception, targets: NutritionTarge
         "Return one complete corrected JSON object only. Do not include markdown, prose, "
         "or the rejected output. Keep the original request and confirmed targets. "
         "Every food must include display_name, grams, protein_g, carbs_g, fat_g, and kcal; "
+        + ("every display_name must be English only; " if str(lang).lower() == "en"
+           else "every display_name must be Bulgarian only with no English food names; ")
+        +
         "breakfast, lunch, and dinner are required. Use exactly these meal budgets and make "
         "the sum of each meal's food fields equal its budget before returning JSON:\n"
         + "\n".join(allocation_lines) + "\n"

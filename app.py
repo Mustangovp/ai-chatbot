@@ -1731,31 +1731,27 @@ def _active_training_plan(snapshot, planning_blueprint):
 
 
 def _cold_start_workout_reply(lang):
-    """Deliver a browser-session-ready starter workout without model ambiguity."""
+    """Deliver the Brain-approved starter session without model ambiguity."""
     if str(lang).lower() == "en":
         return (
             "**Starter Workout · 15 minutes**\n"
-            "| Exercise | Sets | Reps | Rest | Note |\n"
-            "| --- | --- | --- | --- | --- |\n"
-            "| Easy march in place | 1 | 3 minutes | 0 sec | Raise temperature gradually |\n"
-            "| Chair squat | 2 | 6–8 | 60 sec | Use a pain-free depth |\n"
-            "| Wall push-up | 2 | 6–8 | 60 sec | Keep the body in one line |\n"
-            "| Glute bridge | 2 | 8 | 60 sec | Pause briefly at the top |\n"
-            "| Bird-dog | 2 | 6 per side | 45 sec | Move slowly and stay balanced |\n\n"
-            "**Why this session:** it covers squat, push, hip extension, and trunk control with a deliberately low starting dose. "
-            "Move slowly, rest as needed, and stop for chest pain, dizziness, or unusual shortness of breath."
+            "1. Easy march in place — 3 minutes\n"
+            "2. Chair squat — 2 sets of 6–8\n"
+            "3. Wall push-up — 2 sets of 6–8\n"
+            "4. Glute bridge — 2 sets of 8\n"
+            "5. Bird-dog — 2 sets of 6 per side\n\n"
+            "Move slowly, rest as needed, and stop if you feel chest pain, dizziness, or unusual shortness of breath. "
+            "Share your goal and any health conditions so the next session can be tailored."
         )
     return (
         "**Начална тренировка · 15 минути**\n"
-        "| Упражнение | Серии | Повторения | Почивка | Бележка |\n"
-        "| --- | --- | --- | --- | --- |\n"
-        "| Леко ходене на място | 1 | 3 минути | 0 сек | Повиши темпото постепенно |\n"
-        "| Клек до стол | 2 | 6–8 | 60 сек | Работи в безболезнен обхват |\n"
-        "| Лицеви опори на стена | 2 | 6–8 | 60 сек | Дръж тялото в една линия |\n"
-        "| Глутеус мост | 2 | 8 | 60 сек | Задръж кратко горе |\n"
-        "| Bird-dog | 2 | 6 на страна | 45 сек | Движи се бавно и стабилно |\n\n"
-        "**Защо тази тренировка:** покрива клек, бутане, разгъване в таза и контрол на корпуса с умишлено нисък стартов обем. "
-        "Движи се бавно, почивай при нужда и спри при болка в гърдите, замайване или необичаен задух."
+        "1. Леко ходене на място — 3 минути\n"
+        "2. Клек до стол — 2 серии по 6–8\n"
+        "3. Лицеви опори на стена — 2 серии по 6–8\n"
+        "4. Глутеус мост — 2 серии по 8\n"
+        "5. Bird-dog — 2 серии по 6 на страна\n\n"
+        "Движи се бавно, почивай при нужда и спри при болка в гърдите, замайване или необичаен задух. "
+        "Сподели целта си и здравословни ограничения, за да персонализирам следващата сесия."
     )
 
 
@@ -2348,7 +2344,8 @@ def chat():
                         "exception=%s worker_id=unknown", type(_v2_err).__name__)
 
         if nutrition_delivery_targets is not None:
-            system_content = system_content + "\n\n" + nutrition_plan.generation_contract(nutrition_delivery_targets)
+            system_content = system_content + "\n\n" + nutrition_plan.generation_contract(
+                nutrition_delivery_targets, lang)
         if _training_plan_blueprint is not None:
             system_content = training_renderer.render_prompt(_training_plan_blueprint, lang)
         elif _recommendation_blueprint is not None:
@@ -2670,6 +2667,7 @@ def chat():
                             generated, nutrition_delivery_targets,
                             restrictions=_nutrition_restrictions(profile),
                             provenance={"generator": "openai_chat_completions_json", "model": model_to_use},
+                            language=lang,
                         )
                         reply_text = nutrition_plan.render_delivery(authoritative_plan, lang)
                     except nutrition_plan.NutritionPlanError as validation_error:
@@ -2681,7 +2679,7 @@ def chat():
                             repair_messages = messages + [{
                                 "role": "system",
                                 "content": nutrition_plan.regeneration_contract(
-                                    validation_error, nutrition_delivery_targets),
+                                    validation_error, nutrition_delivery_targets, lang),
                             }]
                             repair_model = "gpt-4o" if model_to_use == "gpt-4o-mini" else model_to_use
                             completion = client.chat.completions.create(
@@ -2695,6 +2693,7 @@ def chat():
                                 generated, nutrition_delivery_targets,
                                 restrictions=_nutrition_restrictions(profile),
                                 provenance={"generator": "openai_chat_completions_json_repair", "model": repair_model},
+                                language=lang,
                             )
                             reply_text = nutrition_plan.render_delivery(authoritative_plan, lang)
                         except Exception as repair_error:
@@ -2750,6 +2749,9 @@ def chat():
                         _bump_plans_today()
                         raw_explanations = completion.choices[0].message.content or ""
                         explanations = training_renderer.verified_explanations(raw_explanations)
+                        if not explanations:
+                            explanations = training_renderer.default_explanations(
+                                _training_plan_blueprint, lang)
                         reply_text = training_renderer.render_delivery(
                             _training_plan_blueprint, load_exercise_library(), explanations, lang)
                         if _combined_coaching_request:
