@@ -2013,6 +2013,44 @@ def test_nutrition_plan_intake_asks_one_precise_question_without_generation(clie
     assert "messages" not in captured
 
 
+def test_active_training_engine_does_not_construct_from_a_profile_clarification(client, captured, monkeypatch):
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setenv("BRAIN_ENFORCE", "1")
+    monkeypatch.setattr(appmod, "_active_training_plan", lambda *_args: pytest.fail("unexpected training construction"))
+
+    response = _post(client, "build a workout", profile={"goal": "strength"})
+
+    assert response.status_code == 200
+    events = _events(response)
+    assert events[0]["decision"]["cold_start"] is True
+    assert events[1] == {"t": "ok"}
+    assert events[-1] == {"done": True}
+    assert "COLD START" in captured["system"]
+
+
+def test_brain_cold_start_does_not_enter_nutrition_plan_generation(client, captured, monkeypatch):
+    monkeypatch.setenv("BRAIN_ENFORCE", "1")
+    _set_stream(monkeypatch, captured, _structured_plan_payload())
+
+    response = _post(client, "I want a full-day nutrition plan", profile=_profile())
+    response.get_data()
+
+    assert response.status_code == 200
+    assert "COLD START" not in captured["system"]
+    assert "[STRUCTURED DAILY NUTRITION PLAN]" in captured["system"]
+
+
+def test_nutrition_profile_clarification_stays_specific_under_brain_enforcement(client, captured, monkeypatch):
+    monkeypatch.setenv("BRAIN_ENFORCE", "1")
+
+    response = _post(client, "I want a nutrition plan", profile={"goal": "muscle_gain"})
+
+    assert _events(response) == [{
+        "t": recommendation_planning.clarification_message("age", "en"),
+    }, {"done": True}]
+    assert "messages" not in captured
+
+
 def test_nutrition_plan_retry_after_same_clarification_becomes_one_unsupported_outcome(client, captured):
     message = "I want a nutrition plan"
     clarification = recommendation_planning.clarification_message("age", "en")

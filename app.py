@@ -2015,10 +2015,13 @@ def chat():
                 history = _legacy["history"]
             pers_workouts = _legacy["workouts"]
             _shadow_decision = decision_engine.decide(_snapshot, _shadow_intent)
+            _planning_request_intent = _planning_intent(user_message, history, _shadow_intent)
             _recommendation_plan, _planning_reply = _plan_coaching_request(
-                _snapshot, _planning_intent(user_message, history, _shadow_intent), history, lang)
+                _snapshot, _planning_request_intent, history, lang)
             if (_training_engine_active_for_request and _shadow_decision.outcome == "recommend"
-                    and _shadow_decision.intent == "workout"):
+                    and _shadow_decision.intent == "workout"
+                    and _recommendation_plan is not None
+                    and _recommendation_plan.outcome is recommendation_planning.RecommendationOutcome.RECOMMEND):
                 try:
                     _training_plan_blueprint = _active_training_plan(_snapshot, _recommendation_plan)
                     _training_plan_blueprint = _advance_active_training_plan(_training_plan_blueprint, data)
@@ -2049,7 +2052,8 @@ def chat():
             # the same request.
             _controlled_reply = (
                 _planning_reply
-                if _planning_reply is not None and not brain_config.brain_enforce()
+                if (_planning_reply is not None and
+                    (_planning_request_intent == "nutrition" or not brain_config.brain_enforce()))
                 else decision_engine.controlled_response(_shadow_decision, lang)
             )
             if _training_engine_failure is not None and _controlled_reply is None:
@@ -2127,7 +2131,9 @@ def chat():
             _recommendation_plan, _planning_reply = _plan_coaching_request(
                 _snapshot, _first_planning_intent, history, lang)
             if (_training_engine_active_for_request and _shadow_decision.outcome == "recommend"
-                    and _shadow_decision.intent == "workout"):
+                    and _shadow_decision.intent == "workout"
+                    and _recommendation_plan is not None
+                    and _recommendation_plan.outcome is recommendation_planning.RecommendationOutcome.RECOMMEND):
                 try:
                     _training_plan_blueprint = _active_training_plan(_snapshot, _recommendation_plan)
                     _training_plan_blueprint = _advance_active_training_plan(_training_plan_blueprint, data)
@@ -2403,7 +2409,14 @@ def chat():
                 _directive = brain_enforcement.render(_decision)
                 enforce_event = _directive["decision_event"]
                 _add = _directive["system_prompt_addendum"]
-                if _add:
+                # Brain enforcement governs training safety. Nutrition's own
+                # deterministic contract controls meal-plan generation, so a
+                # cold-start workout instruction must never enter that prompt.
+                _brain_training_turn = (
+                    getattr(_shadow_decision, "intent", None) == "workout"
+                    or _training_plan_blueprint is not None
+                )
+                if _add and _brain_training_turn:
                     if _directive["should_generate_workout"]:
                         messages[0]["content"] = messages[0]["content"] + "\n\n" + _add   # constraints
                     else:
