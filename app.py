@@ -38,7 +38,18 @@ import conversation_composer
 import nutrition_conversation
 import nutrition_plan
 import nutrition_validation
-from recommend import architect as recommendation_architect, renderer as recommendation_renderer
+from knowledge import KnowledgeResolver, load_default_registry
+from recommend import architect as recommendation_architect, engine as recommendation_planning, renderer as recommendation_renderer
+from training_engine import (
+    TrainingRuntimeError,
+    advance_training_lifecycle,
+    build_training_plan,
+    load_exercise_library,
+    recovery_from_payload,
+    validate_workout_completion_payload,
+    workout_result_from_payload,
+)
+from training_engine import renderer as training_renderer
 from brain.runtime_assets import expert_consensus, persona_matcher
 from brain.runtime_assets.personas import load_runtime_personas
 import brain.runtime_assets.shadow_trace as shadow_trace
@@ -1312,6 +1323,14 @@ def api_workout():
     session = data.get("session")
     if not isinstance(session, dict):
         return jsonify({"error": "invalid"}), 400
+    workout_completion = data.get("workout_completion")
+    if workout_completion is not None:
+        try:
+            validate_workout_completion_payload(workout_completion)
+        except ValueError:
+            return jsonify({"error": "invalid_workout_completion"}), 400
+        session = dict(session)
+        session["workout_completion"] = workout_completion
     wid = store.log_workout(u["id"], session)
     # M0: workout evidence for the Athlete Model (failure-isolated).
     athlete_store.observe(u["id"], "workout_completed", session)
@@ -1645,6 +1664,86 @@ def _recommendation_engine_active():
     return os.getenv("RECOMMENDATION_ENGINE_ACTIVE", "false").strip().lower() == "true"
 
 
+def _training_engine_active():
+    return os.getenv("TRAINING_ENGINE_ACTIVE", "false").strip().lower() == "true"
+
+
+_RECOMMENDATION_PLANNER = recommendation_planning.RecommendationEngine(
+    KnowledgeResolver(load_default_registry()))
+
+
+def _planning_intent(message, history, classified_intent):
+    """Keep the existing intent classifier, with the nutrition conversation parser as its BG-safe boundary."""
+    if classified_intent == "medical":
+        return None
+    if nutrition_conversation.is_plan_request(message, history):
+        return "nutrition"
+    return classified_intent if classified_intent in ("workout", "nutrition") else None
+
+
+def _plan_coaching_request(snapshot, intent, history, lang):
+    """Resolve a coaching turn before any communication prompt is assembled."""
+    if intent not in ("workout", "nutrition"):
+        return None, None
+    profile = recommendation_planning.ImmutableUserProfile.from_verified_facts(
+        snapshot.profile,
+        locked_preferences=snapshot.locked_preferences.as_dict(),
+        clarification_history=recommendation_planning.clarification_history(history, lang),
+    )
+    blueprint = _RECOMMENDATION_PLANNER.plan(intent, profile)
+    if blueprint.outcome is recommendation_planning.RecommendationOutcome.CLARIFY:
+        return blueprint, recommendation_planning.clarification_message(blueprint.clarification_field, lang)
+    if blueprint.outcome is recommendation_planning.RecommendationOutcome.AWAITING_PROFILE:
+        return blueprint, recommendation_planning.awaiting_profile_message(lang)
+    return blueprint, None
+
+
+def _active_training_plan(snapshot, planning_blueprint):
+    """Build the deterministic workout artifact from verified request facts only."""
+    if (snapshot.intent != "workout" or planning_blueprint is None
+            or planning_blueprint.outcome is not recommendation_planning.RecommendationOutcome.RECOMMEND):
+        return None
+    facts = {key: fact.value for key, fact in snapshot.profile.items()}
+    return build_training_plan(
+        recommendation_blueprint_id=planning_blueprint.blueprint_id,
+        facts=facts,
+        locked_preferences=snapshot.locked_preferences.as_dict(),
+        requested_split=planning_blueprint.training_split,
+    )
+
+
+def _advance_active_training_plan(plan, payload):
+    """Apply traceable completed-workout evidence to one active training plan.
+
+    Legacy browser workout logs intentionally do not enter here: they lack the
+    immutable exercise and plan identities required for a safe revision.
+    """
+    if not isinstance(payload, dict):
+        return plan
+    raw_workouts = payload.get("completed_workouts")
+    if raw_workouts is None and payload.get("completed_workout") is not None:
+        raw_workouts = [payload["completed_workout"]]
+    if raw_workouts is None:
+        return plan
+    if plan is None:
+        raise TrainingRuntimeError("training lifecycle requires an active training plan")
+    if not isinstance(raw_workouts, list) or not raw_workouts:
+        raise TrainingRuntimeError("training lifecycle requires completed workout evidence")
+    raw_recovery = payload.get("recovery")
+    if not isinstance(raw_recovery, dict):
+        raise TrainingRuntimeError("training lifecycle requires verified recovery evidence")
+    try:
+        workouts = tuple(workout_result_from_payload(item, plan=plan) for item in raw_workouts)
+        result = advance_training_lifecycle(
+            plan=plan,
+            workouts=workouts,
+            recovery=recovery_from_payload(raw_recovery),
+        )
+    except (TypeError, ValueError) as error:
+        raise TrainingRuntimeError("training lifecycle evidence was rejected") from error
+    return result.revision.revised_plan
+
+
 def _persona_expert_communication_active():
     return os.getenv("PERSONA_EXPERT_COMMUNICATION_ACTIVE", "false").strip().lower() == "true"
 
@@ -1753,8 +1852,11 @@ def _as_list(value):
 
 
 def _active_workout_recommendation(snapshot, decision, recommendation_engine_active,
-                                   communication_active=False):
+                                   communication_active=False, planning_blueprint=None):
     """Use persona/expert evidence only when at least one system can act on it."""
+    if (planning_blueprint is not None
+            and planning_blueprint.outcome is not recommendation_planning.RecommendationOutcome.RECOMMEND):
+        return None, None, "legacy", None, None
     authority = _workout_authority(snapshot, decision)
     if authority is None:
         return None, None, "legacy", None, None
@@ -1767,6 +1869,7 @@ def _active_workout_recommendation(snapshot, decision, recommendation_engine_act
             preferences=dict(authority.locked_preferences), subject=snapshot.subject.identifier, record=False,
             expert_consensus=consensus,
             persona_adaptation=_persona_adaptation(match), authority=authority,
+            planning_blueprint=planning_blueprint,
         )
         persona_projection = expert_constraints = None
         if blueprint is not None and communication_active:
@@ -1872,9 +1975,13 @@ def chat():
         # consumed by the unchanged prompt assembly below. First-contact keeps its
         # established path until its own integration phase.
         _recommendation_blueprint = None
+        _recommendation_plan = None
         _recommendation_trace = None
         _recommendation_path = "legacy"
         _recommendation_active = _recommendation_engine_active()
+        _training_engine_active_for_request = _training_engine_active()
+        _training_plan_blueprint = None
+        _training_engine_failure = None
         _persona_expert_communication_active_for_request = _persona_expert_communication_active()
         _persona_projection = None
         _expert_communication_constraints = None
@@ -1908,52 +2015,87 @@ def chat():
                 history = _legacy["history"]
             pers_workouts = _legacy["workouts"]
             _shadow_decision = decision_engine.decide(_snapshot, _shadow_intent)
-            _active_workout = (_recommendation_active and _shadow_decision.outcome == "recommend" and
-                               _shadow_decision.intent == "workout")
+            _recommendation_plan, _planning_reply = _plan_coaching_request(
+                _snapshot, _planning_intent(user_message, history, _shadow_intent), history, lang)
+            if (_training_engine_active_for_request and _shadow_decision.outcome == "recommend"
+                    and _shadow_decision.intent == "workout"):
+                try:
+                    _training_plan_blueprint = _active_training_plan(_snapshot, _recommendation_plan)
+                    _training_plan_blueprint = _advance_active_training_plan(_training_plan_blueprint, data)
+                    if _training_plan_blueprint is None:
+                        _training_engine_failure = "training_engine_profile_contract"
+                    else:
+                        _recommendation_path = "deterministic_training"
+                except TrainingRuntimeError as _training_error:
+                    print(f"[training-engine] construction rejected: {type(_training_error).__name__}")
+                    _training_engine_failure = "training_engine_profile_contract"
+            _active_workout = (not _training_engine_active_for_request and _recommendation_active and _shadow_decision.outcome == "recommend" and
+                               _shadow_decision.intent == "workout"
+                               and (_recommendation_plan is None or
+                                    _recommendation_plan.outcome is recommendation_planning.RecommendationOutcome.RECOMMEND))
             if _active_workout:
                 (_recommendation_blueprint, _recommendation_trace,
                  _recommendation_path, _persona_projection,
                  _expert_communication_constraints) = _active_workout_recommendation(
                      _snapshot, _shadow_decision, _recommendation_active,
-                     _persona_expert_communication_active_for_request)
+                     _persona_expert_communication_active_for_request, _recommendation_plan)
             else:
                 (_shadow_persona_match, _shadow_expert_consensus,
                  _recommendation_trace) = _shadow_persona_expert(
                      _snapshot, _shadow_decision, _recommendation_active)
-            _controlled_reply = decision_engine.controlled_response(_shadow_decision, lang)
+            # Safety enforcement retains precedence when deliberately enabled.
+            # The planner still runs for observability and deterministic inputs,
+            # but it must not prevent an approved safety decision from shaping
+            # the same request.
+            _controlled_reply = (
+                _planning_reply
+                if _planning_reply is not None and not brain_config.brain_enforce()
+                else decision_engine.controlled_response(_shadow_decision, lang)
+            )
+            if _training_engine_failure is not None and _controlled_reply is None:
+                _controlled_reply = decision_engine.controlled_response(
+                    decision_engine.DecisionResult("clarify", "workout", _training_engine_failure, (), 1.0), lang)
             if _conversation_composer_active_for_request:
                 try:
                     _conversation_policy = conversation_composer.build_policy(
                         decision=_shadow_decision, message=user_message, conversation=history,
                         voice=voice_requested, session_start=session_start,
-                        blueprint_present=_recommendation_blueprint is not None,
-                        recommendation_kind=getattr(_recommendation_blueprint, "kind", None),
-                        structured_delivery=_recommendation_blueprint is not None,
+                        blueprint_present=(_recommendation_blueprint is not None or _training_plan_blueprint is not None),
+                        recommendation_kind=("workout" if _training_plan_blueprint is not None
+                                             else getattr(_recommendation_blueprint, "kind", None)),
+                        structured_delivery=(_recommendation_blueprint is not None or _training_plan_blueprint is not None),
                         respect_projection_preferences=_persona_expert_communication_active_for_request,
                     )
                 except Exception as _composer_error:
                     print(f"[conversation-composer] policy failed: {_composer_error}")
-            if not _recommendation_active:
+            if not _recommendation_active and _planning_reply is None:
                 _shadow_recommendation(_snapshot, _shadow_decision, profile)
             if _recommendation_trace is not None:
                 _observe_shadow_trace_for_testing(_recommendation_trace.with_delivery(
-                    blueprint_invoked=_recommendation_blueprint is not None,
+                    blueprint_invoked=(_recommendation_blueprint is not None or _training_plan_blueprint is not None),
                     production_path_used=_recommendation_path))
         else:
             _controlled_reply = None
 
         profile_block = ""
         decision_state = "CONTINUE_CONVERSATION"
+        # First-contact safety evaluation uses the same plan-selected model as
+        # final delivery, so resolve it before either execution path begins.
+        model_to_use = "gpt-4o" if is_pro else "gpt-4o-mini"
         if is_first_contact:
-            # 1. Understanding: Silent extraction (updates the Human State profile)
-            # Safe conversation history wrapper
-            history_for_extract = []
-            if isinstance(history, list):
-                for m in history:
-                    if isinstance(m, dict) and m.get("role") in ("user", "assistant"):
-                        history_for_extract.append(m)
-            history_for_extract.append({"role": "user", "content": user_message})
-            profile = _extract_profile_silent(history_for_extract, profile)
+            _first_intent = decision_engine.classify_intent(user_message)
+            _first_planning_intent = _planning_intent(user_message, history, _first_intent)
+            # Coaching turns begin from verified Profile Cards. They never call
+            # the legacy extraction model before deterministic planning; ordinary
+            # first-contact conversation retains its established extraction path.
+            if _first_planning_intent is None:
+                history_for_extract = []
+                if isinstance(history, list):
+                    for m in history:
+                        if isinstance(m, dict) and m.get("role") in ("user", "assistant"):
+                            history_for_extract.append(m)
+                history_for_extract.append({"role": "user", "content": user_message})
+                profile = _extract_profile_silent(history_for_extract, profile)
             
             # Ingest safety flags inside the Understanding layer
             from brain.redflag_library import detect_flag_classes
@@ -1965,19 +2107,48 @@ def chat():
             # 2. Brain Evaluation: Passes ONLY the structured Human State (profile) and physiology
             _phys = athlete_store.physiology(chat_uid) if chat_uid else None
             _decision = brain_cascade.decide(profile, physiology=_phys, model=model_to_use)
+            _snapshot = context_builder.build_context(
+                intent=_first_intent,
+                subject=(context_builder.Subject("account", chat_uid, True)
+                         if chat_uid else
+                         context_builder.Subject("anonymous_device", g.device_id or _client_ip(), False)),
+                request_time=_dt.datetime.now(_dt.timezone.utc),
+                access={"plan": plan, "quota_status": db_status},
+                db_profile=profile if chat_uid else None,
+                browser_profile=profile if not chat_uid else None,
+                db_conversation=history if chat_uid else None,
+                browser_conversation=history if not chat_uid else None,
+                db_workouts=pers_workouts if chat_uid else None,
+                legacy_profile=profile,
+                legacy_conversation=history,
+                legacy_workouts=pers_workouts,
+            )
+            _shadow_decision = decision_engine.decide(_snapshot, _first_intent)
+            _recommendation_plan, _planning_reply = _plan_coaching_request(
+                _snapshot, _first_planning_intent, history, lang)
+            if (_training_engine_active_for_request and _shadow_decision.outcome == "recommend"
+                    and _shadow_decision.intent == "workout"):
+                try:
+                    _training_plan_blueprint = _active_training_plan(_snapshot, _recommendation_plan)
+                    _training_plan_blueprint = _advance_active_training_plan(_training_plan_blueprint, data)
+                    if _training_plan_blueprint is None:
+                        _training_engine_failure = "training_engine_profile_contract"
+                    else:
+                        _recommendation_path = "deterministic_training"
+                except TrainingRuntimeError as _training_error:
+                    print(f"[training-engine] construction rejected: {type(_training_error).__name__}")
+                    _training_engine_failure = "training_engine_profile_contract"
             
             # 3. Decision mapping
             if _decision.s2.halt:
                 decision_state = "SAFETY_STOP"
+            elif (_recommendation_plan is not None
+                  and _recommendation_plan.outcome is recommendation_planning.RecommendationOutcome.RECOMMEND):
+                decision_state = "PLAN_READY"
+            elif _recommendation_plan is not None:
+                decision_state = "NEED_MORE_INFORMATION"
             else:
-                has_goal = bool(str(profile.get("goal") or "").strip())
-                has_equip = bool(str(profile.get("equipment") or "").strip())
-                if has_goal and has_equip:
-                    decision_state = "PLAN_READY"
-                elif has_goal or has_equip:
-                    decision_state = "NEED_MORE_INFORMATION"
-                else:
-                    decision_state = "CONTINUE_CONVERSATION"
+                decision_state = "CONTINUE_CONVERSATION"
             
             # 4. System prompt selection based ONLY on Decision
             if lang == "en":
@@ -1995,6 +2166,11 @@ def chat():
                     "CONTINUE_CONVERSATION": _FC_SYSTEM_PROMPT_BG_CONTINUE
                 }
             system_content = prompts[decision_state]
+            _controlled_reply = _planning_reply
+            if _training_engine_failure is not None and _controlled_reply is None:
+                _controlled_reply = decision_engine.controlled_response(
+                    decision_engine.DecisionResult("clarify", "workout", _training_engine_failure, (), 1.0), lang)
+            profile_block = _build_profile_block(profile, lang) if isinstance(profile, dict) else ""
             
             # 5. Memory: Write confirmed profile facts to store (logged-in accounts)
             if chat_uid:
@@ -2111,7 +2287,9 @@ def chat():
 
         if nutrition_delivery_targets is not None:
             system_content = system_content + "\n\n" + nutrition_plan.generation_contract(nutrition_delivery_targets)
-        if _recommendation_blueprint is not None:
+        if _training_plan_blueprint is not None:
+            system_content = training_renderer.render_prompt(_training_plan_blueprint, lang)
+        elif _recommendation_blueprint is not None:
             system_content = recommendation_renderer.render_prompt(_recommendation_blueprint)
         if _conversation_policy is not None and _controlled_reply is None:
             try:
@@ -2160,11 +2338,6 @@ def chat():
         else:
             messages.append({"role": "user", "content": user_message})
 
-        # Model selection based on plan:
-        # - PRO → gpt-4o (premium model, smarter responses, better Bulgarian)
-        # - CORE / FREE → gpt-4o-mini (fast, cost-efficient)
-        model_to_use = "gpt-4o" if is_pro else "gpt-4o-mini"
-        
         # Response length cap:
         # - PRO → up to 4000 tokens (detailed comprehensive plans)
         # - CORE / FREE → ~1500 tokens (solid complete plans)
@@ -2188,7 +2361,7 @@ def chat():
             if preserve_visible:
                 return {"speech_text": reply_text} if reply_text else None
             try:
-                kind = "workout" if _recommendation_blueprint is not None else (
+                kind = "workout" if (_recommendation_blueprint is not None or _training_plan_blueprint is not None) else (
                     "nutrition" if nutrition_delivery_target is not None else None)
                 speech_text = conversation_composer.speech_projection(
                     reply_text, _conversation_frame, lang,
@@ -2454,11 +2627,27 @@ def chat():
                     if delta:
                         full.append(delta)
                         if (not nutrition_response_guard and nutrition_delivery_target is None and
-                                _recommendation_blueprint is None):
+                                _recommendation_blueprint is None and _training_plan_blueprint is None):
                             yield sse({"t": delta})
                 _bump_plans_today()  # honest landing counter: +1 real AI plan
                 reply_text = "".join(full)
-                if _recommendation_blueprint is not None:
+                if _training_plan_blueprint is not None:
+                    training_completion = None
+                    try:
+                        explanations = training_renderer.verified_explanations(reply_text)
+                        reply_text = training_renderer.render_delivery(
+                            _training_plan_blueprint, load_exercise_library(), explanations, lang)
+                        training_completion = training_renderer.render_completion_projection(
+                            _training_plan_blueprint, load_exercise_library())
+                    except Exception as training_error:
+                        print(f"[training-engine] delivery rejected: {type(training_error).__name__}")
+                        reply_text = decision_engine.controlled_response(
+                            decision_engine.DecisionResult("clarify", "workout",
+                                                           "training_engine_delivery_contract", (), 1.0), lang)
+                    yield sse({"t": reply_text})
+                    if training_completion is not None:
+                        yield sse({"training_completion": training_completion})
+                elif _recommendation_blueprint is not None:
                     try:
                         explanations = recommendation_renderer.verified_explanations(
                             reply_text, _recommendation_blueprint)
@@ -2516,7 +2705,23 @@ def chat():
                     # Потребителят вече получи почти всичко — завършваме чисто
                     _bump_plans_today()
                     reply_text = "".join(full)
-                    if _recommendation_blueprint is not None:
+                    if _training_plan_blueprint is not None:
+                        training_completion = None
+                        try:
+                            explanations = training_renderer.verified_explanations(reply_text)
+                            reply_text = training_renderer.render_delivery(
+                                _training_plan_blueprint, load_exercise_library(), explanations, lang)
+                            training_completion = training_renderer.render_completion_projection(
+                                _training_plan_blueprint, load_exercise_library())
+                        except Exception as training_error:
+                            print(f"[training-engine] delivery rejected: {type(training_error).__name__}")
+                            reply_text = decision_engine.controlled_response(
+                                decision_engine.DecisionResult("clarify", "workout",
+                                                               "training_engine_delivery_contract", (), 1.0), lang)
+                        yield sse({"t": reply_text})
+                        if training_completion is not None:
+                            yield sse({"training_completion": training_completion})
+                    elif _recommendation_blueprint is not None:
                         try:
                             explanations = recommendation_renderer.verified_explanations(
                                 reply_text, _recommendation_blueprint)

@@ -13,6 +13,7 @@ of this is reachable in production by default:
 This module imports only downstream/observability layers (never composes the cascade),
 so it introduces no new coupling and no import cycle with app.py.
 """
+import hmac
 import os
 
 from flask import Blueprint, jsonify, request, render_template, redirect
@@ -25,6 +26,16 @@ import brain_analytics
 import human_state.observatory as human_state_observatory
 
 bp = Blueprint("admin", __name__)
+
+
+def _admin_bearer_authorized() -> bool:
+    """Authenticate an internal JSON endpoint without placing its token in a URL."""
+    token = os.getenv("ADMIN_TOKEN", "")
+    authorization = request.headers.get("Authorization", "")
+    prefix = "Bearer "
+    if not token or not authorization.startswith(prefix):
+        return False
+    return hmac.compare_digest(authorization[len(prefix):], token)
 
 
 # ── Brain Inspector — developer-only inspection endpoints ─────────────────────
@@ -125,3 +136,30 @@ def admin_hse_review():
     except Exception as e:
         print(f"[hse-obs] review failed: {e}")
     return redirect(f"/admin/hse?key={token}")
+
+
+# ── Nutrition V2 shadow runtime telemetry ──────────────────────────────────
+# Internal aggregate-only view. It is deliberately separate from /chat and
+# from all nutrition runtime paths; an unauthenticated caller sees no route.
+@bp.route("/admin/nutrition-v2-shadow/telemetry")
+def admin_nutrition_v2_shadow_telemetry():
+    if not _admin_bearer_authorized():
+        return jsonify({"error": "not_found"}), 404
+
+    from nutrition_engine import shadow_hook
+
+    telemetry = shadow_hook.snapshot_telemetry()
+    response = jsonify({
+        "completed_executions": telemetry["completed"],
+        "active_executions": telemetry["current_inflight"],
+        "queue_depth": telemetry["current_queue_depth"],
+        "execution_durations_ms": {
+            "longest": telemetry["longest_execution_ms"],
+        },
+        "timeout_count": telemetry["timeout"],
+        "exception_count": telemetry["exception"],
+        "stall_count": telemetry["stalled"],
+    })
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return response

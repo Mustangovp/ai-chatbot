@@ -218,7 +218,8 @@ _BUILDERS = {"nutrition": _nutrition, "workout": _workout, "recovery": _recovery
 
 
 def design(kind=None, *, decision=None, profile=None, preferences=None, subject="anon", record=True,
-           expert_consensus=None, persona_adaptation=None, authority: WorkoutAuthority | None = None):
+           expert_consensus=None, persona_adaptation=None, authority: WorkoutAuthority | None = None,
+           knowledge_resolver=None, planning_blueprint=None):
     """Design a Blueprint. `kind` (nutrition|workout|recovery) may be given explicitly
     or inferred from the Brain decision's intervention. Returns None when the decision
     routes/asks (medical_followup / crisis_support / conversation) — nothing to design."""
@@ -229,6 +230,14 @@ def design(kind=None, *, decision=None, profile=None, preferences=None, subject=
     builder = _BUILDERS.get(kind)
     if builder is None:
         return None
+    if planning_blueprint is not None:
+        from recommend.engine import RecommendationOutcome
+        if planning_blueprint.intent.value != kind or planning_blueprint.outcome is not RecommendationOutcome.RECOMMEND:
+            raise ValueError("architect requires an approved recommendation blueprint")
+    # Phase 15 injects the read-only resolver at the recommendation seam. Its
+    # resolution is intentionally not applied until an explicitly approved phase.
+    if knowledge_resolver is not None:
+        knowledge_resolver.resolve_for_recommendation(kind)
     if kind == "workout":
         if authority is not None and authority.intent != "workout":
             raise ValueError("invalid workout authority")

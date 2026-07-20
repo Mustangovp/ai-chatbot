@@ -21,11 +21,13 @@ from decimal import Decimal
 import pytest
 
 import app as appmod
+from recommend import engine as recommendation_planning
 import db as store
 import decision_engine
 import conversation_composer
 import nutrition_conversation
 import nutrition_plan
+from training_engine import build_training_plan, load_exercise_library
 from recommend import diversity as recommendation_diversity
 from recommend.blueprint import NutritionBlueprint, WorkoutBlueprint, to_dict
 from context_builder import LockedPreferences, Subject, build_context
@@ -84,6 +86,7 @@ def _enforce_off_by_default(monkeypatch):
     monkeypatch.delenv("PERSONA_MATCHER_SHADOW", raising=False)
     monkeypatch.delenv("EXPERT_CONSENSUS_SHADOW", raising=False)
     monkeypatch.delenv("PERSONA_EXPERT_COMMUNICATION_ACTIVE", raising=False)
+    monkeypatch.delenv("TRAINING_ENGINE_ACTIVE", raising=False)
     yield
 
 
@@ -113,6 +116,86 @@ def _set_stream(monkeypatch, captured, reply):
         return stream()
 
     monkeypatch.setattr(appmod.client.chat.completions, "create", fake_create)
+
+
+def test_chat_applies_traceable_completed_workout_to_next_training_revision(client, captured, monkeypatch):
+    profile = _profile(recoveryFeel="fresh")
+    parent = build_training_plan(recommendation_blueprint_id="chat-lifecycle", facts=profile)
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod, "_active_training_plan", lambda *_args: parent)
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": ["Stay controlled today."]}))
+    completion = appmod.training_renderer.render_completion_projection(parent, load_exercise_library())
+    session = completion["sessions"][0]
+    exercises = [{
+        "prescription_id": item["prescription_id"],
+        "exercise_id": item["exercise_id"],
+        "exercise_version": item["exercise_version"],
+        "completed_sets": item["prescribed_sets"],
+        "completed_repetitions": item["rep_max"],
+        "completed_load": "20",
+        "completed_rpe": "7",
+        "completed_rir": 3,
+    } for item in session["exercises"]]
+    response = client.post("/chat", json={
+        "message": "build a workout", "lang": "en", "profile": profile,
+        "completed_workout": {
+            "workout_id": "chat-lifecycle-1", "plan_id": parent.plan_id,
+            "plan_version": parent.version, "session_id": session["session_id"],
+            "completion_timestamp": "2026-07-01T10:00:00Z", "exercises": exercises,
+        },
+        "recovery": {
+            "state": "normally_recovered", "accumulated_fatigue": "30",
+            "source_version": "recovery-policy-v1",
+        },
+    })
+
+    events = _events(response)
+    assert response.status_code == 200
+    assert ':revision:' in captured["system"]
+    assert '"plan_id": "' in captured["system"]
+    assert events[0]["t"].startswith("**Workout**")
+    assert events[-1] == {"done": True}
+
+
+def test_api_workout_accepts_and_preserves_the_immutable_completion_contract(client, monkeypatch):
+    profile = _profile(recoveryFeel="fresh")
+    _login_for_chat(client, profile)
+    plan = build_training_plan(recommendation_blueprint_id="api-completion", facts=profile)
+    projection = appmod.training_renderer.render_completion_projection(plan, load_exercise_library())
+    session = projection["sessions"][0]
+    completion = {
+        "workout_id": "api-completion-1", "plan_id": plan.plan_id, "plan_version": plan.version,
+        "session_id": session["session_id"], "completion_timestamp": "2026-07-20T10:00:00Z",
+        "exercises": [{
+            "prescription_id": item["prescription_id"], "exercise_id": item["exercise_id"],
+            "exercise_version": item["exercise_version"], "completed_sets": item["prescribed_sets"],
+            "completed_repetitions": item["rep_max"], "completed_load": None,
+            "completed_rpe": None, "completed_rir": None,
+        } for item in session["exercises"]],
+    }
+    captured = {}
+    monkeypatch.setattr(appmod.store, "log_workout", lambda _uid, payload: captured.update(session=payload) or "workout-1")
+
+    response = client.post("/api/workout", json={"session": {"type": "full body", "exercises": []},
+                                                   "workout_completion": completion})
+
+    assert response.status_code == 200
+    assert captured["session"]["workout_completion"] == completion
+
+
+def test_chat_rejects_untraceable_lifecycle_evidence_without_legacy_generation(client, captured, monkeypatch):
+    profile = _profile(recoveryFeel="fresh")
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": ["unused"]}))
+    response = client.post("/chat", json={
+        "message": "build a workout", "lang": "en", "profile": profile,
+        "completed_workout": {"workout_id": "missing-identity"},
+    })
+
+    events = _events(response)
+    assert events[0]["t"]
+    assert events[-1] == {"done": True}
+    assert "messages" not in captured
 
 
 def test_conversation_composer_frames_acknowledgement_and_one_question():
@@ -411,7 +494,7 @@ def test_offpath_golden_prompt_identity(client, captured, monkeypatch):
     monkeypatch.setattr(personality, "_dt", _FrozenDT)
 
     profile = {"level": "intermediate", "activityLevel": "active",
-               "goal": "strength", "age": 34, "gender": "male"}
+               "goal": "strength", "age": 34, "gender": "male", "equipment": "gym"}
     msg = "plan my training week"
 
     resp = _post(client, msg, profile=profile)         # BRAIN_ENFORCE OFF (autouse)
@@ -447,6 +530,7 @@ def _device(identity="device-a"):
 
 def _profile(**extra):
     base = {"goal": "strength", "equipment": "gym", "level": "intermediate",
+            "age": "30", "height": "180", "weight": "80",
             "sleepQuality": "poor", "stressLevel": "high", "recoveryFeel": "tired"}
     base.update(extra)
     return base
@@ -838,7 +922,7 @@ def test_chat_context_builder_keeps_personality_and_profile_inputs_raw(client, c
     assert seen["profile"] == profile
 
 
-def test_first_contact_does_not_enter_a2_context_bridge(client, monkeypatch):
+def test_first_contact_uses_one_authoritative_context_snapshot(client, monkeypatch):
     calls = []
     original = appmod.context_builder.build_context
 
@@ -848,7 +932,7 @@ def test_first_contact_does_not_enter_a2_context_bridge(client, monkeypatch):
 
     monkeypatch.setattr(appmod.context_builder, "build_context", wrapped)
     client.post("/chat", json={"message": "hello", "lang": "en", "first_contact": True})
-    assert calls == []
+    assert len(calls) == 1
 
 
 # Phase B1: the decision engine is shadow-only. It is computed beside the
@@ -1015,6 +1099,73 @@ def test_active_recommendation_engine_delivers_only_verified_workout_blueprint(c
     assert '"blueprint"' not in events[0]["t"]
 
 
+def test_training_engine_active_delivers_only_deterministic_training_plan(client, captured, monkeypatch):
+    profile = {"goal": "strength", "level": "intermediate",
+               "equipment": "bodyweight, dumbbells, bench", "recoveryFeel": "fresh"}
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": ["Keep every rep controlled."]}))
+
+    response = _post(client, "build a workout", profile=profile)
+    events = _events(response)
+
+    assert captured["system"].startswith("[FIXED TRAINING PLAN]")
+    assert appmod.SYSTEM_INSTRUCTIONS not in captured["system"]
+    assert len(events) == 3 and events[-1] == {"done": True}
+    assert events[1]["training_completion"]["plan_id"]
+    assert "Goblet Squat" in events[0]["t"]
+    assert "RPE" in events[0]["t"] and "tempo" in events[0]["t"]
+    assert "Keep every rep controlled." in events[0]["t"]
+
+
+def test_training_engine_active_fails_closed_without_legacy_workout_generation(client, captured, monkeypatch):
+    profile = {"goal": "strength", "level": "intermediate", "equipment": "office"}
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
+
+    response = _post(client, "build a workout", profile=profile)
+
+    assert response.status_code == 200
+    assert _events(response)[-1] == {"done": True}
+    assert captured == {}
+
+
+def test_training_engine_active_is_deterministic_and_keeps_traceability_internal(client, captured, monkeypatch):
+    profile = {"goal": "strength", "level": "intermediate",
+               "equipment": "bodyweight, dumbbells, bench", "recoveryFeel": "fresh"}
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": []}))
+
+    first = _events(_post(client, "build a workout", profile=profile))
+    second = _events(_post(client, "build a workout", profile=profile))
+
+    assert first == second
+    snapshot = _shadow_snapshot(intent="workout", profile=profile)
+    plan = appmod._active_training_plan(
+        snapshot, appmod._RECOMMENDATION_PLANNER.plan("workout", appmod.recommendation_planning.ImmutableUserProfile.from_verified_facts(profile)))
+    assert all(item.exercise_id and item.exercise_version and item.selection_policy_version
+               and item.prescription_policy_version
+               for item in plan.sessions[0].prescriptions)
+
+
+def test_training_engine_active_preserves_verified_upper_lower_split_through_chat(client, captured, monkeypatch):
+    profile = {"goal": "strength", "level": "intermediate", "equipment": "gym",
+               "training_split": "upper_lower", "recoveryFeel": "fresh"}
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": []}))
+
+    events = _events(_post(client, "build a workout", profile=profile))
+    snapshot = _shadow_snapshot(intent="workout", profile=profile)
+    planning = appmod._RECOMMENDATION_PLANNER.plan(
+        "workout", appmod.recommendation_planning.ImmutableUserProfile.from_verified_facts(profile))
+    plan = appmod._active_training_plan(snapshot, planning)
+
+    assert planning.training_split == "upper_lower"
+    assert plan.training_split.value == "upper_lower"
+    assert [len(session.prescriptions) for session in plan.sessions] == [3, 4]
+    assert "**Session 1" in events[0]["t"] and "**Session 2" in events[0]["t"]
+    assert captured["system"].startswith("[FIXED TRAINING PLAN]")
+
+
 def test_active_recommendation_engine_keeps_nutrition_on_the_legacy_path(client, captured, monkeypatch):
     profile = _profile()
     expected = _legacy_messages(profile, [], [], "plan my nutrition", 12)
@@ -1082,7 +1233,8 @@ def test_workout_authority_conflict_fails_closed_to_legacy():
 
 
 def test_active_authority_conflict_falls_back_to_legacy_prompt(client, captured, monkeypatch):
-    profile = {"goal": "strength", "lockedEquipment": ["home", "gym"]}
+    profile = {"goal": "strength", "equipment": "gym", "level": "intermediate",
+               "lockedEquipment": ["home", "gym"]}
     expected = _legacy_messages(profile, [], [], "build a workout", 12)
     monkeypatch.setenv("RECOMMENDATION_ENGINE_ACTIVE", "true")
     monkeypatch.setattr(appmod.recommendation_architect, "design", lambda *args, **kwargs: pytest.fail("design ran"))
@@ -1177,12 +1329,15 @@ def test_active_persona_expert_path_uses_blueprint_without_changing_sse_or_persi
 
 
 def test_active_persona_expert_abstention_falls_back_to_byte_identical_legacy_workout(client, captured, monkeypatch):
-    expected = _legacy_messages({}, [], [], "build a workout", 12)
+    # Complete for recommendation planning, but intentionally too nonspecific
+    # for persona/expert evidence: the active path must fail closed to legacy.
+    profile = {"goal": "strength", "equipment": "office", "level": "unknown"}
+    expected = _legacy_messages(profile, [], [], "build a workout", 12)
     monkeypatch.setenv("RECOMMENDATION_ENGINE_ACTIVE", "true")
     traces = _capture_shadow_traces(monkeypatch)
     monkeypatch.setattr(appmod.recommendation_architect, "design", lambda *args, **kwargs: pytest.fail("design ran"))
 
-    response = _post(client, "build a workout", profile={})
+    response = _post(client, "build a workout", profile=profile)
 
     assert captured["messages"] == expected
     assert _events(response) == [{"t": "ok"}, {"done": True}]
@@ -1523,7 +1678,7 @@ def test_voice_stop_has_no_speech_projection_and_composer_off_uses_visible_fallb
     assert events == [{"t": "ok"}, {"done": True}]
 
 
-def test_first_contact_does_not_compute_b2_controlled_response(client, monkeypatch):
+def test_first_contact_computes_one_observational_decision(client, monkeypatch):
     calls = []
     original = appmod.decision_engine.decide
 
@@ -1533,7 +1688,7 @@ def test_first_contact_does_not_compute_b2_controlled_response(client, monkeypat
 
     monkeypatch.setattr(appmod.decision_engine, "decide", wrapped)
     response = client.post("/chat", json={"message": "???", "lang": "en", "first_contact": True})
-    assert calls == []
+    assert len(calls) == 1
 
 
 _NUTRITION_TARGETS = NutritionTargets(Decimal("2800"), Decimal("175"), Decimal("350"), Decimal("78"))
@@ -1777,25 +1932,24 @@ def test_daily_nutrition_contract_never_persists_rejected_plan(client, captured,
 
 def test_nutrition_plan_intake_asks_one_precise_question_without_generation(client, captured):
     message = "\u0418\u0441\u043a\u0430\u043c \u0445\u0440\u0430\u043d\u0438\u0442\u0435\u043b\u0435\u043d \u043f\u043b\u0430\u043d"
-    response = client.post("/chat", json={"message": message, "lang": "bg", "profile": _profile()})
+    response = client.post("/chat", json={"message": message, "lang": "bg", "profile": {"goal": "strength"}})
     events = _events(response)
 
-    assert events == [{"t": nutrition_conversation.clarification_message(
-        ("\u0432\u044a\u0437\u0440\u0430\u0441\u0442", "\u043f\u043e\u043b", "\u0440\u044a\u0441\u0442", "\u0442\u0435\u0433\u043b\u043e"), "bg")}, {"done": True}]
+    assert events == [{"t": recommendation_planning.clarification_message("age", "bg")}, {"done": True}]
     assert "messages" not in captured
 
 
 def test_nutrition_plan_retry_after_same_clarification_becomes_one_unsupported_outcome(client, captured):
     message = "I want a nutrition plan"
-    clarification = nutrition_conversation.clarification_message(("age", "sex", "height", "weight"), "en")
+    clarification = recommendation_planning.clarification_message("age", "en")
     response = client.post("/chat", json={
         "message": message,
         "lang": "en",
-        "profile": _profile(),
+        "profile": {"goal": "strength"},
         "history": [{"role": "assistant", "content": clarification}],
     })
 
-    assert _events(response) == [{"t": nutrition_conversation.unsupported_message("en")}, {"done": True}]
+    assert _events(response) == [{"t": recommendation_planning.awaiting_profile_message("en")}, {"done": True}]
     assert "messages" not in captured
 
 
@@ -1808,6 +1962,98 @@ def test_nutrition_plan_with_confirmed_targets_generates_once_and_delivers_one_p
 
     assert _events(response) == [{"t": _structured_plan_text()}, {"done": True}]
     assert len(calls) == 1
+
+
+def test_recommendation_pipeline_uses_complete_profile_cards_before_one_nutrition_generation(
+        client, captured, monkeypatch):
+    profile = _profile(age="30", height="180", weight="80", goal="muscle_gain")
+    monkeypatch.setattr(
+        appmod, "_build_profile_block",
+        lambda _profile, _lang: "Calorie target: 2800 kcal\nProtein target: minimum 175g/day",
+    )
+    calls = _set_sequence_stream(monkeypatch, captured, [_structured_plan_payload()])
+
+    response = client.post("/chat", json={
+        "message": "\u041d\u0430\u043f\u0440\u0430\u0432\u0438 \u043c\u0438 \u0445\u0440\u0430\u043d\u0438\u0442\u0435\u043b\u0435\u043d \u043f\u043b\u0430\u043d.",
+        "lang": "bg", "profile": profile,
+    })
+
+    events = _events(response)
+    assert len(calls) == 1
+    assert events[-1] == {"done": True}
+    assert "\u0417\u0430 \u0434\u0430 \u043f\u043e\u0434\u0433\u043e\u0442\u0432\u044f" not in events[0]["t"]
+
+
+def test_recommendation_pipeline_requests_only_the_one_missing_profile_card(client, captured, monkeypatch):
+    profile = _profile(age="30", height="180", goal="muscle_gain")
+    profile.pop("weight")
+    monkeypatch.setattr(
+        appmod.client.chat.completions, "create",
+        lambda **_kwargs: pytest.fail("incomplete profile must not generate"),
+    )
+
+    response = _post(client, "I want a nutrition plan", profile=profile)
+
+    assert _events(response) == [{
+        "t": recommendation_planning.clarification_message("weight", "en"),
+    }, {"done": True}]
+    assert "messages" not in captured
+
+
+def test_recommendation_pipeline_never_repeats_the_same_profile_card_question(client, captured, monkeypatch):
+    profile = _profile(age="30", height="180", goal="muscle_gain")
+    profile.pop("weight")
+    first_question = recommendation_planning.clarification_message("weight", "en")
+    monkeypatch.setattr(
+        appmod.client.chat.completions, "create",
+        lambda **_kwargs: pytest.fail("repeated clarification must not generate"),
+    )
+
+    response = client.post("/chat", json={
+        "message": "I want a nutrition plan", "lang": "en", "profile": profile,
+        "history": [{"role": "assistant", "content": first_question}],
+    })
+
+    events = _events(response)
+    assert events == [{"t": recommendation_planning.awaiting_profile_message("en")}, {"done": True}]
+    assert first_question not in events[0]["t"]
+    assert "messages" not in captured
+
+
+def test_recommendation_pipeline_uses_authenticated_profile_cards_over_client_profile(client, captured, monkeypatch):
+    verified = _profile(age="30", height="180", weight="80", goal="muscle_gain")
+    _login_for_chat(client, verified)
+    monkeypatch.setattr(
+        appmod, "_build_profile_block",
+        lambda _profile, _lang: "Calorie target: 2800 kcal\nProtein target: minimum 175g/day",
+    )
+    calls = _set_sequence_stream(monkeypatch, captured, [_structured_plan_payload()])
+
+    response = _post(client, "I want a nutrition plan", profile={"goal": "fat_loss"})
+
+    assert len(calls) == 1
+    assert _events(response)[-1] == {"done": True}
+
+
+def test_first_contact_coaching_uses_profile_cards_before_any_legacy_extraction(client, captured, monkeypatch):
+    profile = _profile(age="30", height="180", weight="80", goal="muscle_gain")
+    monkeypatch.setattr(
+        appmod, "_extract_profile_silent",
+        lambda *_args, **_kwargs: pytest.fail("coaching first contact must not extract before planning"),
+    )
+    monkeypatch.setattr(
+        appmod, "_build_profile_block",
+        lambda _profile, _lang: "Calorie target: 2800 kcal\nProtein target: minimum 175g/day",
+    )
+    calls = _set_sequence_stream(monkeypatch, captured, [_structured_plan_payload()])
+
+    response = client.post("/chat", json={
+        "message": "I want a nutrition plan", "lang": "en", "profile": profile,
+        "first_contact": True,
+    })
+
+    assert len(calls) == 1
+    assert _events(response)[-1] == {"done": True}
 
 
 def test_structured_nutrition_generation_never_parses_display_text_and_persists_canonical_plan(

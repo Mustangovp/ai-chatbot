@@ -1133,10 +1133,10 @@ function computePhysiology(){
    ═══════════════════════════════════════════════════════════════════ */
 function memLoad(){try{return JSON.parse(localStorage.getItem('apexCoachMemory')||'{}');}catch(e){return{};}}
 function memSave(m){localStorage.setItem('apexCoachMemory',JSON.stringify(m));}
-function logWorkout(session){
+function logWorkout(session,workoutCompletion=null){
   let log=[];try{log=JSON.parse(localStorage.getItem('apexWorkoutLog')||'[]');}catch(e){}
   log.push(session); localStorage.setItem('apexWorkoutLog',JSON.stringify(log.slice(-60)));
-  accountLogWorkout(session);         // → account timeline (server truth) when signed in
+  accountLogWorkout(session,workoutCompletion); // → account timeline (server truth) when signed in
   const m=memLoad();
   m.lastWorkout=session; m.lastWorkoutAt=session.ts;
   m.totalWorkouts=(m.totalWorkouts||0)+1;
@@ -1577,7 +1577,7 @@ async function syncFromAccount(){
 }
 // Persist to the account whenever logged in (fire-and-forget; cache stays as fallback).
 function accountSaveProfile(p){ if(SESSION.authenticated){ fetch('/api/profile',{method:'PUT',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({profile:p})}).catch(()=>{}); } }
-function accountLogWorkout(s){ if(SESSION.authenticated){ fetch('/api/workout',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({session:s})}).catch(()=>{}); } }
+function accountLogWorkout(s,workoutCompletion=null){ if(SESSION.authenticated){ const body={session:s};if(workoutCompletion)body.workout_completion=workoutCompletion;fetch('/api/workout',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body)}).catch(()=>{}); } }
 
 /* ── Passwordless login (magic link) ── */
 function showLogin(){
@@ -1954,13 +1954,29 @@ function parseExercises(header,body){
   });
   return ex;
 }
-let pendingWorkout=null;
+let pendingWorkout=null,pendingWorkouts={},pendingWorkoutContracts={},pendingTrainingCompletion=null,pendingCompletionSessions=[];
+function completionSessionFor(exercises){
+  const session=pendingCompletionSessions.shift();
+  if(!session||!Array.isArray(session.exercises)||session.exercises.length!==exercises.length)return null;
+  const valid=session.exercises.every((item,index)=>item&&item.display_name===exercises[index].name&&
+    typeof item.prescription_id==='string'&&typeof item.exercise_id==='string'&&typeof item.exercise_version==='string');
+  if(!valid)return null;
+  exercises.forEach((exercise,index)=>{exercise.completion=Object.assign({},session.exercises[index]);});
+  return session;
+}
 function renderWorkout(header,body){
   const ex=parseExercises(header,body); if(!ex.length)return renderGenericTable(header,body);
+  const completionSession=completionSessionFor(ex);
+  const workoutKey=completionSession?completionSession.session_id:('legacy-'+Date.now()+'-'+Math.random());
   pendingWorkout=ex;
+  pendingWorkouts[workoutKey]=ex;
+  pendingWorkoutContracts[workoutKey]=completionSession?{
+    plan_id:pendingTrainingCompletion.plan_id,plan_version:pendingTrainingCompletion.plan_version,
+    session_id:completionSession.session_id
+  }:null;
   const diffLbl={easy:lang==='bg'?'Лесно':'Easy',med:lang==='bg'?'Средно':'Medium',hard:lang==='bg'?'Трудно':'Hard'};
   let html='<div class="wo-intro"><span class="wt">'+(lang==='bg'?'Тренировъчен протокол':'Training protocol')+'</span>'+
-    '<button class="start-wo" onclick="startWorkout()">▶ '+tr().woStart+'</button></div>';
+    '<button class="start-wo" onclick="startWorkout('+JSON.stringify(workoutKey)+')">▶ '+tr().woStart+'</button></div>';
   ex.forEach(e=>{
     const mu=inferMuscle(e.name),df=inferDiff(e.reps,e.name);
     html+='<div class="ex-card"><div class="ex-glyph" style="background:radial-gradient(circle at 50% 35%,'+mu.ic+'33,rgba(18,23,36,.6))">'+mu.e+'</div>'+
@@ -1978,10 +1994,12 @@ function renderWorkout(header,body){
    WORKOUT MODE — full protocol engine with rest timer & summary
    ═══════════════════════════════════════════════════════════════════ */
 let WO=null,restTimer=null,sessionStart=0;
-function startWorkout(){
-  if(!pendingWorkout||!pendingWorkout.length)return;
+function startWorkout(workoutKey=null){
+  const source=workoutKey?pendingWorkoutContracts[workoutKey]:null;
+  const exercises=workoutKey?pendingWorkouts[workoutKey]:pendingWorkout;
+  if(!exercises||!exercises.length)return;
   witness('sessionBegan');
-  WO={ex:JSON.parse(JSON.stringify(pendingWorkout)),i:0,set:0,phase:'work',startMs:Date.now()};
+  WO={ex:JSON.parse(JSON.stringify(exercises)),contract:source,i:0,set:0,phase:'work',startMs:Date.now()};
   sessionStart=Date.now();
   document.getElementById('workout').classList.add('on');
   document.getElementById('wo-quit-btn').textContent='✕ '+tr().woExit;
@@ -2028,7 +2046,7 @@ function renderWO(){
 }
 function completeSet(){
   witness('setCompleted');   // fact: effort happened (model accrues load + salience)
-  const sets=parseInt(WO.ex[WO.i].sets)||3; WO.set++;
+  const exercise=WO.ex[WO.i],sets=parseInt(exercise.sets)||3; exercise.completedSets=(exercise.completedSets||0)+1; WO.set++;
   if(WO.set>=sets){ // exercise done → advance or finish
     if(WO.i+1>=WO.ex.length){finishWorkout();return;}
     WO.i++;WO.set=0;WO.phase='rest';renderWO();
@@ -2055,7 +2073,20 @@ function finishWorkout(){
   const totalSets=WO.ex.reduce((a,e)=>a+(parseInt(e.sets)||3),0);
   const session={ts:Date.now(),date:new Date().toLocaleDateString(),type:inferMuscle(WO.ex[0].name).m,
     exercises:WO.ex.map(e=>({name:e.name,sets:e.sets,reps:e.reps,weight:e.weight||''})),diff:'medium',completion:100};
-  logWorkout(session);
+  const workoutCompletion=WO.contract&&WO.ex.every(e=>e.completion)?{
+    workout_id:(window.crypto&&crypto.randomUUID?crypto.randomUUID():null),
+    plan_id:WO.contract.plan_id,plan_version:WO.contract.plan_version,session_id:WO.contract.session_id,
+    completion_timestamp:new Date().toISOString(),
+    exercises:WO.ex.map(e=>({
+      prescription_id:e.completion.prescription_id,exercise_id:e.completion.exercise_id,
+      exercise_version:e.completion.exercise_version,completed_sets:e.completedSets||0,
+      completed_repetitions:(e.completedSets||0)?(parseInt(e.reps)||0):0,
+      completed_load:e.weight===''||e.weight==null?null:Number(e.weight),
+      completed_rir:null,completed_rpe:null
+    }))
+  }:null;
+  if(workoutCompletion&& !workoutCompletion.workout_id)workoutCompletion=null;
+  logWorkout(session,workoutCompletion);
   document.getElementById('wo-stage').innerHTML='<div class="wo-summary"><div class="wo-step">✓ '+t.woComplete+'</div>'+
     '<div class="wo-ex-glyph" style="background:radial-gradient(circle at 50% 35%,#B6FF3C44,rgba(18,23,36,.7));margin:0 auto 20px">🏁</div>'+
     '<div class="wo-ex-name">'+t.woGreat+'</div>'+
@@ -2099,7 +2130,7 @@ async function send(options={}){
   if(sending)return;
   if(sendLocked){ showLimit(); return; }   // limit reached → route to unlock, never a dead end
   const inp=document.getElementById('user-in');const val=inp.value.trim();if(!val)return;
-  sending=true; inp.value=''; appendUser(val);
+  sending=true; inp.value=''; appendUser(val); pendingTrainingCompletion=null;pendingCompletionSessions=[];
   const token=localStorage.getItem('apexToken')||'';
   const body={message:val,lang:lang};
   if(options.voice===true)body.voice=true;
@@ -2132,6 +2163,10 @@ async function send(options={}){
         for(const part of parts){const line=part.trim();if(!line.startsWith('data:'))continue;
           let o;try{o=JSON.parse(line.slice(5).trim());}catch(e){continue;}
           if(o.t){kick();witness('replyToken');full+=o.t;const now=performance.now();if(now-lastPaint>80){target.innerHTML=streamRender(full);smartScroll();lastPaint=now;}}
+          else if(o.training_completion&&Array.isArray(o.training_completion.sessions)){
+            pendingTrainingCompletion=o.training_completion;
+            pendingCompletionSessions=o.training_completion.sessions.slice();
+          }
           else if(o.speech_text){speechText=o.speech_text;}
           else if(o.limit_reached){const m=target.closest('.msg');if(m)m.remove();showLimit(o.hours_left||24);aborted=true;}
           else if(o.error){full+=(o.reply||'');}
@@ -2296,6 +2331,10 @@ const Voice = {
           for(const part of parts){ const line=part.trim(); if(!line.startsWith('data:'))continue;
             let o; try{o=JSON.parse(line.slice(5).trim());}catch(e){continue;}
             if(o.t){ witness('replyToken'); full+=o.t; target.innerHTML=streamRender(full); smartScroll(); }
+            else if(o.training_completion&&Array.isArray(o.training_completion.sessions)){
+              pendingTrainingCompletion=o.training_completion;
+              pendingCompletionSessions=o.training_completion.sessions.slice();
+            }
           } }
         if(full) target.innerHTML=renderMarkdown(full);
       }

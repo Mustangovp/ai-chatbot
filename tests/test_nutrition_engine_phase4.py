@@ -13,13 +13,20 @@ import pytest
 
 from nutrition_engine import (
     CatalogGovernance, DietConstraints, NutritionTargets, PracticalityPolicy,
-    load_catalog_file, optimize,
+    MealMacroBounds, MealSelectionEngine, MealSelectionQuery,
+    MealDistribution, NutritionConstructionError, NutritionConstructionRequest,
+    NutritionPlanConstructionEngine, NutritionTargetPolicy,
+    build_nutrition_knowledge_library, calculate_target_macros, load_catalog_file, optimize,
 )
 from nutrition_engine.candidate_builder import build_candidates
 from nutrition_engine.models import Nutrients, OptimizedFood, OptimizedMeal, OptimizedNutritionDay
 from nutrition_engine.feasibility import FeasibilityCode, FeasibilityResult
 from nutrition_engine import selector, rotation, substitutions
 from nutrition_engine import meal_templates, meal_library
+from recommend.engine import (
+    ImmutableUserProfile, ProfileCompleteness, RecommendationBlueprint,
+    RecommendationIntent, RecommendationOutcome,
+)
 
 
 CATALOG = load_catalog_file(
@@ -38,6 +45,55 @@ POLICY = PracticalityPolicy(
     max_search_nodes=200_000,
 )
 MEALS = ("breakfast", "lunch", "dinner")
+
+
+TARGET_POLICY = NutritionTargetPolicy(
+    activity_factors=(("moderate", Decimal("1.55")),),
+    goal_calorie_adjustments=(("muscle_gain", Decimal("250")),),
+    protein_g_per_kg=(("muscle_gain", Decimal("1.8")),),
+    fat_calorie_fractions=(("muscle_gain", Decimal("0.25")),),
+)
+
+
+def _nutrition_recommendation():
+    return RecommendationBlueprint(
+        blueprint_id="rec_nutrition_phase19",
+        version="recommendation-blueprint-v1",
+        intent=RecommendationIntent.NUTRITION,
+        outcome=RecommendationOutcome.RECOMMEND,
+        profile_completeness=ProfileCompleteness.SUFFICIENT,
+        knowledge_registry_version="knowledge-registry-v1",
+        knowledge_document_ids=("nutrition-foundation",),
+        reasons=(),
+        missing_fields=(),
+        conflict_fields=(),
+        clarification_field=None,
+    )
+
+
+def _phase19_profile():
+    return ImmutableUserProfile.from_verified_facts({
+        "age": "30", "height": "180", "weight": "80", "gender": "male",
+        "activityLevel": "moderate", "goal": "muscle_gain",
+    })
+
+
+def _construction_request(*, distribution=None, restrictions=frozenset(), blacklist=frozenset()):
+    return NutritionConstructionRequest(
+        recommendation=_nutrition_recommendation(),
+        profile=_phase19_profile(),
+        library=build_nutrition_knowledge_library(CATALOG),
+        target_policy=TARGET_POLICY,
+        meal_distribution=distribution or (
+            MealDistribution("breakfast", Decimal("0.20")),
+            MealDistribution("snack", Decimal("0.10")),
+            MealDistribution("lunch", Decimal("0.25")),
+            MealDistribution("snack", Decimal("0.10")),
+            MealDistribution("dinner", Decimal("0.35")),
+        ),
+        dietary_restrictions=restrictions,
+        ingredient_blacklist=blacklist,
+    )
 
 
 def _feasible():
@@ -70,16 +126,19 @@ def test_template_violations_detect_missing_disallowed_and_out_of_bounds_groups(
 
 def test_meal_library_is_catalog_only_with_in_bounds_portions():
     for meal in meal_library.all_library_meals():
-        assert meal.meal_type in ("breakfast", "snack", "lunch", "dinner")
+        assert meal.meal_type in meal_library.MEAL_CATEGORIES
         assert len(meal.food_ids) == len(meal.default_portions_g)
         for food_id, portion in zip(meal.food_ids, meal.default_portions_g):
             food = CATALOG.by_id(food_id)
             assert food is not None, food_id
-            assert meal.meal_type in food.allowed_meals
+            if meal.meal_type in ("breakfast", "snack", "lunch", "dinner"):
+                assert meal.meal_type in food.allowed_meals
             assert food.minimum_portion <= portion <= food.maximum_portion
     ids = [m.meal_id for m in meal_library.all_library_meals()]
     assert len(ids) == len(set(ids))
     assert all(len(meal_library.library_meals_for(mt)) >= 2 for mt in MEALS)
+    assert meal_library.library_meals_for("pre_workout")
+    assert meal_library.library_meals_for("post_workout")
 
 
 # ── substitutions ───────────────────────────────────────────────────────────
@@ -158,6 +217,70 @@ def test_selector_matches_a_library_meal_by_exact_food_set():
     lib = meal_library.library_meal("lnch_chicken_rice")
     assert selector._match_library_meal("lunch", frozenset(lib.food_ids)) == "lnch_chicken_rice"
     assert selector._match_library_meal("lunch", frozenset({"dev_chicken_breast_cooked"})) is None
+
+
+# ── Phase 18: Nutrition Knowledge Library + deterministic selection ─────────
+def test_nutrition_knowledge_library_is_catalog_backed_complete_and_immutable():
+    library = build_nutrition_knowledge_library(CATALOG)
+
+    assert {meal.category for meal in library.meals} == set(meal_library.MEAL_CATEGORIES)
+    assert library.catalog_version == CATALOG.version
+    assert len({meal.meal_id for meal in library.meals}) == len(library.meals)
+    catalog_ids = {food.food_id for food in CATALOG.foods}
+    for meal in library.meals:
+        assert meal.version == "nutrition-meal-v1"
+        assert meal.ingredients and meal.macros.kcal > 0 and meal.tags
+        assert all(ingredient.food_id in catalog_ids and ingredient.grams > 0
+                   for ingredient in meal.ingredients)
+        assert sum((ingredient.macros.kcal for ingredient in meal.ingredients), Decimal("0")) == meal.macros.kcal
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        library.meals = ()  # type: ignore[misc]
+
+
+def test_nutrition_knowledge_selection_is_category_scoped_and_deterministic():
+    library = build_nutrition_knowledge_library(CATALOG)
+    query = MealSelectionQuery("breakfast")
+
+    first = MealSelectionEngine.select(library, query)
+    second = MealSelectionEngine.select(library, query)
+
+    assert first == second
+    assert [meal.meal_id for meal in first] == sorted(meal.meal_id for meal in first)
+    assert all(meal.category == "breakfast" and meal in library.meals for meal in first)
+
+
+def test_nutrition_knowledge_selection_uses_catalog_macros_and_dietary_constraints():
+    library = build_nutrition_knowledge_library(CATALOG)
+    post_workout = MealSelectionEngine.select(
+        library, MealSelectionQuery(
+            "post_workout",
+            macro_bounds=MealMacroBounds(protein_min_g=Decimal("58"), kcal_max=Decimal("600")),
+        ))
+    vegan_lunches = MealSelectionEngine.select(
+        library, MealSelectionQuery("lunch", dietary_restrictions=frozenset({"vegan"})))
+
+    assert [meal.meal_id for meal in post_workout] == ["post_chicken_rice"]
+    assert post_workout[0].macros.protein_g >= Decimal("58")
+    assert [meal.meal_id for meal in vegan_lunches] == ["lnch_tofu_quinoa"]
+
+
+def test_nutrition_knowledge_selection_honors_blacklists_tags_and_preparation_limits():
+    library = build_nutrition_knowledge_library(CATALOG)
+    lunch = MealSelectionEngine.select(
+        library, MealSelectionQuery("lunch", ingredient_blacklist=frozenset({"dev_chicken_breast_cooked"})))
+    pre_workout = MealSelectionEngine.select_one(
+        library, MealSelectionQuery(
+            "pre_workout",
+            required_tags=frozenset({"pre_workout", "carbohydrate_focused"}),
+            maximum_preparation_difficulty="no_cook",
+        ))
+
+    assert "lnch_chicken_rice" not in {meal.meal_id for meal in lunch}
+    assert all("dev_chicken_breast_cooked" not in {item.food_id for item in meal.ingredients}
+               for meal in lunch)
+    assert pre_workout is not None and pre_workout.meal_id == "pre_banana_oats"
+    assert MealSelectionEngine.select(
+        library, MealSelectionQuery("dinner", dietary_restrictions=frozenset({"vegan"}))) == ()
 
 
 # ── practicality: soft penalties only, totals never changed ─────────────────
@@ -241,7 +364,108 @@ def test_phase4_modules_have_no_production_network_or_llm_imports():
                  "socket.", "flask", "conversation_composer", "nutrition_validation",
                  "urllib", "httpx")
     for name in ("selector.py", "meal_templates.py", "meal_library.py",
-                 "substitutions.py", "rotation.py"):
+                 "meal_selection.py", "plan_construction.py", "substitutions.py",
+                 "rotation.py"):
         source = (package / name).read_text(encoding="utf-8")
         for token in forbidden:
             assert token not in source, f"{name} references {token}"
+
+
+# -- Phase 19: deterministic Nutrition Plan Construction Engine ----------------
+
+def test_plan_construction_is_deterministic_and_uses_only_library_candidates():
+    request = _construction_request()
+
+    first = NutritionPlanConstructionEngine.construct(request)
+    second = NutritionPlanConstructionEngine.construct(request)
+
+    assert first == second
+    assert first.plan_id == second.plan_id
+    library_ids = {candidate.meal_id for candidate in request.library.meals}
+    assert all(meal.candidate.meal_id in library_ids for meal in first.meals)
+    assert all(meal.candidate in request.library.meals for meal in first.meals)
+
+
+def test_plan_construction_calculates_and_allocates_explicit_macro_targets_exactly():
+    request = _construction_request()
+    targets = calculate_target_macros(request.profile, request.target_policy)
+    plan = NutritionPlanConstructionEngine.construct(request)
+
+    assert targets.kcal == Decimal("3009.00")
+    assert targets.protein_g == Decimal("144.0")
+    assert targets.fat_g == Decimal("83.58333333333333333333333333")
+    assert targets.carbs_g == Decimal("420.187500000000000000000000")
+    assert plan.target_macros == targets
+    assert plan.allocated_macros == targets
+    assert sum((meal.target_macros.kcal for meal in plan.meals), Decimal("0")) == targets.kcal
+    assert sum((meal.target_macros.protein_g for meal in plan.meals), Decimal("0")) == targets.protein_g
+    assert sum((meal.target_macros.carbs_g for meal in plan.meals), Decimal("0")) == targets.carbs_g
+    assert sum((meal.target_macros.fat_g for meal in plan.meals), Decimal("0")) == targets.fat_g
+
+
+def test_plan_construction_prevents_duplicate_meals_and_prefers_variety_when_available():
+    plan = NutritionPlanConstructionEngine.construct(_construction_request())
+
+    ids = [meal.candidate.meal_id for meal in plan.meals]
+    assert len(ids) == len(set(ids))
+    assert all(meal.selection_mode != "duplicate_required" for meal in plan.meals)
+    snack_meals = [meal.candidate.meal_id for meal in plan.meals if meal.category == "snack"]
+    assert len(snack_meals) == 2 and len(set(snack_meals)) == 2
+
+
+def test_plan_construction_supports_all_six_meal_categories():
+    distribution = (
+        MealDistribution("breakfast", Decimal("0.20")),
+        MealDistribution("pre_workout", Decimal("0.10")),
+        MealDistribution("lunch", Decimal("0.25")),
+        MealDistribution("post_workout", Decimal("0.10")),
+        MealDistribution("snack", Decimal("0.10")),
+        MealDistribution("dinner", Decimal("0.25")),
+    )
+
+    plan = NutritionPlanConstructionEngine.construct(_construction_request(distribution=distribution))
+
+    assert tuple(meal.category for meal in plan.meals) == tuple(slot.category for slot in distribution)
+
+
+def test_plan_construction_uses_selection_fallback_without_inventing_a_meal():
+    distribution = (
+        MealDistribution("breakfast", Decimal("0.24")),
+        MealDistribution("snack", Decimal("0.01")),
+        MealDistribution("lunch", Decimal("0.25")),
+        MealDistribution("pre_workout", Decimal("0.10")),
+        MealDistribution("post_workout", Decimal("0.15")),
+        MealDistribution("dinner", Decimal("0.25")),
+    )
+    request = _construction_request(distribution=distribution)
+
+    plan = NutritionPlanConstructionEngine.construct(request)
+
+    fallback = next(meal for meal in plan.meals if meal.category == "snack")
+    assert fallback.selection_mode == "fallback"
+    assert fallback.candidate in request.library.meals
+
+
+def test_plan_construction_rejects_missing_verified_facts_and_unsuitable_blueprints():
+    with pytest.raises(NutritionConstructionError, match="gender"):
+        calculate_target_macros(
+            ImmutableUserProfile.from_verified_facts({
+                "age": "30", "height": "180", "weight": "80", "goal": "muscle_gain",
+                "activityLevel": "moderate",
+            }),
+            TARGET_POLICY,
+        )
+
+    workout = dataclasses.replace(_nutrition_recommendation(), intent=RecommendationIntent.WORKOUT)
+    with pytest.raises(NutritionConstructionError, match="nutrition recommendation"):
+        NutritionConstructionRequest(
+            recommendation=workout,
+            profile=_phase19_profile(),
+            library=build_nutrition_knowledge_library(CATALOG),
+            target_policy=TARGET_POLICY,
+            meal_distribution=(
+                MealDistribution("breakfast", Decimal("0.30")),
+                MealDistribution("lunch", Decimal("0.35")),
+                MealDistribution("dinner", Decimal("0.35")),
+            ),
+        )

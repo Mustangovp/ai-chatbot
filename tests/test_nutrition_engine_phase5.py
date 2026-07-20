@@ -5,6 +5,8 @@ Fully isolated: no production imports, no network, no DB, no LLM, no time/random
 from __future__ import annotations
 
 import dataclasses
+import copy
+import json
 from decimal import Decimal
 from pathlib import Path
 
@@ -18,6 +20,25 @@ from nutrition_engine.models import (
 from nutrition_engine import service, shadow
 from nutrition_engine.service import build_nutrition_plan, SERVICE_VERSION
 from nutrition_engine.projection import canonical_bytes
+from nutrition_engine.production_catalog import (
+    PRODUCTION_CATALOG_SCHEMA_VERSION,
+    ApprovalMetadata,
+    ApprovedServing,
+    MacroProfile,
+    ProductionCatalogError,
+    ProductionIngredient,
+    ProductionMealCatalog,
+    ProductionMealRecord,
+    ProductionStatus,
+    ProvenanceMetadata,
+    ReviewStatus,
+    validate_version_upgrade,
+)
+from nutrition_engine.production_catalog_importer import (
+    ProductionCatalogImportError,
+    import_production_catalog,
+    load_production_catalog_file,
+)
 
 CATALOG = load_catalog_file(
     Path(__file__).parents[1] / "nutrition_engine" / "data" / "food_catalog_v1.json",
@@ -288,3 +309,181 @@ def test_phase5_modules_have_no_production_network_or_llm_imports():
         source = (package / name).read_text(encoding="utf-8")
         for token in forbidden:
             assert token not in source, f"{name} references {token}"
+
+
+# Phase 20A.2 -- immutable production meal-catalog contract.
+def _provenance():
+    return ProvenanceMetadata(
+        "Verified source", "source-001", "2026-01", "2026-07-20T00:00:00Z",
+        "cooked", "100 g edible portion",
+    )
+
+
+def _approval():
+    return ApprovalMetadata(
+        "nutrition-reviewer", "data-reviewer", "release-approver", "2026-07-20T00:00:00Z",
+        ("evidence:nutrition-review", "evidence:macro-review", "evidence:serving-review"),
+    )
+
+
+def _ingredient(ingredient_id="ingredient-one", food_id="food-one", macros=None, serving=None):
+    return ProductionIngredient(
+        ingredient_id, food_id, food_id.replace("-", " ").title(),
+        serving or ApprovedServing(Decimal("100"), Decimal("50"), Decimal("150"), Decimal("50")),
+        macros or MacroProfile(Decimal("10"), Decimal("20"), Decimal("5"), Decimal("3"), Decimal("165")),
+        _provenance(),
+    )
+
+
+_DEFAULT_APPROVAL = object()
+
+
+def _ready_record(version="1.0.0", *, review=ReviewStatus.PRODUCTION_READY,
+                  production=ProductionStatus.PRODUCTION_READY,
+                  approval=_DEFAULT_APPROVAL, supersedes=None):
+    ingredients = (
+        _ingredient(),
+        _ingredient("ingredient-two", "food-two", MacroProfile(
+            Decimal("20"), Decimal("0"), Decimal("0"), Decimal("0"), Decimal("80"))),
+    )
+    total = MacroProfile(Decimal("30"), Decimal("20"), Decimal("5"), Decimal("3"), Decimal("245"))
+    return ProductionMealRecord(
+        "meal.breakfast.protein-oats", version, "breakfast", ingredients, total,
+        ("high_protein", "weekday"), ("vegetarian",), "easy", review, production,
+        _provenance(), _approval() if approval is _DEFAULT_APPROVAL else approval, supersedes,
+    )
+
+
+def test_production_catalog_accepts_only_fully_approved_immutable_records():
+    record = _ready_record()
+    catalog = ProductionMealCatalog("1.0.0", PRODUCTION_CATALOG_SCHEMA_VERSION, (record,))
+
+    assert catalog.records == (record,)
+    assert record.ingredients[0].serving.minimum_multiplier == Decimal("0.5")
+    assert record.ingredients[0].serving.maximum_multiplier == Decimal("1.5")
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        record.tags = ()  # type: ignore[misc]
+
+
+def test_production_record_rejects_macro_serving_and_provenance_failures():
+    with pytest.raises(ProductionCatalogError, match="macro kcal consistency"):
+        MacroProfile(Decimal("1"), Decimal("1"), Decimal("1"), Decimal("0"), Decimal("999"))
+    with pytest.raises(ProductionCatalogError, match="default serving"):
+        ApprovedServing(Decimal("25"), Decimal("50"), Decimal("150"), Decimal("50"))
+    with pytest.raises(ProductionCatalogError, match="provenance source_record_id"):
+        ProvenanceMetadata("source", "", "version", "date", "cooked", "edible")
+
+    incorrect_total = MacroProfile(Decimal("29"), Decimal("20"), Decimal("5"), Decimal("3"), Decimal("241"))
+    record = _ready_record()
+    with pytest.raises(ProductionCatalogError, match="meal macros"):
+        ProductionMealRecord(
+            record.meal_id, record.version, record.category, record.ingredients, incorrect_total,
+            record.tags, record.dietary_compatibility, record.preparation_difficulty,
+            record.review_status, record.production_status, record.provenance, record.approval,
+        )
+
+
+def test_production_lifecycle_and_promotion_reject_incomplete_or_ambiguous_records():
+    with pytest.raises(ProductionCatalogError, match="status are inconsistent"):
+        _ready_record(production=ProductionStatus.NOT_PRODUCTION_READY)
+    with pytest.raises(ProductionCatalogError, match="requires approval"):
+        _ready_record(approval=None)
+
+    draft = _ready_record(
+        review=ReviewStatus.DRAFT,
+        production=ProductionStatus.NOT_PRODUCTION_READY,
+        approval=None,
+    )
+    with pytest.raises(ProductionCatalogError, match="requires records"):
+        ProductionMealCatalog("1.0.0", PRODUCTION_CATALOG_SCHEMA_VERSION, ())
+    with pytest.raises(ProductionCatalogError, match="completed production lifecycle"):
+        ProductionMealCatalog("1.0.0", PRODUCTION_CATALOG_SCHEMA_VERSION, (draft,))
+
+
+def test_production_catalog_preserves_immutable_version_upgrade_history():
+    prior = _ready_record("1.0.0")
+    successor = _ready_record("1.1.0", supersedes=(prior.meal_id, prior.version))
+    validate_version_upgrade(prior, successor)
+
+    bad_successor = _ready_record("1.1.0", supersedes=(prior.meal_id, "0.9.0"))
+    with pytest.raises(ProductionCatalogError, match="explicitly supersede"):
+        validate_version_upgrade(prior, bad_successor)
+
+
+# Phase 20A.3 -- strict production-catalog import boundary.
+def _import_document():
+    return {
+        "version": "1.0.0",
+        "schema_version": PRODUCTION_CATALOG_SCHEMA_VERSION,
+        "records": [dataclasses.asdict(_ready_record())],
+    }
+
+
+def test_production_catalog_import_is_deterministic_immutable_and_file_loadable(tmp_path):
+    document = _import_document()
+    document["records"][0]["tags"] = ("weekday", "high_protein")
+    original = copy.deepcopy(document)
+
+    first = import_production_catalog(document)
+    second = import_production_catalog(document)
+
+    assert first == second
+    assert document == original
+    assert first.records[0].tags == ("weekday", "high_protein")
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        first.records = ()  # type: ignore[misc]
+
+    source = tmp_path / "production-catalog.json"
+    source.write_text(json.dumps(document, default=str), encoding="utf-8")
+    assert load_production_catalog_file(source) == first
+
+
+def test_production_catalog_import_rejects_duplicate_or_invalid_record_identity():
+    document = _import_document()
+    document["records"].append(copy.deepcopy(document["records"][0]))
+    with pytest.raises(ProductionCatalogImportError, match="duplicate meal_id/version"):
+        import_production_catalog(document)
+
+    document = _import_document()
+    document["records"][0]["meal_id"] = ""
+    with pytest.raises(ProductionCatalogImportError, match="meal_id must be a non-empty"):
+        import_production_catalog(document)
+
+    document = _import_document()
+    document["records"][0]["version"] = "not-a-version"
+    with pytest.raises(ProductionCatalogImportError, match="version must be"):
+        import_production_catalog(document)
+
+
+def test_production_catalog_import_rejects_missing_provenance_and_incomplete_approval():
+    document = _import_document()
+    del document["records"][0]["provenance"]["source_record_id"]
+    with pytest.raises(ProductionCatalogImportError, match="missing required fields: source_record_id"):
+        import_production_catalog(document)
+
+    document = _import_document()
+    document["records"][0]["approval"]["evidence_references"] = ()
+    with pytest.raises(ProductionCatalogImportError, match="evidence_references must not be empty"):
+        import_production_catalog(document)
+
+    document = _import_document()
+    document["records"][0]["approval"] = None
+    with pytest.raises(ProductionCatalogImportError, match="requires approval metadata"):
+        import_production_catalog(document)
+
+
+def test_production_catalog_import_rejects_schema_and_catalog_integrity_failures():
+    document = _import_document()
+    document["unexpected"] = "not accepted"
+    with pytest.raises(ProductionCatalogImportError, match="unsupported fields: unexpected"):
+        import_production_catalog(document)
+
+    document = _import_document()
+    document["records"][0]["macros"]["kcal"] = "999"
+    with pytest.raises(ProductionCatalogImportError, match="macro kcal consistency"):
+        import_production_catalog(document)
+
+    document = _import_document()
+    document["schema_version"] = "unknown"
+    with pytest.raises(ProductionCatalogImportError, match="schema_version is unsupported"):
+        import_production_catalog(document)

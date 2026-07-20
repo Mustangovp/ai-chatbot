@@ -46,8 +46,8 @@ _INTENTS = {
 }
 _PROFILE_FIELDS = (
     "goal", "equipment", "level", "experience_level", "frequency",
-    "training_availability", "sleepQuality", "stressLevel", "recoveryFeel",
-    "injuries", "healthNotes", "allergies", "age", "activityLevel",
+    "training_availability", "training_split", "sleepQuality", "stressLevel", "recoveryFeel",
+    "injuries", "healthNotes", "allergies", "age", "height", "weight", "activityLevel",
 )
 
 
@@ -412,6 +412,9 @@ def build_context(*, intent: str, subject: Subject, request_time: datetime,
     authoritative_profile = dict(db_profile or {}) if subject.authenticated else dict(browser_profile or {})
     profile_source = "db_profile" if subject.authenticated else "browser"
     facts: dict[str, VerifiedFact] = {}
+    if (authoritative_profile.get("training_split") in (None, "", [], {})
+            and authoritative_profile.get("split") not in (None, "", [], {})):
+        authoritative_profile["training_split"] = authoritative_profile["split"]
     for key in _PROFILE_FIELDS:
         if authoritative_profile.get(key) not in (None, "", [], {}):
             facts[key] = _fact(key, authoritative_profile[key], profile_source, observed_at=now)

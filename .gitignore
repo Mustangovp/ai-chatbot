@@ -108,3 +108,14 @@ data/*.db
 
 # Nutrition Engine V2 Phase 10 real-user acceptance coverage.
 !tests/test_nutrition_acceptance.py
+
+# Deterministic Training Engine and immutable workout-completion CI gates.
+!tests/test_training_engine_foundation.py
+!tests/test_training_selection_engine.py
+!tests/test_training_plan_construction.py
+!tests/test_training_runtime.py
+!tests/test_progression_engine.py
+!tests/test_progression_state.py
+!tests/test_training_lifecycle.py
+!tests/test_training_lifecycle_runtime.py
+!tests/test_workout_completion_contract.py

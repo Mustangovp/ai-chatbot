@@ -1,0 +1,49 @@
+{
+  "registry_version": "apex-knowledge-registry-v1",
+  "documents": [
+    {
+      "document_id": "training.minimum-effective-dose.v1",
+      "domain": "training",
+      "version": "1.0.0",
+      "title": "Minimum effective dose",
+      "content": "Start low, add only when progress stops.",
+      "tags": ["progression", "training"],
+      "source_document": "docs/research/sprint-002/domain-2-programming-intelligence.md",
+      "source_section": "6. Knowledge & Decision Cards",
+      "status": "active"
+    },
+    {
+      "document_id": "nutrition.energy-first.v1",
+      "domain": "nutrition",
+      "version": "1.0.0",
+      "title": "Energy before detail",
+      "content": "Anchor body-composition plans to total energy before macro or timing detail.",
+      "tags": ["body-composition", "nutrition"],
+      "source_document": "docs/research/sprint-002/domain-4-nutrition-intelligence.md",
+      "source_section": "6. Knowledge & Decision Cards",
+      "status": "active"
+    },
+    {
+      "document_id": "recovery.recoverable-load.v1",
+      "domain": "recovery",
+      "version": "1.0.0",
+      "title": "Recoverable load",
+      "content": "Recoverable load, not planned load, is the ceiling; recovery gates progression.",
+      "tags": ["load", "recovery"],
+      "source_document": "docs/research/sprint-002/domain-1-performance-science.md",
+      "source_section": "6. Knowledge & Decision Cards",
+      "status": "active"
+    },
+    {
+      "document_id": "supplementation.unavailable.v1",
+      "domain": "supplementation",
+      "version": "1.0.0",
+      "title": "Supplementation guidance unavailable",
+      "content": "",
+      "tags": [],
+      "source_document": "",
+      "source_section": "",
+      "status": "unavailable"
+    }
+  ]
+}

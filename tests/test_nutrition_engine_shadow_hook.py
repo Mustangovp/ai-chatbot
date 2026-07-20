@@ -373,3 +373,48 @@ def test_voice_speech_text_unchanged_with_flag_on(client, monkeypatch):
     _nutrition_env(monkeypatch, dispatch_spy=lambda *a, **k: True)
     on = [e for e in _events(client.post("/chat", json={"message": "give me a full day menu", "lang": "en", "voice": True, "profile": {}}))]
     assert [e for e in on if "speech_text" in e] == [e for e in base if "speech_text" in e]
+
+
+# ── operational telemetry endpoint ─────────────────────────────────────────
+
+def test_shadow_telemetry_endpoint_is_hidden_without_admin_bearer(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "operations-token")
+
+    for headers in ({}, {"Authorization": "Bearer wrong-token"}):
+        response = client.get("/admin/nutrition-v2-shadow/telemetry", headers=headers)
+        assert response.status_code == 404
+        assert response.get_json() == {"error": "not_found"}
+
+
+def test_shadow_telemetry_endpoint_is_aggregate_only_and_read_only(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "operations-token")
+    telemetry = {
+        "completed": 7,
+        "current_inflight": 1,
+        "current_queue_depth": 1,
+        "longest_execution_ms": 325.5,
+        "timeout": 2,
+        "exception": 3,
+        "stalled": 4,
+        "eligible": 9,
+        "unrelated_internal_key": 999,
+    }
+    monkeypatch.setattr(sh, "snapshot_telemetry", lambda: dict(telemetry))
+
+    response = client.get(
+        "/admin/nutrition-v2-shadow/telemetry",
+        headers={"Authorization": "Bearer operations-token"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.headers["X-Robots-Tag"] == "noindex, nofollow"
+    assert response.get_json() == {
+        "completed_executions": 7,
+        "active_executions": 1,
+        "queue_depth": 1,
+        "execution_durations_ms": {"longest": 325.5},
+        "timeout_count": 2,
+        "exception_count": 3,
+        "stall_count": 4,
+    }

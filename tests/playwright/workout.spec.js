@@ -71,6 +71,46 @@ test.describe('APEX approved app shell — UX regression', () => {
     await expect(page.locator('.start-wo')).toBeVisible();
   });
 
+  test('WO-2: completion submits only blueprint-issued workout identifiers', async ({ page }) => {
+    const posted = await page.evaluate(async () => {
+      const projection = {
+        plan_id: 'plan-test', plan_version: 'v2', sessions: [{
+          session_id: 'session-test', session_index: 1, exercises: [{
+            prescription_id: 'prescription-test', exercise_id: 'exercise.push_up',
+            exercise_version: '1.0.0', display_name: 'Push-up', prescribed_sets: 1,
+            rep_min: 8, rep_max: 12, rest_seconds: 60
+          }]
+        }]
+      };
+      pendingTrainingCompletion = projection;
+      pendingCompletionSessions = projection.sessions.slice();
+      const el = appendCoach();
+      el.innerHTML = renderMarkdown([
+        '| Exercise | Sets | Reps | Rest | Note |',
+        '| --- | --- | --- | --- | --- |',
+        '| Push-up | 1 | 8-12 | 60 | controlled |'
+      ].join('\n'));
+      let sent = null;
+      const originalFetch = window.fetch;
+      window.fetch = async (url, options) => {
+        if (url === '/api/workout') { sent = JSON.parse(options.body); return new Response('{}', { status: 200 }); }
+        return originalFetch(url, options);
+      };
+      SESSION.authenticated = true;
+      startWorkout('session-test');
+      completeSet();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      window.fetch = originalFetch;
+      return sent;
+    });
+
+    expect(posted.workout_completion).toMatchObject({
+      plan_id: 'plan-test', plan_version: 'v2', session_id: 'session-test',
+      exercises: [{ prescription_id: 'prescription-test', exercise_id: 'exercise.push_up', exercise_version: '1.0.0' }]
+    });
+    expect(posted.workout_completion.exercises[0]).not.toHaveProperty('name');
+  });
+
   test('NP-1: nutrition parser recognizes a separator-less plan with no raw pipes', async ({ page }) => {
     await page.evaluate(() => {
       // A nutrition table WITHOUT the markdown separator row — the parser

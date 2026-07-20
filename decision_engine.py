@@ -35,7 +35,10 @@ _INTENT_KEYWORDS: tuple[tuple[Intent, tuple[str, ...]], ...] = (
                  "болка в гърдите", "стягане в гърдите", "затруднено дишане", "припадък", "самоубий")),
     ("recovery", ("recovery", "recover", "sore", "fatigue", "rest day")),
     ("nutrition", ("nutrition", "meal", "diet", "calories", "protein", "macros", "food")),
-    ("workout", ("workout", "exercise", "training", "push-up", "pushup", "squat", "gym")),
+    ("workout", (
+        "workout", "exercise", "training", "push-up", "pushup", "squat", "gym",
+        "\u0442\u0440\u0435\u043d\u0438\u0440\u043e\u0432\u043a", "\u0443\u043f\u0440\u0430\u0436\u043d\u0435\u043d",
+    )),
 )
 
 
