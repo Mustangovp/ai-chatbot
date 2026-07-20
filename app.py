@@ -2444,7 +2444,8 @@ def chat():
                     or _training_plan_blueprint is not None
                 )
                 if _add and _brain_training_turn:
-                    if _directive["mode"] == "cold_start" and _training_engine_active_for_request:
+                    if (_directive["mode"] == "cold_start" and _training_engine_active_for_request
+                            and _training_plan_blueprint is None):
                         # Cold start is an explicit, conservative exception to
                         # profile collection. Deliver its fixed safe session
                         # rather than letting a model reinterpret the policy.
@@ -2652,8 +2653,9 @@ def chat():
                                 "role": "system",
                                 "content": nutrition_plan.regeneration_contract(validation_error),
                             }]
+                            repair_model = "gpt-4o" if model_to_use == "gpt-4o-mini" else model_to_use
                             completion = client.chat.completions.create(
-                                model=model_to_use,
+                                model=repair_model,
                                 messages=repair_messages,
                                 max_tokens=max_tokens,
                                 response_format={"type": "json_object"},
@@ -2662,7 +2664,7 @@ def chat():
                             authoritative_plan = nutrition_plan.build_plan(
                                 generated, nutrition_delivery_targets,
                                 restrictions=_nutrition_restrictions(profile),
-                                provenance={"generator": "openai_chat_completions_json_repair", "model": model_to_use},
+                                provenance={"generator": "openai_chat_completions_json_repair", "model": repair_model},
                             )
                             reply_text = nutrition_plan.render(authoritative_plan, lang)
                         except Exception as repair_error:

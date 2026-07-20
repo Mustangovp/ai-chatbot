@@ -1942,6 +1942,7 @@ def test_daily_nutrition_contract_repairs_one_rejected_generation_without_exposi
 
     assert _events(response) == [{"t": _structured_plan_text()}, {"done": True}]
     assert len(calls) == 2
+    assert [call["model"] for call in calls] == ["gpt-4o-mini", "gpt-4o"]
     assert calls[1]["response_format"] == {"type": "json_object"}
     assert calls[1]["messages"][-1]["role"] == "system"
     assert "kcal is outside the confirmed target" in calls[1]["messages"][-1]["content"]
