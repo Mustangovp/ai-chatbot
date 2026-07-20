@@ -487,9 +487,23 @@ def generation_contract(targets: NutritionTargets) -> str:
     )
 
 
-def regeneration_contract(validation_failure: Exception) -> str:
+def regeneration_contract(validation_failure: Exception, targets: NutritionTargets) -> str:
     """Request one repair without ever returning the rejected structured plan."""
     reason = str(validation_failure).strip() or "structured nutrition validation failed"
+    allocations = (
+        ("breakfast", Decimal("0.30")),
+        ("lunch", Decimal("0.40")),
+        ("dinner", Decimal("0.30")),
+    )
+    allocation_lines = []
+    for meal_type, ratio in allocations:
+        kcal = targets.kcal * ratio
+        protein = targets.protein * ratio if targets.protein is not None else None
+        protein_text = "unspecified" if protein is None else format(protein.normalize(), "f")
+        allocation_lines.append(
+            f"- {meal_type}: exactly {format(kcal.normalize(), 'f')} kcal; "
+            f"protein {protein_text}g"
+        )
     return (
         "[STRUCTURED DAILY NUTRITION PLAN REPAIR]\n"
         "The immediately previous JSON was rejected by deterministic validation. "
@@ -497,5 +511,11 @@ def regeneration_contract(validation_failure: Exception) -> str:
         "Return one complete corrected JSON object only. Do not include markdown, prose, "
         "or the rejected output. Keep the original request and confirmed targets. "
         "Every food must include display_name, grams, protein_g, carbs_g, fat_g, and kcal; "
-        "breakfast, lunch, and dinner are required; and summed food values must satisfy the targets."
+        "breakfast, lunch, and dinner are required. Use exactly these meal budgets and make "
+        "the sum of each meal's food fields equal its budget before returning JSON:\n"
+        + "\n".join(allocation_lines) + "\n"
+        "The sum of all food kcal values must equal " + format(targets.kcal.normalize(), "f") + " kcal, "
+        "and the sum of all food protein values must equal "
+        + (format(targets.protein.normalize(), "f") if targets.protein is not None else "the confirmed protein target")
+        + "g. Recalculate the three meal sums before returning JSON."
     )

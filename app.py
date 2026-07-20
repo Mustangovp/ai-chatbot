@@ -2651,7 +2651,8 @@ def chat():
                         try:
                             repair_messages = messages + [{
                                 "role": "system",
-                                "content": nutrition_plan.regeneration_contract(validation_error),
+                                "content": nutrition_plan.regeneration_contract(
+                                    validation_error, nutrition_delivery_targets),
                             }]
                             repair_model = "gpt-4o" if model_to_use == "gpt-4o-mini" else model_to_use
                             completion = client.chat.completions.create(

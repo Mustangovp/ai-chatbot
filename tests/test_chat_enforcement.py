@@ -1946,6 +1946,8 @@ def test_daily_nutrition_contract_repairs_one_rejected_generation_without_exposi
     assert calls[1]["response_format"] == {"type": "json_object"}
     assert calls[1]["messages"][-1]["role"] == "system"
     assert "kcal is outside the confirmed target" in calls[1]["messages"][-1]["content"]
+    assert "breakfast: exactly 840 kcal; protein 52.5g" in calls[1]["messages"][-1]["content"]
+    assert "lunch: exactly 1120 kcal; protein 70g" in calls[1]["messages"][-1]["content"]
     assert json.dumps(invalid) not in calls[1]["messages"][-1]["content"]
     assert len(plan_calls) == 1
 
