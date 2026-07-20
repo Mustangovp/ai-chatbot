@@ -32,6 +32,7 @@ from recommend import diversity as recommendation_diversity
 from recommend.blueprint import NutritionBlueprint, WorkoutBlueprint, to_dict
 from context_builder import LockedPreferences, Subject, build_context
 from brain.runtime_assets import expert_consensus, persona_matcher
+from brain.runtime_assets import shadow_trace
 from brain.runtime_assets import persona_expert_projection
 from brain.runtime_assets.expert_rules import ExpertRulePack, load_expert_rule_packs
 from brain.runtime_assets.personas import load_runtime_personas
@@ -1115,6 +1116,44 @@ def test_training_engine_active_delivers_only_deterministic_training_plan(client
     assert "Goblet Squat" in events[0]["t"]
     assert "RPE" in events[0]["t"] and "tempo" in events[0]["t"]
     assert "Keep every rep controlled." in events[0]["t"]
+
+
+@pytest.mark.parametrize("production_path", (
+    "legacy",
+    "persona_expert",
+    "deterministic_training",
+))
+def test_shadow_trace_accepts_each_supported_production_delivery_path(production_path):
+    trace = shadow_trace.build_shadow_trace(
+        request_id="trace-request", timestamp=datetime(2026, 7, 20, tzinfo=timezone.utc),
+        persona_match=None, expert_consensus=None, matcher_ms=None, consensus_ms=None,
+        recommendation_engine_active=True,
+    )
+
+    delivered = trace.with_delivery(blueprint_invoked=True, production_path_used=production_path)
+
+    assert delivered.production_path_used == production_path
+    assert delivered.blueprint_invoked is True
+    with pytest.raises(ValueError, match="invalid production path"):
+        trace.with_delivery(blueprint_invoked=False, production_path_used="unrecognized")
+
+
+def test_training_engine_active_trace_delivery_accepts_deterministic_training(
+        client, captured, monkeypatch):
+    profile = {"goal": "strength", "level": "intermediate",
+               "equipment": "bodyweight, dumbbells, bench", "recoveryFeel": "fresh"}
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setenv("PERSONA_MATCHER_SHADOW", "true")
+    monkeypatch.setenv("EXPERT_CONSENSUS_SHADOW", "true")
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": []}))
+    traces = _capture_shadow_traces(monkeypatch)
+
+    response = _post(client, "build a workout", profile=profile)
+
+    assert response.status_code == 200
+    assert _events(response)[-1] == {"done": True}
+    assert len(traces) == 1
+    assert traces[0].production_path_used == "deterministic_training"
 
 
 def test_training_engine_active_fails_closed_without_legacy_workout_generation(client, captured, monkeypatch):

@@ -10,6 +10,13 @@ from brain.runtime_assets.persona_matcher import PersonaMatchResult
 
 SHADOW_TRACE_VERSION = "shadow-trace-v1"
 _SAFE_EVIDENCE_PREFIXES = ("fact:", "locked:", "history:")
+# Runtime delivery labels are intentionally closed: every producer below is a
+# named execution path, and an unrecognized path must fail before trace output.
+SUPPORTED_PRODUCTION_PATHS = frozenset({
+    "legacy",
+    "persona_expert",
+    "deterministic_training",
+})
 
 
 @dataclass(frozen=True)
@@ -34,7 +41,7 @@ class ShadowTrace:
     production_path_used: str
 
     def with_delivery(self, *, blueprint_invoked: bool, production_path_used: str) -> "ShadowTrace":
-        if production_path_used not in {"legacy", "persona_expert"}:
+        if production_path_used not in SUPPORTED_PRODUCTION_PATHS:
             raise ValueError("invalid production path")
         return replace(self, blueprint_invoked=bool(blueprint_invoked),
                        production_path_used=production_path_used)
