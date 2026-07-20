@@ -1233,6 +1233,8 @@ def test_training_engine_profile_contract_failure_delivers_actionable_starter_wo
     response = _post(client, "build a workout", profile=profile)
 
     assert _events(response) == [{"t": appmod._cold_start_workout_reply("en")}, {"done": True}]
+    assert "| Exercise | Sets | Reps | Rest | Note |" in appmod._cold_start_workout_reply("en")
+    assert "**Why this session:**" in appmod._cold_start_workout_reply("en")
     assert captured == {}
 
 
@@ -1856,7 +1858,7 @@ def _structured_plan_text(lang="en"):
     plan = nutrition_plan.build_plan(
         _structured_plan_payload(), _NUTRITION_TARGETS,
         restrictions=(), provenance={"test": "structured"})
-    return nutrition_plan.render(plan, lang)
+    return nutrition_plan.render_delivery(plan, lang)
 
 
 def test_nutrition_plan_is_immutable_structured_authority_with_deterministic_rendering():
@@ -1874,6 +1876,18 @@ def test_nutrition_plan_is_immutable_structured_authority_with_deterministic_ren
     assert nutrition_plan.to_record(plan)["meals"][0]["foods"][0]["catalog_id"] is None
     with pytest.raises(FrozenInstanceError):
         plan.version = "mutated"
+
+
+def test_nutrition_delivery_adds_a_deterministic_explanation_after_the_canonical_table():
+    plan = nutrition_plan.build_plan(
+        _structured_plan_payload(), _NUTRITION_TARGETS,
+        restrictions=(), provenance={"test": "structured"})
+
+    delivered = nutrition_plan.render_delivery(plan, "en")
+
+    assert delivered.startswith("| Meal | Food")
+    assert delivered.endswith("then adjust only through a follow-up request.")
+    assert "**Why this plan:**" in delivered
 
 
 def test_nutrition_plan_rejects_compound_food_rows_without_display_parsing():

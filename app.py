@@ -1731,27 +1731,31 @@ def _active_training_plan(snapshot, planning_blueprint):
 
 
 def _cold_start_workout_reply(lang):
-    """Deliver the Brain-approved starter session without model ambiguity."""
+    """Deliver a browser-session-ready starter workout without model ambiguity."""
     if str(lang).lower() == "en":
         return (
             "**Starter Workout · 15 minutes**\n"
-            "1. Easy march in place — 3 minutes\n"
-            "2. Chair squat — 2 sets of 6–8\n"
-            "3. Wall push-up — 2 sets of 6–8\n"
-            "4. Glute bridge — 2 sets of 8\n"
-            "5. Bird-dog — 2 sets of 6 per side\n\n"
-            "Move slowly, rest as needed, and stop if you feel chest pain, dizziness, or unusual shortness of breath. "
-            "Share your goal and any health conditions so the next session can be tailored."
+            "| Exercise | Sets | Reps | Rest | Note |\n"
+            "| --- | --- | --- | --- | --- |\n"
+            "| Easy march in place | 1 | 3 minutes | 0 sec | Raise temperature gradually |\n"
+            "| Chair squat | 2 | 6–8 | 60 sec | Use a pain-free depth |\n"
+            "| Wall push-up | 2 | 6–8 | 60 sec | Keep the body in one line |\n"
+            "| Glute bridge | 2 | 8 | 60 sec | Pause briefly at the top |\n"
+            "| Bird-dog | 2 | 6 per side | 45 sec | Move slowly and stay balanced |\n\n"
+            "**Why this session:** it covers squat, push, hip extension, and trunk control with a deliberately low starting dose. "
+            "Move slowly, rest as needed, and stop for chest pain, dizziness, or unusual shortness of breath."
         )
     return (
         "**Начална тренировка · 15 минути**\n"
-        "1. Леко ходене на място — 3 минути\n"
-        "2. Клек до стол — 2 серии по 6–8\n"
-        "3. Лицеви опори на стена — 2 серии по 6–8\n"
-        "4. Глутеус мост — 2 серии по 8\n"
-        "5. Bird-dog — 2 серии по 6 на страна\n\n"
-        "Движи се бавно, почивай при нужда и спри при болка в гърдите, замайване или необичаен задух. "
-        "Сподели целта си и здравословни ограничения, за да персонализирам следващата тренировка."
+        "| Упражнение | Серии | Повторения | Почивка | Бележка |\n"
+        "| --- | --- | --- | --- | --- |\n"
+        "| Леко ходене на място | 1 | 3 минути | 0 сек | Повиши темпото постепенно |\n"
+        "| Клек до стол | 2 | 6–8 | 60 сек | Работи в безболезнен обхват |\n"
+        "| Лицеви опори на стена | 2 | 6–8 | 60 сек | Дръж тялото в една линия |\n"
+        "| Глутеус мост | 2 | 8 | 60 сек | Задръж кратко горе |\n"
+        "| Bird-dog | 2 | 6 на страна | 45 сек | Движи се бавно и стабилно |\n\n"
+        "**Защо тази тренировка:** покрива клек, бутане, разгъване в таза и контрол на корпуса с умишлено нисък стартов обем. "
+        "Движи се бавно, почивай при нужда и спри при болка в гърдите, замайване или необичаен задух."
     )
 
 
@@ -2592,7 +2596,7 @@ def chat():
                     yield sse({"done": True})
                     return
                 if _revised_nutrition_plan is not None:
-                    reply_text = nutrition_plan.render(_revised_nutrition_plan, lang)
+                    reply_text = nutrition_plan.render_delivery(_revised_nutrition_plan, lang)
                     yield sse({"t": reply_text})
                     speech_event = _speech_event(reply_text, preserve_visible=True)
                     if speech_event:
@@ -2667,7 +2671,7 @@ def chat():
                             restrictions=_nutrition_restrictions(profile),
                             provenance={"generator": "openai_chat_completions_json", "model": model_to_use},
                         )
-                        reply_text = nutrition_plan.render(authoritative_plan, lang)
+                        reply_text = nutrition_plan.render_delivery(authoritative_plan, lang)
                     except nutrition_plan.NutritionPlanError as validation_error:
                         # One repair attempt is allowed for a rejected structured
                         # response. It receives only the deterministic failure,
@@ -2692,7 +2696,7 @@ def chat():
                                 restrictions=_nutrition_restrictions(profile),
                                 provenance={"generator": "openai_chat_completions_json_repair", "model": repair_model},
                             )
-                            reply_text = nutrition_plan.render(authoritative_plan, lang)
+                            reply_text = nutrition_plan.render_delivery(authoritative_plan, lang)
                         except Exception as repair_error:
                             print(f"[chat] nutrition repair failed: {type(repair_error).__name__} reason={repair_error}")
                             authoritative_plan = nutrition_plan.build_source_backed_plan(
@@ -2701,7 +2705,7 @@ def chat():
                                 restrictions=_nutrition_restrictions(profile),
                             )
                             if authoritative_plan is not None:
-                                reply_text = nutrition_plan.render(authoritative_plan, lang)
+                                reply_text = nutrition_plan.render_delivery(authoritative_plan, lang)
                             else:
                                 failed_nutrition_turn = nutrition_conversation.fail_generation(
                                     _nutrition_conversation, lang, "structured_plan_validation_failed")
@@ -2715,7 +2719,7 @@ def chat():
                             restrictions=_nutrition_restrictions(profile),
                         )
                         if authoritative_plan is not None:
-                            reply_text = nutrition_plan.render(authoritative_plan, lang)
+                            reply_text = nutrition_plan.render_delivery(authoritative_plan, lang)
                         else:
                             failed_nutrition_turn = nutrition_conversation.fail_generation(
                                 _nutrition_conversation, lang, "structured_plan_validation_failed")

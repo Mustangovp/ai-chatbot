@@ -612,6 +612,26 @@ def render(plan: NutritionPlan, lang: str) -> str:
     return "\n".join(lines)
 
 
+def render_delivery(plan: NutritionPlan, lang: str) -> str:
+    """Render a validated plan with a deterministic, non-authoritative explanation."""
+    table = render(plan, lang)
+    target = _display_decimal(plan.targets.kcal)
+    delivered = _display_decimal(plan.totals.kcal)
+    if str(lang).lower() == "en":
+        explanation = (
+            "**Why this plan:** the three meals distribute your day around the confirmed "
+            f"{target} kcal target; the displayed foods add up to {delivered} kcal. "
+            "Use the quantities in the table as the plan, then adjust only through a follow-up request."
+        )
+    else:
+        explanation = (
+            "**Защо този режим:** трите хранения разпределят деня около потвърдения "
+            f"таргет от {target} ккал; показаните храни дават общо {delivered} ккал. "
+            "Следвай количествата от таблицата, а промени поискай с последващо съобщение."
+        )
+    return table + "\n\n" + explanation
+
+
 def to_record(plan: NutritionPlan) -> dict[str, object]:
     def macros(value: NutritionMacros) -> dict[str, str]:
         return {"protein_g": str(value.protein_g), "carbs_g": str(value.carbs_g),

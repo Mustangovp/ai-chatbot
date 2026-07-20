@@ -64,7 +64,7 @@ INVALID_PLAN = {
 def _rendered_plan(payload=VALID_PLAN):
     targets = appmod.nutrition_validation.targets_from_profile_block(TARGET_BLOCK)
     plan = appmod.nutrition_plan.build_plan(payload, targets, restrictions=(), provenance={"test": "acceptance"})
-    return appmod.nutrition_plan.render(plan, "en")
+    return appmod.nutrition_plan.render_delivery(plan, "en")
 
 PLAN_HISTORY = (
     {"role": "user", "content": "I want a nutrition plan"},
