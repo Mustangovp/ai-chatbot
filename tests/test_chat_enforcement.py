@@ -1236,6 +1236,21 @@ def test_training_engine_profile_contract_failure_delivers_actionable_starter_wo
     assert captured == {}
 
 
+def test_combined_request_with_training_profile_failure_keeps_nutrition_follow_up_visible(
+        client, captured, monkeypatch):
+    profile = _profile(equipment="office")
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod.decision_engine, "classify_intent", lambda _message: "workout")
+    monkeypatch.setattr(appmod.nutrition_conversation, "is_plan_request", lambda *_args: False)
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
+
+    response = _post(client, "build a workout and nutrition plan", profile=profile)
+
+    expected = appmod._cold_start_workout_reply("en") + appmod._combined_request_follow_up("en")
+    assert _events(response) == [{"t": expected}, {"done": True}]
+    assert captured == {}
+
+
 def test_training_engine_active_is_deterministic_and_keeps_traceability_internal(client, captured, monkeypatch):
     profile = {"goal": "strength", "level": "intermediate",
                "equipment": "bodyweight, dumbbells, bench", "recoveryFeel": "fresh"}

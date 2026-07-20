@@ -2107,6 +2107,8 @@ def chat():
                 # The bounded starter session is safe, deterministic, and keeps
                 # the coaching turn actionable while the profile is completed.
                 _controlled_reply = _cold_start_workout_reply(lang)
+                if _requests_workout_and_nutrition(user_message):
+                    _controlled_reply += _combined_request_follow_up(lang)
             if _conversation_composer_active_for_request:
                 try:
                     _conversation_policy = conversation_composer.build_policy(
@@ -2223,6 +2225,8 @@ def chat():
             _controlled_reply = _planning_reply
             if _training_engine_failure is not None:
                 _controlled_reply = _cold_start_workout_reply(lang)
+                if _requests_workout_and_nutrition(user_message):
+                    _controlled_reply += _combined_request_follow_up(lang)
             profile_block = _build_profile_block(profile, lang) if isinstance(profile, dict) else ""
             
             # 5. Memory: Write confirmed profile facts to store (logged-in accounts)
