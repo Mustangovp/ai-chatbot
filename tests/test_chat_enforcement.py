@@ -2025,7 +2025,7 @@ def test_active_training_engine_does_not_construct_from_a_profile_clarification(
     assert events[0]["decision"]["cold_start"] is True
     assert events[1] == {"t": "ok"}
     assert events[-1] == {"done": True}
-    assert "COLD START" in captured["system"]
+    assert captured["system"].startswith("COLD START")
 
 
 def test_brain_cold_start_does_not_enter_nutrition_plan_generation(client, captured, monkeypatch):

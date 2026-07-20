@@ -2417,7 +2417,12 @@ def chat():
                     or _training_plan_blueprint is not None
                 )
                 if _add and _brain_training_turn:
-                    if _directive["should_generate_workout"]:
+                    if _directive["mode"] == "cold_start":
+                        # Cold start is an explicit, conservative exception to
+                        # legacy profile collection. It must take precedence so
+                        # a new athlete receives the authorized starter session.
+                        messages[0]["content"] = _add + "\n\n" + messages[0]["content"]
+                    elif _directive["should_generate_workout"]:
                         messages[0]["content"] = messages[0]["content"] + "\n\n" + _add   # constraints
                     else:
                         messages[0]["content"] = _add + "\n\n" + messages[0]["content"]   # safety override
