@@ -2024,6 +2024,20 @@ def test_daily_nutrition_uses_source_backed_plan_when_both_model_deliveries_are_
     assert nutrition_conversation.failed_message("en") not in events[0]["t"]
 
 
+def test_daily_nutrition_source_backed_recovery_accepts_calorie_only_target(client, captured, monkeypatch):
+    profile_block = "Calorie target: 2469 kcal"
+    invalid = _structured_plan_payload(total_kcal="2000")
+    monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: profile_block)
+    calls = _set_sequence_stream(monkeypatch, captured, [invalid, invalid])
+
+    events = _events(_post(client, "Give me a full-day nutrition plan", profile=_profile()))
+
+    assert events[-1] == {"done": True}
+    assert events[0]["t"].startswith("| Meal | Food")
+    assert nutrition_conversation.failed_message("en") not in events[0]["t"]
+    assert len(calls) == 2
+
+
 def test_voice_nutrition_source_backed_delivery_announces_only_the_visible_plan_once(client, captured, monkeypatch):
     profile_block = "Calorie target: 2800 kcal\nProtein target: minimum 175g/day"
     invalid = _structured_plan_payload(total_kcal="2500")
@@ -2714,7 +2728,7 @@ def test_voice_summary_uses_the_same_id_free_projection_without_reading_the_work
     assert "Squat" not in speech and "|" not in speech
 
 
-def test_daily_nutrition_contract_accounts_for_one_request_and_localizes_failure(client, captured, monkeypatch):
+def test_daily_nutrition_contract_accounts_for_one_request_and_localizes_source_backed_recovery(client, captured, monkeypatch):
     invalid = _structured_plan_payload(total_kcal="2500")
     profile_block = "Калориен таргет: 2800 ккал\nПротеин таргет: минимум 175г/ден"
     free_calls, plan_calls = [], []
@@ -2725,7 +2739,10 @@ def test_daily_nutrition_contract_accounts_for_one_request_and_localizes_failure
 
     response = client.post("/chat", json={"message": "пълен хранителен план", "lang": "bg", "profile": _profile()})
 
-    assert _events(response) == [{"t": nutrition_conversation.failed_message("bg")}, {"done": True}]
+    events = _events(response)
+    assert events[-1] == {"done": True}
+    assert events[0]["t"].startswith("| ")
+    assert nutrition_conversation.failed_message("bg") not in events[0]["t"]
     assert len(calls) == 2
     assert len(free_calls) == 1
     assert len(plan_calls) == 1
@@ -2898,9 +2915,10 @@ def test_missed_menu_phrase_never_streams_or_persists_rejected_daily_plan(client
     _set_sequence_stream(monkeypatch, captured, [_PRODUCTION_MALFORMED_NUTRITION])
 
     events = _events(_post(client, "дай ми меню", profile=_profile()))
-    failure = nutrition_conversation.failed_message("en")
+    failure = events[0]["t"]
 
     assert events == [{"t": failure}, {"done": True}]
+    assert failure.startswith("| Meal | Food")
     assert _PRODUCTION_MALFORMED_NUTRITION not in str(events)
     saved = store.list_conversation(uid, limit=10)
     assert [turn["content"] for turn in saved] == ["дай ми меню", failure]

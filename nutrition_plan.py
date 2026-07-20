@@ -221,9 +221,6 @@ def build_source_backed_plan(targets: NutritionTargets, lang: str, *,
     """
     if restrictions:
         return None
-    if targets.protein is None:
-        return None
-
     try:
         from pathlib import Path
 
@@ -272,7 +269,10 @@ def build_source_backed_plan(targets: NutritionTargets, lang: str, *,
                 targets=EngineTargets(
                     calories_target=optimizer_kcal_target,
                     calories_tolerance=Decimal("0.05"),
-                    protein_min_g=targets.protein,
+                    # A calorie target is sufficient for the legacy delivery
+                    # contract.  A missing protein target means no additional
+                    # protein floor, not an unsupported request.
+                    protein_min_g=targets.protein if targets.protein is not None else Decimal("0"),
                 ),
             ),
             catalog=catalog,
