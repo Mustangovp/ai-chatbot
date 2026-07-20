@@ -2614,6 +2614,43 @@ def chat():
                     _ingest_state()
                     yield sse({"done": True})
                     return
+                if _training_plan_blueprint is not None:
+                    # Training delivery accepts only the renderer's explanation
+                    # object. Request a JSON completion before exposing any SSE.
+                    training_completion = None
+                    try:
+                        completion = client.chat.completions.create(
+                            model=model_to_use,
+                            messages=messages,
+                            max_tokens=max_tokens,
+                            response_format={"type": "json_object"},
+                        )
+                        _bump_plans_today()
+                        raw_explanations = completion.choices[0].message.content or ""
+                        explanations = training_renderer.verified_explanations(raw_explanations)
+                        reply_text = training_renderer.render_delivery(
+                            _training_plan_blueprint, load_exercise_library(), explanations, lang)
+                        training_completion = training_renderer.render_completion_projection(
+                            _training_plan_blueprint, load_exercise_library())
+                    except Exception as training_error:
+                        print(f"[training-engine] delivery rejected: {type(training_error).__name__}")
+                        reply_text = decision_engine.controlled_response(
+                            decision_engine.DecisionResult("clarify", "workout",
+                                                           "training_engine_delivery_contract", (), 1.0), lang)
+                    yield sse({"t": reply_text})
+                    if training_completion is not None:
+                        yield sse({"training_completion": training_completion})
+                    speech_event = _speech_event(reply_text)
+                    if speech_event:
+                        yield sse(speech_event)
+                    _persist_reply(reply_text)
+                    _update_learning_engine(chat_uid, user_message, reply_text, profile)
+                    _shadow_log()
+                    _log_analytics(_t_start)
+                    _ingest_state()
+                    yield sse({"done": True})
+                    return
+
                 stream = client.chat.completions.create(
                     model=model_to_use,
                     messages=messages,
@@ -2631,23 +2668,7 @@ def chat():
                             yield sse({"t": delta})
                 _bump_plans_today()  # honest landing counter: +1 real AI plan
                 reply_text = "".join(full)
-                if _training_plan_blueprint is not None:
-                    training_completion = None
-                    try:
-                        explanations = training_renderer.verified_explanations(reply_text)
-                        reply_text = training_renderer.render_delivery(
-                            _training_plan_blueprint, load_exercise_library(), explanations, lang)
-                        training_completion = training_renderer.render_completion_projection(
-                            _training_plan_blueprint, load_exercise_library())
-                    except Exception as training_error:
-                        print(f"[training-engine] delivery rejected: {type(training_error).__name__}")
-                        reply_text = decision_engine.controlled_response(
-                            decision_engine.DecisionResult("clarify", "workout",
-                                                           "training_engine_delivery_contract", (), 1.0), lang)
-                    yield sse({"t": reply_text})
-                    if training_completion is not None:
-                        yield sse({"training_completion": training_completion})
-                elif _recommendation_blueprint is not None:
+                if _recommendation_blueprint is not None:
                     try:
                         explanations = recommendation_renderer.verified_explanations(
                             reply_text, _recommendation_blueprint)
@@ -2705,23 +2726,7 @@ def chat():
                     # Потребителят вече получи почти всичко — завършваме чисто
                     _bump_plans_today()
                     reply_text = "".join(full)
-                    if _training_plan_blueprint is not None:
-                        training_completion = None
-                        try:
-                            explanations = training_renderer.verified_explanations(reply_text)
-                            reply_text = training_renderer.render_delivery(
-                                _training_plan_blueprint, load_exercise_library(), explanations, lang)
-                            training_completion = training_renderer.render_completion_projection(
-                                _training_plan_blueprint, load_exercise_library())
-                        except Exception as training_error:
-                            print(f"[training-engine] delivery rejected: {type(training_error).__name__}")
-                            reply_text = decision_engine.controlled_response(
-                                decision_engine.DecisionResult("clarify", "workout",
-                                                               "training_engine_delivery_contract", (), 1.0), lang)
-                        yield sse({"t": reply_text})
-                        if training_completion is not None:
-                            yield sse({"training_completion": training_completion})
-                    elif _recommendation_blueprint is not None:
+                    if _recommendation_blueprint is not None:
                         try:
                             explanations = recommendation_renderer.verified_explanations(
                                 reply_text, _recommendation_blueprint)

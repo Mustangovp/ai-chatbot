@@ -57,6 +57,12 @@ class _StructuredCompletion:
         self.choices = [type("Choice", (), {"message": message})()]
 
 
+class _RawStructuredCompletion:
+    def __init__(self, content):
+        message = type("Message", (), {"content": content})()
+        self.choices = [type("Choice", (), {"message": message})()]
+
+
 @pytest.fixture
 def captured(monkeypatch):
     box = {}
@@ -106,12 +112,16 @@ def _post(client, message, profile=None, *, voice=False):
     return client.post("/chat", json=payload)
 
 
-def _set_stream(monkeypatch, captured, reply):
+def _set_stream(monkeypatch, captured, reply, *, raw_structured_completion=False):
     def fake_create(**kwargs):
         captured["system"] = kwargs["messages"][0]["content"]
         captured["messages"] = kwargs["messages"]
+        captured["response_format"] = kwargs.get("response_format")
+        captured["stream"] = kwargs.get("stream")
         if kwargs.get("response_format"):
-            return _StructuredCompletion(reply)
+            if raw_structured_completion:
+                return _RawStructuredCompletion(reply)
+            return _StructuredCompletion(json.loads(reply) if isinstance(reply, str) else reply)
         def stream():
             yield _Chunk(reply)
         return stream()
@@ -1110,12 +1120,30 @@ def test_training_engine_active_delivers_only_deterministic_training_plan(client
     events = _events(response)
 
     assert captured["system"].startswith("[FIXED TRAINING PLAN]")
+    assert captured["response_format"] == {"type": "json_object"}
+    assert captured["stream"] is None
     assert appmod.SYSTEM_INSTRUCTIONS not in captured["system"]
     assert len(events) == 3 and events[-1] == {"done": True}
     assert events[1]["training_completion"]["plan_id"]
     assert "Goblet Squat" in events[0]["t"]
     assert "RPE" in events[0]["t"] and "tempo" in events[0]["t"]
     assert "Keep every rep controlled." in events[0]["t"]
+
+
+def test_training_engine_fails_closed_for_invalid_json_explanation_completion(client, captured, monkeypatch):
+    profile = {"goal": "strength", "level": "intermediate",
+               "equipment": "bodyweight, dumbbells, bench", "recoveryFeel": "fresh"}
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    _set_stream(monkeypatch, captured, "not-json", raw_structured_completion=True)
+
+    response = _post(client, "build a workout", profile=profile)
+    events = _events(response)
+
+    assert response.status_code == 200
+    assert captured["response_format"] == {"type": "json_object"}
+    assert captured["stream"] is None
+    assert not any("training_completion" in event for event in events)
+    assert events[-1] == {"done": True}
 
 
 @pytest.mark.parametrize("production_path", (
