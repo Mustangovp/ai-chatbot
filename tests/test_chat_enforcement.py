@@ -1930,29 +1930,36 @@ def _set_sequence_stream(monkeypatch, captured, replies):
     return calls
 
 
-def test_daily_nutrition_contract_fails_closed_without_a_second_generation(client, captured, monkeypatch):
+def test_daily_nutrition_contract_repairs_one_rejected_generation_without_exposing_it(client, captured, monkeypatch):
     profile_block = "Calorie target: 2800 kcal\nProtein target: minimum 175g/day"
     invalid = _structured_plan_payload(total_kcal="2500")
+    plan_calls = []
     monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: profile_block)
-    calls = _set_sequence_stream(monkeypatch, captured, [invalid])
+    monkeypatch.setattr(appmod, "_bump_plans_today", lambda: plan_calls.append(True))
+    calls = _set_sequence_stream(monkeypatch, captured, [invalid, _structured_plan_payload()])
 
     response = _post(client, "Give me a full-day nutrition plan", profile=_profile())
 
-    assert _events(response) == [{"t": nutrition_conversation.failed_message("en")}, {"done": True}]
-    assert len(calls) == 1
+    assert _events(response) == [{"t": _structured_plan_text()}, {"done": True}]
+    assert len(calls) == 2
+    assert calls[1]["response_format"] == {"type": "json_object"}
+    assert calls[1]["messages"][-1]["role"] == "system"
+    assert "kcal is outside the confirmed target" in calls[1]["messages"][-1]["content"]
+    assert json.dumps(invalid) not in calls[1]["messages"][-1]["content"]
+    assert len(plan_calls) == 1
 
 
 def test_daily_nutrition_contract_has_one_terminal_failure_after_invalid_delivery(client, captured, monkeypatch):
     profile_block = "Calorie target: 2800 kcal\nProtein target: minimum 175g/day"
     invalid = _structured_plan_payload(total_kcal="2500")
     monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: profile_block)
-    calls = _set_sequence_stream(monkeypatch, captured, [invalid])
+    calls = _set_sequence_stream(monkeypatch, captured, [invalid, invalid])
 
     response = _post(client, "Give me a full-day nutrition plan", profile=_profile())
     events = _events(response)
 
     assert events == [{"t": nutrition_conversation.failed_message("en")}, {"done": True}]
-    assert len(calls) == 1
+    assert len(calls) == 2
     assert json.dumps(invalid) not in events[0]["t"]
 
 
@@ -1965,13 +1972,13 @@ def test_voice_nutrition_failure_speaks_only_the_visible_failure_once(client, ca
     monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: profile_block)
     monkeypatch.setattr(store, "free_usage_consume",
                         lambda *args: quota_calls.append(args) or {"allowed": True})
-    calls = _set_sequence_stream(monkeypatch, captured, [invalid])
+    calls = _set_sequence_stream(monkeypatch, captured, [invalid, invalid])
 
     events = _events(_post(client, "Give me a full-day nutrition plan", voice=True))
     failure = nutrition_conversation.failed_message("en")
 
     assert events == [{"t": failure}, {"speech_text": failure}, {"done": True}]
-    assert len(calls) == 1
+    assert len(calls) == 2
     assert len(quota_calls) == 1
     assert "plan is ready" not in events[1]["speech_text"].lower()
     saved = store.list_conversation(uid, limit=10)
@@ -1985,7 +1992,7 @@ def test_daily_nutrition_contract_never_persists_rejected_plan(client, captured,
     invalid = _structured_plan_payload(total_kcal="2500")
     uid = _login_for_chat(client, _profile())
     monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: profile_block)
-    _set_sequence_stream(monkeypatch, captured, [invalid])
+    _set_sequence_stream(monkeypatch, captured, [invalid, invalid])
 
     response = _post(client, "Give me a full-day nutrition plan")
     response.get_data()
@@ -2451,13 +2458,13 @@ def test_daily_nutrition_semantic_failure_is_terminal_without_leaking_or_persist
     invalid = _daily_plan(invalid_rows)
     uid = _login_for_chat(client, _profile())
     monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: profile_block)
-    calls = _set_sequence_stream(monkeypatch, captured, [invalid])
+    calls = _set_sequence_stream(monkeypatch, captured, [invalid, invalid])
 
     response = _post(client, "Give me a full-day nutrition plan")
 
     failure = nutrition_conversation.failed_message("en")
     assert _events(response) == [{"t": failure}, {"done": True}]
-    assert len(calls) == 1
+    assert len(calls) == 2
     saved = store.list_conversation(uid, limit=10)
     assert [turn["content"] for turn in saved] == ["Give me a full-day nutrition plan", failure]
 
@@ -2607,12 +2614,12 @@ def test_daily_nutrition_contract_accounts_for_one_request_and_localizes_failure
     monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: profile_block)
     monkeypatch.setattr(store, "free_usage_consume", lambda *args: free_calls.append(args) or {"allowed": True})
     monkeypatch.setattr(appmod, "_bump_plans_today", lambda: plan_calls.append(True))
-    calls = _set_sequence_stream(monkeypatch, captured, [invalid])
+    calls = _set_sequence_stream(monkeypatch, captured, [invalid, invalid])
 
     response = client.post("/chat", json={"message": "пълен хранителен план", "lang": "bg", "profile": _profile()})
 
     assert _events(response) == [{"t": nutrition_conversation.failed_message("bg")}, {"done": True}]
-    assert len(calls) == 1
+    assert len(calls) == 2
     assert len(free_calls) == 1
     assert len(plan_calls) == 1
 

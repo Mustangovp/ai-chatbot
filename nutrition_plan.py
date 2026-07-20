@@ -485,3 +485,17 @@ def generation_contract(targets: NutritionTargets) -> str:
         f"carbs {targets.carbs if targets.carbs is not None else 'unspecified'}g; "
         f"fat {targets.fat if targets.fat is not None else 'unspecified'}g."
     )
+
+
+def regeneration_contract(validation_failure: Exception) -> str:
+    """Request one repair without ever returning the rejected structured plan."""
+    reason = str(validation_failure).strip() or "structured nutrition validation failed"
+    return (
+        "[STRUCTURED DAILY NUTRITION PLAN REPAIR]\n"
+        "The immediately previous JSON was rejected by deterministic validation. "
+        f"Validation failure: {reason}.\n"
+        "Return one complete corrected JSON object only. Do not include markdown, prose, "
+        "or the rejected output. Keep the original request and confirmed targets. "
+        "Every food must include display_name, grams, protein_g, carbs_g, fat_g, and kcal; "
+        "breakfast, lunch, and dinner are required; and summed food values must satisfy the targets."
+    )

@@ -222,7 +222,9 @@ def test_real_user_nutrition_acceptance(scenario, monkeypatch):
     assert response.status_code == 200
     assert (actual_initial, actual_terminal) == (scenario.expected_initial, scenario.expected_terminal)
     assert events[-1] == {"done": True}
-    assert len(calls) <= 1
+    # A rejected structured plan receives one internal repair attempt. The
+    # user still receives one terminal response and no rejected content.
+    assert len(calls) <= (2 if scenario.name == "repeat_failed" else 1)
     assert all("\u041e\u043f\u0438\u0442\u0430\u0439 \u043f\u0430\u043a" not in str(event) and "Please try again" not in str(event) for event in events)
     if actual_initial is nc.NutritionConversationState.NEEDS_INFORMATION:
         assert len(calls) == 0 and len(events) == 2

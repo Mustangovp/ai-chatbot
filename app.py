@@ -2597,6 +2597,35 @@ def chat():
                             provenance={"generator": "openai_chat_completions_json", "model": model_to_use},
                         )
                         reply_text = nutrition_plan.render(authoritative_plan, lang)
+                    except nutrition_plan.NutritionPlanError as validation_error:
+                        # One repair attempt is allowed for a rejected structured
+                        # response. It receives only the deterministic failure,
+                        # never the rejected plan, and does not consume quota or
+                        # the plan counter a second time.
+                        try:
+                            repair_messages = messages + [{
+                                "role": "system",
+                                "content": nutrition_plan.regeneration_contract(validation_error),
+                            }]
+                            completion = client.chat.completions.create(
+                                model=model_to_use,
+                                messages=repair_messages,
+                                max_tokens=max_tokens,
+                                response_format={"type": "json_object"},
+                            )
+                            generated = nutrition_plan.parse_generation_response(completion)
+                            authoritative_plan = nutrition_plan.build_plan(
+                                generated, nutrition_delivery_targets,
+                                restrictions=_nutrition_restrictions(profile),
+                                provenance={"generator": "openai_chat_completions_json_repair", "model": model_to_use},
+                            )
+                            reply_text = nutrition_plan.render(authoritative_plan, lang)
+                        except Exception as repair_error:
+                            print(f"[chat] nutrition repair failed: {type(repair_error).__name__}")
+                            failed_nutrition_turn = nutrition_conversation.fail_generation(
+                                _nutrition_conversation, lang, "structured_plan_validation_failed")
+                            reply_text = failed_nutrition_turn.user_response or nutrition_conversation.failed_message(lang)
+                            nutrition_delivery_failed = True
                     except Exception as nutrition_error:
                         print(f"[chat] nutrition orchestration failed: {type(nutrition_error).__name__}")
                         failed_nutrition_turn = nutrition_conversation.fail_generation(
