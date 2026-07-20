@@ -2670,16 +2670,32 @@ def chat():
                             reply_text = nutrition_plan.render(authoritative_plan, lang)
                         except Exception as repair_error:
                             print(f"[chat] nutrition repair failed: {type(repair_error).__name__} reason={repair_error}")
+                            authoritative_plan = nutrition_plan.build_source_backed_plan(
+                                nutrition_delivery_targets,
+                                lang,
+                                restrictions=_nutrition_restrictions(profile),
+                            )
+                            if authoritative_plan is not None:
+                                reply_text = nutrition_plan.render(authoritative_plan, lang)
+                            else:
+                                failed_nutrition_turn = nutrition_conversation.fail_generation(
+                                    _nutrition_conversation, lang, "structured_plan_validation_failed")
+                                reply_text = failed_nutrition_turn.user_response or nutrition_conversation.failed_message(lang)
+                                nutrition_delivery_failed = True
+                    except Exception as nutrition_error:
+                        print(f"[chat] nutrition orchestration failed: {type(nutrition_error).__name__} reason={nutrition_error}")
+                        authoritative_plan = nutrition_plan.build_source_backed_plan(
+                            nutrition_delivery_targets,
+                            lang,
+                            restrictions=_nutrition_restrictions(profile),
+                        )
+                        if authoritative_plan is not None:
+                            reply_text = nutrition_plan.render(authoritative_plan, lang)
+                        else:
                             failed_nutrition_turn = nutrition_conversation.fail_generation(
                                 _nutrition_conversation, lang, "structured_plan_validation_failed")
                             reply_text = failed_nutrition_turn.user_response or nutrition_conversation.failed_message(lang)
                             nutrition_delivery_failed = True
-                    except Exception as nutrition_error:
-                        print(f"[chat] nutrition orchestration failed: {type(nutrition_error).__name__} reason={nutrition_error}")
-                        failed_nutrition_turn = nutrition_conversation.fail_generation(
-                            _nutrition_conversation, lang, "structured_plan_validation_failed")
-                        reply_text = failed_nutrition_turn.user_response or nutrition_conversation.failed_message(lang)
-                        nutrition_delivery_failed = True
                     yield sse({"t": reply_text})
                     speech_event = _speech_event(reply_text, preserve_visible=nutrition_delivery_failed)
                     if speech_event:

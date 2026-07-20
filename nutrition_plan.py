@@ -210,6 +210,128 @@ def build_plan(payload: Mapping[str, object], targets: NutritionTargets, *,
     )
 
 
+def build_source_backed_plan(targets: NutritionTargets, lang: str, *,
+                              restrictions: tuple[str, ...]) -> NutritionPlan | None:
+    """Build a validated fallback plan from the existing source-backed catalog.
+
+    This path is deliberately narrow: it is used only after structured model
+    delivery was rejected, and only for an unrestricted request.  It consumes
+    typed catalog data and optimizer output directly; it never parses rendered
+    text or estimates a food's macros.
+    """
+    if restrictions:
+        return None
+    if targets.protein is None:
+        return None
+
+    try:
+        from pathlib import Path
+
+        from nutrition_engine.catalog import CatalogGovernance, load_catalog_file
+        from nutrition_engine.models import (
+            CallerRouteStatus,
+            CatalogMode,
+            DietConstraints,
+            NutritionPlanOutcome,
+            NutritionPlanRequest,
+            NutritionTargets as EngineTargets,
+            PracticalityPolicy,
+        )
+        from nutrition_engine.service import SERVICE_VERSION, build_nutrition_plan
+
+        catalog = load_catalog_file(
+            Path(__file__).parent / "nutrition_engine" / "data" / "food_catalog_v1.json",
+            CatalogGovernance(True, False, Decimal("15")),
+        )
+        policy = PracticalityPolicy(
+            maximum_foods_per_meal=4,
+            category_portion_overrides=(
+                ("protein", Decimal("200"), Decimal("300"), Decimal("50")),
+                ("carbohydrate", Decimal("100"), Decimal("200"), Decimal("50")),
+                ("vegetable", Decimal("75"), Decimal("75"), Decimal("25")),
+                ("fruit", Decimal("100"), Decimal("150"), Decimal("50")),
+                ("fat", Decimal("5"), Decimal("5"), Decimal("5")),
+            ),
+            max_search_nodes=200_000,
+        )
+        result = build_nutrition_plan(
+            NutritionPlanRequest(
+                language="en" if str(lang).lower() == "en" else "bg",
+                catalog_version=catalog.version,
+                catalog_mode=CatalogMode.DEVELOPMENT,
+                diet_constraints=DietConstraints(),
+                required_meals=("breakfast", "lunch", "dinner"),
+                practicality_policy=policy,
+                caller_route_status=CallerRouteStatus.ELIGIBLE,
+                service_version=SERVICE_VERSION,
+                targets=EngineTargets(
+                    calories_target=targets.kcal,
+                    calories_tolerance=Decimal("0.05"),
+                    protein_min_g=targets.protein,
+                ),
+            ),
+            catalog=catalog,
+        )
+        if result.outcome is not NutritionPlanOutcome.SUCCESS or result.projection is None:
+            return None
+
+        names = {}
+        for food in catalog.foods:
+            names[food.display_name_bg] = food
+            names[food.display_name_en] = food
+
+        meals = []
+        labels = {"Breakfast": "breakfast", "Закуска": "breakfast",
+                  "Lunch": "lunch", "Обяд": "lunch",
+                  "Dinner": "dinner", "Вечеря": "dinner"}
+        for index, meal in enumerate(result.projection.meals):
+            meal_type = labels.get(meal.label)
+            if meal_type is None:
+                return None
+            foods = []
+            for food in meal.foods:
+                source = names.get(food.name)
+                if source is None:
+                    return None
+                grams = food.quantity
+                if food.unit in {"pcs", "бр."}:
+                    if source.grams_per_piece is None:
+                        return None
+                    grams *= source.grams_per_piece
+                foods.append({
+                    "display_name": food.name,
+                    "catalog_id": source.food_id,
+                    "grams": str(grams),
+                    "protein_g": str(food.macros.protein_g),
+                    "carbs_g": str(food.macros.carbs_g),
+                    "fat_g": str(food.macros.fat_g),
+                    "kcal": str(food.macros.kcal),
+                })
+            meals.append({
+                "meal_type": meal_type,
+                "name": meal.label,
+                "time": ("08:00", "13:00", "19:00")[index],
+                "foods": foods,
+            })
+
+        # The profile expresses protein as a minimum. The catalog optimizer
+        # enforces that lower bound; the canonical delivery validator therefore
+        # verifies the calorie target here without treating a safe excess as a
+        # failed exact protein target.
+        return build_plan(
+            {"meals": meals},
+            NutritionTargets(kcal=targets.kcal),
+            restrictions=restrictions,
+            provenance={
+                "generator": "source_backed_catalog_fallback",
+                "catalog_version": catalog.version,
+                "service_version": SERVICE_VERSION,
+            },
+        )
+    except Exception:
+        return None
+
+
 def _optional_decimal(value: object, field: str) -> Decimal | None:
     if value is None or str(value).strip() == "":
         return None

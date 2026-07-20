@@ -1966,6 +1966,22 @@ def test_daily_nutrition_contract_has_one_terminal_failure_after_invalid_deliver
     assert json.dumps(invalid) not in events[0]["t"]
 
 
+def test_daily_nutrition_uses_source_backed_plan_when_both_model_deliveries_are_rejected(client, captured, monkeypatch):
+    profile_block = "Calorie target: 2469 kcal\nProtein target: minimum 144g/day"
+    invalid = _structured_plan_payload(total_kcal="2500")
+    monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: profile_block)
+    calls = _set_sequence_stream(monkeypatch, captured, [invalid, invalid])
+
+    response = _post(client, "Give me a full-day nutrition plan", profile=_profile())
+    events = _events(response)
+
+    assert len(calls) == 2
+    assert events[-1] == {"done": True}
+    assert "Daily Total" in events[0]["t"]
+    assert "2388.5" in events[0]["t"]
+    assert nutrition_conversation.failed_message("en") not in events[0]["t"]
+
+
 def test_voice_nutrition_failure_speaks_only_the_visible_failure_once(client, captured, monkeypatch):
     profile_block = "Calorie target: 2800 kcal\nProtein target: minimum 175g/day"
     invalid = _structured_plan_payload(total_kcal="2500")
