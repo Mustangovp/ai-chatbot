@@ -1575,6 +1575,24 @@ def _nutrition_restrictions(profile):
     return tuple(value for value in values if value)
 
 
+def _requests_workout_and_nutrition(message):
+    """Identify a two-deliverable request before the single-turn renderer runs."""
+    normalized = str(message or "").casefold()
+    workout = any(token in normalized for token in ("workout", "training", "\u0442\u0440\u0435\u043d\u0438\u0440"))
+    nutrition = any(token in normalized for token in (
+        "nutrition", "meal", "diet", "food", "\u0445\u0440\u0430\u043d", "\u0440\u0435\u0436\u0438\u043c", "\u043c\u0435\u043d\u044e",
+    ))
+    return workout and nutrition
+
+
+def _combined_request_follow_up(lang):
+    if str(lang).lower() == "en":
+        return ("\n\nYour workout is ready. A daily nutrition plan is delivered as a separate "
+                "validated request; send: Give me a nutrition plan.")
+    return ("\n\nТренировката е готова. Дневният хранителен режим се доставя като отделна "
+            "валидирана заявка; изпрати: Направи ми хранителен режим.")
+
+
 def _daily_nutrition_format_rules(targets, lang):
     """Strict, model-facing output rules so the FIRST daily-plan generation
     naturally satisfies the deterministic validator. The validator itself is
@@ -2223,6 +2241,7 @@ def chat():
             system_content = (personality_block + "\n\n" + base) if personality_block else base
 
         _nutrition_intent = decision_engine.classify_intent(user_message)
+        _combined_coaching_request = _requests_workout_and_nutrition(user_message)
         _v2_shadow_full_day = nutrition_validation.is_full_day_request(user_message, history)
         _authoritative_nutrition_targets = _daily_nutrition_targets(user_message, profile_block, history)
         _nutrition_conversation = nutrition_conversation.begin(
@@ -2723,6 +2742,8 @@ def chat():
                         explanations = training_renderer.verified_explanations(raw_explanations)
                         reply_text = training_renderer.render_delivery(
                             _training_plan_blueprint, load_exercise_library(), explanations, lang)
+                        if _combined_coaching_request:
+                            reply_text += _combined_request_follow_up(lang)
                         training_completion = training_renderer.render_completion_projection(
                             _training_plan_blueprint, load_exercise_library())
                     except Exception as training_error:

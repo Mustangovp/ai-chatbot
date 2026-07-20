@@ -1130,6 +1130,20 @@ def test_training_engine_active_delivers_only_deterministic_training_plan(client
     assert "Keep every rep controlled." in events[0]["t"]
 
 
+def test_combined_workout_and_nutrition_request_is_explicitly_delivered_as_controlled_partial(client, captured, monkeypatch):
+    profile = _profile(recoveryFeel="fresh")
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": ["Keep every rep controlled."]}))
+
+    response = _post(client, "\u0418\u0441\u043a\u0430\u043c \u0442\u0440\u0435\u043d\u0438\u0440\u043e\u0432\u043a\u0430 \u0438 \u0445\u0440\u0430\u043d\u0435\u043d\u0435", profile=profile)
+    events = _events(response)
+
+    assert events[-1] == {"done": True}
+    assert "Your workout is ready." in events[0]["t"]
+    assert "separate validated request" in events[0]["t"]
+    assert events[1]["training_completion"]["plan_id"]
+
+
 def test_training_engine_fails_closed_for_invalid_json_explanation_completion(client, captured, monkeypatch):
     profile = {"goal": "strength", "level": "intermediate",
                "equipment": "bodyweight, dumbbells, bench", "recoveryFeel": "fresh"}
