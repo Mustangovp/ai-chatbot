@@ -1993,7 +1993,7 @@ function renderWorkout(header,body){
 /* ═══════════════════════════════════════════════════════════════════
    WORKOUT MODE — full protocol engine with rest timer & summary
    ═══════════════════════════════════════════════════════════════════ */
-let WO=null,restTimer=null,sessionStart=0;
+let WO=null,restTimer=null,sessionStart=0,lastWorkoutCompletion=null;
 function startWorkout(workoutKey=null){
   const source=workoutKey?pendingWorkoutContracts[workoutKey]:null;
   const exercises=workoutKey?pendingWorkouts[workoutKey]:pendingWorkout;
@@ -2086,6 +2086,7 @@ function finishWorkout(){
     }))
   }:null;
   if(workoutCompletion&& !workoutCompletion.workout_id)workoutCompletion=null;
+  lastWorkoutCompletion=workoutCompletion;
   logWorkout(session,workoutCompletion);
   document.getElementById('wo-stage').innerHTML='<div class="wo-summary"><div class="wo-step">✓ '+t.woComplete+'</div>'+
     '<div class="wo-ex-glyph" style="background:radial-gradient(circle at 50% 35%,#B6FF3C44,rgba(18,23,36,.7));margin:0 auto 20px">🏁</div>'+
@@ -2098,6 +2099,21 @@ function finishWorkout(){
 function finishToCoach(){
   document.getElementById('workout').classList.remove('on'); WO=null; applyReadout();
   if(!consultOn)enterConsult();
+  const completion=lastWorkoutCompletion;
+  lastWorkoutCompletion=null;
+  if(completion){
+    const recoveryFeel=(pfLoad().recoveryFeel||'ok').toLowerCase();
+    const recovery={
+      state:recoveryFeel==='fresh'?'fully_recovered':(recoveryFeel==='tired'?'fatigued':'normally_recovered'),
+      accumulated_fatigue:recoveryFeel==='fresh'?'15':(recoveryFeel==='tired'?'65':'30'),
+      source_version:'browser-recovery-v1'
+    };
+    setTimeout(()=>{
+      document.getElementById('user-in').value=lang==='bg'?'Следваща тренировка.':'Build my next workout.';
+      send({completedWorkout:completion,recovery});
+    },300);
+    return;
+  }
   // auto-acknowledge the completed session (backend POST-WORKOUT logic engages via memory)
   setTimeout(()=>{document.getElementById('user-in').value=lang==='bg'?'Завърших тренировката.':'I finished the workout.';send();},300);
 }
@@ -2134,6 +2150,10 @@ async function send(options={}){
   const token=localStorage.getItem('apexToken')||'';
   const body={message:val,lang:lang};
   if(options.voice===true)body.voice=true;
+  if(options.completedWorkout){
+    body.completed_workout=options.completedWorkout;
+    body.recovery=options.recovery;
+  }
   const p=pfLoad();
   const wctx=buildWorkoutContext(lang==='en'); if(wctx)p.workoutContext=wctx;
   if(Object.keys(p).length)body.profile=p;
@@ -2443,8 +2463,14 @@ function openFeedback(){const t=tr();document.getElementById('nt-ico').textConte
   setTimeout(()=>{const f=document.getElementById('fb-text');if(f)f.focus();},200);}
 function setStars(n){fbRating=n;document.querySelectorAll('#fb-stars .fb-star').forEach(s=>s.classList.toggle('on',+s.dataset.n<=n));}
 async function sendFeedback(){const el=document.getElementById('fb-text');const txt=el?el.value.trim():'';
-  if(txt||fbRating){try{await fetch('/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:txt,rating:fbRating,lang})});}catch(e){}}
-  closeNotice();toast(tr().fbThanks);}
+  if(!txt&&!fbRating){closeNotice();return;}
+  try{
+    const r=await fetch('/feedback',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({type:txt?'improvement':'positive',message:txt,rating:fbRating,lang})});
+    if(!r.ok)throw new Error('feedback_'+r.status);
+    closeNotice();toast(tr().fbThanks);
+  }catch(e){toast('Feedback could not be sent.');}
+}
 function closeNotice(){document.getElementById('notice-modal').classList.remove('on');}
 let toastTimer;function toast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('on');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('on'),2600);}
 

@@ -111,6 +111,50 @@ test.describe('APEX approved app shell — UX regression', () => {
     expect(posted.workout_completion.exercises[0]).not.toHaveProperty('name');
   });
 
+  test('WO-3: a traceable completion asks /chat for the next deterministic workout revision', async ({ page }) => {
+    const posted = await page.evaluate(async () => {
+      const projection = {
+        plan_id: 'plan-next', plan_version: 'v2', sessions: [{
+          session_id: 'session-next', session_index: 1, exercises: [{
+            prescription_id: 'prescription-next', exercise_id: 'exercise.push_up',
+            exercise_version: '1.0.0', display_name: 'Push-up', prescribed_sets: 1,
+            rep_min: 8, rep_max: 12, rest_seconds: 60
+          }]
+        }]
+      };
+      pendingTrainingCompletion = projection;
+      pendingCompletionSessions = projection.sessions.slice();
+      const el = appendCoach();
+      el.innerHTML = renderMarkdown('| Exercise | Sets | Reps | Rest |\n| --- | --- | --- | --- |\n| Push-up | 1 | 8-12 | 60 |');
+      const originalFetch = window.fetch;
+      let chat = null;
+      window.fetch = async (url, options) => {
+        if (url === '/api/workout') return new Response('{}', { status: 200 });
+        if (url === '/chat') {
+          chat = JSON.parse(options.body);
+          return new Response('data: {"done":true}\n\n', {
+            status: 200, headers: { 'content-type': 'text/event-stream' }
+          });
+        }
+        return originalFetch(url, options);
+      };
+      SESSION.authenticated = true;
+      startWorkout('session-next');
+      completeSet();
+      finishToCoach();
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      window.fetch = originalFetch;
+      return chat;
+    });
+
+    expect(posted.message).toBe('Следваща тренировка.');
+    expect(posted.completed_workout).toMatchObject({
+      plan_id: 'plan-next', plan_version: 'v2', session_id: 'session-next',
+      exercises: [{ prescription_id: 'prescription-next', exercise_id: 'exercise.push_up' }]
+    });
+    expect(posted.recovery).toMatchObject({ source_version: 'browser-recovery-v1' });
+  });
+
   test('NP-1: nutrition parser recognizes a separator-less plan with no raw pipes', async ({ page }) => {
     await page.evaluate(() => {
       // A nutrition table WITHOUT the markdown separator row — the parser
