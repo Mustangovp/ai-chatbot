@@ -2101,9 +2101,12 @@ def chat():
                      or not brain_config.brain_enforce()))
                 else decision_engine.controlled_response(_shadow_decision, lang)
             )
-            if _training_engine_failure is not None and _controlled_reply is None:
-                _controlled_reply = decision_engine.controlled_response(
-                    decision_engine.DecisionResult("clarify", "workout", _training_engine_failure, (), 1.0), lang)
+            if _training_engine_failure is not None:
+                # An incomplete or legacy browser profile must never turn an
+                # explicit workout request into the generic clarify message.
+                # The bounded starter session is safe, deterministic, and keeps
+                # the coaching turn actionable while the profile is completed.
+                _controlled_reply = _cold_start_workout_reply(lang)
             if _conversation_composer_active_for_request:
                 try:
                     _conversation_policy = conversation_composer.build_policy(
@@ -2218,9 +2221,8 @@ def chat():
                 }
             system_content = prompts[decision_state]
             _controlled_reply = _planning_reply
-            if _training_engine_failure is not None and _controlled_reply is None:
-                _controlled_reply = decision_engine.controlled_response(
-                    decision_engine.DecisionResult("clarify", "workout", _training_engine_failure, (), 1.0), lang)
+            if _training_engine_failure is not None:
+                _controlled_reply = _cold_start_workout_reply(lang)
             profile_block = _build_profile_block(profile, lang) if isinstance(profile, dict) else ""
             
             # 5. Memory: Write confirmed profile facts to store (logged-in accounts)

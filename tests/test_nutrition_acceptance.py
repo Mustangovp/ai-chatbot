@@ -114,7 +114,7 @@ SCENARIOS = (
     Scenario("continuation_more_rice", "\u0414\u043e\u0431\u0430\u0432\u0438 \u043f\u043e\u0432\u0435\u0447\u0435 \u043e\u0440\u0438\u0437", COMPLETE, True, nc.NutritionConversationState.READY, nc.NutritionConversationState.PLAN_READY),
     Scenario("continuation_replace_breakfast", "\u0417\u0430\u043c\u0435\u043d\u0438 \u0437\u0430\u043a\u0443\u0441\u043a\u0430\u0442\u0430", COMPLETE, True, nc.NutritionConversationState.READY, nc.NutritionConversationState.PLAN_READY),
     Scenario("repeat_identical", "I want a nutrition plan", COMPLETE, True, nc.NutritionConversationState.PLAN_READY, nc.NutritionConversationState.PLAN_READY),
-    Scenario("repeat_failed", "I want a nutrition plan", COMPLETE, True, nc.NutritionConversationState.PLAN_READY, nc.NutritionConversationState.FAILED, model_reply=INVALID_PLAN),
+    Scenario("repeat_failed", "I want a nutrition plan", COMPLETE, True, nc.NutritionConversationState.PLAN_READY, nc.NutritionConversationState.PLAN_READY, model_reply=INVALID_PLAN),
     Scenario("repeat_clarified", "I want a nutrition plan", INCOMPLETE, False, nc.NutritionConversationState.NEEDS_INFORMATION, nc.NutritionConversationState.NEEDS_INFORMATION),
     Scenario("unsupported_impossible_diet", "I want a vegan keto nutrition plan", COMPLETE, True, nc.NutritionConversationState.UNSUPPORTED, nc.NutritionConversationState.UNSUPPORTED),
     Scenario("unsupported_contradictory", "I want a nutrition plan using only peanuts", {**COMPLETE, "allergies": "peanuts"}, True, nc.NutritionConversationState.UNSUPPORTED, nc.NutritionConversationState.UNSUPPORTED),

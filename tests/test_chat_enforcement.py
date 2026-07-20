@@ -1210,6 +1210,32 @@ def test_training_engine_active_fails_closed_without_legacy_workout_generation(c
     assert captured == {}
 
 
+@pytest.mark.parametrize("equipment", ("home", "none"))
+def test_training_engine_accepts_each_browser_equipment_value(client, captured, monkeypatch, equipment):
+    profile = _profile(equipment=equipment)
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": []}))
+
+    response = _post(client, "build a workout", profile=profile)
+    events = _events(response)
+
+    assert events[-1] == {"done": True}
+    assert "**Workout**" in events[0]["t"]
+    assert events[1]["training_completion"]["plan_id"]
+
+
+def test_training_engine_profile_contract_failure_delivers_actionable_starter_workout(
+        client, captured, monkeypatch):
+    profile = _profile(equipment="office")
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
+
+    response = _post(client, "build a workout", profile=profile)
+
+    assert _events(response) == [{"t": appmod._cold_start_workout_reply("en")}, {"done": True}]
+    assert captured == {}
+
+
 def test_training_engine_active_is_deterministic_and_keeps_traceability_internal(client, captured, monkeypatch):
     profile = {"goal": "strength", "level": "intermediate",
                "equipment": "bodyweight, dumbbells, bench", "recoveryFeel": "fresh"}
@@ -1966,7 +1992,7 @@ def test_daily_nutrition_contract_repairs_one_rejected_generation_without_exposi
     assert len(plan_calls) == 1
 
 
-def test_daily_nutrition_contract_has_one_terminal_failure_after_invalid_delivery(client, captured, monkeypatch):
+def test_daily_nutrition_contract_delivers_source_backed_plan_after_invalid_delivery(client, captured, monkeypatch):
     profile_block = "Calorie target: 2800 kcal\nProtein target: minimum 175g/day"
     invalid = _structured_plan_payload(total_kcal="2500")
     monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: profile_block)
@@ -1975,7 +2001,9 @@ def test_daily_nutrition_contract_has_one_terminal_failure_after_invalid_deliver
     response = _post(client, "Give me a full-day nutrition plan", profile=_profile())
     events = _events(response)
 
-    assert events == [{"t": nutrition_conversation.failed_message("en")}, {"done": True}]
+    assert events[-1] == {"done": True}
+    assert "Daily Total" in events[0]["t"]
+    assert "2678.75" in events[0]["t"]
     assert len(calls) == 2
     assert json.dumps(invalid) not in events[0]["t"]
 
@@ -1996,7 +2024,7 @@ def test_daily_nutrition_uses_source_backed_plan_when_both_model_deliveries_are_
     assert nutrition_conversation.failed_message("en") not in events[0]["t"]
 
 
-def test_voice_nutrition_failure_speaks_only_the_visible_failure_once(client, captured, monkeypatch):
+def test_voice_nutrition_source_backed_delivery_announces_only_the_visible_plan_once(client, captured, monkeypatch):
     profile_block = "Calorie target: 2800 kcal\nProtein target: minimum 175g/day"
     invalid = _structured_plan_payload(total_kcal="2500")
     uid = _login_for_chat(client, _profile())
@@ -2008,19 +2036,21 @@ def test_voice_nutrition_failure_speaks_only_the_visible_failure_once(client, ca
     calls = _set_sequence_stream(monkeypatch, captured, [invalid, invalid])
 
     events = _events(_post(client, "Give me a full-day nutrition plan", voice=True))
-    failure = nutrition_conversation.failed_message("en")
-
-    assert events == [{"t": failure}, {"speech_text": failure}, {"done": True}]
+    assert events[0]["t"].startswith("| Meal | Food")
+    assert events[1] == {
+        "speech_text": "Your complete daily nutrition plan is ready. The meals and exact values are visible on screen."
+    }
+    assert events[-1] == {"done": True}
     assert len(calls) == 2
     assert len(quota_calls) == 1
-    assert "plan is ready" not in events[1]["speech_text"].lower()
+    assert "couldn't generate" not in events[1]["speech_text"].lower()
     saved = store.list_conversation(uid, limit=10)
     assert [(turn["role"], turn["content"]) for turn in saved] == [
-        ("user", "Give me a full-day nutrition plan"), ("assistant", failure),
+        ("user", "Give me a full-day nutrition plan"), ("assistant", events[0]["t"]),
     ]
 
 
-def test_daily_nutrition_contract_never_persists_rejected_plan(client, captured, monkeypatch):
+def test_daily_nutrition_contract_persists_only_the_source_backed_recovery_plan(client, captured, monkeypatch):
     profile_block = "Calorie target: 2800 kcal\nProtein target: minimum 175g/day"
     invalid = _structured_plan_payload(total_kcal="2500")
     uid = _login_for_chat(client, _profile())
@@ -2031,10 +2061,11 @@ def test_daily_nutrition_contract_never_persists_rejected_plan(client, captured,
     response.get_data()
 
     saved = store.list_conversation(uid, limit=10)
-    assert [turn["content"] for turn in saved] == [
-        "Give me a full-day nutrition plan",
-        nutrition_conversation.failed_message("en"),
-    ]
+    assert saved[0]["content"] == "Give me a full-day nutrition plan"
+    assert saved[1]["content"].startswith("| Meal | Food")
+    records = store.list_nutrition_plans(uid)
+    assert len(records) == 1
+    assert records[0]["plan"]["provenance"]["generator"] == "source_backed_catalog_fallback"
 
 
 def test_nutrition_plan_intake_asks_one_precise_question_without_generation(client, captured):
@@ -2520,7 +2551,7 @@ def test_nutrition_validator_deterministically_joins_a_named_food_with_its_next_
     assert validate_daily_nutrition(plan, targets).valid is True
 
 
-def test_daily_nutrition_semantic_failure_is_terminal_without_leaking_or_persisting_rejected_plan(
+def test_daily_nutrition_semantic_failure_uses_source_backed_recovery_without_leaking_rejected_plan(
         client, captured, monkeypatch):
     profile_block = "Calorie target: 2800 kcal\nProtein target: minimum 175g/day"
     invalid_rows = [("Breakfast", "2 pcs", "70 g", "40", "100", "20", "700"),
@@ -2532,11 +2563,17 @@ def test_daily_nutrition_semantic_failure_is_terminal_without_leaking_or_persist
 
     response = _post(client, "Give me a full-day nutrition plan")
 
-    failure = nutrition_conversation.failed_message("en")
-    assert _events(response) == [{"t": failure}, {"done": True}]
+    events = _events(response)
+    delivered = events[0]["t"]
+    assert events[-1] == {"done": True}
+    assert delivered.startswith("| Meal | Food")
+    assert invalid not in delivered
     assert len(calls) == 2
     saved = store.list_conversation(uid, limit=10)
-    assert [turn["content"] for turn in saved] == ["Give me a full-day nutrition plan", failure]
+    assert [turn["content"] for turn in saved] == ["Give me a full-day nutrition plan", delivered]
+    plans = store.list_nutrition_plans(uid)
+    assert len(plans) == 1
+    assert plans[0]["plan"]["provenance"]["generator"] == "source_backed_catalog_fallback"
 
 
 def _communication_projections(*, adaptation=None, recovery="fresh", blueprint=None, rules=()):

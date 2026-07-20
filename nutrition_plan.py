@@ -6,7 +6,7 @@ rendered chat response and never upgrades legacy rendered nutrition history.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_CEILING
 from enum import Enum
 import datetime as dt
 import json
@@ -254,6 +254,11 @@ def build_source_backed_plan(targets: NutritionTargets, lang: str, *,
             ),
             max_search_nodes=200_000,
         )
+        # The isolated optimizer has a documented feasible envelope.  For a
+        # higher confirmed target, obtain its largest bounded base plan, then
+        # add only catalog foods at their approved increments below.  No model
+        # value is inferred or recalculated.
+        optimizer_kcal_target = min(targets.kcal, Decimal("2500"))
         result = build_nutrition_plan(
             NutritionPlanRequest(
                 language="en" if str(lang).lower() == "en" else "bg",
@@ -265,7 +270,7 @@ def build_source_backed_plan(targets: NutritionTargets, lang: str, *,
                 caller_route_status=CallerRouteStatus.ELIGIBLE,
                 service_version=SERVICE_VERSION,
                 targets=EngineTargets(
-                    calories_target=targets.kcal,
+                    calories_target=optimizer_kcal_target,
                     calories_tolerance=Decimal("0.05"),
                     protein_min_g=targets.protein,
                 ),
@@ -279,6 +284,18 @@ def build_source_backed_plan(targets: NutritionTargets, lang: str, *,
         for food in catalog.foods:
             names[food.display_name_bg] = food
             names[food.display_name_en] = food
+
+        def catalog_food_payload(source, grams: Decimal) -> dict[str, str]:
+            factor = grams / Decimal("100")
+            return {
+                "display_name": source.display_name_en if str(lang).lower() == "en" else source.display_name_bg,
+                "catalog_id": source.food_id,
+                "grams": str(grams),
+                "protein_g": str(source.protein_per_100g * factor),
+                "carbs_g": str(source.carbs_per_100g * factor),
+                "fat_g": str(source.fat_per_100g * factor),
+                "kcal": str(source.kcal_per_100g * factor),
+            }
 
         meals = []
         labels = {"Breakfast": "breakfast", "Закуска": "breakfast",
@@ -313,6 +330,32 @@ def build_source_backed_plan(targets: NutritionTargets, lang: str, *,
                 "time": ("08:00", "13:00", "19:00")[index],
                 "foods": foods,
             })
+
+        current_kcal = sum(
+            Decimal(food["kcal"])
+            for meal in meals for food in meal["foods"]
+        )
+        lower_kcal = targets.kcal * Decimal("0.95")
+        # Source-backed additions are deliberately limited to familiar, single
+        # ingredient food records.  They extend only an otherwise validated
+        # base plan and keep every value traceable to the same catalog.
+        for food_id in ("dev_rice_cooked", "dev_pasta_cooked", "dev_olive_oil"):
+            if current_kcal >= lower_kcal:
+                break
+            source = catalog.by_id(food_id)
+            if source is None or source.kcal_per_100g <= 0:
+                return None
+            increment = source.portion_increment
+            needed_grams = ((lower_kcal - current_kcal) * Decimal("100") / source.kcal_per_100g)
+            increments = (needed_grams / increment).to_integral_value(rounding=ROUND_CEILING)
+            grams = min(source.maximum_portion, max(source.minimum_portion, increments * increment))
+            if grams <= 0:
+                return None
+            addition = catalog_food_payload(source, grams)
+            meals[-1]["foods"].append(addition)
+            current_kcal += Decimal(addition["kcal"])
+        if current_kcal < lower_kcal or current_kcal > targets.kcal * Decimal("1.05"):
+            return None
 
         # The profile expresses protein as a minimum. The catalog optimizer
         # enforces that lower bound; the canonical delivery validator therefore

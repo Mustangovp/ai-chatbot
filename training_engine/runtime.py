@@ -143,6 +143,14 @@ def _equipment(value: object) -> frozenset[Equipment]:
             resolved.extend((Equipment.BODYWEIGHT, Equipment.DUMBBELL, Equipment.BARBELL,
                              Equipment.CABLE, Equipment.BENCH, Equipment.PULLUP_BAR))
             continue
+        # These are the stable values submitted by the existing browser profile
+        # wizard.  They are capability groups, not unsupported equipment names.
+        if token == "home":
+            resolved.extend((Equipment.BODYWEIGHT, Equipment.DUMBBELL, Equipment.PULLUP_BAR))
+            continue
+        if token == "none":
+            resolved.append(Equipment.BODYWEIGHT)
+            continue
         try:
             resolved.append(_EQUIPMENT[token])
         except KeyError as error:
