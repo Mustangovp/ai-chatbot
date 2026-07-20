@@ -2621,13 +2621,13 @@ def chat():
                             )
                             reply_text = nutrition_plan.render(authoritative_plan, lang)
                         except Exception as repair_error:
-                            print(f"[chat] nutrition repair failed: {type(repair_error).__name__}")
+                            print(f"[chat] nutrition repair failed: {type(repair_error).__name__} reason={repair_error}")
                             failed_nutrition_turn = nutrition_conversation.fail_generation(
                                 _nutrition_conversation, lang, "structured_plan_validation_failed")
                             reply_text = failed_nutrition_turn.user_response or nutrition_conversation.failed_message(lang)
                             nutrition_delivery_failed = True
                     except Exception as nutrition_error:
-                        print(f"[chat] nutrition orchestration failed: {type(nutrition_error).__name__}")
+                        print(f"[chat] nutrition orchestration failed: {type(nutrition_error).__name__} reason={nutrition_error}")
                         failed_nutrition_turn = nutrition_conversation.fail_generation(
                             _nutrition_conversation, lang, "structured_plan_validation_failed")
                         reply_text = failed_nutrition_turn.user_response or nutrition_conversation.failed_message(lang)
