@@ -66,7 +66,8 @@ def _render_text_delivery(plan: TrainingPlanBlueprintV2, library: ExerciseLibrar
 
 def render_completion_projection(plan: TrainingPlanBlueprintV2, library: ExerciseLibrary) -> dict:
     """Internal browser metadata; it is emitted outside visible workout text."""
-    return completion_projection(plan, library)
+    projection = completion_projection(plan, library)
+    return {**projection, "sessions": projection["sessions"][:1]}
 
 
 def render_delivery(plan: TrainingPlanBlueprintV2, library: ExerciseLibrary,
@@ -77,7 +78,7 @@ def render_delivery(plan: TrainingPlanBlueprintV2, library: ExerciseLibrary,
     session_label = "Session" if english else "\u0421\u0435\u0441\u0438\u044f"
     minute_label = "min" if english else "\u043c\u0438\u043d"
     lines = [f"**{title}**"]
-    for session in plan.sessions:
+    for session in plan.sessions[:1]:
         lines.extend((
             f"\n**{session_label} {session.session_index} · {session.estimated_duration_minutes} {minute_label}**",
             "| Exercise | Sets | Reps | Rest | Note |",

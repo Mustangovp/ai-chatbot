@@ -1302,7 +1302,9 @@ def test_training_engine_active_preserves_verified_upper_lower_split_through_cha
     assert planning.training_split == "upper_lower"
     assert plan.training_split.value == "upper_lower"
     assert [len(session.prescriptions) for session in plan.sessions] == [3, 4]
-    assert "**Session 1" in events[0]["t"] and "**Session 2" in events[0]["t"]
+    assert "**Session 1" in events[0]["t"]
+    assert "**Session 2" not in events[0]["t"]
+    assert len(events[1]["training_completion"]["sessions"]) == 1
     assert captured["system"].startswith("[FIXED TRAINING PLAN]")
 
 
