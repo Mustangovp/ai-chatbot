@@ -93,7 +93,7 @@ def _enforce_off_by_default(monkeypatch):
     monkeypatch.delenv("PERSONA_MATCHER_SHADOW", raising=False)
     monkeypatch.delenv("EXPERT_CONSENSUS_SHADOW", raising=False)
     monkeypatch.delenv("PERSONA_EXPERT_COMMUNICATION_ACTIVE", raising=False)
-    monkeypatch.delenv("TRAINING_ENGINE_ACTIVE", raising=False)
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "false")
     yield
 
 
@@ -127,6 +127,18 @@ def _set_stream(monkeypatch, captured, reply, *, raw_structured_completion=False
         return stream()
 
     monkeypatch.setattr(appmod.client.chat.completions, "create", fake_create)
+
+
+def test_training_engine_is_active_when_the_flag_is_absent(monkeypatch):
+    monkeypatch.delenv("TRAINING_ENGINE_ACTIVE", raising=False)
+
+    assert appmod._training_engine_active() is True
+
+
+def test_training_engine_respects_an_explicit_off_flag(monkeypatch):
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "false")
+
+    assert appmod._training_engine_active() is False
 
 
 def test_chat_applies_traceable_completed_workout_to_next_training_revision(client, captured, monkeypatch):
@@ -369,6 +381,35 @@ def test_exact_stop_command_bypasses_generation_quota_persistence_and_learning(c
     assert quota_calls == []
     assert persistence_calls == []
     assert learning_calls == []
+
+
+def test_interrupted_model_stream_never_persists_or_finalizes_partial_output(client, captured, monkeypatch):
+    persistence_calls, learning_calls, plan_calls = [], [], []
+    _login_for_chat(client, _profile())
+
+    def interrupted_create(**kwargs):
+        captured["messages"] = kwargs["messages"]
+        def stream():
+            yield _Chunk("partial output")
+            raise RuntimeError("upstream interrupted")
+        return stream()
+
+    monkeypatch.setattr(appmod.client.chat.completions, "create", interrupted_create)
+    monkeypatch.setattr(appmod.store, "add_conversation",
+                        lambda *args: persistence_calls.append(args))
+    monkeypatch.setattr(appmod, "_update_learning_engine",
+                        lambda *args: learning_calls.append(args))
+    monkeypatch.setattr(appmod, "_bump_plans_today", lambda: plan_calls.append(True))
+
+    events = _events(_post(client, "hello", profile=_profile()))
+
+    assert events[0] == {"t": "partial output"}
+    assert events[-1]["error"] is True
+    assert events[-1]["not_counted"] is True
+    assert not any(event.get("done") for event in events)
+    assert persistence_calls == []
+    assert learning_calls == []
+    assert plan_calls == []
 
 
 @pytest.mark.parametrize("message", [
@@ -1119,10 +1160,11 @@ def test_training_engine_active_delivers_only_deterministic_training_plan(client
     response = _post(client, "build a workout", profile=profile)
     events = _events(response)
 
-    assert captured["system"].startswith("[FIXED TRAINING PLAN]")
+    assert appmod.SYSTEM_INSTRUCTIONS in captured["system"]
+    assert "[FIXED TRAINING PLAN]" in captured["system"]
+    assert captured["system"].endswith("}")
     assert captured["response_format"] == {"type": "json_object"}
     assert captured["stream"] is None
-    assert appmod.SYSTEM_INSTRUCTIONS not in captured["system"]
     assert len(events) == 3 and events[-1] == {"done": True}
     assert events[1]["training_completion"]["plan_id"]
     assert "Goblet Squat" in events[0]["t"]
@@ -1284,7 +1326,8 @@ def test_training_engine_active_builds_a_traceable_home_beginner_session(client,
     assert "**Why this workout:**" in events[0]["t"]
     assert events[1]["training_completion"]["sessions"][0]["exercises"][1]["exercise_id"] == "bodyweight.wall_push_up"
     assert appmod._cold_start_workout_reply("en") != events[0]["t"]
-    assert captured["system"].startswith("[FIXED TRAINING PLAN]")
+    assert appmod.SYSTEM_INSTRUCTIONS in captured["system"]
+    assert "[FIXED TRAINING PLAN]" in captured["system"]
 
 
 def test_training_engine_active_preserves_verified_upper_lower_split_through_chat(client, captured, monkeypatch):
@@ -1305,7 +1348,8 @@ def test_training_engine_active_preserves_verified_upper_lower_split_through_cha
     assert "**Session 1" in events[0]["t"]
     assert "**Session 2" not in events[0]["t"]
     assert len(events[1]["training_completion"]["sessions"]) == 1
-    assert captured["system"].startswith("[FIXED TRAINING PLAN]")
+    assert appmod.SYSTEM_INSTRUCTIONS in captured["system"]
+    assert "[FIXED TRAINING PLAN]" in captured["system"]
 
 
 def test_active_recommendation_engine_keeps_nutrition_on_the_legacy_path(client, captured, monkeypatch):

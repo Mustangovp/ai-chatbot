@@ -31,6 +31,10 @@ ENV/
 *.log
 logs/
 
+# Playwright generated artifacts
+/playwright-report/
+/test-results/
+
 # Database
 *.db
 *.sqlite

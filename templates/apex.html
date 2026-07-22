@@ -647,6 +647,44 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 </defs></svg>
 
 <script>
+/* Account-owned browser data. Bare legacy keys are claimed only by the current
+   anonymous browser identity and are never uploaded into an account. */
+const OWNED_STORAGE_KEYS=Object.freeze(['apexProfile','apexHistory','apexWorkoutLog','apexCoachMemory']);
+const ACTIVE_OWNER_KEY='apexActiveDataOwnerV1',ANON_OWNER_KEY='apexAnonymousOwnerV1';
+const newOwnerId=()=>{try{return crypto.randomUUID();}catch(e){return Date.now().toString(36)+Math.random().toString(36).slice(2);}};
+function anonymousOwnerId(rotate=false){
+  let id=rotate?'':localStorage.getItem(ANON_OWNER_KEY);
+  if(!id){id=newOwnerId();localStorage.setItem(ANON_OWNER_KEY,id);}
+  return id;
+}
+let DATA_OWNER={kind:'anonymous',id:anonymousOwnerId()};
+function dataOwnerToken(owner=DATA_OWNER){return owner.kind+':'+owner.id;}
+function ownedStorageKey(key,owner=DATA_OWNER){
+  if(!OWNED_STORAGE_KEYS.includes(key))throw new Error('unowned_storage_key');
+  return 'apexOwnedV1:'+dataOwnerToken(owner)+':'+key;
+}
+function ownedStorageGet(key,owner=DATA_OWNER){return localStorage.getItem(ownedStorageKey(key,owner));}
+function ownedStorageSet(key,value,owner=DATA_OWNER){localStorage.setItem(ownedStorageKey(key,owner),value);}
+function ownedStorageRemove(key){localStorage.removeItem(ownedStorageKey(key));}
+function activateDataOwner(kind,id){
+  DATA_OWNER={kind,id:String(id)};
+  localStorage.setItem(ACTIVE_OWNER_KEY,dataOwnerToken());
+}
+function rotateAnonymousOwner(){
+  const id=anonymousOwnerId(true);activateDataOwner('anonymous',id);return id;
+}
+function claimLegacyDataAsAnonymous(){
+  const anonymous={kind:'anonymous',id:DATA_OWNER.id};
+  OWNED_STORAGE_KEYS.forEach(key=>{
+    const legacy=localStorage.getItem(key);
+    if(legacy!==null&&ownedStorageGet(key,anonymous)===null)ownedStorageSet(key,legacy,anonymous);
+    localStorage.removeItem(key);
+  });
+}
+claimLegacyDataAsAnonymous();
+window.addEventListener('storage',event=>{
+  if(event.key===ACTIVE_OWNER_KEY&&event.newValue&&event.newValue!==dataOwnerToken())location.reload();
+});
 /* ═══════════════════════════════════════════════════════════════════
    LIVING ENERGY ORGANISM — volumetric plasma / nebula
    Smooth, soft, breathing. No particles. No flicker. No visible loop.
@@ -1116,13 +1154,13 @@ function witness(fact,payload){try{if(window.core&&core.athlete)core.athlete.obs
    PHYSIOLOGY
    ═══════════════════════════════════════════════════════════════════ */
 function computePhysiology(){
-  let p={};try{p=JSON.parse(localStorage.getItem('apexProfile')||'{}');}catch(e){}
+  let p={};try{p=JSON.parse(ownedStorageGet('apexProfile')||'{}');}catch(e){}
   const sleep=(p.sleepQuality||'average').toLowerCase(),stress=(p.stressLevel||'moderate').toLowerCase(),rec=(p.recoveryFeel||'ok').toLowerCase();
   let recovery=.55,fatigue=.38,str=.3;
   if(sleep==='good'){recovery+=.22;fatigue-=.15;} else if(sleep==='poor'){recovery-=.25;fatigue+=.25;}
   if(rec==='fresh'){recovery+=.12;fatigue-=.1;} else if(rec==='tired'){recovery-=.14;fatigue+=.14;}
   if(stress==='low'){str=.18;recovery+=.06;} else if(stress==='high'){str=.72;recovery-=.12;fatigue+=.12;} else str=.4;
-  try{const log=JSON.parse(localStorage.getItem('apexWorkoutLog')||'[]');
+  try{const log=JSON.parse(ownedStorageGet('apexWorkoutLog')||'[]');
     const recent=log.filter(s=>Date.now()-(s.ts||0)<2*864e5).length; fatigue+=Math.min(recent*.08,.24);}catch(e){}
   const cl=v=>Math.max(.05,Math.min(.97,v));
   return{recovery:cl(recovery),fatigue:cl(fatigue),stress:cl(str)};
@@ -1131,11 +1169,11 @@ function computePhysiology(){
 /* ═══════════════════════════════════════════════════════════════════
    COACH MEMORY — persistent. APEX never meets the user for the first time.
    ═══════════════════════════════════════════════════════════════════ */
-function memLoad(){try{return JSON.parse(localStorage.getItem('apexCoachMemory')||'{}');}catch(e){return{};}}
-function memSave(m){localStorage.setItem('apexCoachMemory',JSON.stringify(m));}
+function memLoad(){try{return JSON.parse(ownedStorageGet('apexCoachMemory')||'{}');}catch(e){return{};}}
+function memSave(m){ownedStorageSet('apexCoachMemory',JSON.stringify(m));}
 function logWorkout(session,workoutCompletion=null){
-  let log=[];try{log=JSON.parse(localStorage.getItem('apexWorkoutLog')||'[]');}catch(e){}
-  log.push(session); localStorage.setItem('apexWorkoutLog',JSON.stringify(log.slice(-60)));
+  let log=[];try{log=JSON.parse(ownedStorageGet('apexWorkoutLog')||'[]');}catch(e){}
+  log.push(session); ownedStorageSet('apexWorkoutLog',JSON.stringify(log.slice(-60)));
   accountLogWorkout(session,workoutCompletion); // → account timeline (server truth) when signed in
   const m=memLoad();
   m.lastWorkout=session; m.lastWorkoutAt=session.ts;
@@ -1149,7 +1187,7 @@ function logWorkout(session,workoutCompletion=null){
 }
 // Build the [WORKOUT MEMORY] block the backend coaching engine reads.
 function buildWorkoutContext(en){
-  let log=[];try{log=JSON.parse(localStorage.getItem('apexWorkoutLog')||'[]');}catch(e){}
+  let log=[];try{log=JSON.parse(ownedStorageGet('apexWorkoutLog')||'[]');}catch(e){}
   if(!log.length)return '';
   const m=memLoad(), last=log[log.length-1];
   const wkAgo=Date.now()-(last.ts||0), justDone=wkAgo<2*3600e3;
@@ -1348,7 +1386,7 @@ function toggleLang(){lang=lang==='en'?'bg':'en';localStorage.setItem('apexLang'
    PROFILE WIZARD
    ═══════════════════════════════════════════════════════════════════ */
 let wizStep=0;
-function pfLoad(){try{return JSON.parse(localStorage.getItem('apexProfile')||'{}');}catch(e){return{};}}
+function pfLoad(){try{return JSON.parse(ownedStorageGet('apexProfile')||'{}');}catch(e){return{};}}
 function wizGo(n){
   wizStep=n;
   document.querySelectorAll('.wiz-card').forEach(c=>c.classList.toggle('on',+c.dataset.card===n));
@@ -1387,7 +1425,7 @@ function saveProfile(){
     injuries,surgeries,limitations:limits,notes,
     healthNotes:hb.join('. ')  // backend reads healthNotes for constraints
   };
-  localStorage.setItem('apexProfile',JSON.stringify(p));
+  ownedStorageSet('apexProfile',JSON.stringify(p));
   accountSaveProfile(p);              // → account (server truth) when signed in
   const m=memLoad(); m.goals=p.goalDetail; memSave(m);
   document.getElementById('profile-modal').classList.remove('on');
@@ -1497,7 +1535,7 @@ async function goCheckout(plan){
 }
 function showHistory(){
   witness('historyOpened');   // fact: the shared past is being touched
-  const h=tr().hist; let log=[];try{log=JSON.parse(localStorage.getItem('apexWorkoutLog')||'[]');}catch(e){}
+  const h=tr().hist; let log=[];try{log=JSON.parse(ownedStorageGet('apexWorkoutLog')||'[]');}catch(e){}
   let body='<p class="sd" style="margin-bottom:16px">'+h.desc+'</p>';
   if(!log.length){ body+='<div class="hist-empty">'+h.empty+'</div>'; }
   else{
@@ -1529,7 +1567,7 @@ function showSettings(){
 function voicePick(id){ VoiceReg.set(id); toast(lang==='bg'?'Гласът е запазен ✓':'Voice saved ✓'); }
 function resetLocal(){
   const st=tr().settings; if(!confirm(st.resetConfirm))return;
-  ['apexProfile','apexHistory','apexWorkoutLog','apexCoachMemory'].forEach(k=>localStorage.removeItem(k));
+  OWNED_STORAGE_KEYS.forEach(ownedStorageRemove);
   closePanel(); applyReadout(); toast(st.reset2); setTimeout(()=>openProfile(0),400);
 }
 
@@ -1544,6 +1582,8 @@ async function loadSession(){
     const r=await fetch('/auth/me',{credentials:'same-origin'});
     SESSION=Object.assign({authenticated:false,plan:'free',status:'free'},await r.json());
   }catch(e){ SESSION={authenticated:false,plan:'free',status:'free',email:null}; }
+  if(SESSION.authenticated&&SESSION.email)activateDataOwner('account',SESSION.email.trim().toLowerCase());
+  else activateDataOwner('anonymous',DATA_OWNER.kind==='anonymous'?DATA_OWNER.id:anonymousOwnerId());
   // If just signed in, pull the account's canonical data down (DB → cache) once.
   if(SESSION.authenticated){ await syncFromAccount(); }
   buildMenu();
@@ -1554,23 +1594,23 @@ async function syncFromAccount(){
   // First migrate any local cache up to the account, then read account truth down.
   try{
     const cache={};
-    try{cache.profile=JSON.parse(localStorage.getItem('apexProfile')||'null');}catch(e){}
-    try{cache.workoutLog=JSON.parse(localStorage.getItem('apexWorkoutLog')||'[]');}catch(e){}
-    try{cache.chatHistory=JSON.parse(localStorage.getItem('apexHistory')||'[]');}catch(e){}
+    try{cache.profile=JSON.parse(ownedStorageGet('apexProfile')||'null');}catch(e){}
+    try{cache.workoutLog=JSON.parse(ownedStorageGet('apexWorkoutLog')||'[]');}catch(e){}
+    try{cache.chatHistory=JSON.parse(ownedStorageGet('apexHistory')||'[]');}catch(e){}
     const r=await fetch('/api/sync',{method:'POST',headers:{'Content-Type':'application/json'},
       credentials:'same-origin',body:JSON.stringify(cache)});
     const d=await r.json();
-    if(d&&d.profile&&Object.keys(d.profile).length){ localStorage.setItem('apexProfile',JSON.stringify(d.profile)); }
+    if(d&&d.profile&&Object.keys(d.profile).length){ ownedStorageSet('apexProfile',JSON.stringify(d.profile)); }
     if(d&&Array.isArray(d.workouts)){
       // account timeline → local cache (newest first from API; store oldest→newest)
       const log=d.workouts.map(w=>({ts:Date.parse(w.occurred_at)||Date.now(),date:(w.occurred_at||'').slice(0,10),
         type:w.type,exercises:w.exercises||[],diff:w.difficulty,completion:w.completion})).reverse();
-      if(log.length) localStorage.setItem('apexWorkoutLog',JSON.stringify(log));
+      if(log.length) ownedStorageSet('apexWorkoutLog',JSON.stringify(log));
     }
     // Chat transcript from the account (server truth) → cache, so the coach
     // continues the previous conversation on any device.
     if(d&&Array.isArray(d.conversations)&&d.conversations.length){
-      localStorage.setItem('apexHistory',JSON.stringify(d.conversations.slice(-40)));
+      ownedStorageSet('apexHistory',JSON.stringify(d.conversations.slice(-40)));
     }
     applyReadout();
   }catch(e){ console.debug('sync failed',e); }
@@ -1602,7 +1642,7 @@ async function sendMagicLink(){
 async function logout(){
   try{ await fetch('/auth/logout',{method:'POST',credentials:'same-origin'}); }catch(e){}
   SESSION={authenticated:false,plan:'free',status:'free',email:null};
-  localStorage.removeItem('apexToken'); buildMenu(); closePanel(); toast(tr().auth.loggedOut);
+  localStorage.removeItem('apexToken'); rotateAnonymousOwner(); buildMenu(); closePanel(); toast(tr().auth.loggedOut);
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -1706,15 +1746,15 @@ function collapsedNutritionBlock(line){
   const label=cells[0].replace(/[:：].*$/,'').trim();   // "Lunch:" → "Lunch"
   if(!collapsedMealLabel(label)) return null;
   const isNum=c=>/^\d+([.,]\d+)?$/.test(c);                                                        // macro / kcal
-  const isQty=c=>/\d/.test(c)&&/^\d+([.,]\d+)?\s*(g|г|гр|ml|мл|kg|кг|oz|бр|pcs|порц\.?)?$/i.test(c);// quantity
+  const isServing=c=>/\d/.test(c)&&/^\d+([.,]\d+)?\s*(g|г|гр|ml|мл|kg|кг|oz|бр|pcs|порц\.?)$/i.test(c);
   const rest=cells.slice(1).filter(c=>c!=='');
   const body=[[label,'','','','']];                     // meal section row (name only)
   let k=0, foods=0;
   while(k<rest.length){
-    if(isNum(rest[k])||isQty(rest[k])){ k++; continue; }         // stray number with no name → skip
+    if(isNum(rest[k])||isServing(rest[k])){ k++; continue; }     // stray value with no name → skip
     const name=rest[k]; k++;
     const vals=[];
-    while(k<rest.length && (isQty(rest[k])||isNum(rest[k])) && vals.length<5){ vals.push(rest[k]); k++; }
+    while(k<rest.length && (isServing(rest[k])||isNum(rest[k])) && vals.length<5){ vals.push(rest[k]); k++; }
     if(vals.length<4) continue;                          // need P,C,F,kcal at least → not a food row
     const m=vals.slice(vals.length-4);                   // last four = P,C,F,kcal (drop any leading qty)
     body.push([name, m[0], m[1], m[2], m[3]]);
@@ -1739,28 +1779,53 @@ function mealHeaderName(line){
 }
 function isMealCell(v){ return MEAL_RE.test(mdClean(v).replace(/[:：]\s*$/,'').trim()); }
 const _isPureNum=c=>/^\d+([.,]\d+)?$/.test((c||'').trim());
-const _isQty=c=>{c=(c||'').trim();return /\d/.test(c)&&/^\d+([.,]\d+)?\s*(g|г|гр|kg|кг|ml|мл|oz|бр|pcs|порц\.?|slices?|cup|чаша|tbsp|tsp|eggs?|яйц\w*)?\.?$/i.test(c);};
+const _isServingValue=c=>{c=(c||'').trim();return /\d/.test(c)&&/^\d+([.,]\d+)?\s*(g|г|гр|kg|кг|ml|мл|oz|бр|pcs|порц\.?|slices?|cup|чаша|tbsp|tsp|eggs?|яйц\w*)\.?$/i.test(c);};
 const _isTotal=s=>/[\s(|:](total|totals|общо|сумарно|сума|итого|daily\s*total|дневн\w*)/i.test(' '+mdClean(s));
 function _nums(s){return (String(s).match(/\d+(?:[.,]\d+)?/g)||[]);}
+function nutritionField(v){
+  const h=mdClean(v).toLowerCase();
+  if(/^(meal|food|dish|product|name|хранене|ястие|продукт|име)$/.test(h))return'name';
+  if(/^(quantity|qty|amount|serving|serving size|portion|grams?|количество|порция|грамаж)$/.test(h))return'qty';
+  if(/^(protein|протеин|белтъчини)$/.test(h))return'p';
+  if(/^(carbs?|carbohydrates|въглехидрати)$/.test(h))return'c';
+  if(/^(fat|fats|мазнини)$/.test(h))return'f';
+  if(/^(kcal|calories|calorie|ккал|калории)$/.test(h))return'k';
+  return null;
+}
+function nutritionSchema(cells){
+  const schema={name:-1,qty:-1,p:-1,c:-1,f:-1,k:-1,width:(cells||[]).length};
+  (cells||[]).forEach((cell,index)=>{const field=nutritionField(cell);if(field&&schema[field]===-1)schema[field]=index;});
+  return schema.name>=0&&[schema.p,schema.c,schema.f,schema.k].filter(index=>index>=0).length>=3?schema:null;
+}
 function isNutritionTableHeader(cells){
   const h=(cells||[]).join(' ').toLowerCase();
   if(/серии|sets|повторения|reps|упражнение|exercise/.test(h)) return false;
-  return /протеин|protein|въглехидрат|carb|мазнини|fat|ккал|kcal|калори|calor/.test(h) && (cells||[]).filter(c=>c&&!_isPureNum(c)).length>=2;
+  return !!nutritionSchema(cells);
 }
 /* one pipe/collapsed row → ordered items (meal titles / foods / totals) */
-function itemsFromCells(cells){
+function itemFromSchema(cells,schema){
+  const value=field=>schema[field]>=0?mdClean(cells[schema[field]]||''):'';
+  const name=value('name'); if(!name)return null;
+  const item={p:value('p'),c:value('c'),f:value('f'),k:value('k')};
+  if(_isTotal(name))return{type:'total',...item};
+  if(isMealCell(name)&&!item.p&&!item.c&&!item.f&&!item.k)return{type:'meal',name:mealHeaderName(name)||name};
+  return{type:'food',name,qty:value('qty'),...item};
+}
+function itemsFromCells(cells,schema=null){
   cells=(cells||[]).map(mdClean);
+  if(schema&&cells.length===schema.width){const item=itemFromSchema(cells,schema);return item?[item]:[];}
   const items=[]; let k=0;
   while(k<cells.length){
     const c=cells[k];
-    if(!c||_isPureNum(c)||_isQty(c)){k++;continue;}
+    if(!c||_isPureNum(c)||_isServingValue(c)){k++;continue;}
     const name=c; k++;
     while(k<cells.length && cells[k]==='') k++;              // skip padding empties, e.g. "Total | | | 13 | 1 | 11 | 155"
     const vals=[];
-    while(k<cells.length && (_isPureNum(cells[k])||_isQty(cells[k]))){ vals.push(cells[k]); k++; }
+    while(k<cells.length && (_isPureNum(cells[k])||_isServingValue(cells[k]))){ vals.push(cells[k]); k++; }
     const nums=vals.filter(_isPureNum);
     if(nums.length>=3){
-      const qty=vals.find(_isQty)||''; const m=nums.slice(-4);
+      const qty=vals.length===5&&_isServingValue(vals[0])?vals[0]:'';
+      const m=nums.slice(-4);
       if(_isTotal(name)) items.push({type:'total',p:m[0]||'',c:m[1]||'',f:m[2]||'',k:m.length>=4?m[3]:''});
       else items.push({type:'food',name,qty,p:m[0]||'',c:m[1]||'',f:m[2]||'',k:m.length>=4?m[3]:''});
     } else if(isMealCell(name)){
@@ -1801,20 +1866,21 @@ function nutritionStarts(lines,i){
 }
 function nutritionScan(lines,start){
   if(!nutritionStarts(lines,start)) return null;
-  const model=[]; let i=start;
+  const model=[]; let i=start, schema=null;
   while(i<lines.length){
     const t=(lines[i]||'').trim();
     if(t===''){ let j=i+1; while(j<lines.length&&lines[j].trim()==='')j++;
       if(j>=lines.length||!_nutritionLine(lines[j].trim())) break; i=j; continue; }
     if(t.includes('-')&&/^[\s|:\-]+$/.test(t)){ i++; continue; }                 // markdown separator row
     const mh=mealHeaderName(t);
-    if(mh){ model.push({type:'meal',name:mh}); i++; continue; }
+    if(mh){ model.push({type:'meal',name:mh}); schema=null; i++; continue; }
     if(!t.includes('|')&&_isTotal(t)&&_nums(t).length>=3){ const m=_nums(t).slice(-4);
       model.push({type:'total',p:m[0]||'',c:m[1]||'',f:m[2]||'',k:m.length>=4?m[3]:''}); i++; continue; }
     if(t.includes('|')){
       const cells=pipeCells(t);
-      if(isNutritionTableHeader(cells)){ i++; continue; }                        // column header → skip
-      const its=itemsFromCells(cells);
+      const rowSchema=nutritionSchema(cells);
+      if(rowSchema){ schema=rowSchema; i++; continue; }                          // column header → retain semantics
+      const its=itemsFromCells(cells,schema);
       if(its.length){ its.forEach(x=>model.push(x)); i++; continue; }
       if(model.length){ i++; continue; }                                         // malformed pipe row → drop (no raw pipes)
       break;
@@ -1830,7 +1896,12 @@ function renderNutritionModel(model){
   const L=(lang==='bg')
     ?{p:'Белтъчини',c:'Въглехидрати',f:'Мазнини',k:'Калории',u:'г',cap:'Хранителна стойност'}
     :{p:'Protein',c:'Carbs',f:'Fat',k:'Calories',u:'g',cap:'Nutrition value'};
-  const clip=v=>(v||'').toString().replace(/[^\d.,]/g,'');
+  const clip=v=>{
+    const raw=(v||'').toString().replace(/[^\d.,-]/g,'').replace(',','.');
+    const value=Number(raw);
+    if(!Number.isFinite(value))return '';
+    return String(Math.round(value));
+  };
   const foodCard=it=>{
     const b=[];
     if(clip(it.p))b.push('<span class="macro p"><span class="mname">'+L.p+'</span><b>'+clip(it.p)+' '+L.u+'</b></span>');
@@ -1919,7 +1990,8 @@ function colIndex(header,res){return header.findIndex(c=>res.some(r=>r.test(c.to
    Column order is positional (name/food … P, C, F, kcal), same as the scanner. */
 function renderNutrition(header,body){
   const model=[];
-  (body||[]).forEach(r=>{ itemsFromCells(r).forEach(x=>model.push(x)); });
+  const schema=nutritionSchema(header);
+  (body||[]).forEach(r=>{ itemsFromCells(r,schema).forEach(x=>model.push(x)); });
   return renderNutritionModel(model);
 }
 
@@ -1934,7 +2006,13 @@ const MUSCLE_MAP=[
   {re:/корем|abs|core|планк|plank|crunch|коремн/i,m:'core',e:'🔥',ic:'#FFB13C'},
   {re:/кардио|cardio|run|бягане|cycle|колоездене|jump|скок/i,m:'cardio',e:'⚡',ic:'#38E0FF'}
 ];
-function inferMuscle(name){for(const x of MUSCLE_MAP)if(x.re.test(name))return x;return{m:'full body',e:'⚡',ic:'#8B93A7'};}
+const MUSCLE_LABELS={
+  legs:{bg:'\u043a\u0440\u0430\u043a\u0430',en:'legs'}, chest:{bg:'\u0433\u044a\u0440\u0434\u0438',en:'chest'},
+  back:{bg:'\u0433\u0440\u044a\u0431',en:'back'}, shoulders:{bg:'\u0440\u0430\u043c\u0435\u043d\u0435',en:'shoulders'},
+  arms:{bg:'\u0440\u044a\u0446\u0435',en:'arms'}, core:{bg:'\u043a\u043e\u0440\u0435\u043c',en:'core'},
+  cardio:{bg:'\u043a\u0430\u0440\u0434\u0438\u043e',en:'cardio'}
+};
+function inferMuscle(name){for(const x of MUSCLE_MAP)if(x.re.test(name)){const labels=MUSCLE_LABELS[x.m]||{};return{...x,m:labels[lang==='bg'?'bg':'en']||x.m};}return{m:lang==='bg'?'\u0446\u044f\u043b\u043e \u0442\u044f\u043b\u043e':'full body',e:'⚡',ic:'#8B93A7'};}
 function inferDiff(reps,name){
   const r=parseInt((reps||'').replace(/[^\d]/g,''))||10;
   if(/начинаещ|beginner|лек|light/i.test(name))return'easy';
@@ -2120,11 +2198,8 @@ function finishToCoach(){
 
 /* ═══════════════════════════════════════════════════════════════════
    CHAT MESSAGES + AI ENGINE
-   Scroll ownership belongs to the USER. Arriving tokens NEVER scroll the feed
-   — no scrollTop=scrollHeight, no scrollIntoView, no bottom-snapping during
-   streaming. The assistant keeps streaming while the reader stays wherever they
-   are; "Jump to latest" is the only way to catch up. The single allowed snap is
-   when the user themselves sends a message (so they see it appear).
+   Scroll ownership belongs to the USER. A request follows new content only while
+   its owner was already at the bottom; scrolling away disarms follow immediately.
    ═══════════════════════════════════════════════════════════════════ */
 function feedNearBottom(){const f=document.getElementById('feed');return f.scrollHeight-f.scrollTop-f.clientHeight<40;}
 function showJump(){document.getElementById('jump-latest').classList.add('on');}
@@ -2134,19 +2209,178 @@ function hideJump(){document.getElementById('jump-latest').classList.remove('on'
 function smartScroll(){ feedNearBottom() ? hideJump() : showJump(); }
 // One-time snap to bottom — user-initiated only (sending a message / pressing Jump).
 function hardScroll(){ const f=document.getElementById('feed'); f.scrollTop=f.scrollHeight; hideJump(); }
-function jumpToLatest(){ hardScroll(); }
+function jumpToLatest(){if(ChatLifecycle.current&&!CHAT_TERMINAL.has(ChatLifecycle.current.state))ChatLifecycle.current.follow=true;hardScroll();}
 function appendUser(text){const feed=document.getElementById('feed');const g=feed.querySelector('.greet');if(g)g.remove();
-  const d=document.createElement('div');d.className='msg u';d.textContent=text;feed.appendChild(d);hardScroll();}
-function appendCoach(){const feed=document.getElementById('feed');const d=document.createElement('div');d.className='msg a';
+  const d=document.createElement('div');d.className='msg u';d.textContent=text;feed.appendChild(d);return d;}
+function appendCoach(requestId=''){const feed=document.getElementById('feed'),d=document.createElement('div');d.className='msg a';
+  if(requestId)d.dataset.requestId=requestId;
   d.innerHTML='<div class="who">'+tr().coach+'</div><div class="body md"></div>';feed.appendChild(d);smartScroll();return d.querySelector('.body');}
-function getHistory(){try{return JSON.parse(localStorage.getItem('apexHistory')||'[]');}catch(e){return[];}}
-function saveHistory(role,content){const h=getHistory();h.push({role,content});localStorage.setItem('apexHistory',JSON.stringify(h.slice(-40)));}
-let sending=false;
+function getHistory(){try{return JSON.parse(ownedStorageGet('apexHistory')||'[]');}catch(e){return[];}}
+function saveHistory(role,content){const h=getHistory();h.push({role,content});ownedStorageSet('apexHistory',JSON.stringify(h.slice(-40)));}
+
+const CHAT_STATES=Object.freeze({
+  IDLE:'IDLE',SENDING:'SENDING',WAITING_FIRST_TOKEN:'WAITING_FIRST_TOKEN',STREAMING:'STREAMING',
+  COMPLETING:'COMPLETING',COMPLETED:'COMPLETED',FAILED:'FAILED',CANCELLED:'CANCELLED',INTERRUPTED:'INTERRUPTED'
+});
+const CHAT_TERMINAL=new Set([CHAT_STATES.COMPLETED,CHAT_STATES.FAILED,CHAT_STATES.CANCELLED,CHAT_STATES.INTERRUPTED]);
+const STREAM_PAINT_BATCH=256;
+const CHAT_TRANSITIONS=Object.freeze({
+  IDLE:['SENDING'],SENDING:['WAITING_FIRST_TOKEN','FAILED','CANCELLED'],
+  WAITING_FIRST_TOKEN:['STREAMING','FAILED','CANCELLED','INTERRUPTED'],
+  STREAMING:['COMPLETING','FAILED','CANCELLED','INTERRUPTED'],COMPLETING:['COMPLETED','FAILED'],
+  COMPLETED:[],FAILED:['SENDING'],CANCELLED:['SENDING'],INTERRUPTED:['SENDING']
+});
+const STOP_TURNS=new Set(['спри','стоп','млъкни','спри да говориш','stop','stop talking','be quiet','silence']);
+function isStopTurn(text){return STOP_TURNS.has(String(text||'').trim().toLowerCase().replace(/[.!?…]+$/,'').trim());}
+
+const ChatLifecycle={
+  current:null,sequence:0,
+  busy(){return !!this.current&&!CHAT_TERMINAL.has(this.current.state);},
+  transition(x,next){
+    if(!x||this.current!==x||!(CHAT_TRANSITIONS[x.state]||[]).includes(next))throw new Error('invalid_chat_transition');
+    x.state=next;const c=document.getElementById('consult');if(c)c.dataset.chatState=next.toLowerCase();
+  },
+  begin(message,options,priorHistory){
+    if(this.busy())return null;
+    const retry=this.current&&this.current.message===message&&
+      [CHAT_STATES.FAILED,CHAT_STATES.CANCELLED,CHAT_STATES.INTERRUPTED].includes(this.current.state);
+    let x;
+    if(retry){
+      x=this.current;this.transition(x,CHAT_STATES.SENDING);x.attempt++;
+      Object.assign(x,{options,controller:new AbortController(),typing:null,full:'',speechText:'',
+        done:false,closed:false,follow:feedNearBottom(),watchdog:null,reader:null,pendingText:'',
+        paintHandle:null,paintPromise:null,paintResolve:null,streamLineNode:null,streamSuppressed:false});
+    }else{
+      x={id:'chat-'+(++this.sequence),state:CHAT_STATES.IDLE,attempt:1,message,options,
+        priorHistory,controller:new AbortController(),typing:null,assistantBody:null,full:'',speechText:'',
+        done:false,closed:false,follow:feedNearBottom(),watchdog:null,reader:null,pendingText:'',
+        paintHandle:null,paintPromise:null,paintResolve:null,streamLineNode:null,streamSuppressed:false};
+      this.current=x;this.transition(x,CHAT_STATES.SENDING);
+      if(!options.sessionStart){appendUser(message);saveHistory('user',message);}
+    }
+    const ty=document.createElement('div');ty.className='typing';ty.dataset.requestId=x.id;
+    ty.innerHTML='<span class="tl">'+tr().typing+'</span><i></i><i></i><i></i>';
+    document.getElementById('feed').appendChild(ty);x.typing=ty;
+    if(x.follow)hardScroll();else smartScroll();
+    witness('exchangeOpened');
+    return x;
+  },
+  waiting(x){this.transition(x,CHAT_STATES.WAITING_FIRST_TOKEN);},
+  removeTyping(x){if(x.typing&&x.typing.parentNode)x.typing.remove();x.typing=null;},
+  content(x,text){
+    if(!text||this.current!==x)return;
+    if(x.state===CHAT_STATES.WAITING_FIRST_TOKEN){
+      this.transition(x,CHAT_STATES.STREAMING);this.removeTyping(x);
+      if(x.assistantBody)x.assistantBody.innerHTML='';
+      else x.assistantBody=appendCoach(x.id);
+      if(x.follow)hardScroll();
+    }
+    if(x.state!==CHAT_STATES.STREAMING)return;
+    x.full+=text;x.pendingText+=text;witness('replyToken');this.schedulePaint(x);
+  },
+  appendStreamText(x,text){
+    const fragment=document.createDocumentFragment();let start=0;
+    const appendRun=end=>{
+      if(end<=start||x.streamSuppressed)return;
+      if(!x.streamLineNode){x.streamLineNode=document.createTextNode('');fragment.appendChild(x.streamLineNode);}
+      x.streamLineNode.appendData(text.slice(start,end));
+    };
+    for(let i=0;i<text.length;i++){
+      const ch=text[i];if(ch!=='\n'&&ch!=='|'&&ch!=='\r')continue;
+      appendRun(i);start=i+1;
+      if(ch==='|'){
+        x.streamSuppressed=true;
+        if(x.streamLineNode){x.streamLineNode.remove();x.streamLineNode=null;}
+      }else if(ch==='\n'){
+        if(!x.streamSuppressed)fragment.appendChild(document.createElement('br'));
+        x.streamSuppressed=false;x.streamLineNode=null;
+      }
+    }
+    appendRun(text.length);
+    if(fragment.childNodes.length)x.assistantBody.appendChild(fragment);
+  },
+  flushPaint(x){
+    if(this.current!==x||x.state!==CHAT_STATES.STREAMING||!x.pendingText)return;
+    const delta=x.pendingText;x.pendingText='';this.appendStreamText(x,delta);
+    if(x.follow)hardScroll();else smartScroll();
+  },
+  schedulePaint(x){
+    if(x.paintPromise)return x.paintPromise;
+    x.paintPromise=new Promise(resolve=>{
+      x.paintResolve=resolve;x.paintHandle=requestAnimationFrame(()=>{
+        x.paintHandle=null;x.paintPromise=null;x.paintResolve=null;
+        this.flushPaint(x);resolve();
+      });
+    });
+    return x.paintPromise;
+  },
+  cancelPaint(x){
+    if(x.paintHandle!==null)cancelAnimationFrame(x.paintHandle);
+    const resolve=x.paintResolve;
+    x.paintHandle=null;x.paintPromise=null;x.paintResolve=null;x.pendingText='';
+    if(resolve)resolve();
+  },
+  metadata(x,event){
+    if(event.training_completion&&Array.isArray(event.training_completion.sessions)){
+      pendingTrainingCompletion=event.training_completion;
+      pendingCompletionSessions=event.training_completion.sessions.slice();
+    }
+    if(event.speech_text)x.speechText=event.speech_text;
+  },
+  complete(x){
+    if(this.current!==x)return false;
+    if(x.state!==CHAT_STATES.STREAMING||!x.full){this.fail(x,null,CHAT_STATES.FAILED);return false;}
+    this.cancelPaint(x);
+    this.transition(x,CHAT_STATES.COMPLETING);
+    x.assistantBody.innerHTML=renderMarkdown(x.full);
+    if(!x.options.sessionStart)saveHistory('assistant',x.full);
+    afterReply(x.full,x.speechText);
+    this.transition(x,CHAT_STATES.COMPLETED);this.finish(x);if(x.follow)hardScroll();else smartScroll();return true;
+  },
+  fail(x,message,state=CHAT_STATES.FAILED){
+    if(!x||this.current!==x||CHAT_TERMINAL.has(x.state))return;
+    this.cancelPaint(x);
+    this.transition(x,state);this.removeTyping(x);
+    if(!x.assistantBody)x.assistantBody=appendCoach(x.id);
+    const terminalMessage=message||(state===CHAT_STATES.INTERRUPTED
+      ?(lang==='bg'?'Отговорът беше прекъснат. Моля, опитай отново.':'The response was interrupted. Please try again.')
+      :(lang==='bg'?'Връзката прекъсна. Моля, опитай отново.':'Connection interrupted. Please try again.'));
+    x.assistantBody.innerHTML='<p>'+esc(terminalMessage)+'</p>';
+    const inp=document.getElementById('user-in');if(inp&&!inp.value.trim())inp.value=x.message;
+    if(typeof Voice!=='undefined'&&Voice.on)Voice.set('ERROR');
+    this.finish(x);if(x.follow)hardScroll();else smartScroll();
+  },
+  cancel(x=this.current){
+    if(!x||this.current!==x||CHAT_TERMINAL.has(x.state))return false;
+    this.cancelPaint(x);
+    this.transition(x,CHAT_STATES.CANCELLED);this.removeTyping(x);
+    if(!x.assistantBody)x.assistantBody=appendCoach(x.id);
+    x.assistantBody.innerHTML='<p>'+esc(lang==='bg'?'Заявката е отменена.':'Request cancelled.')+'</p>';
+    try{x.controller.abort();}catch(_){}try{if(x.reader)x.reader.cancel();}catch(_){}
+    const inp=document.getElementById('user-in');if(inp)inp.value=x.message;
+    if(typeof Voice!=='undefined'&&Voice.on){Voice.set('LISTENING');Voice.listen();}
+    this.finish(x);return true;
+  },
+  finish(x){
+    if(x.closed)return;x.closed=true;if(x.watchdog)clearTimeout(x.watchdog);
+    const inp=document.getElementById('user-in');if(inp)inp.focus();witness('exchangeClosed');
+  },
+  userScrolled(){
+    const x=this.current;if(x&&!CHAT_TERMINAL.has(x.state))x.follow=feedNearBottom();
+    feedNearBottom()?hideJump():showJump();
+  }
+};
+
 async function send(options={}){
-  if(sending)return;
   if(sendLocked){ showLimit(); return; }   // limit reached → route to unlock, never a dead end
   const inp=document.getElementById('user-in');const val=inp.value.trim();if(!val)return;
-  sending=true; inp.value=''; appendUser(val); pendingTrainingCompletion=null;pendingCompletionSessions=[];
+  if(ChatLifecycle.busy()){
+    if(isStopTurn(val)){inp.value='';ChatLifecycle.cancel();}
+    return;
+  }
+  if(isStopTurn(val)){inp.value='';return;}
+  const priorHistory=getHistory(),x=ChatLifecycle.begin(val,options,priorHistory);if(!x)return;
+  inp.value='';pendingTrainingCompletion=null;pendingCompletionSessions=[];
   const token=localStorage.getItem('apexToken')||'';
   const body={message:val,lang:lang};
   if(options.voice===true)body.voice=true;
@@ -2158,54 +2392,51 @@ async function send(options={}){
   const wctx=buildWorkoutContext(lang==='en'); if(wctx)p.workoutContext=wctx;
   if(Object.keys(p).length)body.profile=p;
   if(token)body.token=token;
-  body.history=getHistory(); saveHistory('user',val);
-  const feed=document.getElementById('feed');
-  const ty=document.createElement('div');ty.className='typing';ty.innerHTML='<span class="tl">'+tr().typing+'</span><i></i><i></i><i></i>';
-  feed.appendChild(ty);smartScroll();
-  witness('exchangeOpened');   // fact: a question is now with the coach
+  body.history=x.priorHistory;
+  return runChatExchange(x,body);
+}
+
+async function runChatExchange(x,body){
   // M-1: watchdog aborts a stalled request after 75s of inactivity so the UI is
   // never stuck. Each token resets it, so a long but active stream is never cut.
-  const ac=new AbortController();
-  let watchdog=setTimeout(()=>ac.abort(),75000);
-  const kick=()=>{clearTimeout(watchdog);watchdog=setTimeout(()=>ac.abort(),75000);};
+  const kick=()=>{if(x.watchdog)clearTimeout(x.watchdog);x.watchdog=setTimeout(()=>x.controller.abort(),75000);};
+  ChatLifecycle.waiting(x);kick();
   try{
-    const res=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',signal:ac.signal,body:JSON.stringify(body)});
+    const res=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',signal:x.controller.signal,body:JSON.stringify(body)});
+    if(!res.ok)throw new Error('chat_http_'+res.status);
     const ct=res.headers.get('content-type')||'';
     if(ct.indexOf('text/event-stream')!==-1){
-      ty.remove(); const target=appendCoach(); let full='',speechText='',aborted=false;
-      const reader=res.body.getReader(),dec=new TextDecoder();let buf='';
-      // STREAMING: paint a CHEAP lightweight render, throttled to ≤20fps, so the
-      // main thread stays free and the tab never freezes. The expensive component
-      // renderer (Exercise/Nutrition cards) runs ONCE when streaming completes.
-      let lastPaint=0;
+      const reader=res.body.getReader(),dec=new TextDecoder();x.reader=reader;let buf='',streamFailure=null,paintBatch=0;
       while(true){const{done,value}=await reader.read();if(done)break;
-        buf+=dec.decode(value,{stream:true});const parts=buf.split('\n\n');buf=parts.pop();
+        buf=(buf+dec.decode(value,{stream:true})).replace(/\r\n/g,'\n');const parts=buf.split('\n\n');buf=parts.pop();
         for(const part of parts){const line=part.trim();if(!line.startsWith('data:'))continue;
-          let o;try{o=JSON.parse(line.slice(5).trim());}catch(e){continue;}
-          if(o.t){kick();witness('replyToken');full+=o.t;const now=performance.now();if(now-lastPaint>80){target.innerHTML=streamRender(full);smartScroll();lastPaint=now;}}
-          else if(o.training_completion&&Array.isArray(o.training_completion.sessions)){
-            pendingTrainingCompletion=o.training_completion;
-            pendingCompletionSessions=o.training_completion.sessions.slice();
+          let o;try{o=JSON.parse(line.slice(5).trim());}catch(e){throw new Error('malformed_sse');}
+          kick();
+          if(o.t){
+            ChatLifecycle.content(x,o.t);paintBatch++;
+            if(paintBatch>=STREAM_PAINT_BATCH){await ChatLifecycle.schedulePaint(x);paintBatch=0;}
           }
-          else if(o.speech_text){speechText=o.speech_text;}
-          else if(o.limit_reached){const m=target.closest('.msg');if(m)m.remove();showLimit(o.hours_left||24);aborted=true;}
-          else if(o.error){full+=(o.reply||'');}
+          else if(o.training_completion||o.speech_text)ChatLifecycle.metadata(x,o);
+          else if(o.limit_reached){showLimit(o.hours_left||24);ChatLifecycle.fail(x,tr().limitTitle,CHAT_STATES.FAILED);return;}
+          else if(o.error){streamFailure=o.reply||null;break;}
+          else if(o.done){x.done=true;break;}
         }
+        if(streamFailure||x.done){try{await reader.cancel();}catch(_){}break;}
       }
-      // FINAL render — full component renderer → cards, no raw markdown
-      if(full&&!aborted){target.innerHTML=renderMarkdown(full);smartScroll();saveHistory('assistant',full);afterReply(full,speechText);}
+      if(streamFailure)ChatLifecycle.fail(x,streamFailure,x.full?CHAT_STATES.INTERRUPTED:CHAT_STATES.FAILED);
+      else if(x.done)ChatLifecycle.complete(x);
+      else ChatLifecycle.fail(x,null,x.full?CHAT_STATES.INTERRUPTED:CHAT_STATES.FAILED);
     } else {
-      const data=await res.json();ty.remove();
-      if(data.limit_reached)showLimit(data.hours_left||24);
-      else{const tg=appendCoach();tg.innerHTML=renderMarkdown(data.reply||'');if(data.reply){saveHistory('assistant',data.reply);afterReply(data.reply);}}
+      const data=await res.json();
+      if(data.limit_reached){showLimit(data.hours_left||24);ChatLifecycle.fail(x,tr().limitTitle,CHAT_STATES.FAILED);}
+      else if(data.reply){ChatLifecycle.content(x,data.reply);ChatLifecycle.complete(x);}
+      else throw new Error('malformed_chat_response');
     }
   }catch(e){
-    if(ty&&ty.parentNode)ty.remove();
-    const tg=appendCoach();
-    tg.innerHTML='<p>'+(lang==='bg'?'Връзката прекъсна. Моля, опитай отново.':'Connection interrupted. Please try again.')+'</p>';
-    inp.value=val;   // retry supported — restore the message for a one-tap resend
+    if(x.state!==CHAT_STATES.CANCELLED)
+      ChatLifecycle.fail(x,null,x.full?CHAT_STATES.INTERRUPTED:CHAT_STATES.FAILED);
   }
-  finally{clearTimeout(watchdog);sending=false;inp.focus();witness('exchangeClosed');}
+  finally{if(x.watchdog)clearTimeout(x.watchdog);}
 }
 function afterReply(text,speechText=''){
   const m=memLoad();
@@ -2341,26 +2572,9 @@ const Voice = {
     const body={session_start:true,lang:lang,daypart:daypart,history:(typeof getHistory==='function'?getHistory():[])};
     try{ const p=pfLoad(); if(p&&Object.keys(p).length)body.profile=p; }catch(_){}
     const token=localStorage.getItem('apexToken')||''; if(token)body.token=token;
-    let full='';
-    try{
-      const res=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body)});
-      if((res.headers.get('content-type')||'').indexOf('text/event-stream')!==-1){
-        const target=appendCoach(); const reader=res.body.getReader(),dec=new TextDecoder(); let buf='';
-        while(true){ const{done,value}=await reader.read(); if(done)break;
-          buf+=dec.decode(value,{stream:true}); const parts=buf.split('\n\n'); buf=parts.pop();
-          for(const part of parts){ const line=part.trim(); if(!line.startsWith('data:'))continue;
-            let o; try{o=JSON.parse(line.slice(5).trim());}catch(e){continue;}
-            if(o.t){ witness('replyToken'); full+=o.t; target.innerHTML=streamRender(full); smartScroll(); }
-            else if(o.training_completion&&Array.isArray(o.training_completion.sessions)){
-              pendingTrainingCompletion=o.training_completion;
-              pendingCompletionSessions=o.training_completion.sessions.slice();
-            }
-          } }
-        if(full) target.innerHTML=renderMarkdown(full);
-      }
-    }catch(e){ console.warn('[voice] greet failed',e); }
-    if(!this.on) return;
-    this.say(full);
+    const x=ChatLifecycle.begin('',{voice:true,sessionStart:true},body.history);
+    if(!x){this.set('ERROR');return;}
+    await runChatExchange(x,body);
   },
 
   /* ── SPEAK one reply — single stream, barge-in armed from the first word ── */
@@ -2483,7 +2697,7 @@ function applyIntent(){
   // language
   const ul=q.get('lang'); if(ul==='bg'||ul==='en'){lang=ul;localStorage.setItem('apexLang',lang);}
   // goal from landing goal-cards → pre-seed profile goal
-  const g=q.get('goal'); if(g&&GOAL_FROM_LANDING[g]){const p=pfLoad();if(!p.goal){p.goal=GOAL_FROM_LANDING[g];localStorage.setItem('apexProfile',JSON.stringify(p));}}
+  const g=q.get('goal'); if(g&&GOAL_FROM_LANDING[g]){const p=pfLoad();if(!p.goal){p.goal=GOAL_FROM_LANDING[g];ownedStorageSet('apexProfile',JSON.stringify(p));}}
   // Stripe return → poll for token (payment flow preserved)
   const ps=q.get('pending_session'); if(ps)pollToken(ps);
   // explicit intent
@@ -2505,8 +2719,10 @@ function pollToken(sid){
 /* ═══════════════════════════════════════════════════════════════════
    BOOT
    ═══════════════════════════════════════════════════════════════════ */
-let core;
-document.addEventListener('DOMContentLoaded',()=>{
+let core,appStartupStarted=false;
+function startApp(){
+  if(appStartupStarted)return;
+  appStartupStarted=true;
   core=new LivingCore(document.getElementById('core'));
   core.setPhysiology(computePhysiology()); core.start();
 
@@ -2550,7 +2766,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   document.querySelectorAll('.modal').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('on');}));
   // scroll ownership: user scrolling up releases auto-follow + offers "Jump to latest";
   // reaching the bottom re-arms auto-follow and hides the button.
-  document.getElementById('feed').addEventListener('scroll',()=>{ feedNearBottom()?hideJump():showJump(); },{passive:true});
+  document.getElementById('feed').addEventListener('scroll',()=>ChatLifecycle.userScrolled(),{passive:true});
   // Esc closes drawer/panels
   document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeMenu();closePanel();}});
   // ── Server-authoritative session on every load ──
@@ -2559,22 +2775,23 @@ document.addEventListener('DOMContentLoaded',()=>{
   else if(q.get('auth')==='invalid'){ toast(tr().auth.linkBad); }
   loadSession().then(()=>{
     if(location.search.match(/auth=/)) history.replaceState(null,'',location.pathname);
+    // First-run and landing intent decisions use the restored account state.
+    const hasProfile=!!ownedStorageGet('apexProfile');
+    if(!hasProfile){setTimeout(()=>{if(!ownedStorageGet('apexProfile'))openProfile(0);},900);}
+    const planSeed={fat_loss:lang==='bg'?'Направи ми план за сваляне на мазнини':'Build me a fat-loss plan',
+      muscle_gain:lang==='bg'?'Направи ми план за мускулна маса':'Build me a muscle-building plan',
+      strength:lang==='bg'?'Направи ми силова програма':'Build me a strength program',
+      general:lang==='bg'?'Направи ми план за начинаещ':'Build me a beginner plan'};
+    const landingGoal=intent.g&&GOAL_FROM_LANDING[intent.g]?GOAL_FROM_LANDING[intent.g]:null;
+    if(intent.intent==='profile'){setTimeout(()=>openProfile(0),300);}
+    else if(intent.intent==='workout'||intent.intent==='train'){if(hasProfile)setTimeout(intentTrain,400);}
+    else if(intent.intent==='nutrition'){if(hasProfile)setTimeout(()=>enterConsult(lang==='bg'?'Направи ми хранителен план':'Build me a nutrition plan'),400);}
+    else if(intent.seedQ){if(hasProfile)setTimeout(()=>enterConsult(intent.seedQ),400);}
+    else if(intent.intent==='consult'||landingGoal){if(hasProfile)setTimeout(()=>enterConsult(landingGoal?planSeed[landingGoal]:''),400);}
   });
-  // first-run onboarding (skip if the account already has a profile after sync)
-  const hasProfile=!!localStorage.getItem('apexProfile');
-  if(!hasProfile){setTimeout(()=>{if(!localStorage.getItem('apexProfile'))openProfile(0);},900);}
-  // intent routing — landing → app continuity
-  const planSeed={fat_loss:lang==='bg'?'Направи ми план за сваляне на мазнини':'Build me a fat-loss plan',
-    muscle_gain:lang==='bg'?'Направи ми план за мускулна маса':'Build me a muscle-building plan',
-    strength:lang==='bg'?'Направи ми силова програма':'Build me a strength program',
-    general:lang==='bg'?'Направи ми план за начинаещ':'Build me a beginner plan'};
-  const landingGoal=intent.g&&GOAL_FROM_LANDING[intent.g]?GOAL_FROM_LANDING[intent.g]:null;
-  if(intent.intent==='profile'){setTimeout(()=>openProfile(0),300);}
-  else if(intent.intent==='workout'||intent.intent==='train'){if(hasProfile)setTimeout(intentTrain,400);}
-  else if(intent.intent==='nutrition'){if(hasProfile)setTimeout(()=>enterConsult(lang==='bg'?'Направи ми хранителен план':'Build me a nutrition plan'),400);}
-  else if(intent.seedQ){if(hasProfile)setTimeout(()=>enterConsult(intent.seedQ),400);}
-  else if(intent.intent==='consult'||landingGoal){if(hasProfile)setTimeout(()=>enterConsult(landingGoal?planSeed[landingGoal]:''),400);}
-});
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',startApp,{once:true});
+else startApp();
 </script>
 </body>
 </html>

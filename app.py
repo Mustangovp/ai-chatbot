@@ -1683,7 +1683,10 @@ def _recommendation_engine_active():
 
 
 def _training_engine_active():
-    return os.getenv("TRAINING_ENGINE_ACTIVE", "false").strip().lower() == "true"
+    # The deterministic training path is the production workout path. A
+    # deployment without an explicit variable must not silently fall back to
+    # the legacy prompt-generated workout flow.
+    return os.getenv("TRAINING_ENGINE_ACTIVE", "true").strip().lower() == "true"
 
 
 _RECOMMENDATION_PLANNER = recommendation_planning.RecommendationEngine(
@@ -2347,7 +2350,10 @@ def chat():
             system_content = system_content + "\n\n" + nutrition_plan.generation_contract(
                 nutrition_delivery_targets, lang)
         if _training_plan_blueprint is not None:
-            system_content = training_renderer.render_prompt(_training_plan_blueprint, lang)
+            # Preserve the established APEX coach context. The fixed training
+            # contract remains last and authoritative for immutable plan values.
+            system_content = system_content + "\n\n" + training_renderer.render_prompt(
+                _training_plan_blueprint, lang)
         elif _recommendation_blueprint is not None:
             system_content = recommendation_renderer.render_prompt(_recommendation_blueprint)
         if _conversation_policy is not None and _controlled_reply is None:
@@ -2757,7 +2763,7 @@ def chat():
                         if _combined_coaching_request:
                             reply_text += _combined_request_follow_up(lang)
                         training_completion = training_renderer.render_completion_projection(
-                            _training_plan_blueprint, load_exercise_library())
+                            _training_plan_blueprint, load_exercise_library(), lang)
                     except Exception as training_error:
                         print(f"[training-engine] delivery rejected: {type(training_error).__name__}")
                         reply_text = decision_engine.controlled_response(
@@ -2848,57 +2854,19 @@ def chat():
                     _ingest_state()
                     yield sse({"done": True})
                     return
-                if full:
-                    # Потребителят вече получи почти всичко — завършваме чисто
-                    _bump_plans_today()
-                    reply_text = "".join(full)
-                    if _recommendation_blueprint is not None:
-                        try:
-                            explanations = recommendation_renderer.verified_explanations(
-                                reply_text, _recommendation_blueprint)
-                            reply_text = recommendation_renderer.render_delivery(
-                                _recommendation_blueprint, explanations, lang)
-                        except Exception as recommendation_error:
-                            print(f"[recommendation] delivery rejected: {recommendation_error}")
-                            reply_text = decision_engine.controlled_response(
-                                decision_engine.DecisionResult("clarify", _shadow_decision.intent,
-                                                               "recommendation_integrity_contract", (), 1.0), lang)
-                        yield sse({"t": reply_text})
-                    elif nutrition_delivery_target is not None:
-                        reply_text = nutrition_validation.failure_message(lang)
-                        yield sse({"t": reply_text})
-                    speech_event = _speech_event(
-                        reply_text,
-                        preserve_visible=nutrition_delivery_target is not None,
-                    )
-                    if speech_event:
-                        yield sse(speech_event)
-                    _persist_reply(reply_text)
-                    _update_learning_engine(chat_uid, user_message, reply_text, profile)
-                    _shadow_log()     # SHADOW (BRAIN_SHADOW off by default; no-op in prod)
-                    _log_analytics(_t_start)   # M5 Observatory
-                    _ingest_state()   # BUILD-001 Human State (HSE_INGEST off by default)
-                    if is_first_contact:
-                        brain_state = {
-                            "decision": decision_state,
-                            "confidence": _decision.envelope.confidence,
-                            "sleep": profile.get("sleepQuality", "good"),
-                            "stress": profile.get("stressLevel", "low"),
-                            "body": "knee" if any(k in str(profile.get("injuries") or "").lower() for k in ("knee", "shoulder", "back", "joint", "elbow", "wrist", "pain", "ache", "коляно", "рамо", "гръб", "болка")) else "ok"
-                        }
-                        yield sse({"done": True, "profile": profile, "brain_state": brain_state})
-                    else:
-                        yield sse({"done": True})
-                else:
-                    # Нищо не е стигнало → връщаме съобщението в лимита му (DB refund)
-                    if refund_subject:
-                        try: store.free_usage_refund(refund_subject[0], refund_subject[1])
-                        except Exception: pass
-                    yield sse({
-                        "error": True,
-                        "not_counted": True,
-                        "reply": "AI треньорът е претоварен в момента. Моля, опитай отново след 30 секунди."
-                    })
+                # An upstream interruption is never a completed coaching turn.
+                # Tokens may already be visible in the browser, but they remain
+                # provisional: do not persist, learn from, count, or finalize them.
+                if refund_subject:
+                    try: store.free_usage_refund(refund_subject[0], refund_subject[1])
+                    except Exception: pass
+                yield sse({
+                    "error": True,
+                    "not_counted": True,
+                    "reply": ("The response was interrupted. Please try again."
+                              if lang == "en" else
+                              "Отговорът беше прекъснат. Моля, опитай отново.")
+                })
 
         return Response(
             stream_with_context(generate()),

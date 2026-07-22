@@ -56,6 +56,26 @@ def test_renderer_accepts_only_explanatory_llm_json_and_never_changes_plan_value
         renderer.verified_explanations(json.dumps({"explanations": [], "plan": "modified"}))
 
 
+def test_renderer_localizes_bulgarian_delivery_and_completion_projection_together():
+    plan = build_training_plan(
+        recommendation_blueprint_id="rec-bg",
+        facts={
+            "goal": "strength", "level": "beginner", "equipment": "home",
+            "recoveryFeel": "fresh",
+        },
+    )
+    library = load_exercise_library()
+
+    delivery = renderer.render_delivery(plan, library, (), "bg")
+    completion = renderer.render_completion_projection(plan, library, "bg")
+
+    assert "| \u0423\u043f\u0440\u0430\u0436\u043d\u0435\u043d\u0438\u0435 | \u0421\u0435\u0440\u0438\u0438 | \u041f\u043e\u0432\u0442\u043e\u0440\u0435\u043d\u0438\u044f | \u041f\u043e\u0447\u0438\u0432\u043a\u0430 | \u0411\u0435\u043b\u0435\u0436\u043a\u0430 |" in delivery
+    assert "\u041b\u0438\u0446\u0435\u0432\u0430 \u043e\u043f\u043e\u0440\u0430 \u043d\u0430 \u0441\u0442\u0435\u043d\u0430" in delivery
+    assert "Wall Push-Up" not in delivery
+    assert completion["sessions"][0]["exercises"][1]["display_name"] in delivery
+    assert completion["sessions"][0]["exercises"][1]["exercise_id"] == "bodyweight.wall_push_up"
+
+
 @pytest.mark.parametrize(("requested_split", "expected_sessions"), (
     ("full_body", ((
         MovementPattern.SQUAT, MovementPattern.HORIZONTAL_PUSH, MovementPattern.HORIZONTAL_PULL,

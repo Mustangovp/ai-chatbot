@@ -28,7 +28,7 @@ test.describe('APEX approved app shell — UX regression', () => {
     // Enter the consultation view and dismiss onboarding so the chat log + composer exist.
     await page.evaluate(() => {
       try {
-        localStorage.setItem('apexProfile', JSON.stringify({
+        ownedStorageSet('apexProfile', JSON.stringify({
           goal: 'fat_loss', age: '30', weight: '75', height: '178',
           gender: 'male', level: 'beginner', equip: 'full_gym'
         }));
@@ -203,6 +203,53 @@ test.describe('APEX approved app shell — UX regression', () => {
     await expect(page.locator('.macro .mname').first()).toHaveText('Белтъчини');
   });
 
+  test('NR-2: nutrition macro values use whole-number display precision', async ({ page }) => {
+    await page.evaluate(() => {
+      const md = [
+        '| Meal | Protein | Carbs | Fat | Calories |',
+        '| --- | --- | --- | --- | --- |',
+        '| Lunch | 12.49 | 53.51 | 7.50 | 521.60 |',
+        '| Total | 12.49 | 53.51 | 7.50 | 521.60 |'
+      ].join('\n');
+      const el = appendCoach();
+      el.innerHTML = renderMarkdown(md);
+    });
+
+    const nutrition = await page.locator('.nutri').first().innerText();
+    expect(nutrition).toContain('12');
+    expect(nutrition).toContain('54');
+    expect(nutrition).toContain('522');
+    expect(nutrition).not.toContain('12.49');
+    expect(nutrition).not.toContain('53.51');
+    expect(nutrition).not.toContain('521.60');
+    await expect(page.locator('.nutri').first().locator('.nm-qty')).toHaveCount(0);
+  });
+
+  test('NR-3: nutrition quantity is sourced only from semantic serving fields', async ({ page }) => {
+    await page.evaluate(() => {
+      const serving = [
+        '| Meal | Serving Size | Protein | Carbs | Fat | Calories |',
+        '| --- | --- | --- | --- | --- | --- |',
+        '| Breakfast | 80 g | 12.49 | 53.51 | 7.50 | 521.60 |'
+      ].join('\n');
+      const unknown = [
+        '| Meal | Score | Protein | Carbs | Fat | Calories |',
+        '| --- | --- | --- | --- | --- | --- |',
+        '| Lunch | 9.75 | 12.49 | 53.51 | 7.50 | 521.60 |'
+      ].join('\n');
+      const first = appendCoach();
+      first.innerHTML = renderMarkdown(serving);
+      const second = appendCoach();
+      second.innerHTML = renderMarkdown(unknown);
+    });
+
+    const plans = page.locator('.nutri');
+    await expect(plans).toHaveCount(2);
+    await expect(plans.nth(0).locator('.nm-qty')).toHaveText('80 g');
+    await expect(plans.nth(1).locator('.nm-qty')).toHaveCount(0);
+    await expect(plans.nth(1)).not.toContainText('9.75');
+  });
+
   test('VX-1: voice UI — mic button, state-machine markup, voice selector persistence', async ({ page }) => {
     // 6a. mic button present, secondary control with an initial idle state + accessible name
     const mic = page.locator('#mic-btn');
@@ -292,6 +339,453 @@ test.describe('APEX approved app shell — UX regression', () => {
     });
 
     expect(spoken).toBe('Visible fallback');
+  });
+
+  test('CL-1: lifecycle keeps typing until content and finalizes immediately on done', async ({ page }) => {
+    const snapshots = await page.evaluate(async () => {
+      ownedStorageRemove('apexHistory');
+      document.getElementById('feed').innerHTML = '';
+      ChatLifecycle.current = null;
+      const originalFetch = window.fetch;
+      window.fetch = async () => {
+        const enc = new TextEncoder();
+        return new Response(new ReadableStream({
+          start(controller) {
+            setTimeout(() => controller.enqueue(enc.encode('data: {"t":"Visible"}\n\n')), 120);
+            setTimeout(() => controller.enqueue(enc.encode('data: {"done":true}\n\n')), 180);
+            // Deliberately never close: done must own completion.
+          }
+        }), { headers: { 'content-type': 'text/event-stream' } });
+      };
+      document.getElementById('user-in').value = 'Lifecycle';
+      const pending = send();
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      const waiting = {
+        state: ChatLifecycle.current.state,
+        typing: document.querySelectorAll('.typing').length,
+        assistants: document.querySelectorAll('.msg.a').length
+      };
+      await pending;
+      const completed = {
+        state: ChatLifecycle.current.state,
+        typing: document.querySelectorAll('.typing').length,
+        assistants: document.querySelectorAll('.msg.a').length,
+        text: document.querySelector('.msg.a .body').textContent,
+        history: getHistory()
+      };
+      window.fetch = originalFetch;
+      return { waiting, completed };
+    });
+    expect(snapshots.waiting).toEqual({ state: 'WAITING_FIRST_TOKEN', typing: 1, assistants: 0 });
+    expect(snapshots.completed.state).toBe('COMPLETED');
+    expect(snapshots.completed.typing).toBe(0);
+    expect(snapshots.completed.assistants).toBe(1);
+    expect(snapshots.completed.text).toBe('Visible');
+    expect(snapshots.completed.history).toEqual([
+      { role: 'user', content: 'Lifecycle' }, { role: 'assistant', content: 'Visible' }
+    ]);
+  });
+
+  test('CL-2: HTTP failure retries in place without duplicate messages', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      ownedStorageRemove('apexHistory');
+      document.getElementById('feed').innerHTML = '';
+      ChatLifecycle.current = null;
+      const originalFetch = window.fetch;
+      let calls = 0;
+      window.fetch = async () => {
+        calls++;
+        if (calls === 1) return new Response('{"error":"server_error"}', {
+          status: 500, headers: { 'content-type': 'application/json' }
+        });
+        return new Response('data: {"t":"Recovered"}\n\ndata: {"done":true}\n\n', {
+          headers: { 'content-type': 'text/event-stream' }
+        });
+      };
+      const input = document.getElementById('user-in');
+      input.value = 'Retry this';
+      await send();
+      const failed = {
+        state: ChatLifecycle.current.state,
+        users: document.querySelectorAll('.msg.u').length,
+        assistants: document.querySelectorAll('.msg.a').length,
+        history: getHistory(), input: input.value
+      };
+      await send();
+      const recovered = {
+        state: ChatLifecycle.current.state,
+        users: document.querySelectorAll('.msg.u').length,
+        assistants: document.querySelectorAll('.msg.a').length,
+        history: getHistory()
+      };
+      window.fetch = originalFetch;
+      return { failed, recovered };
+    });
+    expect(result.failed.state).toBe('FAILED');
+    expect(result.failed.users).toBe(1);
+    expect(result.failed.assistants).toBe(1);
+    expect(result.failed.history).toEqual([{ role: 'user', content: 'Retry this' }]);
+    expect(result.failed.input).toBe('Retry this');
+    expect(result.recovered.state).toBe('COMPLETED');
+    expect(result.recovered.users).toBe(1);
+    expect(result.recovered.assistants).toBe(1);
+    expect(result.recovered.history).toEqual([
+      { role: 'user', content: 'Retry this' }, { role: 'assistant', content: 'Recovered' }
+    ]);
+  });
+
+  test('CL-3: malformed and interrupted streams never persist partial assistant output', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      const reset = () => {
+        ownedStorageRemove('apexHistory');
+        document.getElementById('feed').innerHTML = '';
+        ChatLifecycle.current = null;
+      };
+      const originalFetch = window.fetch;
+      reset();
+      window.fetch = async () => new Response('data: not-json\n\n', {
+        headers: { 'content-type': 'text/event-stream' }
+      });
+      document.getElementById('user-in').value = 'Malformed';
+      await send();
+      const malformed = { state: ChatLifecycle.current.state, history: getHistory() };
+      reset();
+      window.fetch = async () => {
+        const enc = new TextEncoder();
+        return new Response(new ReadableStream({
+          start(controller) {
+            controller.enqueue(enc.encode('data: {"t":"Partial"}\n\n'));
+            setTimeout(() => controller.error(new Error('cut')), 20);
+          }
+        }), { headers: { 'content-type': 'text/event-stream' } });
+      };
+      document.getElementById('user-in').value = 'Interrupted';
+      await send();
+      const interrupted = {
+        state: ChatLifecycle.current.state,
+        assistants: document.querySelectorAll('.msg.a').length,
+        visible: document.querySelector('.msg.a .body').textContent,
+        history: getHistory()
+      };
+      window.fetch = originalFetch;
+      return { malformed, interrupted };
+    });
+    expect(result.malformed.state).toBe('FAILED');
+    expect(result.malformed.history).toEqual([{ role: 'user', content: 'Malformed' }]);
+    expect(result.interrupted.state).toBe('INTERRUPTED');
+    expect(result.interrupted.assistants).toBe(1);
+    expect(result.interrupted.visible).not.toContain('Partial');
+    expect(result.interrupted.history).toEqual([{ role: 'user', content: 'Interrupted' }]);
+  });
+
+  test('CL-4: exact stop cancels the owned request without persisting partial output', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      ownedStorageRemove('apexHistory');
+      document.getElementById('feed').innerHTML = '';
+      ChatLifecycle.current = null;
+      const originalFetch = window.fetch;
+      window.fetch = async () => {
+        const enc = new TextEncoder();
+        return new Response(new ReadableStream({
+          start(controller) { setTimeout(() => controller.enqueue(enc.encode('data: {"t":"Late"}\n\n')), 500); }
+        }), { headers: { 'content-type': 'text/event-stream' } });
+      };
+      const input = document.getElementById('user-in');
+      input.value = 'Long request';
+      const pending = send();
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      input.value = 'Спри.';
+      await send();
+      await pending;
+      const snapshot = {
+        state: ChatLifecycle.current.state,
+        typing: document.querySelectorAll('.typing').length,
+        assistants: document.querySelectorAll('.msg.a').length,
+        text: document.querySelector('.msg.a .body').textContent,
+        history: getHistory(), input: input.value
+      };
+      window.fetch = originalFetch;
+      return snapshot;
+    });
+    expect(result.state).toBe('CANCELLED');
+    expect(result.typing).toBe(0);
+    expect(result.assistants).toBe(1);
+    expect(result.text).toBe('Заявката е отменена.');
+    expect(result.input).toBe('Long request');
+    expect(result.history).toEqual([{ role: 'user', content: 'Long request' }]);
+  });
+
+  test('CL-8: cancelled retry reuses the request and its single assistant lifecycle', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      ownedStorageRemove('apexHistory');
+      document.getElementById('feed').innerHTML = '';
+      ChatLifecycle.current = null;
+      const originalFetch = window.fetch;
+      let calls = 0;
+      window.fetch = async () => {
+        calls++;
+        if (calls === 1) {
+          return new Response(new ReadableStream({ start() {} }), {
+            headers: { 'content-type': 'text/event-stream' }
+          });
+        }
+        return new Response('data: {"t":"Recovered"}\n\ndata: {"done":true}\n\n', {
+          headers: { 'content-type': 'text/event-stream' }
+        });
+      };
+      const input = document.getElementById('user-in');
+      input.value = 'Original request';
+      const first = send();
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      input.value = 'Stop';
+      await send();
+      await first;
+      const cancelled = {
+        state: ChatLifecycle.current.state, attempt: ChatLifecycle.current.attempt,
+        input: input.value, requestId: document.querySelector('.msg.a').dataset.requestId,
+        users: document.querySelectorAll('.msg.u').length,
+        assistants: document.querySelectorAll('.msg.a').length
+      };
+      await send();
+      const completed = {
+        state: ChatLifecycle.current.state, attempt: ChatLifecycle.current.attempt,
+        requestId: document.querySelector('.msg.a').dataset.requestId,
+        users: document.querySelectorAll('.msg.u').length,
+        assistants: document.querySelectorAll('.msg.a').length,
+        text: document.querySelector('.msg.a .body').textContent,
+        history: getHistory(), calls
+      };
+      window.fetch = originalFetch;
+      return { cancelled, completed };
+    });
+    expect(result.cancelled).toMatchObject({
+      state: 'CANCELLED', attempt: 1, input: 'Original request', users: 1, assistants: 1
+    });
+    expect(result.completed).toMatchObject({
+      state: 'COMPLETED', attempt: 2, users: 1, assistants: 1, text: 'Recovered', calls: 2
+    });
+    expect(result.completed.requestId).toBe(result.cancelled.requestId);
+    expect(result.completed.history).toEqual([
+      { role: 'user', content: 'Original request' }, { role: 'assistant', content: 'Recovered' }
+    ]);
+  });
+
+  test('CL-9: quota exhaustion owns one failed terminal assistant message', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      ownedStorageRemove('apexHistory');
+      document.getElementById('feed').innerHTML = '';
+      ChatLifecycle.current = null;
+      const originalFetch = window.fetch;
+      window.fetch = async () => new Response(
+        'data: {"limit_reached":true,"hours_left":4}\n\n',
+        { headers: { 'content-type': 'text/event-stream' } }
+      );
+      document.getElementById('user-in').value = 'Quota request';
+      await send();
+      const snapshot = {
+        state: ChatLifecycle.current.state,
+        assistants: document.querySelectorAll('.msg.a').length,
+        typing: document.querySelectorAll('.typing').length,
+        text: document.querySelector('.msg.a .body').textContent,
+        history: getHistory()
+      };
+      window.fetch = originalFetch;
+      return snapshot;
+    });
+    expect(result.state).toBe('FAILED');
+    expect(result.assistants).toBe(1);
+    expect(result.typing).toBe(0);
+    expect(result.text).toBe('Достигна безплатния лимит за днес');
+    expect(result.history).toEqual([{ role: 'user', content: 'Quota request' }]);
+  });
+
+  test('CL-10: a coalesced large stream paints progressively without full-buffer reparsing', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      ownedStorageRemove('apexHistory');
+      document.getElementById('feed').innerHTML = '';
+      ChatLifecycle.current = null;
+      const originalFetch = window.fetch;
+      const originalStreamRender = streamRender;
+      let streamRenderCalls = 0, progressivePaints = 0, lastLength = 0;
+      streamRender = (...args) => { streamRenderCalls++; return originalStreamRender(...args); };
+      const observer = new MutationObserver(() => {
+        const body = document.querySelector('.msg.a .body');
+        const length = body ? body.textContent.length : 0;
+        if (ChatLifecycle.current?.state === 'STREAMING' && length > lastLength) progressivePaints++;
+        lastLength = length;
+      });
+      observer.observe(document.getElementById('feed'), { subtree: true, childList: true, characterData: true });
+      let frames = 0, maxFrameGap = 0, previousFrame = 0, tracking = true;
+      const frame = timestamp => {
+        if (previousFrame) maxFrameGap = Math.max(maxFrameGap, timestamp - previousFrame);
+        previousFrame = timestamp; frames++;
+        if (tracking) requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const framesBefore = frames;
+      let payload = '';
+      for (let i = 0; i < 2500; i++) payload += 'data: {"t":"word "}\n\n';
+      payload += 'data: {"done":true}\n\n';
+      window.fetch = async () => new Response(payload, {
+        headers: { 'content-type': 'text/event-stream' }
+      });
+      document.getElementById('user-in').value = 'Large stream';
+      const started = performance.now();
+      await send();
+      const elapsed = performance.now() - started;
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      tracking = false;observer.disconnect();window.fetch = originalFetch;streamRender = originalStreamRender;
+      return {
+        state: ChatLifecycle.current.state,
+        assistants: document.querySelectorAll('.msg.a').length,
+        textLength: document.querySelector('.msg.a .body').textContent.length,
+        fullLength: ChatLifecycle.current.full.length,
+        streamRenderCalls, progressivePaints, elapsed,
+        frames: frames - framesBefore, maxFrameGap
+      };
+    });
+    expect(result.state).toBe('COMPLETED');
+    expect(result.assistants).toBe(1);
+    expect(result.fullLength).toBe(12500);
+    expect(result.textLength).toBe(12499);
+    expect(result.streamRenderCalls).toBe(0);
+    expect(result.progressivePaints).toBeGreaterThan(5);
+    expect(result.frames).toBeGreaterThan(5);
+    expect(result.elapsed).toBeLessThan(2000);
+    expect(result.maxFrameGap).toBeLessThan(500);
+  });
+
+  test('CL-11: final streamed markup is identical to the canonical renderer', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      ownedStorageRemove('apexHistory');
+      document.getElementById('feed').innerHTML = '';
+      ChatLifecycle.current = null;
+      const markdown = [
+        '# Heading', '',
+        'Paragraph with **strong**, *emphasis*, `inline code`, and [link](https://example.com).', '',
+        '- First item', '- Second item', '',
+        '```', '<unsafe> & literal', '```', '',
+        '| Column | Value |', '| --- | --- |', '| Alpha | 1 |'
+      ].join('\n');
+      const expected = renderMarkdown(markdown);
+      const originalFetch = window.fetch;
+      const midpoint = Math.floor(markdown.length / 2);
+      const payload = [
+        'data: ' + JSON.stringify({ t: markdown.slice(0, midpoint) }),
+        'data: ' + JSON.stringify({ t: markdown.slice(midpoint) }),
+        'data: {"done":true}'
+      ].join('\n\n') + '\n\n';
+      window.fetch = async () => new Response(payload, {
+        headers: { 'content-type': 'text/event-stream' }
+      });
+      document.getElementById('user-in').value = 'Canonical rendering';
+      await send();
+      const actual = document.querySelector('.msg.a .body').innerHTML;
+      window.fetch = originalFetch;
+      return { expected, actual, state: ChatLifecycle.current.state };
+    });
+    expect(result.state).toBe('COMPLETED');
+    expect(result.actual).toBe(result.expected);
+  });
+
+  test('CL-5: auto-follow is sticky only until the user scrolls away', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      ownedStorageRemove('apexHistory');
+      const feed = document.getElementById('feed');
+      feed.innerHTML = '';
+      ChatLifecycle.current = null;
+      for (let i = 0; i < 24; i++) appendCoach().textContent = 'Existing content '.repeat(10);
+      hardScroll();
+      const originalFetch = window.fetch;
+      window.fetch = async () => {
+        const enc = new TextEncoder();
+        return new Response(new ReadableStream({
+          start(controller) {
+            setTimeout(() => controller.enqueue(enc.encode('data: {"t":"First "}\n\n')), 40);
+            setTimeout(() => controller.enqueue(enc.encode('data: {"t":"'+('More '.repeat(120))+'"}\n\n')), 140);
+            setTimeout(() => controller.enqueue(enc.encode('data: {"done":true}\n\n')), 220);
+          }
+        }), { headers: { 'content-type': 'text/event-stream' } });
+      };
+      document.getElementById('user-in').value = 'Scroll';
+      const pending = send();
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      const followed = feed.scrollHeight - feed.scrollTop - feed.clientHeight;
+      feed.scrollTop = 0;
+      feed.dispatchEvent(new Event('scroll'));
+      await pending;
+      const stayed = { top: feed.scrollTop, follow: ChatLifecycle.current.follow,
+        jump: document.getElementById('jump-latest').classList.contains('on') };
+      window.fetch = originalFetch;
+      return { followed, stayed };
+    });
+    expect(result.followed).toBeLessThanOrEqual(1);
+    expect(result.stayed.top).toBe(0);
+    expect(result.stayed.follow).toBe(false);
+    expect(result.stayed.jump).toBe(true);
+  });
+
+  test('CL-6: a failed spoken turn terminates the shared lifecycle and voice state', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      ownedStorageRemove('apexHistory');
+      document.getElementById('feed').innerHTML = '';
+      ChatLifecycle.current = null;
+      const originalFetch = window.fetch;
+      const originalStop = VoiceIn.stop;
+      window.fetch = async () => { throw new Error('offline'); };
+      VoiceIn.stop = () => {};
+      Voice.on = true;
+      Voice._onFinal('Spoken failure');
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      const snapshot = { lifecycle: ChatLifecycle.current.state, voice: Voice.state,
+        assistants: document.querySelectorAll('.msg.a').length, history: getHistory() };
+      Voice.on = false;
+      VoiceIn.stop = originalStop;
+      window.fetch = originalFetch;
+      return snapshot;
+    });
+    expect(result.lifecycle).toBe('FAILED');
+    expect(result.voice).toBe('ERROR');
+    expect(result.assistants).toBe(1);
+    expect(result.history).toEqual([{ role: 'user', content: 'Spoken failure' }]);
+  });
+
+  test('CL-7: voice session start uses the same lifecycle without parallel persistence', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      ownedStorageRemove('apexHistory');
+      document.getElementById('feed').innerHTML = '';
+      ChatLifecycle.current = null;
+      const originalFetch = window.fetch;
+      const originalSpeak = VoiceOut.speak;
+      const originalListen = Voice.listen;
+      let payload = null, spoken = null;
+      window.fetch = async (url, options) => {
+        payload = JSON.parse(options.body);
+        return new Response('data: {"t":"Voice greeting"}\n\ndata: {"done":true}\n\n', {
+          headers: { 'content-type': 'text/event-stream' }
+        });
+      };
+      VoiceOut.speak = async (text) => { spoken = text; };
+      Voice.listen = () => {};
+      Voice.on = true;
+      await Voice.greet();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const snapshot = { state: ChatLifecycle.current.state, payload, spoken,
+        users: document.querySelectorAll('.msg.u').length,
+        assistants: document.querySelectorAll('.msg.a').length, history: getHistory() };
+      Voice.on = false;
+      VoiceOut.speak = originalSpeak;
+      Voice.listen = originalListen;
+      window.fetch = originalFetch;
+      return snapshot;
+    });
+    expect(result.state).toBe('COMPLETED');
+    expect(result.payload.session_start).toBe(true);
+    expect(result.spoken).toBe('Voice greeting');
+    expect(result.users).toBe(0);
+    expect(result.assistants).toBe(1);
+    expect(result.history).toEqual([]);
   });
 
   test('MB-1: no horizontal overflow on a mobile viewport', async ({ page }) => {

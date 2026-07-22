@@ -8,6 +8,32 @@ from .completion import completion_projection
 from .registry import ExerciseLibrary
 
 
+_BULGARIAN_EXERCISE_NAMES = {
+    "bodyweight.wall_push_up": "\u041b\u0438\u0446\u0435\u0432\u0430 \u043e\u043f\u043e\u0440\u0430 \u043d\u0430 \u0441\u0442\u0435\u043d\u0430",
+    "bodyweight.incline_push_up": "\u041b\u0438\u0446\u0435\u0432\u0430 \u043e\u043f\u043e\u0440\u0430 \u043d\u0430 \u043d\u0430\u043a\u043b\u043e\u043d",
+    "bodyweight.push_up": "\u041b\u0438\u0446\u0435\u0432\u0430 \u043e\u043f\u043e\u0440\u0430",
+    "bodyweight.table_row": "\u0413\u0440\u0435\u0431\u0430\u043d\u0435 \u043f\u043e\u0434 \u043c\u0430\u0441\u0430",
+    "bodyweight.squat": "\u041a\u043b\u0435\u043a \u0441\u044a\u0441 \u0441\u043e\u0431\u0441\u0442\u0432\u0435\u043d\u043e \u0442\u0435\u0433\u043b\u043e",
+    "dumbbell.goblet_squat": "\u0413\u043e\u0431\u043b\u0435\u0442 \u043a\u043b\u0435\u043a",
+    "bodyweight.reverse_lunge": "\u041d\u0430\u043f\u0430\u0434 \u043d\u0430\u0437\u0430\u0434",
+    "bodyweight.hip_hinge": "\u0425\u0438\u043f \u0445\u0438\u043d\u0434\u0436 \u0441\u044a\u0441 \u0441\u043e\u0431\u0441\u0442\u0432\u0435\u043d\u043e \u0442\u0435\u0433\u043b\u043e",
+    "dumbbell.romanian_deadlift": "\u0420\u0443\u043c\u044a\u043d\u0441\u043a\u0430 \u0442\u044f\u0433\u0430 \u0441 \u0434\u044a\u043c\u0431\u0435\u043b\u0438",
+    "dumbbell.row": "\u0413\u0440\u0435\u0431\u0430\u043d\u0435 \u0441 \u0434\u044a\u043c\u0431\u0435\u043b",
+    "band.row": "\u0413\u0440\u0435\u0431\u0430\u043d\u0435 \u0441 \u043b\u0430\u0441\u0442\u0438\u043a",
+    "dumbbell.overhead_press": "\u0420\u0430\u043c\u0435\u043d\u043d\u0430 \u043f\u0440\u0435\u0441\u0430 \u0441 \u0434\u044a\u043c\u0431\u0435\u043b\u0438",
+    "dumbbell.seated_press": "\u0421\u0435\u0434\u043d\u0430\u043b\u0430 \u0440\u0430\u043c\u0435\u043d\u043d\u0430 \u043f\u0440\u0435\u0441\u0430 \u0441 \u0434\u044a\u043c\u0431\u0435\u043b\u0438",
+    "bodyweight.pull_up": "\u041d\u0430\u0431\u0438\u0440\u0430\u043d\u0435",
+    "bodyweight.plank": "\u041f\u0440\u0435\u0434\u0435\u043d \u043f\u043b\u0430\u043d\u043a",
+    "barbell.back_squat": "\u041a\u043b\u0435\u043a \u0441 \u0449\u0430\u043d\u0433\u0430 \u043d\u0430 \u0433\u044a\u0440\u0431\u0430",
+}
+
+
+def _display_name(exercise_id: str, fallback: str, language: str) -> str:
+    if str(language).lower() == "bg":
+        return _BULGARIAN_EXERCISE_NAMES.get(exercise_id, fallback)
+    return fallback
+
+
 def render_prompt(plan: TrainingPlanBlueprintV2, language: str) -> str:
     """The LLM may supply only explanatory prose; plan values stay outside its authority."""
     payload = {
@@ -64,10 +90,21 @@ def _render_text_delivery(plan: TrainingPlanBlueprintV2, library: ExerciseLibrar
     return "\n".join(lines)
 
 
-def render_completion_projection(plan: TrainingPlanBlueprintV2, library: ExerciseLibrary) -> dict:
+def render_completion_projection(plan: TrainingPlanBlueprintV2, library: ExerciseLibrary,
+                                 language: str = "en") -> dict:
     """Internal browser metadata; it is emitted outside visible workout text."""
     projection = completion_projection(plan, library)
-    return {**projection, "sessions": projection["sessions"][:1]}
+    sessions = []
+    for session in projection["sessions"][:1]:
+        exercises = []
+        for item in session["exercises"]:
+            exercise = library.require(item["exercise_id"], item["exercise_version"])
+            exercises.append({
+                **item,
+                "display_name": _display_name(exercise.exercise_id, exercise.display_name, language),
+            })
+        sessions.append({**session, "exercises": exercises})
+    return {**projection, "sessions": sessions}
 
 
 def render_delivery(plan: TrainingPlanBlueprintV2, library: ExerciseLibrary,
@@ -77,19 +114,23 @@ def render_delivery(plan: TrainingPlanBlueprintV2, library: ExerciseLibrary,
     title = "Workout" if english else "\u0422\u0440\u0435\u043d\u0438\u0440\u043e\u0432\u043a\u0430"
     session_label = "Session" if english else "\u0421\u0435\u0441\u0438\u044f"
     minute_label = "min" if english else "\u043c\u0438\u043d"
+    header = ("| Exercise | Sets | Reps | Rest | Note |" if english else
+              "| \u0423\u043f\u0440\u0430\u0436\u043d\u0435\u043d\u0438\u0435 | \u0421\u0435\u0440\u0438\u0438 | \u041f\u043e\u0432\u0442\u043e\u0440\u0435\u043d\u0438\u044f | \u041f\u043e\u0447\u0438\u0432\u043a\u0430 | \u0411\u0435\u043b\u0435\u0436\u043a\u0430 |")
+    rest_unit = "s" if english else " \u0441\u0435\u043a"
+    tempo_label = "tempo" if english else "\u0442\u0435\u043c\u043f\u043e"
     lines = [f"**{title}**"]
     for session in plan.sessions[:1]:
         lines.extend((
             f"\n**{session_label} {session.session_index} · {session.estimated_duration_minutes} {minute_label}**",
-            "| Exercise | Sets | Reps | Rest | Note |",
+            header,
             "| --- | --- | --- | --- | --- |",
         ))
         for prescription in session.prescriptions:
             exercise = library.require(prescription.exercise_id, prescription.exercise_version)
             lines.append(
-                f"| {exercise.display_name} | {prescription.sets} | "
-                f"{prescription.rep_min}-{prescription.rep_max} | {prescription.rest_seconds}s | "
-                f"RPE {prescription.target_rpe}, RIR {prescription.target_rir}; tempo {prescription.tempo} |"
+                f"| {_display_name(exercise.exercise_id, exercise.display_name, language)} | {prescription.sets} | "
+                f"{prescription.rep_min}-{prescription.rep_max} | {prescription.rest_seconds}{rest_unit} | "
+                f"RPE {prescription.target_rpe}, RIR {prescription.target_rir}; {tempo_label} {prescription.tempo} |"
             )
     if explanations:
         lines.append("\n" + " ".join(explanations))
