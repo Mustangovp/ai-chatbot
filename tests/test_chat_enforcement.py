@@ -1275,7 +1275,8 @@ def test_training_engine_profile_contract_failure_delivers_actionable_starter_wo
     response = _post(client, "build a workout", profile=profile)
 
     assert _events(response) == [{"t": appmod._cold_start_workout_reply("en")}, {"done": True}]
-    assert "| Exercise | Sets | Reps | Rest | Note |" not in appmod._cold_start_workout_reply("en")
+    assert "| Exercise | Sets | Reps | Rest | Note |" in appmod._cold_start_workout_reply("en")
+    assert "| Wall push-up | 2 | 6–8 | 60s |" in appmod._cold_start_workout_reply("en")
     assert captured == {}
 
 

@@ -1734,25 +1734,29 @@ def _active_training_plan(snapshot, planning_blueprint):
 
 
 def _cold_start_workout_reply(lang):
-    """Deliver the Brain-approved starter session without model ambiguity."""
+    """Deliver the Brain-approved starter session through the workout-card contract."""
     if str(lang).lower() == "en":
         return (
             "**Starter Workout · 15 minutes**\n"
-            "1. Easy march in place — 3 minutes\n"
-            "2. Chair squat — 2 sets of 6–8\n"
-            "3. Wall push-up — 2 sets of 6–8\n"
-            "4. Glute bridge — 2 sets of 8\n"
-            "5. Bird-dog — 2 sets of 6 per side\n\n"
+            "| Exercise | Sets | Reps | Rest | Note |\n"
+            "| --- | --- | --- | --- | --- |\n"
+            "| Easy march in place | 1 | 3 minutes | 30s | Comfortable pace |\n"
+            "| Chair squat | 2 | 6–8 | 60s | Controlled range |\n"
+            "| Wall push-up | 2 | 6–8 | 60s | Keep the body aligned |\n"
+            "| Glute bridge | 2 | 8 | 60s | Pause briefly at the top |\n"
+            "| Bird-dog | 2 | 6 per side | 60s | Keep the torso stable |\n\n"
             "Move slowly, rest as needed, and stop if you feel chest pain, dizziness, or unusual shortness of breath. "
             "Share your goal and any health conditions so the next session can be tailored."
         )
     return (
         "**Начална тренировка · 15 минути**\n"
-        "1. Леко ходене на място — 3 минути\n"
-        "2. Клек до стол — 2 серии по 6–8\n"
-        "3. Лицеви опори на стена — 2 серии по 6–8\n"
-        "4. Глутеус мост — 2 серии по 8\n"
-        "5. Bird-dog — 2 серии по 6 на страна\n\n"
+        "| Упражнение | Серии | Повторения | Почивка | Бележка |\n"
+        "| --- | --- | --- | --- | --- |\n"
+        "| Леко ходене на място | 1 | 3 минути | 30 сек | Спокойно темпо |\n"
+        "| Клек до стол | 2 | 6–8 | 60 сек | Контролиран обхват |\n"
+        "| Лицеви опори на стена | 2 | 6–8 | 60 сек | Дръж тялото подравнено |\n"
+        "| Глутеус мост | 2 | 8 | 60 сек | Кратка пауза горе |\n"
+        "| Bird-dog | 2 | 6 на страна | 60 сек | Дръж торса стабилен |\n\n"
         "Движи се бавно, почивай при нужда и спри при болка в гърдите, замайване или необичаен задух. "
         "Сподели целта си и здравословни ограничения, за да персонализирам следващата сесия."
     )

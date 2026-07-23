@@ -71,6 +71,38 @@ test.describe('APEX approved app shell — UX regression', () => {
     await expect(page.locator('.start-wo')).toBeVisible();
   });
 
+  test('WO-1A: safe starter fallback keeps workout cards, rest and progression', async ({ page }) => {
+    await page.evaluate(() => {
+      const md = [
+        '**Начална тренировка · 15 минути**',
+        '| Упражнение | Серии | Повторения | Почивка | Бележка |',
+        '| --- | --- | --- | --- | --- |',
+        '| Леко ходене на място | 1 | 3 минути | 30 сек | Спокойно темпо |',
+        '| Клек до стол | 2 | 6–8 | 60 сек | Контролиран обхват |',
+        '| Лицеви опори на стена | 2 | 6–8 | 60 сек | Дръж тялото подравнено |',
+        '| Глутеус мост | 2 | 8 | 60 сек | Кратка пауза горе |',
+        '| Bird-dog | 2 | 6 на страна | 60 сек | Дръж торса стабилен |'
+      ].join('\n');
+      const el = appendCoach();
+      el.innerHTML = renderMarkdown(md);
+    });
+
+    await expect(page.locator('.ex-card')).toHaveCount(5);
+    await expect(page.locator('.start-wo')).toHaveCount(1);
+    await page.locator('.start-wo').click();
+    await expect(page.locator('#workout')).toHaveClass(/on/);
+    await expect(page.locator('#wo-ptop-l')).toContainText('1/5');
+
+    await page.evaluate(() => completeSet());
+    await expect(page.locator('#rt-n')).toBeVisible();
+    expect(await page.evaluate(() => WO.phase)).toBe('rest');
+
+    await page.evaluate(() => {
+      endRest();
+      quitWorkout();
+    });
+  });
+
   test('WO-2: completion submits only blueprint-issued workout identifiers', async ({ page }) => {
     const posted = await page.evaluate(async () => {
       const projection = {

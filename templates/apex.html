@@ -2054,7 +2054,8 @@ function renderWorkout(header,body){
   }:null;
   const diffLbl={easy:lang==='bg'?'Лесно':'Easy',med:lang==='bg'?'Средно':'Medium',hard:lang==='bg'?'Трудно':'Hard'};
   let html='<div class="wo-intro"><span class="wt">'+(lang==='bg'?'Тренировъчен протокол':'Training protocol')+'</span>'+
-    '<button class="start-wo" onclick="startWorkout('+JSON.stringify(workoutKey)+')">▶ '+tr().woStart+'</button></div>';
+    '<button class="start-wo" data-workout-key="'+encodeURIComponent(workoutKey)+
+    '" onclick="startWorkout(decodeURIComponent(this.dataset.workoutKey))">▶ '+tr().woStart+'</button></div>';
   ex.forEach(e=>{
     const mu=inferMuscle(e.name),df=inferDiff(e.reps,e.name);
     html+='<div class="ex-card"><div class="ex-glyph" style="background:radial-gradient(circle at 50% 35%,'+mu.ic+'33,rgba(18,23,36,.6))">'+mu.e+'</div>'+
