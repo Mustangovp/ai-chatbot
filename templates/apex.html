@@ -1629,26 +1629,51 @@ async function loadSession(tokenAccess){
 }
 function isElite(){ return SESSION.plan==='core'||SESSION.plan==='pro'; }
 async function syncFromAccount(){
-  // First migrate any local cache up to the account, then read account truth down.
+  // Read account truth without uploading anonymous/browser state. For fields
+  // present in both places, the server copy is authoritative.
   try{
-    const cache={};
-    try{cache.profile=JSON.parse(ownedStorageGet('apexProfile')||'null');}catch(e){}
-    try{cache.workoutLog=JSON.parse(ownedStorageGet('apexWorkoutLog')||'[]');}catch(e){}
-    try{cache.chatHistory=JSON.parse(ownedStorageGet('apexHistory')||'[]');}catch(e){}
-    const r=await fetch('/api/sync',{method:'POST',headers:{'Content-Type':'application/json'},
-      credentials:'same-origin',body:JSON.stringify(cache)});
-    const d=await r.json();
-    if(d&&d.profile&&Object.keys(d.profile).length){ ownedStorageSet('apexProfile',JSON.stringify(d.profile)); }
-    if(d&&Array.isArray(d.workouts)){
-      // account timeline → local cache (newest first from API; store oldest→newest)
-      const log=d.workouts.map(w=>({ts:Date.parse(w.occurred_at)||Date.now(),date:(w.occurred_at||'').slice(0,10),
-        type:w.type,exercises:w.exercises||[],diff:w.difficulty,completion:w.completion})).reverse();
-      if(log.length) ownedStorageSet('apexWorkoutLog',JSON.stringify(log));
+    const [profileResponse,historyResponse,conversationResponse]=await Promise.all([
+      fetch('/api/profile',{credentials:'same-origin'}),
+      fetch('/api/history',{credentials:'same-origin'}),
+      fetch('/api/conversations?limit=60',{credentials:'same-origin'})
+    ]);
+    if(profileResponse.ok){
+      const d=await profileResponse.json();
+      let local={};try{local=JSON.parse(ownedStorageGet('apexProfile')||'{}');}catch(e){}
+      if(d&&d.profile&&typeof d.profile==='object'){
+        const merged=Object.assign({},local,d.profile);
+        if(Object.keys(merged).length)ownedStorageSet('apexProfile',JSON.stringify(merged));
+      }
     }
-    // Chat transcript from the account (server truth) → cache, so the coach
-    // continues the previous conversation on any device.
-    if(d&&Array.isArray(d.conversations)&&d.conversations.length){
-      ownedStorageSet('apexHistory',JSON.stringify(d.conversations.slice(-40)));
+    if(historyResponse.ok){
+      const d=await historyResponse.json();
+      if(d&&Array.isArray(d.workouts)){
+        // Account timeline is newest-first; the browser cache is oldest-first.
+        const serverLog=d.workouts.map(w=>({ts:Date.parse(w.occurred_at)||Date.now(),date:(w.occurred_at||'').slice(0,10),
+          serverId:w.id,type:w.type,exercises:w.exercises||[],diff:w.difficulty,completion:w.completion})).reverse();
+        let local=[];try{local=JSON.parse(ownedStorageGet('apexWorkoutLog')||'[]');}catch(e){}
+        const key=w=>{
+          const day=w.ts?new Date(w.ts).toISOString().slice(0,10):String(w.date||'');
+          const exercises=(w.exercises||[]).map(e=>[e.name,e.sets,e.reps,e.weight||''].join(':')).join(',');
+          return [day,w.type||'',w.completion||0,exercises].join('|');
+        };
+        const merged=Array.isArray(local)?local.slice():[];
+        serverLog.forEach(serverWorkout=>{
+          const match=merged.findIndex(localWorkout=>
+            (serverWorkout.serverId&&localWorkout.serverId===serverWorkout.serverId)||
+            (!localWorkout.serverId&&key(localWorkout)===key(serverWorkout)));
+          if(match>=0)merged[match]=Object.assign({},merged[match],serverWorkout);
+          else merged.push(serverWorkout);
+        });
+        merged.sort((a,b)=>(a.ts||0)-(b.ts||0));
+        ownedStorageSet('apexWorkoutLog',JSON.stringify(merged.slice(-60)));
+      }
+    }
+    if(conversationResponse.ok){
+      const d=await conversationResponse.json();
+      if(d&&Array.isArray(d.messages)&&d.messages.length){
+        ownedStorageSet('apexHistory',JSON.stringify(d.messages.slice(-40)));
+      }
     }
     applyReadout();
   }catch(e){ console.debug('sync failed',e); }

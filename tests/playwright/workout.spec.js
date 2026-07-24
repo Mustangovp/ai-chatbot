@@ -898,6 +898,170 @@ test.describe('APEX approved app shell — UX regression', () => {
     });
   });
 
+  test('AUTH-2: authenticated startup restores server profile and workout history', async ({ page }) => {
+    const requests = [];
+    await page.route('**/auth/me', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          authenticated: true, email: 'sync@example.com', plan: 'free', status: 'free'
+        })
+      });
+    });
+    await page.route('**/api/profile', async (route) => {
+      requests.push([route.request().method(), '/api/profile']);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ profile: { goal: 'server-goal', age: '42' } })
+      });
+    });
+    await page.route('**/api/history', async (route) => {
+      requests.push([route.request().method(), '/api/history']);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          workouts: [{
+            id: 'server-workout', occurred_at: '2026-07-24T08:00:00Z',
+            type: 'strength', exercises: [{ name: 'Squat', sets: 3, reps: 8 }],
+            difficulty: 'medium', completion: 100
+          }],
+          nutrition: [],
+          timeline: []
+        })
+      });
+    });
+    await page.route('**/api/conversations?limit=60', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ messages: [] })
+      });
+    });
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname === '/api/sync') requests.push([request.method(), '/api/sync']);
+    });
+    await page.evaluate(() => {
+      activateDataOwner('account', 'sync@example.com');
+      ownedStorageSet('apexProfile', JSON.stringify({ goal: 'local-goal', localOnly: 'kept' }));
+      ownedStorageSet('apexWorkoutLog', JSON.stringify([
+        {
+          ts: Date.parse('2026-07-24T07:59:30Z'),
+          date: '7/24/2026',
+          type: 'strength',
+          exercises: [{ name: 'Squat', sets: 3, reps: 8 }],
+          diff: 'local-difficulty',
+          completion: 100,
+          localOnly: 'kept'
+        },
+        { ts: Date.parse('2026-07-23T08:00:00Z'), type: 'local-only', exercises: [] }
+      ]));
+    });
+
+    await page.goto('/app');
+    await expect.poll(() => page.evaluate(() => pfLoad().goal)).toBe('server-goal');
+    const restored = await page.evaluate(() => ({
+      profile: pfLoad(),
+      workouts: JSON.parse(ownedStorageGet('apexWorkoutLog') || '[]')
+    }));
+
+    expect(requests).toContainEqual(['GET', '/api/profile']);
+    expect(requests).toContainEqual(['GET', '/api/history']);
+    expect(requests).not.toContainEqual(['POST', '/api/sync']);
+    expect(restored.profile).toMatchObject({
+      goal: 'server-goal', age: '42', localOnly: 'kept'
+    });
+    expect(restored.workouts).toEqual([
+      { ts: Date.parse('2026-07-23T08:00:00Z'), type: 'local-only', exercises: [] },
+      {
+        ts: Date.parse('2026-07-24T08:00:00Z'),
+        date: '2026-07-24',
+        serverId: 'server-workout',
+        type: 'strength',
+        exercises: [{ name: 'Squat', sets: 3, reps: 8 }],
+        diff: 'medium',
+        completion: 100,
+        localOnly: 'kept'
+      }
+    ]);
+  });
+
+  test('AUTH-3: anonymous startup and local writes never call account data APIs', async ({ page }) => {
+    const accountRequests = [];
+    await page.route('**/auth/me', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ authenticated: false, plan: 'free', status: 'free' })
+      });
+    });
+    page.on('request', (request) => {
+      const path = new URL(request.url()).pathname;
+      if (path === '/api/profile' || path === '/api/history' || path === '/api/workout') {
+        accountRequests.push([request.method(), path]);
+      }
+    });
+
+    await page.goto('/app');
+    await page.evaluate(() => {
+      SESSION.authenticated = false;
+      accountSaveProfile({ goal: 'local-only' });
+      accountLogWorkout({ ts: Date.now(), type: 'local-only', exercises: [] });
+    });
+    await page.waitForTimeout(100);
+
+    expect(accountRequests).toEqual([]);
+  });
+
+  test('AUTH-4: authenticated profile save and workout completion write to account APIs', async ({ page }) => {
+    const calls = await page.evaluate(async () => {
+      SESSION.authenticated = true;
+      const sent = [];
+      const originalFetch = window.fetch;
+      window.fetch = async (url, options = {}) => {
+        sent.push({
+          url,
+          method: options.method || 'GET',
+          body: options.body ? JSON.parse(options.body) : null
+        });
+        return new Response(JSON.stringify({ ok: true, id: 'server-workout' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      };
+      document.getElementById('pf-age').value = '33';
+      saveProfile();
+      logWorkout({
+        ts: Date.now(),
+        date: '2026-07-24',
+        type: 'strength',
+        exercises: [{ name: 'Squat', sets: 3, reps: 8 }],
+        diff: 'medium',
+        completion: 100
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      window.fetch = originalFetch;
+      return sent;
+    });
+
+    expect(calls).toContainEqual(expect.objectContaining({
+      url: '/api/profile',
+      method: 'PUT',
+      body: expect.objectContaining({
+        profile: expect.objectContaining({ age: '33' })
+      })
+    }));
+    expect(calls).toContainEqual(expect.objectContaining({
+      url: '/api/workout',
+      method: 'POST',
+      body: expect.objectContaining({
+        session: expect.objectContaining({ type: 'strength', completion: 100 })
+      })
+    }));
+  });
+
   test('CP-1: collapsed Bulgarian day plan renders as cards with no raw pipes', async ({ page }) => {
     await page.evaluate(() => {
       const md = '| Обяд: | | | | Пиле | 200 г | 46 | 0 | 6 | 210 | | Ориз | 150 г | 4 | 45 | 1 | 200 |';
