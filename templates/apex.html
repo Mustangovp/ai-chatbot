@@ -1577,11 +1577,49 @@ function resetLocal(){
    ═══════════════════════════════════════════════════════════════════ */
 let SESSION={authenticated:false,plan:'free',status:'free',email:null,expiry:null};
 let sendLocked=false;
-async function loadSession(){
+async function verifyAccessToken(token){
+  if(!token)return null;
+  try{
+    const r=await fetch('/verify-token',{method:'POST',headers:{'Content-Type':'application/json'},
+      credentials:'same-origin',body:JSON.stringify({token})});
+    if(!r.ok)return null;
+    const access=await r.json();
+    return access&&access.valid===true?access:null;
+  }catch(e){return null;}
+}
+async function bootstrapAccessToken(){
+  const q=new URLSearchParams(location.search);
+  const urlToken=q.get('token');
+  const storedToken=localStorage.getItem('apexToken')||'';
+  const token=urlToken||storedToken;
+  const access=await verifyAccessToken(token);
+  if(access){
+    localStorage.setItem('apexToken',token);
+  }else if(!urlToken&&storedToken){
+    localStorage.removeItem('apexToken');
+  }
+  if(urlToken!==null){
+    q.delete('token');
+    const search=q.toString();
+    history.replaceState(null,'',location.pathname+(search?'?'+search:'')+location.hash);
+  }
+  return access;
+}
+async function loadSession(tokenAccess){
+  if(tokenAccess===undefined){
+    tokenAccess=await verifyAccessToken(localStorage.getItem('apexToken')||'');
+  }
   try{
     const r=await fetch('/auth/me',{credentials:'same-origin'});
     SESSION=Object.assign({authenticated:false,plan:'free',status:'free'},await r.json());
   }catch(e){ SESSION={authenticated:false,plan:'free',status:'free',email:null}; }
+  if(tokenAccess&&SESSION.plan==='free'){
+    SESSION.plan=tokenAccess.plan==='pro'?'pro':'core';
+    SESSION.status='active';
+    SESSION.expiry=Number(tokenAccess.expiry)||0;
+    SESSION.current_period_end=SESSION.expiry?new Date(SESSION.expiry*1000).toISOString():null;
+    SESSION.isDev=tokenAccess.isDev===true;
+  }
   if(SESSION.authenticated&&SESSION.email)activateDataOwner('account',SESSION.email.trim().toLowerCase());
   else activateDataOwner('anonymous',DATA_OWNER.kind==='anonymous'?DATA_OWNER.id:anonymousOwnerId());
   // If just signed in, pull the account's canonical data down (DB → cache) once.
@@ -2721,7 +2759,7 @@ function pollToken(sid){
    BOOT
    ═══════════════════════════════════════════════════════════════════ */
 let core,appStartupStarted=false;
-function startApp(){
+async function startApp(){
   if(appStartupStarted)return;
   appStartupStarted=true;
   core=new LivingCore(document.getElementById('core'));
@@ -2759,6 +2797,7 @@ function startApp(){
   }catch(e){}
   seen();
 
+  const tokenAccess=await bootstrapAccessToken();
   const intent=applyIntent();
   applyLang();
   const _uin=document.getElementById('user-in');
@@ -2774,7 +2813,7 @@ function startApp(){
   const q=new URLSearchParams(location.search);
   if(q.get('auth')==='ok'){ toast(tr().auth.welcome); }
   else if(q.get('auth')==='invalid'){ toast(tr().auth.linkBad); }
-  loadSession().then(()=>{
+  loadSession(tokenAccess).then(()=>{
     if(location.search.match(/auth=/)) history.replaceState(null,'',location.pathname);
     // First-run and landing intent decisions use the restored account state.
     const hasProfile=!!ownedStorageGet('apexProfile');

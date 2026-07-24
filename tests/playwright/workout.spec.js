@@ -852,6 +852,52 @@ test.describe('APEX approved app shell — UX regression', () => {
     expect(consoleErrors).toEqual([]);
   });
 
+  test('AUTH-1: URL DEV token is verified before auth session and grants PRO access', async ({ page }) => {
+    await page.route('**/verify-token', async (route) => {
+      const payload = route.request().postDataJSON();
+      expect(payload.token).toBe('dev-url-token');
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ valid: true, isDev: true, plan: 'pro', expiry: 0 })
+      });
+    });
+    await page.route('**/auth/me', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ authenticated: false, plan: 'free', status: 'free' })
+      });
+    });
+    await page.evaluate(() => localStorage.removeItem('apexToken'));
+    const order = [];
+    page.on('request', (request) => {
+      const path = new URL(request.url()).pathname;
+      if (path === '/verify-token' || path === '/auth/me') order.push(path);
+    });
+
+    await page.goto('/app?token=dev-url-token');
+    await expect.poll(() => page.evaluate(() => SESSION.plan)).toBe('pro');
+    const state = await page.evaluate(() => ({
+      token: localStorage.getItem('apexToken'),
+      plan: SESSION.plan,
+      status: SESSION.status,
+      isDev: SESSION.isDev,
+      elite: isElite(),
+      search: location.search
+    }));
+
+    expect(order.slice(0, 2)).toEqual(['/verify-token', '/auth/me']);
+    expect(state).toEqual({
+      token: 'dev-url-token',
+      plan: 'pro',
+      status: 'active',
+      isDev: true,
+      elite: true,
+      search: ''
+    });
+  });
+
   test('CP-1: collapsed Bulgarian day plan renders as cards with no raw pipes', async ({ page }) => {
     await page.evaluate(() => {
       const md = '| Обяд: | | | | Пиле | 200 г | 46 | 0 | 6 | 210 | | Ориз | 150 г | 4 | 45 | 1 | 200 |';
