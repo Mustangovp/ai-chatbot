@@ -275,7 +275,7 @@ test.describe('APEX approved app shell — UX regression', () => {
         substitutions: ['Use spinach instead of tomato.'], storage: 'Eat fresh.', meal_prep: false
       }));
       const md = [
-        '| Meal | Food | Quantity | Protein | Carbs | Fat | Calories | Why this meal | Recipe |',
+        '| Meal | Food | Quantity | Protein (g) | Carbs (g) | Fat (g) | Kcal | Why this meal | Recipe |',
         '| --- | --- | --- | --- | --- | --- | --- | --- | --- |',
         '| Breakfast | Eggs | 200 g | 40 | 0 | 20 | 340 | Starts the day toward your protein target. | ' + recipe + ' |',
         '| Daily Total | | | 40 | 0 | 20 | 340 | | |'

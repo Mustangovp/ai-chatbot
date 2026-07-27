@@ -1864,7 +1864,7 @@ const _isServingValue=c=>{c=(c||'').trim();return /\d/.test(c)&&/^\d+([.,]\d+)?\
 const _isTotal=s=>/[\s(|:](total|totals|общо|сумарно|сума|итого|daily\s*total|дневн\w*)/i.test(' '+mdClean(s));
 function _nums(s){return (String(s).match(/\d+(?:[.,]\d+)?/g)||[]);}
 function nutritionField(v){
-  const h=mdClean(v).toLowerCase();
+  const h=mdClean(v).toLowerCase().replace(/\s*\([^)]*\)\s*$/,'').trim();
   if(/^(meal|хранене)$/.test(h))return'name';
   if(/^(food|dish|product|name|ястие|продукт|име)$/.test(h))return'food';
   if(/^(quantity|qty|amount|serving|serving size|portion|grams?|количество|порция|грамаж)$/.test(h))return'qty';
