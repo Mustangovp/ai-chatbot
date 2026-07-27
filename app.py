@@ -1337,11 +1337,13 @@ def api_workout():
     return jsonify({"ok": True, "id": wid})
 
 
-@app.route("/api/history")
+@app.route("/api/history", methods=["GET", "POST"])
 def api_history():
     u = _require_user()
     if not u:
         return jsonify({"error": "unauthenticated"}), 401
+    if request.method == "POST":
+        return api_workout()
     return jsonify({
         "workouts": store.list_workouts(u["id"]),
         "nutrition": store.list_nutrition(u["id"]),

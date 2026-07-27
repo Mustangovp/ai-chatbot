@@ -206,6 +206,27 @@ def test_api_workout_accepts_and_preserves_the_immutable_completion_contract(cli
     assert captured["session"]["workout_completion"] == completion
 
 
+def test_api_history_post_uses_the_authenticated_workout_persistence_contract(client, monkeypatch):
+    profile = _profile(recoveryFeel="fresh")
+    _login_for_chat(client, profile)
+    captured = {}
+    monkeypatch.setattr(
+        appmod.store,
+        "log_workout",
+        lambda user_id, payload: captured.update(user_id=user_id, session=payload) or "history-workout-1",
+    )
+
+    response = client.post(
+        "/api/history",
+        json={"session": {"type": "full body", "exercises": [], "completion": 100}},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {"ok": True, "id": "history-workout-1"}
+    assert captured["user_id"]
+    assert captured["session"] == {"type": "full body", "exercises": [], "completion": 100}
+
+
 def test_chat_rejects_untraceable_lifecycle_evidence_without_legacy_generation(client, captured, monkeypatch):
     profile = _profile(recoveryFeel="fresh")
     monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
