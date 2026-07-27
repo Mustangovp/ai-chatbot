@@ -116,6 +116,16 @@ def test_recipe_matcher_falls_back_when_no_exact_ingredient_overlap_exists():
     assert nutrition_plan.render(plan, "en") == nutrition_plan.render(plan, "en", {})
 
 
+def test_recipe_matcher_rejects_a_recipe_that_omits_a_displayed_food():
+    """A partial overlap must not attach an unrelated recipe to a meal."""
+    breakfast = SimpleNamespace(
+        meal_type="breakfast",
+        foods=tuple(SimpleNamespace(display_name=name) for name in ("Eggs", "Greek Yogurt", "Apple")),
+    )
+
+    assert match_meal(breakfast, load_recipes(), profile_equipment({})) is None
+
+
 def test_recipe_equipment_filter_excludes_oven_only_match():
     dinner = _plan().meals[-1]
 

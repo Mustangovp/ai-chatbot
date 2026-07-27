@@ -62,7 +62,14 @@ def match_meal(meal: object, recipes: Iterable[Recipe], available_equipment: fro
             continue
         recipe_keys = frozenset(ingredient_key(item) for item in recipe.ingredients)
         union = food_keys | recipe_keys
-        score = len(food_keys & recipe_keys) / len(union) if union else 0.0
+        overlap = food_keys & recipe_keys
+        # A recipe may include a harmless preparation ingredient that is not
+        # separately displayed, but it may never omit a displayed food.
+        # Otherwise a partial overlap can label eggs as an unrelated yoghurt
+        # recipe while leaving the actual meal unchanged.
+        if overlap != food_keys:
+            continue
+        score = len(overlap) / len(union) if union else 0.0
         if score >= threshold:
             candidates.append(RecipeMatch(recipe, score))
     return min(candidates, key=lambda item: (-item.score, item.recipe.id), default=None)
