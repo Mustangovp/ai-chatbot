@@ -247,6 +247,26 @@ test.describe('APEX approved app shell — UX regression', () => {
     expect(nutriText).not.toContain('|');
   });
 
+  test('NP-1A: meal reasons remain inside their nutrition cards', async ({ page }) => {
+    await page.evaluate(() => {
+      const md = [
+        '| Meal | Food | Quantity | Protein | Carbs | Fat | Calories | Why this meal |',
+        '| --- | --- | --- | --- | --- | --- | --- | --- |',
+        '| Breakfast | Eggs | 200 g | 40 | 0 | 20 | 340 | Starts the day toward your protein target. |',
+        '| Lunch | Chicken | 200 g | 70 | 0 | 15 | 500 | Keeps protein on track for your daily target. |',
+        '| Dinner | Salmon | 200 g | 65 | 0 | 28 | 600 | Completes the day within your target. |',
+        '| Daily Total | | | 175 | 0 | 63 | 1440 | |'
+      ].join('\n');
+      const el = appendCoach();
+      el.innerHTML = renderMarkdown(md);
+    });
+
+    await expect(page.locator('.nutri-meal')).toHaveCount(6);
+    await expect(page.locator('.nm-reason')).toHaveCount(3);
+    await expect(page.locator('.nm-reason').first()).toContainText('protein target');
+    await expect(page.locator('.nm-reason').nth(1)).toContainText('daily target');
+  });
+
   test('NR-1: nutrition readability — full words, units, colour is not the sole signal', async ({ page }) => {
     await page.evaluate(() => {
       const md = [

@@ -1972,6 +1972,30 @@ def test_nutrition_delivery_adds_a_deterministic_explanation_after_the_canonical
     assert delivered.startswith("| Meal | Food")
     assert delivered.endswith("then adjust only through a follow-up request.")
     assert "**Why this plan:**" in delivered
+    assert delivered.count("Why this meal") == 1
+    assert "Starts the day with 40 g protein toward your 175 g daily target." in delivered
+    assert "Keeps protein and energy on track for your 175 g daily target." in delivered
+    assert "Completes the day while keeping the confirmed 175 g protein target in range." in delivered
+
+
+def test_nutrition_plan_rejects_calorie_and_protein_shortfall_before_delivery():
+    payload = _structured_plan_payload()
+    target = NutritionTargets(Decimal("2200"), Decimal("180"))
+    for meal in payload["meals"]:
+        for food in meal["foods"]:
+            food["kcal"] = str(Decimal(food["kcal"]) * Decimal("0.65"))
+    payload["meals"][0]["foods"][0]["protein_g"] = "31"
+    payload["meals"][1]["foods"][0]["protein_g"] = "50"
+    payload["meals"][2]["foods"][0]["protein_g"] = "45"
+
+    with pytest.raises(nutrition_plan.NutritionPlanError, match="kcal is outside the confirmed target"):
+        nutrition_plan.build_plan(payload, target, restrictions=(), provenance={})
+
+    for meal in payload["meals"]:
+        for food in meal["foods"]:
+            food["kcal"] = str(Decimal(food["kcal"]) * Decimal("2200") / Decimal("1820"))
+    with pytest.raises(nutrition_plan.NutritionPlanError, match="protein is outside the confirmed target"):
+        nutrition_plan.build_plan(payload, target, restrictions=(), provenance={})
 
 
 def test_nutrition_plan_rejects_compound_food_rows_without_display_parsing():

@@ -363,13 +363,12 @@ def build_source_backed_plan(targets: NutritionTargets, lang: str, *,
         if current_kcal < lower_kcal or current_kcal > targets.kcal * Decimal("1.05"):
             return None
 
-        # The profile expresses protein as a minimum. The catalog optimizer
-        # enforces that lower bound; the canonical delivery validator therefore
-        # verifies the calorie target here without treating a safe excess as a
-        # failed exact protein target.
+        # The source-backed recovery must satisfy exactly the same delivery
+        # contract as a model-generated plan. Validating calories alone here
+        # allowed an under-protein fallback to bypass the canonical gate.
         return build_plan(
             {"meals": meals},
-            NutritionTargets(kcal=targets.kcal),
+            targets,
             restrictions=restrictions,
             provenance={
                 "generator": "source_backed_catalog_fallback",
@@ -590,6 +589,29 @@ def _display_decimal(value: Decimal) -> str:
     return result.rstrip("0").rstrip(".") if "." in result else result
 
 
+def _meal_reason(meal: NutritionMeal, targets: NutritionTargets, lang: str) -> str:
+    """Return the deterministic, target-aware rationale displayed on each meal card."""
+    protein = _display_decimal(meal.macros.protein_g)
+    protein_target = _display_decimal(targets.protein) if targets.protein is not None else None
+    kcal = _display_decimal(meal.macros.kcal)
+    kcal_target = _display_decimal(targets.kcal)
+    english = str(lang).lower() == "en"
+    if meal.meal_type == "breakfast":
+        return (f"Starts the day with {protein} g protein toward your {protein_target} g daily target."
+                if protein_target else f"Starts the day with {kcal} kcal toward your {kcal_target} kcal daily target.") if english else (
+                f"\u0417\u0430\u043f\u043e\u0447\u0432\u0430 \u0434\u0435\u043d\u044f \u0441 {protein} \u0433 \u0431\u0435\u043b\u0442\u044a\u0447\u0438\u043d\u0438 \u043a\u044a\u043c \u0434\u043d\u0435\u0432\u043d\u0430\u0442\u0430 \u0442\u0438 \u0446\u0435\u043b \u043e\u0442 {protein_target} \u0433."
+                if protein_target else f"\u0417\u0430\u043f\u043e\u0447\u0432\u0430 \u0434\u0435\u043d\u044f \u0441 {kcal} kcal \u043a\u044a\u043c \u0434\u043d\u0435\u0432\u043d\u0430\u0442\u0430 \u0442\u0438 \u0446\u0435\u043b \u043e\u0442 {kcal_target} kcal.")
+    if meal.meal_type == "lunch":
+        return (f"Keeps protein and energy on track for your {protein_target} g daily target."
+                if protein_target else f"Keeps energy on track for your {kcal_target} kcal daily target.") if english else (
+                f"\u0414\u044a\u0440\u0436\u0438 \u0431\u0435\u043b\u0442\u044a\u0447\u0438\u043d\u0438\u0442\u0435 \u0438 \u0435\u043d\u0435\u0440\u0433\u0438\u044f\u0442\u0430 \u043a\u044a\u043c \u0434\u043d\u0435\u0432\u043d\u0430\u0442\u0430 \u0442\u0438 \u0446\u0435\u043b \u043e\u0442 {protein_target} \u0433."
+                if protein_target else f"\u0414\u044a\u0440\u0436\u0438 \u0435\u043d\u0435\u0440\u0433\u0438\u044f\u0442\u0430 \u043a\u044a\u043c \u0434\u043d\u0435\u0432\u043d\u0430\u0442\u0430 \u0442\u0438 \u0446\u0435\u043b \u043e\u0442 {kcal_target} kcal.")
+    return (f"Completes the day while keeping the confirmed {protein_target} g protein target in range."
+            if protein_target else f"Completes the day while keeping the confirmed {kcal_target} kcal target in range.") if english else (
+            f"\u0417\u0430\u0432\u044a\u0440\u0448\u0432\u0430 \u0434\u0435\u043d\u044f, \u043a\u0430\u0442\u043e \u0437\u0430\u043f\u0430\u0437\u0432\u0430 \u043f\u043e\u0442\u0432\u044a\u0440\u0434\u0435\u043d\u0430\u0442\u0430 \u0446\u0435\u043b \u043e\u0442 {protein_target} \u0433 \u0431\u0435\u043b\u0442\u044a\u0447\u0438\u043d\u0438."
+            if protein_target else f"\u0417\u0430\u0432\u044a\u0440\u0448\u0432\u0430 \u0434\u0435\u043d\u044f, \u043a\u0430\u0442\u043e \u0437\u0430\u043f\u0430\u0437\u0432\u0430 \u043f\u043e\u0442\u0432\u044a\u0440\u0434\u0435\u043d\u0430\u0442\u0430 \u0446\u0435\u043b \u043e\u0442 {kcal_target} kcal.")
+
+
 def render(plan: NutritionPlan, lang: str) -> str:
     """Deterministically project an authoritative plan into legacy chat text."""
     english = str(lang).lower() == "en"
@@ -599,20 +621,21 @@ def render(plan: NutritionPlan, lang: str) -> str:
         "lunch": ("Lunch", "\u041e\u0431\u044f\u0434"),
         "dinner": ("Dinner", "\u0412\u0435\u0447\u0435\u0440\u044f"),
     }
-    header = "| Meal | Food | Quantity | Protein (g) | Carbs (g) | Fat (g) | Kcal |"
+    header = "| Meal | Food | Quantity | Protein (g) | Carbs (g) | Fat (g) | Kcal | Why this meal |"
     if not english:
-        header = "| \u0425\u0440\u0430\u043d\u0435\u043d\u0435 | \u0425\u0440\u0430\u043d\u0430 | \u041a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e | \u0411\u0435\u043b\u0442\u044a\u0447\u0438\u043d\u0438 (g) | \u0412\u044a\u0433\u043b\u0435\u0445\u0438\u0434\u0440\u0430\u0442\u0438 (g) | \u041c\u0430\u0437\u043d\u0438\u043d\u0438 (g) | \u041a\u043a\u0430\u043b |"
-    lines = [header, "| --- | --- | --- | --- | --- | --- | --- |"]
+        header = "| \u0425\u0440\u0430\u043d\u0435\u043d\u0435 | \u0425\u0440\u0430\u043d\u0430 | \u041a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e | \u0411\u0435\u043b\u0442\u044a\u0447\u0438\u043d\u0438 (g) | \u0412\u044a\u0433\u043b\u0435\u0445\u0438\u0434\u0440\u0430\u0442\u0438 (g) | \u041c\u0430\u0437\u043d\u0438\u043d\u0438 (g) | \u041a\u043a\u0430\u043b | \u0417\u0430\u0449\u043e \u0442\u043e\u0432\u0430 \u0445\u0440\u0430\u043d\u0435\u043d\u0435 |"
+    lines = [header, "| --- | --- | --- | --- | --- | --- | --- | --- |"]
     for meal in plan.meals:
         for index, food in enumerate(meal.foods):
             label = labels[meal.meal_type][0 if english else 1] if index == 0 else ""
-            lines.append("| {} | {} | {} g | {} | {} | {} | {} |".format(
+            reason = _meal_reason(meal, plan.targets, lang) if index == 0 else ""
+            lines.append("| {} | {} | {} g | {} | {} | {} | {} | {} |".format(
                 label, food.display_name, _display_decimal(food.grams),
                 _display_decimal(food.macros.protein_g), _display_decimal(food.macros.carbs_g),
-                _display_decimal(food.macros.fat_g), _display_decimal(food.macros.kcal),
+                _display_decimal(food.macros.fat_g), _display_decimal(food.macros.kcal), reason,
             ))
     total_label = "Daily Total" if english else "\u041e\u0431\u0449\u043e"
-    lines.append("| {} | | | {} | {} | {} | {} |".format(
+    lines.append("| {} | | | {} | {} | {} | {} | |".format(
         total_label, _display_decimal(plan.totals.protein_g), _display_decimal(plan.totals.carbs_g),
         _display_decimal(plan.totals.fat_g), _display_decimal(plan.totals.kcal),
     ))

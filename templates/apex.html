@@ -217,6 +217,7 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 .nm-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:10px;}
 .nm-name{font-family:'Unbounded';font-weight:600;font-size:14px;color:#fff;}
 .nm-qty{font-size:12px;color:var(--muted);font-weight:600;flex-shrink:0;}
+.nm-reason{margin-top:10px;color:var(--muted);font-size:12.5px;line-height:1.5;}
 .macros-cap{font-size:10.5px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:var(--faint);margin-bottom:8px;}
 .macros{display:flex;flex-wrap:wrap;gap:8px;}
 /* Full word carries the meaning; colour is only a helper (readable for colour-blind users). */
@@ -1857,18 +1858,20 @@ const _isTotal=s=>/[\s(|:](total|totals|общо|сумарно|сума|ито�
 function _nums(s){return (String(s).match(/\d+(?:[.,]\d+)?/g)||[]);}
 function nutritionField(v){
   const h=mdClean(v).toLowerCase();
-  if(/^(meal|food|dish|product|name|хранене|ястие|продукт|име)$/.test(h))return'name';
+  if(/^(meal|хранене)$/.test(h))return'name';
+  if(/^(food|dish|product|name|ястие|продукт|име)$/.test(h))return'food';
   if(/^(quantity|qty|amount|serving|serving size|portion|grams?|количество|порция|грамаж)$/.test(h))return'qty';
   if(/^(protein|протеин|белтъчини)$/.test(h))return'p';
   if(/^(carbs?|carbohydrates|въглехидрати)$/.test(h))return'c';
   if(/^(fat|fats|мазнини)$/.test(h))return'f';
   if(/^(kcal|calories|calorie|ккал|калории)$/.test(h))return'k';
+  if(/^(why this meal|meal reason|reason|защо това хранене|причина)$/.test(h))return'reason';
   return null;
 }
 function nutritionSchema(cells){
-  const schema={name:-1,qty:-1,p:-1,c:-1,f:-1,k:-1,width:(cells||[]).length};
+  const schema={name:-1,food:-1,qty:-1,p:-1,c:-1,f:-1,k:-1,reason:-1,width:(cells||[]).length};
   (cells||[]).forEach((cell,index)=>{const field=nutritionField(cell);if(field&&schema[field]===-1)schema[field]=index;});
-  return schema.name>=0&&[schema.p,schema.c,schema.f,schema.k].filter(index=>index>=0).length>=3?schema:null;
+  return (schema.name>=0||schema.food>=0)&&[schema.p,schema.c,schema.f,schema.k].filter(index=>index>=0).length>=3?schema:null;
 }
 function isNutritionTableHeader(cells){
   const h=(cells||[]).join(' ').toLowerCase();
@@ -1878,15 +1881,18 @@ function isNutritionTableHeader(cells){
 /* one pipe/collapsed row → ordered items (meal titles / foods / totals) */
 function itemFromSchema(cells,schema){
   const value=field=>schema[field]>=0?mdClean(cells[schema[field]]||''):'';
-  const name=value('name'); if(!name)return null;
-  const item={p:value('p'),c:value('c'),f:value('f'),k:value('k')};
-  if(_isTotal(name))return{type:'total',...item};
-  if(isMealCell(name)&&!item.p&&!item.c&&!item.f&&!item.k)return{type:'meal',name:mealHeaderName(name)||name};
-  return{type:'food',name,qty:value('qty'),...item};
+  const meal=value('name'); const food=value('food'); const name=food||meal; if(!name)return [];
+  const item={p:value('p'),c:value('c'),f:value('f'),k:value('k'),reason:value('reason')};
+  if(_isTotal(meal||food))return[{type:'total',...item}];
+  if(isMealCell(meal)&&!food&&!item.p&&!item.c&&!item.f&&!item.k)return[{type:'meal',name:mealHeaderName(meal)||meal}];
+  const items=[];
+  if(isMealCell(meal)&&food)items.push({type:'meal',name:mealHeaderName(meal)||meal});
+  items.push({type:'food',name,qty:value('qty'),...item});
+  return items;
 }
 function itemsFromCells(cells,schema=null){
   cells=(cells||[]).map(mdClean);
-  if(schema&&cells.length===schema.width){const item=itemFromSchema(cells,schema);return item?[item]:[];}
+  if(schema&&cells.length===schema.width)return itemFromSchema(cells,schema);
   const items=[]; let k=0;
   while(k<cells.length){
     const c=cells[k];
@@ -1982,8 +1988,9 @@ function renderNutritionModel(model){
     if(clip(it.f))b.push('<span class="macro f"><span class="mname">'+L.f+'</span><b>'+clip(it.f)+' '+L.u+'</b></span>');
     if(clip(it.k))b.push('<span class="macro k"><span class="mname">'+L.k+'</span><b>'+clip(it.k)+' kcal</b></span>');
     const q=it.qty?'<span class="nm-qty">'+esc(mdClean(it.qty))+'</span>':'';
+    const reason=it.reason?'<div class="nm-reason">'+esc(mdClean(it.reason))+'</div>':'';
     return '<div class="nutri-meal"><div class="nm-head"><span class="nm-name">'+esc(mdClean(it.name))+'</span>'+q+'</div>'+
-      (b.length?'<div class="macros-cap">'+L.cap+'</div><div class="macros">'+b.join('')+'</div>':'')+'</div>';
+      (b.length?'<div class="macros-cap">'+L.cap+'</div><div class="macros">'+b.join('')+'</div>':'')+reason+'</div>';
   };
   const mealCard=nm=>'<div class="nutri-meal nutri-title"><div class="nm-head"><span class="nm-name">'+esc(nm)+'</span></div></div>';
   let html='<div class="nutri">'; let total=null,curMeal=null; const seen=new Set();
