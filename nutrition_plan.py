@@ -612,9 +612,10 @@ def _meal_reason(meal: NutritionMeal, targets: NutritionTargets, lang: str) -> s
             if protein_target else f"\u0417\u0430\u0432\u044a\u0440\u0448\u0432\u0430 \u0434\u0435\u043d\u044f, \u043a\u0430\u0442\u043e \u0437\u0430\u043f\u0430\u0437\u0432\u0430 \u043f\u043e\u0442\u0432\u044a\u0440\u0434\u0435\u043d\u0430\u0442\u0430 \u0446\u0435\u043b \u043e\u0442 {kcal_target} kcal.")
 
 
-def render(plan: NutritionPlan, lang: str) -> str:
+def render(plan: NutritionPlan, lang: str, recipe_tokens: Mapping[str, str] | None = None) -> str:
     """Deterministically project an authoritative plan into legacy chat text."""
     english = str(lang).lower() == "en"
+    include_recipes = bool(recipe_tokens)
     labels = {
         "breakfast": ("Breakfast", "\u0417\u0430\u043a\u0443\u0441\u043a\u0430"),
         "snack": ("Snack", "\u041c\u0435\u0436\u0434\u0438\u043d\u043d\u043e"),
@@ -624,27 +625,42 @@ def render(plan: NutritionPlan, lang: str) -> str:
     header = "| Meal | Food | Quantity | Protein (g) | Carbs (g) | Fat (g) | Kcal | Why this meal |"
     if not english:
         header = "| \u0425\u0440\u0430\u043d\u0435\u043d\u0435 | \u0425\u0440\u0430\u043d\u0430 | \u041a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e | \u0411\u0435\u043b\u0442\u044a\u0447\u0438\u043d\u0438 (g) | \u0412\u044a\u0433\u043b\u0435\u0445\u0438\u0434\u0440\u0430\u0442\u0438 (g) | \u041c\u0430\u0437\u043d\u0438\u043d\u0438 (g) | \u041a\u043a\u0430\u043b | \u0417\u0430\u0449\u043e \u0442\u043e\u0432\u0430 \u0445\u0440\u0430\u043d\u0435\u043d\u0435 |"
-    lines = [header, "| --- | --- | --- | --- | --- | --- | --- | --- |"]
+    if include_recipes:
+        header += " Recipe |" if english else " \u0420\u0435\u0446\u0435\u043f\u0442\u0430 |"
+    lines = [header, "| --- | --- | --- | --- | --- | --- | --- | --- |" + (" --- |" if include_recipes else "")]
     for meal in plan.meals:
         for index, food in enumerate(meal.foods):
             label = labels[meal.meal_type][0 if english else 1] if index == 0 else ""
             reason = _meal_reason(meal, plan.targets, lang) if index == 0 else ""
-            lines.append("| {} | {} | {} g | {} | {} | {} | {} | {} |".format(
+            recipe = (recipe_tokens or {}).get(meal.id, "") if index == 0 else ""
+            row = "| {} | {} | {} g | {} | {} | {} | {} | {} |".format(
                 label, food.display_name, _display_decimal(food.grams),
                 _display_decimal(food.macros.protein_g), _display_decimal(food.macros.carbs_g),
                 _display_decimal(food.macros.fat_g), _display_decimal(food.macros.kcal), reason,
-            ))
+            )
+            lines.append(row[:-1] + f" {recipe} |" if include_recipes else row)
     total_label = "Daily Total" if english else "\u041e\u0431\u0449\u043e"
-    lines.append("| {} | | | {} | {} | {} | {} | |".format(
+    total_row = "| {} | | | {} | {} | {} | {} | |".format(
         total_label, _display_decimal(plan.totals.protein_g), _display_decimal(plan.totals.carbs_g),
         _display_decimal(plan.totals.fat_g), _display_decimal(plan.totals.kcal),
-    ))
+    )
+    lines.append(total_row[:-1] + " | |" if include_recipes else total_row)
     return "\n".join(lines)
 
 
-def render_delivery(plan: NutritionPlan, lang: str) -> str:
+def render_delivery(plan: NutritionPlan, lang: str, profile: Mapping[str, object] | None = None) -> str:
     """Render a validated plan with a deterministic, non-authoritative explanation."""
-    table = render(plan, lang)
+    recipe_tokens: dict[str, str] = {}
+    try:
+        from recipe_engine.recipe_engine import match_plan
+        from recipe_engine.recipe_renderer import recipe_token
+
+        recipe_tokens = {meal_id: recipe_token(match) for meal_id, match in match_plan(plan, profile).items()}
+    except Exception:
+        # Recipes are optional presentation. A bad local record must never block
+        # a plan that has already passed the delivery contract.
+        recipe_tokens = {}
+    table = render(plan, lang, recipe_tokens)
     target = _display_decimal(plan.targets.kcal)
     delivered = _display_decimal(plan.totals.kcal)
     if str(lang).lower() == "en":

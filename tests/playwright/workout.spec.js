@@ -267,6 +267,29 @@ test.describe('APEX approved app shell — UX regression', () => {
     await expect(page.locator('.nm-reason').nth(1)).toContainText('daily target');
   });
 
+  test('NP-1B: matched recipes render as collapsed meal-card details', async ({ page }) => {
+    await page.evaluate(() => {
+      const recipe = 'recipe:' + btoa(JSON.stringify({
+        id: 'breakfast-eggs-oats', title: 'Egg omelette', difficulty: 'easy', minutes: 12,
+        steps: ['Whisk eggs.', 'Cook gently.'], tips: ['Use little oil.'],
+        substitutions: ['Use spinach instead of tomato.'], storage: 'Eat fresh.', meal_prep: false
+      }));
+      const md = [
+        '| Meal | Food | Quantity | Protein | Carbs | Fat | Calories | Why this meal | Recipe |',
+        '| --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+        '| Breakfast | Eggs | 200 g | 40 | 0 | 20 | 340 | Starts the day toward your protein target. | ' + recipe + ' |',
+        '| Daily Total | | | 40 | 0 | 20 | 340 | | |'
+      ].join('\n');
+      const el = appendCoach();
+      el.innerHTML = renderMarkdown(md);
+    });
+
+    await expect(page.locator('.nm-recipe')).toHaveCount(4);
+    await expect(page.locator('.nm-recipe').first()).not.toHaveAttribute('open', '');
+    await expect(page.locator('.nm-recipe-title')).toContainText('Egg omelette');
+    await expect(page.locator('.nm-recipe').first()).toContainText('Whisk eggs.');
+  });
+
   test('NR-1: nutrition readability — full words, units, colour is not the sole signal', async ({ page }) => {
     await page.evaluate(() => {
       const md = [

@@ -218,6 +218,13 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 .nm-name{font-family:'Unbounded';font-weight:600;font-size:14px;color:#fff;}
 .nm-qty{font-size:12px;color:var(--muted);font-weight:600;flex-shrink:0;}
 .nm-reason{margin-top:10px;color:var(--muted);font-size:12.5px;line-height:1.5;}
+.nm-recipe{margin-top:12px;border-top:1px solid var(--border);padding-top:10px;}
+.nm-recipe summary{cursor:pointer;color:var(--text);font-size:12.5px;font-weight:700;}
+.nm-recipe[open] summary{margin-bottom:8px;}
+.nm-recipe ol,.nm-recipe ul{margin:6px 0 10px;padding-left:20px;}
+.nm-recipe p{margin:6px 0 10px;color:var(--muted);font-size:12.5px;line-height:1.5;}
+.nm-recipe-title{margin-top:12px;font-weight:700;font-size:13px;color:var(--text);}
+.nm-recipe-meta{margin:4px 0 8px;color:var(--muted);font-size:12px;}
 .macros-cap{font-size:10.5px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:var(--faint);margin-bottom:8px;}
 .macros{display:flex;flex-wrap:wrap;gap:8px;}
 /* Full word carries the meaning; colour is only a helper (readable for colour-blind users). */
@@ -1866,10 +1873,11 @@ function nutritionField(v){
   if(/^(fat|fats|мазнини)$/.test(h))return'f';
   if(/^(kcal|calories|calorie|ккал|калории)$/.test(h))return'k';
   if(/^(why this meal|meal reason|reason|защо това хранене|причина)$/.test(h))return'reason';
+  if(/^(recipe|рецепта)$/.test(h))return'recipe';
   return null;
 }
 function nutritionSchema(cells){
-  const schema={name:-1,food:-1,qty:-1,p:-1,c:-1,f:-1,k:-1,reason:-1,width:(cells||[]).length};
+  const schema={name:-1,food:-1,qty:-1,p:-1,c:-1,f:-1,k:-1,reason:-1,recipe:-1,width:(cells||[]).length};
   (cells||[]).forEach((cell,index)=>{const field=nutritionField(cell);if(field&&schema[field]===-1)schema[field]=index;});
   return (schema.name>=0||schema.food>=0)&&[schema.p,schema.c,schema.f,schema.k].filter(index=>index>=0).length>=3?schema:null;
 }
@@ -1882,7 +1890,7 @@ function isNutritionTableHeader(cells){
 function itemFromSchema(cells,schema){
   const value=field=>schema[field]>=0?mdClean(cells[schema[field]]||''):'';
   const meal=value('name'); const food=value('food'); const name=food||meal; if(!name)return [];
-  const item={p:value('p'),c:value('c'),f:value('f'),k:value('k'),reason:value('reason')};
+  const item={p:value('p'),c:value('c'),f:value('f'),k:value('k'),reason:value('reason'),recipe:value('recipe')};
   if(_isTotal(meal||food))return[{type:'total',...item}];
   if(isMealCell(meal)&&!food&&!item.p&&!item.c&&!item.f&&!item.k)return[{type:'meal',name:mealHeaderName(meal)||meal}];
   const items=[];
@@ -1981,6 +1989,26 @@ function renderNutritionModel(model){
     if(!Number.isFinite(value))return '';
     return String(Math.round(value));
   };
+  const recipeCard=token=>{
+    if(!token||!token.startsWith('recipe:'))return '';
+    try{
+      const base64=token.slice(7).replace(/-/g,'+').replace(/_/g,'/');
+      const bytes=Uint8Array.from(atob(base64),c=>c.charCodeAt(0));
+      const recipe=JSON.parse(new TextDecoder().decode(bytes));
+      if(!recipe||typeof recipe.title!=='string'||!Array.isArray(recipe.steps)||!Array.isArray(recipe.tips)||!Array.isArray(recipe.substitutions))return '';
+      const labels=lang==='bg'
+        ?{recipe:'Рецепта',steps:'Стъпки за приготвяне',tips:'Съвети за здравословно готвене',storage:'Съхранение',subs:'Замени',minutes:'мин',prep:'Подходяща за meal prep'}
+        :{recipe:'Recipe',steps:'Preparation steps',tips:'Healthy cooking tips',storage:'Storage',subs:'Substitutions',minutes:'min',prep:'Suitable for meal prep'};
+      const list=items=>'<ul>'+items.map(item=>'<li>'+esc(String(item))+'</li>').join('')+'</ul>';
+      const title='<div class="nm-recipe-title">'+esc(labels.recipe+': '+recipe.title)+'</div>';
+      const meta='<div class="nm-recipe-meta">'+esc(String(recipe.difficulty||'')+' · '+String(recipe.minutes||'')+' '+labels.minutes+(recipe.meal_prep?' · '+labels.prep:''))+'</div>';
+      return title+meta+
+        '<details class="nm-recipe"><summary>'+esc(labels.steps)+'</summary><ol>'+recipe.steps.map(step=>'<li>'+esc(String(step))+'</li>').join('')+'</ol></details>'+
+        '<details class="nm-recipe"><summary>'+esc(labels.tips)+'</summary>'+list(recipe.tips)+'</details>'+
+        '<details class="nm-recipe"><summary>'+esc(labels.storage)+'</summary><p>'+esc(String(recipe.storage||''))+'</p></details>'+
+        '<details class="nm-recipe"><summary>'+esc(labels.subs)+'</summary>'+list(recipe.substitutions)+'</details>';
+    }catch(_){return '';}
+  };
   const foodCard=it=>{
     const b=[];
     if(clip(it.p))b.push('<span class="macro p"><span class="mname">'+L.p+'</span><b>'+clip(it.p)+' '+L.u+'</b></span>');
@@ -1989,8 +2017,9 @@ function renderNutritionModel(model){
     if(clip(it.k))b.push('<span class="macro k"><span class="mname">'+L.k+'</span><b>'+clip(it.k)+' kcal</b></span>');
     const q=it.qty?'<span class="nm-qty">'+esc(mdClean(it.qty))+'</span>':'';
     const reason=it.reason?'<div class="nm-reason">'+esc(mdClean(it.reason))+'</div>':'';
+    const recipe=recipeCard(it.recipe);
     return '<div class="nutri-meal"><div class="nm-head"><span class="nm-name">'+esc(mdClean(it.name))+'</span>'+q+'</div>'+
-      (b.length?'<div class="macros-cap">'+L.cap+'</div><div class="macros">'+b.join('')+'</div>':'')+reason+'</div>';
+      (b.length?'<div class="macros-cap">'+L.cap+'</div><div class="macros">'+b.join('')+'</div>':'')+reason+recipe+'</div>';
   };
   const mealCard=nm=>'<div class="nutri-meal nutri-title"><div class="nm-head"><span class="nm-name">'+esc(nm)+'</span></div></div>';
   let html='<div class="nutri">'; let total=null,curMeal=null; const seen=new Set();
