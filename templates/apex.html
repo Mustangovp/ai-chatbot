@@ -215,6 +215,9 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
   border-radius:16px;padding:14px 16px;margin-bottom:10px;transition:border-color .2s;}
 .nutri-meal:hover{border-color:var(--border2);}
 .nm-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:10px;}
+.nm-title-main{display:flex;align-items:center;gap:9px;min-width:0;}
+.nm-meal-icon{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 28px;color:var(--pulse);}
+.nm-meal-icon svg{width:28px;height:28px;fill:none;stroke:currentColor;stroke-width:1.65;stroke-linecap:round;stroke-linejoin:round;}
 .nm-name{font-family:'Unbounded';font-weight:600;font-size:14px;color:#fff;}
 .nm-qty{font-size:12px;color:var(--muted);font-weight:600;flex-shrink:0;}
 .nm-reason{margin-top:10px;color:var(--muted);font-size:12.5px;line-height:1.5;}
@@ -2021,11 +2024,24 @@ function renderNutritionModel(model){
     return '<div class="nutri-meal"><div class="nm-head"><span class="nm-name">'+esc(mdClean(it.name))+'</span>'+q+'</div>'+
       (b.length?'<div class="macros-cap">'+L.cap+'</div><div class="macros">'+b.join('')+'</div>':'')+reason+recipe+'</div>';
   };
-  const mealCard=nm=>'<div class="nutri-meal nutri-title"><div class="nm-head"><span class="nm-name">'+esc(nm)+'</span></div></div>';
+  const mealIcon=foods=>{
+    const names=(foods||[]).map(food=>mdClean(food.name).toLowerCase()).join(' ');
+    const icon=path=>'<span class="nm-meal-icon" aria-hidden="true"><svg viewBox="0 0 32 32">'+path+'</svg></span>';
+    if(/whey|protein powder|суроват|протеин на прах/.test(names))return icon('<path d="M11 5h10M12 5l1 5h6l1-5M11 10h10l-1 16H12l-1-16ZM13 17h6"/>');
+    if(/oats|oatmeal|овес|yogurt|мляко|извара/.test(names))return icon('<path d="M6 14h20M8 14c1 8 4 12 8 12s7-4 8-12M10 9c2-2 10-2 12 0"/>');
+    if(/apple|banana|fruit|ябъл|банан|fruit|nuts|ядки|almond|бадем/.test(names))return icon('<path d="M16 12c-5-4-10 0-9 7 1 6 5 9 9 9s8-3 9-9c1-7-4-11-9-7ZM16 12c0-4 2-6 5-7M19 6c3-1 5 0 6 2"/>');
+    return icon('<path d="M5 17h22M7 17c1 7 5 10 9 10s8-3 9-10M10 12h12M16 12V8M12 8h8"/>');
+  };
+  const mealCard=(nm,foods)=>'<div class="nutri-meal nutri-title"><div class="nm-head"><span class="nm-title-main">'+mealIcon(foods)+'<span class="nm-name">'+esc(nm)+'</span></span></div></div>';
+  const mealFoods=new Map(); let mealName='';
+  for(const it of model){
+    if(it.type==='meal'){mealName=mdClean(it.name);if(!mealFoods.has(mealName))mealFoods.set(mealName,[]);}
+    else if(it.type==='food'&&mealName)mealFoods.get(mealName).push(it);
+  }
   let html='<div class="nutri">'; let total=null,curMeal=null; const seen=new Set();
   for(const it of model){
     if(it.type==='total'){ if(clip(it.p)||clip(it.c)||clip(it.f)||clip(it.k)) total=it; continue; }
-    if(it.type==='meal'){ const nm=mdClean(it.name); if(nm&&nm!==curMeal){curMeal=nm;html+=mealCard(nm);} continue; }
+    if(it.type==='meal'){ const nm=mdClean(it.name); if(nm&&nm!==curMeal){curMeal=nm;html+=mealCard(nm,mealFoods.get(nm));} continue; }
     const nm=mdClean(it.name); if(!nm) continue;
     const key=(curMeal||'')+'~'+nm.toLowerCase()+'~'+clip(it.p)+'~'+clip(it.c)+'~'+clip(it.f);   // dedupe within a meal
     if(seen.has(key)) continue;

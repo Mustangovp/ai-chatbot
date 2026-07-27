@@ -267,6 +267,24 @@ test.describe('APEX approved app shell — UX regression', () => {
     await expect(page.locator('.nm-reason').nth(1)).toContainText('daily target');
   });
 
+  test('NP-1A1: meal titles use deterministic ingredient icons', async ({ page }) => {
+    await page.evaluate(() => {
+      const md = [
+        '| Meal | Food | Quantity | Protein | Carbs | Fat | Calories |',
+        '| --- | --- | --- | --- | --- | --- | --- |',
+        '| Breakfast | Oats | 80 g | 10 | 45 | 6 | 280 |',
+        '| Lunch | Chicken Breast | 180 g | 45 | 0 | 5 | 260 |',
+        '| Snack | Apple | 150 g | 0 | 20 | 0 | 90 |',
+        '| Daily Total | | | 55 | 65 | 11 | 630 |'
+      ].join('\n');
+      const el = appendCoach();
+      el.innerHTML = renderMarkdown(md);
+    });
+
+    await expect(page.locator('.nutri-title .nm-meal-icon')).toHaveCount(3);
+    await expect(page.locator('.nutri-title .nm-meal-icon svg')).toHaveCount(3);
+  });
+
   test('NP-1B: matched recipes render as collapsed meal-card details', async ({ page }) => {
     await page.evaluate(() => {
       const recipe = 'recipe:' + btoa(JSON.stringify({
