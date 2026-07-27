@@ -651,13 +651,13 @@ def render_delivery(plan: NutritionPlan, lang: str) -> str:
         explanation = (
             "**Why this plan:** the three meals distribute your day around the confirmed "
             f"{target} kcal target; the displayed foods add up to {delivered} kcal. "
-            "Use the quantities in the table as the plan, then adjust only through a follow-up request."
+            "Stick to these portions today. If anything does not work for you, tell me and we'll adapt it straight away."
         )
     else:
         explanation = (
             "**Защо този режим:** трите хранения разпределят деня около потвърдения "
             f"таргет от {target} ккал; показаните храни дават общо {delivered} ккал. "
-            "Следвай количествата от таблицата, а промени поискай с последващо съобщение."
+            "Дръж се към тези количества днес. Ако нещо не ти пасва — кажи ми и го адаптираме веднага."
         )
     return table + "\n\n" + explanation
 
