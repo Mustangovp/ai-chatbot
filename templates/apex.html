@@ -259,6 +259,12 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 .ex-glyph{width:70px;height:70px;border-radius:13px;flex-shrink:0;display:flex;align-items:center;justify-content:center;
   font-size:30px;position:relative;overflow:hidden;border:1px solid var(--border2);}
 .ex-glyph::after{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(255,255,255,.04) 3px,rgba(255,255,255,.04) 4px);}
+.exercise-motion{position:relative;z-index:1;width:88%;height:88%;fill:none;stroke:currentColor;stroke-width:4;stroke-linecap:round;stroke-linejoin:round;}
+.squat-motion{color:var(--cyan);filter:drop-shadow(0 0 8px rgba(56,224,255,.22));}
+.squat-motion .sq-torso{transform-origin:50px 48px;animation:squat-torso 2.8s cubic-bezier(.45,0,.25,1) infinite;}
+.squat-motion .sq-thighs{transform-origin:50px 55px;animation:squat-thighs 2.8s cubic-bezier(.45,0,.25,1) infinite;}
+@keyframes squat-torso{0%,100%{transform:rotate(-7deg) translateY(-2px)}50%{transform:rotate(12deg) translateY(7px)}}
+@keyframes squat-thighs{0%,100%{transform:rotate(0deg)}50%{transform:rotate(-16deg)}}
 .ex-body{flex:1;min-width:0;}
 .ex-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px;}
 .ex-name{font-family:'Unbounded';font-weight:600;font-size:14px;color:#fff;}
@@ -452,7 +458,7 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
   .cta-row{flex-direction:column;width:100%;max-width:300px;} .cta{justify-content:center;}
   .ex-glyph{width:58px;height:58px;font-size:24px;}
 }
-@media (prefers-reduced-motion:reduce){ #grain{animation:none;} .msg{animation:none;} }
+@media (prefers-reduced-motion:reduce){ #grain{animation:none;} .msg{animation:none;} .squat-motion .sq-torso,.squat-motion .sq-thighs{animation:none;} }
 </style>
 </head>
 <body>
@@ -2137,6 +2143,13 @@ const MUSCLE_LABELS={
   arms:{bg:'\u0440\u044a\u0446\u0435',en:'arms'}, core:{bg:'\u043a\u043e\u0440\u0435\u043c',en:'core'},
   cardio:{bg:'\u043a\u0430\u0440\u0434\u0438\u043e',en:'cardio'}
 };
+function exerciseGlyph(name,mu){
+  if(/клек|squat|присед/i.test(name||''))return '<svg class="exercise-motion squat-motion" viewBox="0 0 100 100" aria-label="Squat movement" role="img">'+
+    '<g class="sq-torso"><circle cx="52" cy="18" r="8"/><path d="M51 27L49 49M50 33L30 40M50 33L69 39"/><circle cx="49" cy="50" r="2.5"/></g>'+
+    '<g class="sq-thighs"><path d="M49 51L31 66L39 84L51 84M49 51L67 66L61 84L73 84"/><circle cx="31" cy="66" r="2"/><circle cx="67" cy="66" r="2"/></g>'+
+    '<path d="M21 84H39M61 84H79"/></svg>';
+  return mu.e;
+}
 function inferMuscle(name){for(const x of MUSCLE_MAP)if(x.re.test(name)){const labels=MUSCLE_LABELS[x.m]||{};return{...x,m:labels[lang==='bg'?'bg':'en']||x.m};}return{m:lang==='bg'?'\u0446\u044f\u043b\u043e \u0442\u044f\u043b\u043e':'full body',e:'⚡',ic:'#8B93A7'};}
 function inferDiff(reps,name){
   const r=parseInt((reps||'').replace(/[^\d]/g,''))||10;
@@ -2183,7 +2196,8 @@ function renderWorkout(header,body){
     '" onclick="startWorkout(decodeURIComponent(this.dataset.workoutKey))">▶ '+tr().woStart+'</button></div>';
   ex.forEach(e=>{
     const mu=inferMuscle(e.name),df=inferDiff(e.reps,e.name);
-    html+='<div class="ex-card"><div class="ex-glyph" style="background:radial-gradient(circle at 50% 35%,'+mu.ic+'33,rgba(18,23,36,.6))">'+mu.e+'</div>'+
+    const glyph=exerciseGlyph(e.name,mu);
+    html+='<div class="ex-card"><div class="ex-glyph" style="background:radial-gradient(circle at 50% 35%,'+mu.ic+'33,rgba(18,23,36,.6))">'+glyph+'</div>'+
       '<div class="ex-body"><div class="ex-top"><span class="ex-name">'+esc(e.name)+'</span><span class="ex-diff '+df+'">'+diffLbl[df]+'</span></div>'+
       '<div class="ex-muscles"><span class="ex-muscle">'+mu.m+'</span><span class="ex-muscle">'+(lang==='bg'?'темп 2-0-2':'tempo 2-0-2')+'</span></div>'+
       '<div class="ex-stats"><span class="ex-stat"><b>'+esc(e.sets)+'</b>'+(lang==='bg'?'серии':'sets')+'</span>'+
@@ -2229,7 +2243,7 @@ function renderWO(){
     let dots='';for(let s=0;s<sets;s++)dots+='<div class="set-dot '+(s<WO.set?'done':(s===WO.set?'current':''))+'">'+(s+1)+'</div>';
     const nextEx=WO.i+1<WO.ex.length?WO.ex[WO.i+1].name:(lang==='bg'?'Завършек':'Finish');
     stage.innerHTML='<div class="wo-step">'+(lang==='bg'?'Серия':'Set')+' '+(WO.set+1)+'/'+sets+' · ~'+woEstRemaining()+(lang==='bg'?'мин остават':'min left')+'</div>'+
-      '<div class="wo-ex-glyph" style="background:radial-gradient(circle at 50% 35%,'+mu.ic+'44,rgba(18,23,36,.7))">'+mu.e+'</div>'+
+      '<div class="wo-ex-glyph" style="background:radial-gradient(circle at 50% 35%,'+mu.ic+'44,rgba(18,23,36,.7))">'+exerciseGlyph(e.name,mu)+'</div>'+
       '<div class="wo-ex-name">'+esc(e.name)+'</div>'+
       '<div class="wo-ex-target">'+esc(e.reps)+' '+(lang==='bg'?'повторения':'reps')+'</div>'+
       '<div class="wo-ex-meta">'+mu.m+' · '+(lang==='bg'?'темп':'tempo')+' 2-0-2'+(e.note?(' · '+esc(e.note)):'')+'</div>'+

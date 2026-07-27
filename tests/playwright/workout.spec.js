@@ -88,6 +88,7 @@ test.describe('APEX approved app shell — UX regression', () => {
     });
 
     await expect(page.locator('.ex-card')).toHaveCount(5);
+    await expect(page.locator('.ex-card').nth(1).locator('.squat-motion')).toHaveCount(1);
     await expect(page.locator('.start-wo')).toHaveCount(1);
     await page.locator('.start-wo').click();
     await expect(page.locator('#workout')).toHaveClass(/on/);
