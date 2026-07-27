@@ -1,4 +1,5 @@
 from decimal import Decimal
+from types import SimpleNamespace
 
 import nutrition_plan
 from nutrition_validation import NutritionTargets
@@ -61,6 +62,20 @@ def test_recipe_matcher_accepts_exact_bulgarian_catalog_display_names():
     )
 
     assert match_meal(breakfast, load_recipes(), profile_equipment({})).recipe.id == "breakfast-eggs-oats"
+
+
+def test_recipe_matcher_matches_the_live_delivery_ingredient_variants():
+    samples = (
+        ("breakfast", ("Oats", "Greek Yogurt", "Almond Butter"), "breakfast-yogurt-oats-almond"),
+        ("lunch", ("Chicken Breast", "Brown Rice", "Avocado", "Mixed Vegetables"), "lunch-chicken-rice"),
+        ("dinner", ("Salmon", "Quinoa", "Broccoli", "Olive Oil"), "dinner-salmon-rice"),
+    )
+    for meal_type, ingredient_names, expected in samples:
+        meal = SimpleNamespace(
+            meal_type=meal_type,
+            foods=tuple(SimpleNamespace(display_name=name) for name in ingredient_names),
+        )
+        assert match_meal(meal, load_recipes(), profile_equipment({})).recipe.id == expected
 
 
 def test_recipe_matcher_falls_back_when_no_exact_ingredient_overlap_exists():
