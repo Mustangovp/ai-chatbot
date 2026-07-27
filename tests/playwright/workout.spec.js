@@ -305,15 +305,15 @@ test.describe('APEX approved app shell — UX regression', () => {
   test('NP-1B: matched recipes render as collapsed meal-card details', async ({ page }) => {
     await page.evaluate(() => {
       const recipe = 'recipe:' + btoa(JSON.stringify({
-        id: 'breakfast-eggs-oats', title: 'Egg omelette', difficulty: 'easy', minutes: 12,
+        id: 'breakfast-eggs-oats', meal_id: 'meal-breakfast', title: 'Egg omelette', difficulty: 'easy', minutes: 12,
         steps: ['Whisk eggs.', 'Cook gently.'], tips: ['Use little oil.'],
         substitutions: ['Use spinach instead of tomato.'], storage: 'Eat fresh.', meal_prep: false
       }));
       const md = [
-        '| Meal | Food | Quantity | Protein (g) | Carbs (g) | Fat (g) | Kcal | Why this meal | Recipe |',
-        '| --- | --- | --- | --- | --- | --- | --- | --- | --- |',
-        '| Breakfast | Eggs | 200 g | 40 | 0 | 20 | 340 | Starts the day toward your protein target. | ' + recipe + ' |',
-        '| Daily Total | | | 40 | 0 | 20 | 340 | | |'
+        '| Meal | Meal ID | Food | Quantity | Protein (g) | Carbs (g) | Fat (g) | Kcal | Why this meal | Recipe |',
+        '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+        '| Breakfast | meal-breakfast | Eggs | 200 g | 40 | 0 | 20 | 340 | Starts the day toward your protein target. | ' + recipe + ' |',
+        '| Daily Total | | | | 40 | 0 | 20 | 340 | | |'
       ].join('\n');
       const el = appendCoach();
       el.innerHTML = renderMarkdown(md);
@@ -328,16 +328,16 @@ test.describe('APEX approved app shell — UX regression', () => {
   test('NP-1C: foods and a recipe stay bound to one meal card', async ({ page }) => {
     await page.evaluate(() => {
       const recipe = 'recipe:' + btoa(JSON.stringify({
-        id: 'breakfast-eggs-oats', title: 'Eggs with oats', difficulty: 'easy', minutes: 12,
+        id: 'breakfast-eggs-oats', meal_id: 'meal-breakfast', title: 'Eggs with oats', difficulty: 'easy', minutes: 12,
         steps: ['Cook.'], tips: ['Use little oil.'], substitutions: ['Use spinach.'], storage: 'Eat fresh.', meal_prep: false
       }));
       const md = [
-        '| Meal | Food | Quantity | Protein | Carbs | Fat | Calories | Why this meal | Recipe |',
-        '| --- | --- | --- | --- | --- | --- | --- | --- | --- |',
-        '| Breakfast | Eggs | 150 g | 21 | 2 | 14 | 207 | First meal. | ' + recipe + ' |',
-        '| | Oats | 80 g | 10 | 45 | 6 | 280 | | |',
-        '| Lunch | Chicken | 180 g | 45 | 0 | 5 | 260 | Lunch meal. | |',
-        '| Daily Total | | | 76 | 47 | 25 | 747 | | |'
+        '| Meal | Meal ID | Food | Quantity | Protein | Carbs | Fat | Calories | Why this meal | Recipe |',
+        '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+        '| Breakfast | meal-breakfast | Eggs | 150 g | 21 | 2 | 14 | 207 | First meal. | ' + recipe + ' |',
+        '| | | Oats | 80 g | 10 | 45 | 6 | 280 | | |',
+        '| Lunch | meal-lunch | Chicken | 180 g | 45 | 0 | 5 | 260 | Lunch meal. | |',
+        '| Daily Total | | | | 76 | 47 | 25 | 747 | | |'
       ].join('\n');
       const el = appendCoach();
       el.innerHTML = renderMarkdown(md);
@@ -370,6 +370,52 @@ test.describe('APEX approved app shell — UX regression', () => {
 
     await expect(page.locator('.nutri-meal')).toHaveCount(1);
     await expect(page.locator('.nm-recipe-title')).toHaveCount(0);
+  });
+
+  test('NP-1E: recipe payloads bind only to their stable meal IDs', async ({ page }) => {
+    await page.evaluate(() => {
+      const token = (mealId, title) => 'recipe:' + btoa(JSON.stringify({
+        id: mealId + '-recipe', meal_id: mealId, title, difficulty: 'easy', minutes: 10,
+        steps: ['Cook.'], tips: ['Tip.'], substitutions: ['Swap.'], storage: 'Fresh.', meal_prep: false
+      }));
+      const breakfast = token('meal-breakfast', 'Breakfast recipe');
+      const lunch = token('meal-lunch', 'Lunch recipe');
+      const dinner = token('meal-dinner', 'Dinner recipe');
+      const md = [
+        '| Meal | Meal ID | Food | Quantity | Protein | Carbs | Fat | Calories | Recipe |',
+        '| --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+        '| Breakfast | meal-breakfast | Eggs | 150 g | 21 | 2 | 14 | 207 | ' + breakfast + ' |',
+        '| Lunch | meal-lunch | Chicken | 180 g | 45 | 0 | 5 | 260 | ' + lunch + ' |',
+        '| Dinner | meal-dinner | Salmon | 180 g | 40 | 0 | 18 | 330 | ' + dinner + ' |'
+      ].join('\n');
+      const el = appendCoach();
+      el.innerHTML = renderMarkdown(md);
+    });
+
+    const cards = page.locator('.nutri-meal');
+    await expect(cards).toHaveCount(3);
+    await expect(cards.nth(0).locator('.nm-recipe-title')).toContainText('Breakfast recipe');
+    await expect(cards.nth(1).locator('.nm-recipe-title')).toContainText('Lunch recipe');
+    await expect(cards.nth(2).locator('.nm-recipe-title')).toContainText('Dinner recipe');
+    await expect(cards.nth(0).locator('.nm-recipe')).toHaveCount(4);
+  });
+
+  test('NP-1F: a meal with no matching recipe keeps its card and shows the neutral fallback', async ({ page }) => {
+    await page.evaluate(() => {
+      const md = [
+        '| Meal | Meal ID | Food | Quantity | Protein | Carbs | Fat | Calories |',
+        '| --- | --- | --- | --- | --- | --- | --- | --- |',
+        '| Breakfast | meal-breakfast | Eggs | 150 g | 21 | 2 | 14 | 207 |'
+      ].join('\n');
+      const el = appendCoach();
+      el.innerHTML = renderMarkdown(md);
+    });
+
+    const card = page.locator('.nutri-meal');
+    await expect(card).toHaveCount(1);
+    await expect(card).toContainText('Eggs');
+    await expect(card).toContainText('No suitable recipe is available for this meal.');
+    await expect(card.locator('.nm-recipe')).toHaveCount(0);
   });
 
   test('NR-1: nutrition readability — full words, units, colour is not the sole signal', async ({ page }) => {

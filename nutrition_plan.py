@@ -622,25 +622,27 @@ def render(plan: NutritionPlan, lang: str, recipe_tokens: Mapping[str, str] | No
         "lunch": ("Lunch", "\u041e\u0431\u044f\u0434"),
         "dinner": ("Dinner", "\u0412\u0435\u0447\u0435\u0440\u044f"),
     }
-    header = "| Meal | Food | Quantity | Protein (g) | Carbs (g) | Fat (g) | Kcal | Why this meal |"
+    header = "| Meal | Meal ID | Food | Quantity | Protein (g) | Carbs (g) | Fat (g) | Kcal | Why this meal |"
     if not english:
         header = "| \u0425\u0440\u0430\u043d\u0435\u043d\u0435 | \u0425\u0440\u0430\u043d\u0430 | \u041a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e | \u0411\u0435\u043b\u0442\u044a\u0447\u0438\u043d\u0438 (g) | \u0412\u044a\u0433\u043b\u0435\u0445\u0438\u0434\u0440\u0430\u0442\u0438 (g) | \u041c\u0430\u0437\u043d\u0438\u043d\u0438 (g) | \u041a\u043a\u0430\u043b | \u0417\u0430\u0449\u043e \u0442\u043e\u0432\u0430 \u0445\u0440\u0430\u043d\u0435\u043d\u0435 |"
+    if not english:
+        header = "| \u0425\u0440\u0430\u043d\u0435\u043d\u0435 | ID \u043d\u0430 \u0445\u0440\u0430\u043d\u0435\u043d\u0435 | \u0425\u0440\u0430\u043d\u0430 | \u041a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e | \u0411\u0435\u043b\u0442\u044a\u0447\u0438\u043d\u0438 (g) | \u0412\u044a\u0433\u043b\u0435\u0445\u0438\u0434\u0440\u0430\u0442\u0438 (g) | \u041c\u0430\u0437\u043d\u0438\u043d\u0438 (g) | \u041a\u043a\u0430\u043b | \u0417\u0430\u0449\u043e \u0442\u043e\u0432\u0430 \u0445\u0440\u0430\u043d\u0435\u043d\u0435 |"
     if include_recipes:
         header += " Recipe |" if english else " \u0420\u0435\u0446\u0435\u043f\u0442\u0430 |"
-    lines = [header, "| --- | --- | --- | --- | --- | --- | --- | --- |" + (" --- |" if include_recipes else "")]
+    lines = [header, "| --- | --- | --- | --- | --- | --- | --- | --- | --- |" + (" --- |" if include_recipes else "")]
     for meal in plan.meals:
         for index, food in enumerate(meal.foods):
             label = labels[meal.meal_type][0 if english else 1] if index == 0 else ""
             reason = _meal_reason(meal, plan.targets, lang) if index == 0 else ""
             recipe = (recipe_tokens or {}).get(meal.id, "") if index == 0 else ""
-            row = "| {} | {} | {} g | {} | {} | {} | {} | {} |".format(
-                label, food.display_name, _display_decimal(food.grams),
+            row = "| {} | {} | {} | {} g | {} | {} | {} | {} | {} |".format(
+                label, meal.id if index == 0 else "", food.display_name, _display_decimal(food.grams),
                 _display_decimal(food.macros.protein_g), _display_decimal(food.macros.carbs_g),
                 _display_decimal(food.macros.fat_g), _display_decimal(food.macros.kcal), reason,
             )
             lines.append(row[:-1] + f" | {recipe} |" if include_recipes else row)
     total_label = "Daily Total" if english else "\u041e\u0431\u0449\u043e"
-    total_row = "| {} | | | {} | {} | {} | {} | |".format(
+    total_row = "| {} | | | | {} | {} | {} | {} | |".format(
         total_label, _display_decimal(plan.totals.protein_g), _display_decimal(plan.totals.carbs_g),
         _display_decimal(plan.totals.fat_g), _display_decimal(plan.totals.kcal),
     )
@@ -655,7 +657,7 @@ def render_delivery(plan: NutritionPlan, lang: str, profile: Mapping[str, object
         from recipe_engine.recipe_engine import match_plan
         from recipe_engine.recipe_renderer import recipe_token
 
-        recipe_tokens = {meal_id: recipe_token(match) for meal_id, match in match_plan(plan, profile).items()}
+        recipe_tokens = {meal_id: recipe_token(match, meal_id) for meal_id, match in match_plan(plan, profile).items()}
     except Exception:
         # Recipes are optional presentation. A bad local record must never block
         # a plan that has already passed the delivery contract.

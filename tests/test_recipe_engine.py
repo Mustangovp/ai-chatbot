@@ -1,4 +1,6 @@
 from decimal import Decimal
+import base64
+import json
 from types import SimpleNamespace
 
 import nutrition_plan
@@ -6,6 +8,7 @@ from nutrition_validation import NutritionTargets
 from recipe_engine.recipe_engine import match_plan
 from recipe_engine.recipe_library import load_recipes
 from recipe_engine.recipe_matcher import match_meal, profile_equipment
+from recipe_engine.recipe_renderer import recipe_token
 
 
 def _plan():
@@ -60,8 +63,20 @@ def test_recipe_token_is_emitted_in_its_own_table_column():
     )
 
     breakfast_row = rendered.splitlines()[2].split("|")
-    assert breakfast_row[8].strip().startswith("Starts the day")
-    assert breakfast_row[9].strip().startswith("recipe:")
+    assert breakfast_row[2].strip() == plan.meals[0].id
+    assert breakfast_row[9].strip().startswith("Starts the day")
+    assert breakfast_row[10].strip().startswith("recipe:")
+
+
+def test_recipe_token_carries_the_immutable_meal_id():
+    match = match_plan(_plan(), {"cooking_equipment": ["pan", "oven"]})
+    meal_id, recipe_match = next(iter(match.items()))
+
+    token = recipe_token(recipe_match, meal_id)
+    payload = json.loads(base64.b64decode(token.removeprefix("recipe:")))
+
+    assert payload["meal_id"] == meal_id
+    assert payload["id"] == recipe_match.recipe.id
 
 
 def test_recipe_matcher_accepts_exact_bulgarian_catalog_display_names():
