@@ -187,6 +187,44 @@ test.describe('APEX approved app shell — UX regression', () => {
     expect(posted.recovery).toMatchObject({ source_version: 'browser-recovery-v1' });
   });
 
+  test('WO-3A: legacy completion sends the completed exercises for post-workout coaching', async ({ page }) => {
+    const posted = await page.evaluate(async () => {
+      const originalFetch = window.fetch;
+      let chat = null;
+      window.fetch = async (url, options) => {
+        if (url === '/chat') {
+          chat = JSON.parse(options.body);
+          return new Response('data: {"t":"Recovery noted."}\n\ndata: {"done":true}\n\n', {
+            status: 200, headers: { 'content-type': 'text/event-stream' }
+          });
+        }
+        return originalFetch(url, options);
+      };
+      WO = {
+        ex: [
+          { name: 'Squat', sets: '3', reps: '8', weight: '60', completedSets: 3 },
+          { name: 'Row', sets: '2', reps: '10', weight: '', completedSets: 2 }
+        ], contract: null, i: 1, set: 2, phase: 'work'
+      };
+      sessionStart = Date.now() - 20 * 60000;
+      finishWorkout();
+      finishToCoach();
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      window.fetch = originalFetch;
+      return chat;
+    });
+
+    expect(posted.message).toBe('Завърших я.');
+    expect(posted.completed_workout).toMatchObject({
+      completion: 100,
+      exercises: [
+        { name: 'Squat', completed_sets: 3, completed_repetitions: 8, completed_load: 60 },
+        { name: 'Row', completed_sets: 2, completed_repetitions: 10, completed_load: null }
+      ]
+    });
+    expect(posted.completed_workout).not.toHaveProperty('plan_id');
+  });
+
   test('NP-1: nutrition parser recognizes a separator-less plan with no raw pipes', async ({ page }) => {
     await page.evaluate(() => {
       // A nutrition table WITHOUT the markdown separator row — the parser
@@ -1050,7 +1088,7 @@ test.describe('APEX approved app shell — UX regression', () => {
       url: '/api/profile',
       method: 'PUT',
       body: expect.objectContaining({
-        profile: expect.objectContaining({ age: '33' })
+        profile: expect.objectContaining({ age: '33', language: 'bg' })
       })
     }));
     expect(calls).toContainEqual(expect.objectContaining({
@@ -1060,6 +1098,43 @@ test.describe('APEX approved app shell — UX regression', () => {
         session: expect.objectContaining({ type: 'strength', completion: 100 })
       })
     }));
+  });
+
+  test('AUTH-5: account profile language overrides an incognito browser default after login', async ({ page }) => {
+    const restored = await page.evaluate(async () => {
+      lang = 'en';
+      localStorage.setItem('apexLang', 'en');
+      const originalFetch = window.fetch;
+      window.fetch = async (url) => {
+        if (url === '/auth/me') {
+          return new Response(JSON.stringify({ authenticated: true, email: 'bg@example.com', plan: 'free', status: 'free' }), {
+            status: 200, headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        if (url === '/api/profile') {
+          return new Response(JSON.stringify({ profile: { age: '33', language: 'bg' } }), {
+            status: 200, headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        if (url === '/api/history') {
+          return new Response(JSON.stringify({ workouts: [], nutrition: [], timeline: [] }), {
+            status: 200, headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        if (url === '/api/conversations?limit=60') {
+          return new Response(JSON.stringify({ messages: [] }), {
+            status: 200, headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        return originalFetch(url);
+      };
+      await loadSession(null);
+      const result = { lang, documentLang: document.documentElement.lang, stored: localStorage.getItem('apexLang') };
+      window.fetch = originalFetch;
+      return result;
+    });
+
+    expect(restored).toEqual({ lang: 'bg', documentLang: 'bg', stored: 'bg' });
   });
 
   test('CP-1: collapsed Bulgarian day plan renders as cards with no raw pipes', async ({ page }) => {

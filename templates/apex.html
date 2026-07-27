@@ -1380,7 +1380,11 @@ function applyLang(){
   setOpts('pf-freq',w.opt.freq);
   applyReadout();
 }
-function toggleLang(){lang=lang==='en'?'bg':'en';localStorage.setItem('apexLang',lang);applyLang();if(consultOn)resetGreeting();}
+function toggleLang(){
+  lang=lang==='en'?'bg':'en';localStorage.setItem('apexLang',lang);
+  const profile=pfLoad();profile.language=lang;ownedStorageSet('apexProfile',JSON.stringify(profile));accountSaveProfile(profile);
+  applyLang();if(consultOn)resetGreeting();
+}
 
 /* ═══════════════════════════════════════════════════════════════════
    PROFILE WIZARD
@@ -1422,7 +1426,7 @@ function saveProfile(){
     equipment:v('pf-equip'),sleepQuality:v('pf-sleep'),stressLevel:v('pf-stress'),recoveryFeel:v('pf-recovery'),
     activityLevel:v('pf-activity'),frequency:v('pf-freq'),smoking:v('pf-smoking'),alcohol:v('pf-alcohol'),
     nicotine:v('pf-nicotine'),caffeine:v('pf-caffeine'),medications:meds,supplements:supps,
-    injuries,surgeries,limitations:limits,notes,
+    injuries,surgeries,limitations:limits,notes,language:lang,
     healthNotes:hb.join('. ')  // backend reads healthNotes for constraints
   };
   ownedStorageSet('apexProfile',JSON.stringify(p));
@@ -1623,7 +1627,13 @@ async function loadSession(tokenAccess){
   if(SESSION.authenticated&&SESSION.email)activateDataOwner('account',SESSION.email.trim().toLowerCase());
   else activateDataOwner('anonymous',DATA_OWNER.kind==='anonymous'?DATA_OWNER.id:anonymousOwnerId());
   // If just signed in, pull the account's canonical data down (DB → cache) once.
-  if(SESSION.authenticated){ await syncFromAccount(); }
+  if(SESSION.authenticated){
+    await syncFromAccount();
+    const savedLanguage=String((pfLoad().language||pfLoad().lang||'')).toLowerCase();
+    if(savedLanguage==='bg'||savedLanguage==='en'){
+      lang=savedLanguage;localStorage.setItem('apexLang',lang);applyLang();
+    }
+  }
   buildMenu();
   return SESSION;
 }
@@ -2135,7 +2145,7 @@ function renderWorkout(header,body){
 /* ═══════════════════════════════════════════════════════════════════
    WORKOUT MODE — full protocol engine with rest timer & summary
    ═══════════════════════════════════════════════════════════════════ */
-let WO=null,restTimer=null,sessionStart=0,lastWorkoutCompletion=null;
+let WO=null,restTimer=null,sessionStart=0,lastWorkoutCompletion=null,lastWorkoutSummary=null;
 function startWorkout(workoutKey=null){
   const source=workoutKey?pendingWorkoutContracts[workoutKey]:null;
   const exercises=workoutKey?pendingWorkouts[workoutKey]:pendingWorkout;
@@ -2215,6 +2225,12 @@ function finishWorkout(){
   const totalSets=WO.ex.reduce((a,e)=>a+(parseInt(e.sets)||3),0);
   const session={ts:Date.now(),date:new Date().toLocaleDateString(),type:inferMuscle(WO.ex[0].name).m,
     exercises:WO.ex.map(e=>({name:e.name,sets:e.sets,reps:e.reps,weight:e.weight||''})),diff:'medium',completion:100};
+  const workoutSummary={
+    completed_at:new Date().toISOString(),type:session.type,completion:100,
+    exercises:WO.ex.map(e=>({name:e.name,completed_sets:e.completedSets||0,
+      completed_repetitions:(e.completedSets||0)?(parseInt(e.reps)||0):0,
+      completed_load:e.weight===''||e.weight==null?null:Number(e.weight)}))
+  };
   const workoutCompletion=WO.contract&&WO.ex.every(e=>e.completion)?{
     workout_id:(window.crypto&&crypto.randomUUID?crypto.randomUUID():null),
     plan_id:WO.contract.plan_id,plan_version:WO.contract.plan_version,session_id:WO.contract.session_id,
@@ -2229,6 +2245,7 @@ function finishWorkout(){
   }:null;
   if(workoutCompletion&& !workoutCompletion.workout_id)workoutCompletion=null;
   lastWorkoutCompletion=workoutCompletion;
+  lastWorkoutSummary=workoutSummary;
   logWorkout(session,workoutCompletion);
   document.getElementById('wo-stage').innerHTML='<div class="wo-summary"><div class="wo-step">✓ '+t.woComplete+'</div>'+
     '<div class="wo-ex-glyph" style="background:radial-gradient(circle at 50% 35%,#B6FF3C44,rgba(18,23,36,.7));margin:0 auto 20px">🏁</div>'+
@@ -2242,7 +2259,9 @@ function finishToCoach(){
   document.getElementById('workout').classList.remove('on'); WO=null; applyReadout();
   if(!consultOn)enterConsult();
   const completion=lastWorkoutCompletion;
+  const summary=lastWorkoutSummary;
   lastWorkoutCompletion=null;
+  lastWorkoutSummary=null;
   if(completion){
     const recoveryFeel=(pfLoad().recoveryFeel||'ok').toLowerCase();
     const recovery={
@@ -2256,8 +2275,12 @@ function finishToCoach(){
     },300);
     return;
   }
-  // auto-acknowledge the completed session (backend POST-WORKOUT logic engages via memory)
-  setTimeout(()=>{document.getElementById('user-in').value=lang==='bg'?'Завърших тренировката.':'I finished the workout.';send();},300);
+  // Legacy cards cannot advance an immutable lifecycle, but their completed
+  // exercises are still authoritative context for a post-workout acknowledgement.
+  setTimeout(()=>{
+    document.getElementById('user-in').value=lang==='bg'?'Завърших я.':'I finished it.';
+    send({completedWorkout:summary,recovery:{source_version:'browser-recovery-v1'}});
+  },300);
 }
 
 /* ═══════════════════════════════════════════════════════════════════
