@@ -12,7 +12,7 @@ _ALIASES = {
     "пилешко": "chicken", "пилешки": "chicken", "пилешко филе": "chicken",
     "пилешки гърди": "chicken", "chicken breast": "chicken",
     "ориз": "rice", "ориз сварен": "rice", "ориз сух": "rice", "rice cooked": "rice", "brown rice": "rice",
-    "овес": "oats", "овесени ядки": "oats", "овесени ядки сухи": "oats",
+    "овес": "oats", "овесени ядки": "oats", "овесени ядки сухи": "oats", "oatmeal": "oats",
     "raw oats": "oats", "oats dry": "oats",
     "яйце": "eggs", "яйца": "eggs", "яйчен": "eggs", "яйце сварено": "eggs",
     "boiled whole egg": "eggs", "сьомга": "salmon",
@@ -23,7 +23,7 @@ _ALIASES = {
     "спанак": "spinach", "банан": "banana", "ябълка": "apple",
     "леща": "lentils", "леща сварена": "lentils", "нахут": "chickpeas", "нахут сварен": "chickpeas", "кайма": "lean_beef",
     "телешко": "lean_beef", "пуешко": "turkey", "хляб": "wholegrain_bread",
-    "паста": "pasta", "паста сварена": "pasta", "авокадо": "avocado", "авокадо сурово": "avocado", "almond butter": "almond_butter", "сирене": "cheese",
+    "паста": "pasta", "паста сварена": "pasta", "авокадо": "avocado", "авокадо сурово": "avocado", "almond butter": "almonds", "almonds": "almonds", "сирене": "cheese",
     "whey": "whey", "суроватъчен протеин": "whey",
 }
 

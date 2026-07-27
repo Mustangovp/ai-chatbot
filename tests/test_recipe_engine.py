@@ -66,9 +66,9 @@ def test_recipe_matcher_accepts_exact_bulgarian_catalog_display_names():
 
 def test_recipe_matcher_matches_the_live_delivery_ingredient_variants():
     samples = (
-        ("breakfast", ("Oats", "Greek Yogurt", "Almond Butter"), "breakfast-yogurt-oats-almond"),
+        ("breakfast", ("Oatmeal", "Greek Yogurt", "Almonds"), "breakfast-yogurt-oats-almond"),
         ("lunch", ("Chicken Breast", "Brown Rice", "Avocado", "Mixed Vegetables"), "lunch-chicken-rice"),
-        ("dinner", ("Salmon", "Quinoa", "Broccoli", "Olive Oil"), "dinner-salmon-rice"),
+        ("dinner", ("Salmon", "Quinoa", "Spinach", "Avocado"), "dinner-salmon-quinoa"),
     )
     for meal_type, ingredient_names, expected in samples:
         meal = SimpleNamespace(
