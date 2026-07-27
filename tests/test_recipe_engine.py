@@ -20,7 +20,7 @@ def _plan():
         ]},
         {"meal_type": "dinner", "foods": [
             {"display_name": "Salmon", "grams": "200", "protein_g": "65", "carbs_g": "0", "fat_g": "28", "kcal": "600"},
-            {"display_name": "Potatoes", "grams": "300", "protein_g": "0", "carbs_g": "110", "fat_g": "0", "kcal": "400"},
+            {"display_name": "Rice", "grams": "300", "protein_g": "0", "carbs_g": "110", "fat_g": "0", "kcal": "400"},
         ]},
     ]}, NutritionTargets(Decimal("2800"), Decimal("175"), Decimal("350"), Decimal("78")),
         restrictions=(), provenance={"test": "recipe"})
@@ -76,6 +76,17 @@ def test_recipe_matcher_matches_the_live_delivery_ingredient_variants():
             foods=tuple(SimpleNamespace(display_name=name) for name in ingredient_names),
         )
         assert match_meal(meal, load_recipes(), profile_equipment({})).recipe.id == expected
+
+
+def test_recipe_matcher_does_not_substitute_chicken_for_live_salmon_rice_dinner():
+    dinner = SimpleNamespace(
+        meal_type="dinner",
+        foods=tuple(SimpleNamespace(display_name=name) for name in (
+            "Salmon", "Brown Rice", "Broccoli",
+        )),
+    )
+
+    assert match_meal(dinner, load_recipes(), profile_equipment({})).recipe.id == "dinner-salmon-rice"
 
 
 def test_recipe_matcher_falls_back_when_no_exact_ingredient_overlap_exists():
