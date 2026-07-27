@@ -261,7 +261,7 @@ test.describe('APEX approved app shell — UX regression', () => {
       el.innerHTML = renderMarkdown(md);
     });
 
-    await expect(page.locator('.nutri-meal')).toHaveCount(6);
+    await expect(page.locator('.nutri-meal')).toHaveCount(3);
     await expect(page.locator('.nm-reason')).toHaveCount(3);
     await expect(page.locator('.nm-reason').first()).toContainText('protein target');
     await expect(page.locator('.nm-reason').nth(1)).toContainText('daily target');
@@ -323,6 +323,53 @@ test.describe('APEX approved app shell — UX regression', () => {
     await expect(page.locator('.nm-recipe').first()).not.toHaveAttribute('open', '');
     await expect(page.locator('.nm-recipe-title')).toContainText('Egg omelette');
     await expect(page.locator('.nm-recipe').first()).toContainText('Whisk eggs.');
+  });
+
+  test('NP-1C: foods and a recipe stay bound to one meal card', async ({ page }) => {
+    await page.evaluate(() => {
+      const recipe = 'recipe:' + btoa(JSON.stringify({
+        id: 'breakfast-eggs-oats', title: 'Eggs with oats', difficulty: 'easy', minutes: 12,
+        steps: ['Cook.'], tips: ['Use little oil.'], substitutions: ['Use spinach.'], storage: 'Eat fresh.', meal_prep: false
+      }));
+      const md = [
+        '| Meal | Food | Quantity | Protein | Carbs | Fat | Calories | Why this meal | Recipe |',
+        '| --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+        '| Breakfast | Eggs | 150 g | 21 | 2 | 14 | 207 | First meal. | ' + recipe + ' |',
+        '| | Oats | 80 g | 10 | 45 | 6 | 280 | | |',
+        '| Lunch | Chicken | 180 g | 45 | 0 | 5 | 260 | Lunch meal. | |',
+        '| Daily Total | | | 76 | 47 | 25 | 747 | | |'
+      ].join('\n');
+      const el = appendCoach();
+      el.innerHTML = renderMarkdown(md);
+    });
+
+    const cards = page.locator('.nutri-meal');
+    await expect(cards).toHaveCount(2);
+    await expect(cards.nth(0)).toContainText('Breakfast');
+    await expect(cards.nth(0)).toContainText('Eggs');
+    await expect(cards.nth(0)).toContainText('Oats');
+    await expect(cards.nth(0).locator('.nm-recipe-title')).toContainText('Eggs with oats');
+    await expect(cards.nth(1).locator('.nm-recipe-title')).toHaveCount(0);
+    await expect(page.locator('.nutri-total')).toContainText('76');
+  });
+
+  test('NP-1D: a recipe token cannot render without an owning meal', async ({ page }) => {
+    await page.evaluate(() => {
+      const recipe = 'recipe:' + btoa(JSON.stringify({
+        id: 'orphan', title: 'Must stay hidden', difficulty: 'easy', minutes: 5,
+        steps: ['No.'], tips: ['No.'], substitutions: ['No.'], storage: 'No.', meal_prep: false
+      }));
+      const md = [
+        '| Food | Quantity | Protein | Carbs | Fat | Calories | Recipe |',
+        '| --- | --- | --- | --- | --- | --- | --- |',
+        '| Eggs | 150 g | 21 | 2 | 14 | 207 | ' + recipe + ' |'
+      ].join('\n');
+      const el = appendCoach();
+      el.innerHTML = renderMarkdown(md);
+    });
+
+    await expect(page.locator('.nutri-meal')).toHaveCount(1);
+    await expect(page.locator('.nm-recipe-title')).toHaveCount(0);
   });
 
   test('NR-1: nutrition readability — full words, units, colour is not the sole signal', async ({ page }) => {

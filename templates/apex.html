@@ -228,6 +228,11 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 .nm-recipe p{margin:6px 0 10px;color:var(--muted);font-size:12.5px;line-height:1.5;}
 .nm-recipe-title{margin-top:12px;font-weight:700;font-size:13px;color:var(--text);}
 .nm-recipe-meta{margin:4px 0 8px;color:var(--muted);font-size:12px;}
+.nm-foods{display:grid;gap:7px;margin:2px 0 12px;}
+.nm-food-row{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.07);font-size:12.5px;}
+.nm-food-row:last-child{border-bottom:0;}
+.nm-food-name{color:var(--text);font-weight:600;min-width:0;}
+.nm-food-qty{color:var(--muted);font-weight:600;white-space:nowrap;}
 .macros-cap{font-size:10.5px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:var(--faint);margin-bottom:8px;}
 .macros{display:flex;flex-wrap:wrap;gap:8px;}
 /* Full word carries the meaning; colour is only a helper (readable for colour-blind users). */
@@ -1898,7 +1903,7 @@ function itemFromSchema(cells,schema){
   if(isMealCell(meal)&&!food&&!item.p&&!item.c&&!item.f&&!item.k)return[{type:'meal',name:mealHeaderName(meal)||meal}];
   const items=[];
   if(isMealCell(meal)&&food)items.push({type:'meal',name:mealHeaderName(meal)||meal});
-  items.push({type:'food',name,qty:value('qty'),...item});
+  items.push({type:'food',name,qty:value('qty'),mealSummary:isMealCell(meal)&&!food,...item});
   return items;
 }
 function itemsFromCells(cells,schema=null){
@@ -1917,7 +1922,7 @@ function itemsFromCells(cells,schema=null){
       const qty=vals.length===5&&_isServingValue(vals[0])?vals[0]:'';
       const m=nums.slice(-4);
       if(_isTotal(name)) items.push({type:'total',p:m[0]||'',c:m[1]||'',f:m[2]||'',k:m.length>=4?m[3]:''});
-      else items.push({type:'food',name,qty,p:m[0]||'',c:m[1]||'',f:m[2]||'',k:m.length>=4?m[3]:''});
+      else items.push({type:'food',name,qty,mealSummary:isMealCell(name),p:m[0]||'',c:m[1]||'',f:m[2]||'',k:m.length>=4?m[3]:''});
     } else if(isMealCell(name)){
       items.push({type:'meal',name:mealHeaderName(name)||mdClean(name).replace(/[:：]\s*$/,'')});
     }
@@ -2012,17 +2017,13 @@ function renderNutritionModel(model){
         '<details class="nm-recipe"><summary>'+esc(labels.subs)+'</summary>'+list(recipe.substitutions)+'</details>';
     }catch(_){return '';}
   };
-  const foodCard=it=>{
+  const macroBlock=it=>{
     const b=[];
     if(clip(it.p))b.push('<span class="macro p"><span class="mname">'+L.p+'</span><b>'+clip(it.p)+' '+L.u+'</b></span>');
     if(clip(it.c))b.push('<span class="macro c"><span class="mname">'+L.c+'</span><b>'+clip(it.c)+' '+L.u+'</b></span>');
     if(clip(it.f))b.push('<span class="macro f"><span class="mname">'+L.f+'</span><b>'+clip(it.f)+' '+L.u+'</b></span>');
     if(clip(it.k))b.push('<span class="macro k"><span class="mname">'+L.k+'</span><b>'+clip(it.k)+' kcal</b></span>');
-    const q=it.qty?'<span class="nm-qty">'+esc(mdClean(it.qty))+'</span>':'';
-    const reason=it.reason?'<div class="nm-reason">'+esc(mdClean(it.reason))+'</div>':'';
-    const recipe=recipeCard(it.recipe);
-    return '<div class="nutri-meal"><div class="nm-head"><span class="nm-name">'+esc(mdClean(it.name))+'</span>'+q+'</div>'+
-      (b.length?'<div class="macros-cap">'+L.cap+'</div><div class="macros">'+b.join('')+'</div>':'')+reason+recipe+'</div>';
+    return b.length?'<div class="macros-cap">'+L.cap+'</div><div class="macros">'+b.join('')+'</div>':'';
   };
   const mealIcon=foods=>{
     const names=(foods||[]).map(food=>mdClean(food.name).toLowerCase()).join(' ');
@@ -2032,21 +2033,34 @@ function renderNutritionModel(model){
     if(/apple|banana|fruit|ябъл|банан|fruit|nuts|ядки|almond|бадем/.test(names))return icon('<path d="M16 12c-5-4-10 0-9 7 1 6 5 9 9 9s8-3 9-9c1-7-4-11-9-7ZM16 12c0-4 2-6 5-7M19 6c3-1 5 0 6 2"/>');
     return icon('<path d="M5 17h22M7 17c1 7 5 10 9 10s8-3 9-10M10 12h12M16 12V8M12 8h8"/>');
   };
-  const mealCard=(nm,foods)=>'<div class="nutri-meal nutri-title"><div class="nm-head"><span class="nm-title-main">'+mealIcon(foods)+'<span class="nm-name">'+esc(nm)+'</span></span></div></div>';
-  const mealFoods=new Map(); let mealName='';
-  for(const it of model){
-    if(it.type==='meal'){mealName=mdClean(it.name);if(!mealFoods.has(mealName))mealFoods.set(mealName,[]);}
-    else if(it.type==='food'&&mealName)mealFoods.get(mealName).push(it);
-  }
-  let html='<div class="nutri">'; let total=null,curMeal=null; const seen=new Set();
+  const numeric=v=>{const n=Number(String(v||'').replace(/[^\d.,-]/g,'').replace(',','.'));return Number.isFinite(n)?n:0;};
+  const mealTotals=foods=>({p:foods.reduce((sum,food)=>sum+numeric(food.p),0),c:foods.reduce((sum,food)=>sum+numeric(food.c),0),f:foods.reduce((sum,food)=>sum+numeric(food.f),0),k:foods.reduce((sum,food)=>sum+numeric(food.k),0)});
+  const mealCard=group=>{
+    const foods=group.foods;
+    const rows=group.summary?'':foods.map(food=>'<div class="nm-food-row"><span class="nm-food-name">'+esc(mdClean(food.name))+'</span>'+(food.qty?'<span class="nm-food-qty">'+esc(mdClean(food.qty))+'</span>':'')+'</div>').join('');
+    const reason=group.reason?'<div class="nm-reason">'+esc(mdClean(group.reason))+'</div>':'';
+    return '<div class="nutri-meal nutri-title"><div class="nm-head"><span class="nm-title-main">'+mealIcon(foods)+'<span class="nm-name">'+esc(group.name)+'</span></span></div>'+
+      (rows?'<div class="nm-foods">'+rows+'</div>':'')+macroBlock(mealTotals(foods))+reason+recipeCard(group.recipe)+'</div>';
+  };
+  const groups=[]; let active=null; let total=null;
   for(const it of model){
     if(it.type==='total'){ if(clip(it.p)||clip(it.c)||clip(it.f)||clip(it.k)) total=it; continue; }
-    if(it.type==='meal'){ const nm=mdClean(it.name); if(nm&&nm!==curMeal){curMeal=nm;html+=mealCard(nm,mealFoods.get(nm));} continue; }
-    const nm=mdClean(it.name); if(!nm) continue;
-    const key=(curMeal||'')+'~'+nm.toLowerCase()+'~'+clip(it.p)+'~'+clip(it.c)+'~'+clip(it.f);   // dedupe within a meal
-    if(seen.has(key)) continue;
-    seen.add(key); html+=foodCard(it);
+    if(it.type==='meal'){
+      const name=mdClean(it.name); if(!name) continue;
+      active={name,foods:[],reason:'',recipe:'',canOwnRecipe:true}; groups.push(active); continue;
+    }
+    const name=mdClean(it.name); if(!name) continue;
+    // Legacy meal-only tables have no separate Food column. Keep their one row
+    // as a self-contained meal, but never let a recipe token float onto it.
+    if(!active||it.mealSummary) { active={name,foods:[],reason:'',recipe:'',canOwnRecipe:false,summary:!!it.mealSummary}; groups.push(active); }
+    const key=name.toLowerCase()+'~'+clip(it.p)+'~'+clip(it.c)+'~'+clip(it.f)+'~'+clip(it.k);
+    if(active.foods.some(food=>food._key===key)) continue;
+    active.foods.push({...it,_key:key});
+    if(!active.reason&&it.reason) active.reason=it.reason;
+    if(active.canOwnRecipe&&!active.recipe&&it.recipe) active.recipe=it.recipe;
   }
+  let html='<div class="nutri">';
+  groups.forEach(group=>{html+=mealCard(group);});
   if(total){
     html+='<div class="nutri-total"><div class="nt-label">'+tr().nutriTotal+'</div><div class="nt-grid">'+
       (clip(total.p)?'<div class="nt-stat p"><div class="v">'+clip(total.p)+' '+L.u+'</div><div class="l">'+L.p+'</div></div>':'')+
