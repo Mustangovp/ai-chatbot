@@ -285,6 +285,23 @@ test.describe('APEX approved app shell — UX regression', () => {
     await expect(page.locator('.nutri-title .nm-meal-icon svg')).toHaveCount(3);
   });
 
+  test('NP-1A2: Bulgarian canonical Food column preserves foods and meal icons', async ({ page }) => {
+    await page.evaluate(() => {
+      const md = [
+        '| Хранене | Храна | Количество | Белтъчини (g) | Въглехидрати (g) | Мазнини (g) | Ккал | Защо това хранене |',
+        '| --- | --- | --- | --- | --- | --- | --- | --- |',
+        '| Закуска | Овесени ядки | 80 г | 10 | 45 | 6 | 280 | За енергия сутрин. |',
+        '| Общо | | | 10 | 45 | 6 | 280 | |'
+      ].join('\n');
+      const el = appendCoach();
+      el.innerHTML = renderMarkdown(md);
+    });
+
+    await expect(page.locator('.nutri-title .nm-name')).toHaveText('Закуска');
+    await expect(page.locator('.nutri-title .nm-meal-icon')).toHaveCount(1);
+    await expect(page.locator('.nutri-meal').filter({ hasText: 'Овесени ядки' })).toHaveCount(1);
+  });
+
   test('NP-1B: matched recipes render as collapsed meal-card details', async ({ page }) => {
     await page.evaluate(() => {
       const recipe = 'recipe:' + btoa(JSON.stringify({
