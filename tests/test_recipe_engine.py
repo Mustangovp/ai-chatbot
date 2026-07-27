@@ -50,6 +50,20 @@ def test_recipe_matching_is_deterministic_and_preserves_plan_macros():
     assert before == tuple((meal.id, meal.macros, tuple((food.id, food.macros) for food in meal.foods)) for meal in plan.meals)
 
 
+def test_recipe_token_is_emitted_in_its_own_table_column():
+    plan = _plan()
+    match = match_plan(plan, {"cooking_equipment": ["pan", "oven"]})
+    rendered = nutrition_plan.render(
+        plan,
+        "en",
+        {meal_id: f"recipe:{item.recipe.id}" for meal_id, item in match.items()},
+    )
+
+    breakfast_row = rendered.splitlines()[2].split("|")
+    assert breakfast_row[8].strip().startswith("Starts the day")
+    assert breakfast_row[9].strip().startswith("recipe:")
+
+
 def test_recipe_matcher_accepts_exact_bulgarian_catalog_display_names():
     breakfast = nutrition_plan.NutritionMeal(
         id="meal-bg", name="Закуска", meal_type="breakfast", time="08:00",

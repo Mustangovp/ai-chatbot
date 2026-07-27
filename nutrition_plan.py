@@ -638,7 +638,7 @@ def render(plan: NutritionPlan, lang: str, recipe_tokens: Mapping[str, str] | No
                 _display_decimal(food.macros.protein_g), _display_decimal(food.macros.carbs_g),
                 _display_decimal(food.macros.fat_g), _display_decimal(food.macros.kcal), reason,
             )
-            lines.append(row[:-1] + f" {recipe} |" if include_recipes else row)
+            lines.append(row[:-1] + f" | {recipe} |" if include_recipes else row)
     total_label = "Daily Total" if english else "\u041e\u0431\u0449\u043e"
     total_row = "| {} | | | {} | {} | {} | {} | |".format(
         total_label, _display_decimal(plan.totals.protein_g), _display_decimal(plan.totals.carbs_g),
