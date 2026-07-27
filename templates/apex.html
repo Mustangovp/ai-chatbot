@@ -1861,27 +1861,39 @@ function collapsedNutritionBlock(line){
    WITHOUT ending the meal; the region only stops at the next non-nutrition prose.
    ═══════════════════════════════════════════════════════════════════════════ */
 function mdClean(v){return (v||'').replace(/\*\*|__|`/g,'').replace(/^\s*#{1,4}\s+/,'').replace(/^\s*[-*•]\s+/,'').trim();}
-const MEAL_RE=/^(breakfast|lunch|dinner|snacks?|morning snack|afternoon snack|evening snack|pre[-\s]?workout|post[-\s]?workout|закуска|обяд|вечеря|следобедна(\s+закуска)?|междинна(\s+закуска)?|междинно(\s+хранене)?|допълнителни(\s+закуск\w*)?|снак)$/i;
+const MEAL_RE=/^(breakfast|lunch|dinner|snacks?|morning snack|afternoon snack|evening snack|pre[-\s]?workout|post[-\s]?workout|\u0437\u0430\u043a\u0443\u0441\u043a\u0430|\u043e\u0431\u044f\u0434|\u0432\u0435\u0447\u0435\u0440\u044f|\u0441\u043b\u0435\u0434\u043e\u0431\u0435\u0434\u043d\u0430(\s+\u0437\u0430\u043a\u0443\u0441\u043a\u0430)?|\u043c\u0435\u0436\u0434\u0438\u043d\u043d\u0430(\s+\u0437\u0430\u043a\u0443\u0441\u043a\u0430)?|\u043c\u0435\u0436\u0434\u0438\u043d\u043d\u043e(\s+\u0445\u0440\u0430\u043d\u0435\u043d\u0435)?|\u0434\u043e\u043f\u044a\u043b\u043d\u0438\u0442\u0435\u043b\u043d\u0438(\s+\u0437\u0430\u043a\u0443\u0441\u043a\w*)?|\u0441\u043d\u0430\u043a)$/i;
 function mealHeaderName(line){
   let s=mdClean(line).replace(/\(.*?\)/g,'').replace(/[:：].*$/,'').trim();
   return MEAL_RE.test(s)?s.replace(/\s+/g,' '):'';
 }
 function isMealCell(v){ return MEAL_RE.test(mdClean(v).replace(/[:：]\s*$/,'').trim()); }
 const _isPureNum=c=>/^\d+([.,]\d+)?$/.test((c||'').trim());
-const _isServingValue=c=>{c=(c||'').trim();return /\d/.test(c)&&/^\d+([.,]\d+)?\s*(g|г|гр|kg|кг|ml|мл|oz|бр|pcs|порц\.?|slices?|cup|чаша|tbsp|tsp|eggs?|яйц\w*)\.?$/i.test(c);};
-const _isTotal=s=>/[\s(|:](total|totals|общо|сумарно|сума|итого|daily\s*total|дневн\w*)/i.test(' '+mdClean(s));
+const _isServingValue=c=>{c=(c||'').trim();return /\d/.test(c)&&/^\d+([.,]\d+)?\s*(g|\u0433|\u0433\u0440|kg|\u043a\u0433|ml|\u043c\u043b|oz|\u0431\u0440|pcs|\u043f\u043e\u0440\u0446\.?|slices?|cup|\u0447\u0430\u0448\u0430|tbsp|tsp|eggs?|\u044f\u0439\u0446\w*)\.?$/i.test(c);};
+const _isTotal=s=>/[\s(|:](total|totals|\u043e\u0431\u0449\u043e|\u0441\u0443\u043c\u0430\u0440\u043d\u043e|\u0441\u0443\u043c\u0430|\u0438\u0442\u043e\u0433\u043e|daily\s*total|\u0434\u043d\u0435\u0432\u043d\w*)/i.test(' '+mdClean(s));
 function _nums(s){return (String(s).match(/\d+(?:[.,]\d+)?/g)||[]);}
+const BG_NUTRITION_FIELDS=Object.freeze({
+  '\u0445\u0440\u0430\u043d\u0435\u043d\u0435':'name',
+  '\u0445\u0440\u0430\u043d\u0430':'food','\u0445\u0440\u0430\u043d\u0438':'food',
+  '\u044f\u0441\u0442\u0438\u0435':'food','\u043f\u0440\u043e\u0434\u0443\u043a\u0442':'food','\u0438\u043c\u0435':'food',
+  '\u043a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e':'qty','\u043f\u043e\u0440\u0446\u0438\u044f':'qty','\u0433\u0440\u0430\u043c\u0430\u0436':'qty',
+  '\u043f\u0440\u043e\u0442\u0435\u0438\u043d':'p','\u0431\u0435\u043b\u0442\u044a\u0447\u0438\u043d\u0438':'p',
+  '\u0432\u044a\u0433\u043b\u0435\u0445\u0438\u0434\u0440\u0430\u0442\u0438':'c','\u043c\u0430\u0437\u043d\u0438\u043d\u0438':'f',
+  '\u043a\u043a\u0430\u043b':'k','\u043a\u0430\u043b\u043e\u0440\u0438\u0438':'k',
+  '\u0437\u0430\u0449\u043e \u0442\u043e\u0432\u0430 \u0445\u0440\u0430\u043d\u0435\u043d\u0435':'reason','\u043f\u0440\u0438\u0447\u0438\u043d\u0430':'reason',
+  '\u0440\u0435\u0446\u0435\u043f\u0442\u0430':'recipe'
+});
 function nutritionField(v){
   const h=mdClean(v).toLowerCase().replace(/\s*\([^)]*\)\s*$/,'').trim();
-  if(/^(meal|хранене)$/.test(h))return'name';
-  if(/^(food|dish|product|name|ястие|продукт|име|храна|храни)$/.test(h))return'food';
-  if(/^(quantity|qty|amount|serving|serving size|portion|grams?|количество|порция|грамаж)$/.test(h))return'qty';
-  if(/^(protein|протеин|белтъчини)$/.test(h))return'p';
-  if(/^(carbs?|carbohydrates|въглехидрати)$/.test(h))return'c';
-  if(/^(fat|fats|мазнини)$/.test(h))return'f';
-  if(/^(kcal|calories|calorie|ккал|калории)$/.test(h))return'k';
-  if(/^(why this meal|meal reason|reason|защо това хранене|причина)$/.test(h))return'reason';
-  if(/^(recipe|рецепта)$/.test(h))return'recipe';
+  if(BG_NUTRITION_FIELDS[h])return BG_NUTRITION_FIELDS[h];
+  if(/^(meal)$/.test(h))return'name';
+  if(/^(food|dish|product|name)$/.test(h))return'food';
+  if(/^(quantity|qty|amount|serving|serving size|portion|grams?)$/.test(h))return'qty';
+  if(/^(protein)$/.test(h))return'p';
+  if(/^(carbs?|carbohydrates)$/.test(h))return'c';
+  if(/^(fat|fats)$/.test(h))return'f';
+  if(/^(kcal|calories|calorie)$/.test(h))return'k';
+  if(/^(why this meal|meal reason|reason)$/.test(h))return'reason';
+  if(/^(recipe)$/.test(h))return'recipe';
   return null;
 }
 function nutritionSchema(cells){
