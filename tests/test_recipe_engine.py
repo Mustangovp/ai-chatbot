@@ -49,6 +49,20 @@ def test_recipe_matching_is_deterministic_and_preserves_plan_macros():
     assert before == tuple((meal.id, meal.macros, tuple((food.id, food.macros) for food in meal.foods)) for meal in plan.meals)
 
 
+def test_recipe_matcher_accepts_exact_bulgarian_catalog_display_names():
+    breakfast = nutrition_plan.NutritionMeal(
+        id="meal-bg", name="Закуска", meal_type="breakfast", time="08:00",
+        foods=(
+            nutrition_plan.NutritionFood("food-bg-oats", None, "Овесени ядки, сухи", Decimal("150"),
+                                        nutrition_plan.NutritionMacros(Decimal("20"), Decimal("100"), Decimal("10"), Decimal("570"))),
+            nutrition_plan.NutritionFood("food-bg-eggs", None, "Яйце, сварено", Decimal("150"),
+                                        nutrition_plan.NutritionMacros(Decimal("18"), Decimal("1"), Decimal("15"), Decimal("215"))),
+        ), macros=nutrition_plan.NutritionMacros(Decimal("38"), Decimal("101"), Decimal("25"), Decimal("785")),
+    )
+
+    assert match_meal(breakfast, load_recipes(), profile_equipment({})).recipe.id == "breakfast-eggs-oats"
+
+
 def test_recipe_matcher_falls_back_when_no_exact_ingredient_overlap_exists():
     plan = _plan()
     unmatched = nutrition_plan.NutritionMeal(
