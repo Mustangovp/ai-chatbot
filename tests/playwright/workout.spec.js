@@ -61,9 +61,9 @@ test.describe('APEX approved app shell — UX regression', () => {
     await expect(firstName).toHaveText('Лицеви опори');
 
     // 3. sets AND reps are visible on the card
-    const firstStats = page.locator('.ex-card').first().locator('.ex-stats');
+    const firstStats = page.locator('.ex-card').first().locator('.workout-card-stats');
     await expect(firstStats).toContainText('3');            // sets value
-    await expect(firstStats).toContainText(/серии|sets/);
+    await expect(firstStats).toContainText(/серии|sets/i);
     await expect(firstStats).toContainText('12');           // reps value
     await expect(firstStats).toContainText(/повт|reps/);
 
@@ -113,7 +113,7 @@ test.describe('APEX approved app shell — UX regression', () => {
     await page.evaluate(() => quitWorkout());
   });
 
-  test('WO-1C: technique follow-up renders one deterministic instruction card per existing exercise', async ({ page }) => {
+  test('WO-1C: initial workout renders one polished instruction card per exercise', async ({ page }) => {
     const networkCalls = await page.evaluate(async () => {
       const originalFetch = window.fetch;
       let calls = 0;
@@ -129,48 +129,59 @@ test.describe('APEX approved app shell — UX regression', () => {
       ].join('\n');
       const workout = appendCoach();
       workout.innerHTML = renderMarkdown(md);
-      document.getElementById('user-in').value = 'Как се правят всички тези упражнения?';
-      await send();
       return calls;
     });
 
     await expect(page.locator('.start-wo')).toHaveCount(1);
-    const section = page.locator('.exercise-instructions');
-    await expect(section).toHaveCount(1);
-    const cards = section.locator('.ei-card');
+    await expect(page.locator('.workout-protocol')).toHaveCount(1);
+    const cards = page.locator('.workout-protocol .workout-exercise-card');
     await expect(cards).toHaveCount(5);
     await expect(cards.nth(0)).toContainText('Goblet Squat');
     await expect(cards.nth(1)).toContainText('Push-up');
     await expect(cards.nth(2)).toContainText('Inverted Row Under Table');
     await expect(cards.nth(3)).toContainText('Dumbbell Romanian Deadlift');
     await expect(cards.nth(4)).toContainText('Front Plank');
-    await cards.locator('details').evaluateAll((nodes) => nodes.forEach((node) => { node.open = true; }));
     await expect(cards.nth(0)).toContainText('Дръж един дъмбел вертикално');
+    await expect(cards.nth(0)).toContainText('Начална позиция');
+    await expect(cards.nth(0)).toContainText('Изпълнение');
+    await expect(cards.nth(0)).toContainText('Дишане');
+    await expect(cards.nth(0)).toContainText('Ключови насоки');
+    await expect(cards.nth(0)).toContainText('Чести грешки');
+    await expect(cards.nth(0)).toContainText('По-лесен вариант');
+    await expect(cards.nth(0)).toContainText('Безопасност');
     await expect(cards.nth(1)).toContainText('30–45 градуса');
     await expect(cards.nth(2)).toContainText('нестабилна, лека или стъклена маса');
     await expect(cards.nth(3)).not.toContainText('С мента в коленете');
-    await expect(cards.nth(4)).toContainText('2 серии × 20–40 сек');
+    await expect(cards.nth(4)).toContainText('20–40 сек');
     await expect(cards.nth(4)).not.toContainText('8–12 повт.');
     await expect(cards.first().locator('details')).toHaveCount(5);
     expect(networkCalls).toBe(0);
-    await expect(section.locator(':scope > p')).toHaveCount(0);
+    await expect(page.locator('.exercise-instructions')).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
   });
 
-  test('WO-1D: restored workout context renders the same technique cards without changing an active session', async ({ page }) => {
-    await page.evaluate(async () => {
+  test('WO-1D: technique follow-up opens the existing workout cards without duplication', async ({ page }) => {
+    const networkCalls = await page.evaluate(async () => {
+      const originalFetch = window.fetch;
+      let calls = 0;
+      window.fetch = (...args) => { calls += 1; return originalFetch(...args); };
       const md = '| Exercise | Sets | Reps | Rest |\n| --- | --- | --- | --- |\n| Front Plank | 2 | 8–12 | 45 sec |';
       const workout = appendCoach();
       workout.innerHTML = renderMarkdown(md);
       startWorkout();
       const active = WO;
-      pendingWorkout = null;
       document.getElementById('user-in').value = 'Explain each exercise';
       await send();
       window.__sameActiveWorkout = WO === active && WO.i === 0 && WO.phase === 'work';
+      return calls;
     });
-    await expect(page.locator('.exercise-instructions .ei-card')).toHaveCount(1);
-    await expect(page.locator('.exercise-instructions')).toContainText('20–40 сек');
+    await expect(page.locator('.workout-protocol')).toHaveCount(1);
+    await expect(page.locator('.workout-protocol .workout-exercise-card')).toHaveCount(1);
+    await expect(page.locator('.workout-protocol')).toContainText('20–40 сек');
+    await expect(page.locator('.workout-protocol details[open]')).toHaveCount(5);
+    await expect(page.locator('.exercise-instructions')).toHaveCount(0);
+    await expect(page.locator('.start-wo')).toHaveCount(1);
+    expect(networkCalls).toBe(0);
     expect(await page.evaluate(() => window.__sameActiveWorkout)).toBe(true);
     await page.evaluate(() => quitWorkout());
   });
