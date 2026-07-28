@@ -276,6 +276,14 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 .ex-stat{font-size:11.5px;color:var(--muted);} .ex-stat b{font-family:'Unbounded';font-weight:600;font-size:13px;color:#fff;margin-right:3px;}
 .ex-note{font-size:11.5px;color:var(--faint);margin-top:7px;line-height:1.45;font-style:italic;}
 
+/* ── EXERCISE INSTRUCTION CARDS ───────────────────────────────────── */
+.exercise-instructions{margin:14px 0;}.ei-kicker{font-family:'Unbounded';font-weight:600;font-size:10px;letter-spacing:1.8px;color:var(--pulse);text-transform:uppercase;}
+.ei-heading{font-family:'Unbounded';font-size:17px;font-weight:700;margin:5px 0 14px;color:#fff;}
+.ei-card{background:linear-gradient(135deg,rgba(26,33,51,.78),rgba(18,23,36,.76));border:1px solid var(--border);border-radius:16px;padding:15px 16px;margin:0 0 10px;}
+.ei-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:12px;}.ei-name{font-family:'Unbounded';font-size:14px;font-weight:600;color:#fff;}.ei-prescription{white-space:nowrap;font-size:11.5px;font-weight:700;color:var(--gold);}
+.ei-section{border-top:1px solid rgba(255,255,255,.09);padding:10px 0 0;margin-top:10px;}.ei-section summary{cursor:pointer;list-style:none;font-size:12.5px;font-weight:700;color:var(--text);}.ei-section summary::-webkit-details-marker{display:none;}.ei-section summary::before{content:'›';display:inline-block;color:var(--cyan);font-size:17px;line-height:10px;margin-right:7px;transform:rotate(0deg);transition:transform .18s ease;}.ei-section[open] summary::before{transform:rotate(90deg);}.ei-static-label{font-size:12.5px;font-weight:700;color:var(--text);}.ei-section ol,.ei-section ul{margin:9px 0 2px;padding-left:19px;color:var(--muted);font-size:12.5px;line-height:1.55;}.ei-section li+li{margin-top:4px;}.ei-copy{margin:9px 0 2px;color:var(--muted);font-size:12.5px;line-height:1.55;}
+@media(max-width:560px){.ei-card{padding:14px;}.ei-top{align-items:flex-start;flex-direction:column;gap:4px;}.ei-prescription{white-space:normal;}}
+
 /* ── WORKOUT MODE (full-screen protocol) ─────────────────────────── */
 #workout{position:fixed;inset:0;z-index:30;display:none;flex-direction:column;
   background:radial-gradient(ellipse at 50% 30%,rgba(18,23,36,.4),rgba(7,9,16,.96));backdrop-filter:blur(6px);}
@@ -663,10 +671,11 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
   <linearGradient id="restgrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#F5212D"/><stop offset="1" stop-color="#FFB13C"/></linearGradient>
 </defs></svg>
 
+<script src="/static/exercise_instruction_library.js"></script>
 <script>
 /* Account-owned browser data. Bare legacy keys are claimed only by the current
    anonymous browser identity and are never uploaded into an account. */
-const OWNED_STORAGE_KEYS=Object.freeze(['apexProfile','apexHistory','apexWorkoutLog','apexCoachMemory']);
+const OWNED_STORAGE_KEYS=Object.freeze(['apexProfile','apexHistory','apexWorkoutLog','apexCoachMemory','apexLatestWorkoutProtocol']);
 const ACTIVE_OWNER_KEY='apexActiveDataOwnerV1',ANON_OWNER_KEY='apexAnonymousOwnerV1';
 const newOwnerId=()=>{try{return crypto.randomUUID();}catch(e){return Date.now().toString(36)+Math.random().toString(36).slice(2);}};
 function anonymousOwnerId(rotate=false){
@@ -2185,6 +2194,15 @@ function inferDiff(reps,name){
   if(/начинаещ|beginner|лек|light/i.test(name))return'easy';
   if(r>=15)return'easy'; if(r<=6)return'hard'; return'med';
 }
+function workoutPrescription(exercise){
+  const record=window.ApexExerciseInstructions&&window.ApexExerciseInstructions.find(exercise.name);
+  if(record&&record.prescription_type==='duration'){
+    const raw=String(exercise.reps||'');
+    const valid=/\bsec(?:ond)?s?\b|\bseconds?\b|сек\b|секун/i.test(raw);
+    return{type:'duration',value:valid?raw.replace(/\bsec(?:ond)?s?\b|\bseconds?\b|сек\.?|секунди?/ig,'').trim()||'20–40':'20–40'};
+  }
+  return{type:'repetitions',value:String(exercise.reps||'8–12')};
+}
 function parseExercises(header,body){
   const iName=0;
   const iSets=colIndex(header,[/серии|sets/]);
@@ -2194,12 +2212,70 @@ function parseExercises(header,body){
   const ex=[];
   body.forEach(r=>{
     const name=(r[iName]||'').trim(); if(!name||/общо|total/i.test(name))return;
-    ex.push({name,sets:iSets>-1?(r[iSets]||'3'):'3',reps:iReps>-1?(r[iReps]||'10'):'10',
-      rest:iRest>-1?(r[iRest]||'60'):'60',note:iNote>-1?(r[iNote]||''):''});
+    const exercise={name,sets:iSets>-1?(r[iSets]||'3'):'3',reps:iReps>-1?(r[iReps]||'10'):'10',
+      rest:iRest>-1?(r[iRest]||'60'):'60',note:iNote>-1?(r[iNote]||''):''};
+    const prescription=workoutPrescription(exercise);
+    if(prescription.type==='duration')exercise.reps=prescription.value;
+    ex.push(exercise);
   });
   return ex;
 }
 let pendingWorkout=null,pendingWorkouts={},pendingWorkoutContracts={},pendingTrainingCompletion=null,pendingCompletionSessions=[];
+const WORKOUT_EXERCISE_INSTRUCTIONS='WORKOUT_EXERCISE_INSTRUCTIONS';
+function saveLatestWorkoutProtocol(exercises){
+  const safe=(exercises||[]).map(e=>({name:String(e.name||''),sets:String(e.sets||''),reps:String(e.reps||''),rest:String(e.rest||''),note:String(e.note||'')})).filter(e=>e.name);
+  if(safe.length)ownedStorageSet('apexLatestWorkoutProtocol',JSON.stringify({version:1,exercises:safe}));
+}
+function latestWorkoutProtocol(){
+  if(Array.isArray(pendingWorkout)&&pendingWorkout.length)return pendingWorkout;
+  try{const cached=JSON.parse(ownedStorageGet('apexLatestWorkoutProtocol')||'{}');return Array.isArray(cached.exercises)&&cached.exercises.every(e=>e&&typeof e.name==='string')?cached.exercises:[];}catch(_){return[];}
+}
+function normalizedInstructionIntent(value){return String(value||'').toLocaleLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^\p{L}\p{N}]+/gu,' ').trim();}
+function workoutFollowUpIntent(value){
+  const q=normalizedInstructionIntent(value);
+  const english=['how do i perform these exercises','explain the exercises','show exercise technique','how do i do them','explain each exercise','exercise instructions'];
+  const bulgarian=[
+    'как се правят тези упражнения','как се правят всички тези упражнения','как се изпълняват','покажи ми как се изпълняват',
+    'обясни упражненията','обясни техниката','обясни ми техниката','покажи техниката','как да ги правя','техника на упражненията','обясни ми всяко упражнение'
+  ];
+  return english.includes(q)||bulgarian.includes(q)?WORKOUT_EXERCISE_INSTRUCTIONS:null;
+}
+function instructionList(items,ordered=false){const tag=ordered?'ol':'ul';return '<'+tag+'>'+items.map(item=>'<li>'+esc(item)+'</li>').join('')+'</'+tag+'>';}
+function instructionSection(label,content,ordered=false,open=false){
+  const value=Array.isArray(content)?instructionList(content,ordered):'<p class="ei-copy">'+esc(content)+'</p>';
+  return '<details class="ei-section"'+(open?' open':'')+'><summary>'+esc(label)+'</summary>'+value+'</details>';
+}
+function instructionStaticSection(label,content,ordered=false){
+  const value=Array.isArray(content)?instructionList(content,ordered):'<p class="ei-copy">'+esc(content)+'</p>';
+  return '<section class="ei-section"><div class="ei-static-label">'+esc(label)+'</div>'+value+'</section>';
+}
+function fallbackInstructionRecord(exercise){
+  const bg=lang==='bg';return{ id:'unavailable',prescription_type:'repetitions',
+    [bg?'bg':'en']:{starting:[bg?'Запази спокойна и контролирана начална позиция.':'Use a calm, controlled starting position.'],steps:[bg?'За това упражнение няма подготвена детайлна инструкция. Не променяй самостоятелно техниката или натоварването.':'A detailed instruction is not available for this exercise. Do not change technique or load on your own.'],breathing:bg?'Дишай спокойно и не задържай въздуха.':'Breathe calmly and do not hold your breath.',cues:[bg?'Изпълнявай само в безболезнен обхват.':'Work only through a pain-free range.'],mistakes:[bg?'Не ускорявай движението, за да компенсираш несигурност.':'Do not rush the movement to compensate for uncertainty.'],regression:bg?'Избери по-лесен вариант само след конкретна насока от треньора.':'Use an easier variation only with specific coaching guidance.',safety:bg?'Спри при остра болка.':'Stop for sharp pain.'}};
+}
+function renderWorkoutInstructionCards(exercises){
+  const api=window.ApexExerciseInstructions;
+  const bg=lang==='bg';
+  const labels=bg?{title:'Техника на упражненията',start:'Начална позиция',steps:'Изпълнение',breathing:'Дишане',cues:'Ключови насоки',mistakes:'Чести грешки',regression:'По-лесен вариант',safety:'Безопасност'}:{title:'Exercise technique',start:'Starting position',steps:'Execution',breathing:'Breathing',cues:'Key cues',mistakes:'Common mistakes',regression:'Easier variation',safety:'Safety'};
+  const cards=(exercises||[]).map(exercise=>{
+    const record=(api&&api.find(exercise.name))||fallbackInstructionRecord(exercise);
+    const copy=record[bg?'bg':'en'];
+    const prescription=api&&record.id!=='unavailable'?api.prescription(record,exercise,bg?'bg':'en'):(String(exercise.sets||'3')+' '+(bg?'серии × ':'sets × ')+String(exercise.reps||'8–12')+' '+(bg?'повт.':'reps'));
+    return '<article class="ei-card" data-exercise-instruction-id="'+esc(record.id)+'"><div class="ei-top"><h3 class="ei-name">'+esc(exercise.name)+'</h3><span class="ei-prescription">'+esc(prescription)+'</span></div>'+
+    instructionStaticSection(labels.start,copy.starting)+instructionStaticSection(labels.steps,copy.steps,true)+
+      instructionSection(labels.breathing,copy.breathing)+instructionSection(labels.cues,copy.cues)+
+      instructionSection(labels.mistakes,copy.mistakes)+instructionSection(labels.regression,copy.regression)+instructionSection(labels.safety,copy.safety)+'</article>';
+  }).join('');
+  return '<section class="exercise-instructions" data-workout-follow-up-intent="'+WORKOUT_EXERCISE_INSTRUCTIONS+'"><div class="ei-kicker">APEX</div><h2 class="ei-heading">'+labels.title+'</h2>'+cards+'</section>';
+}
+function finishWorkoutInstructionFollowUp(x,exercises){
+  ChatLifecycle.waiting(x);ChatLifecycle.content(x,' ');ChatLifecycle.cancelPaint(x);
+  x.full=(lang==='bg'?'Техника на упражненията: ':'Exercise technique: ')+exercises.map(e=>e.name).join(', ');
+  x.assistantBody.innerHTML=renderWorkoutInstructionCards(exercises);
+  ChatLifecycle.transition(x,CHAT_STATES.COMPLETING);
+  saveHistory('assistant',x.full);afterReply(x.full);ChatLifecycle.transition(x,CHAT_STATES.COMPLETED);ChatLifecycle.finish(x);
+  if(x.follow)hardScroll();else smartScroll();
+}
 function completionSessionFor(exercises){
   const session=pendingCompletionSessions.shift();
   if(!session||!Array.isArray(session.exercises)||session.exercises.length!==exercises.length)return null;
@@ -2214,6 +2290,7 @@ function renderWorkout(header,body){
   const completionSession=completionSessionFor(ex);
   const workoutKey=completionSession?completionSession.session_id:('legacy-'+Date.now()+'-'+Math.random());
   pendingWorkout=ex;
+  saveLatestWorkoutProtocol(ex);
   pendingWorkouts[workoutKey]=ex;
   pendingWorkoutContracts[workoutKey]=completionSession?{
     plan_id:pendingTrainingCompletion.plan_id,plan_version:pendingTrainingCompletion.plan_version,
@@ -2224,12 +2301,12 @@ function renderWorkout(header,body){
     '<button class="start-wo" data-workout-key="'+encodeURIComponent(workoutKey)+
     '" onclick="startWorkout(decodeURIComponent(this.dataset.workoutKey))">▶ '+tr().woStart+'</button></div>';
   ex.forEach(e=>{
-    const mu=inferMuscle(e.name),df=inferDiff(e.reps,e.name);
+    const mu=inferMuscle(e.name),df=inferDiff(e.reps,e.name),prescription=workoutPrescription(e);
     html+='<div class="ex-card"><div class="ex-glyph" style="background:radial-gradient(circle at 50% 35%,'+mu.ic+'33,rgba(18,23,36,.6))">'+mu.e+'</div>'+
       '<div class="ex-body"><div class="ex-top"><span class="ex-name">'+esc(e.name)+'</span><span class="ex-diff '+df+'">'+diffLbl[df]+'</span></div>'+
       '<div class="ex-muscles"><span class="ex-muscle">'+mu.m+'</span><span class="ex-muscle">'+(lang==='bg'?'темп 2-0-2':'tempo 2-0-2')+'</span></div>'+
       '<div class="ex-stats"><span class="ex-stat"><b>'+esc(e.sets)+'</b>'+(lang==='bg'?'серии':'sets')+'</span>'+
-      '<span class="ex-stat"><b>'+esc(e.reps)+'</b>'+(lang==='bg'?'повт.':'reps')+'</span>'+
+      '<span class="ex-stat"><b>'+esc(prescription.value)+'</b>'+(prescription.type==='duration'?(lang==='bg'?'сек':'sec'):(lang==='bg'?'повт.':'reps'))+'</span>'+
       '<span class="ex-stat"><b>'+esc(e.rest)+'</b>'+(lang==='bg'?'почивка':'rest')+'</span></div>'+
       (e.note?'<div class="ex-note">'+esc(e.note)+'</div>':'')+'</div></div>';
   });
@@ -2261,7 +2338,7 @@ function woProgress(){
   return total?Math.round(done/total*100):0;
 }
 function renderWO(){
-  const t=tr(),e=WO.ex[WO.i],mu=inferMuscle(e.name),sets=parseInt(e.sets)||3;
+  const t=tr(),e=WO.ex[WO.i],mu=inferMuscle(e.name),sets=parseInt(e.sets)||3,prescription=workoutPrescription(e);
   document.getElementById('wo-ptop-l').textContent=t.woEx+' '+(WO.i+1)+'/'+WO.ex.length;
   const pct=woProgress();
   document.getElementById('wo-ptop-r').textContent=pct+'%';
@@ -2273,7 +2350,7 @@ function renderWO(){
     stage.innerHTML='<div class="wo-step">'+(lang==='bg'?'Серия':'Set')+' '+(WO.set+1)+'/'+sets+' · ~'+woEstRemaining()+(lang==='bg'?'мин остават':'min left')+'</div>'+
       '<div class="wo-ex-glyph" style="background:radial-gradient(circle at 50% 35%,'+mu.ic+'44,rgba(18,23,36,.7))">'+mu.e+'</div>'+
       '<div class="wo-ex-name">'+esc(e.name)+'</div>'+
-      '<div class="wo-ex-target">'+esc(e.reps)+' '+(lang==='bg'?'повторения':'reps')+'</div>'+
+      '<div class="wo-ex-target">'+esc(prescription.value)+' '+(prescription.type==='duration'?(lang==='bg'?'секунди':'seconds'):(lang==='bg'?'повторения':'reps'))+'</div>'+
       '<div class="wo-ex-meta">'+mu.m+' · '+(lang==='bg'?'темп':'tempo')+' 2-0-2'+(e.note?(' · '+esc(e.note)):'')+'</div>'+
       '<div class="wo-weight"><input type="number" id="wo-weight-in" inputmode="decimal" placeholder="'+(lang==='bg'?'кг (по избор)':'kg (optional)')+'" value="'+(e.weight||'')+'" oninput="WO.ex[WO.i].weight=this.value"><span>'+(lang==='bg'?'кг × серия':'kg / set')+'</span></div>'+
       '<div class="set-dots">'+dots+'</div>'+
@@ -2562,6 +2639,12 @@ async function send(options={}){
   if(isStopTurn(val)){inp.value='';return;}
   const priorHistory=getHistory(),x=ChatLifecycle.begin(val,options,priorHistory);if(!x)return;
   inp.value='';pendingTrainingCompletion=null;pendingCompletionSessions=[];
+  const followUpIntent=workoutFollowUpIntent(val);
+  const priorWorkout=followUpIntent===WORKOUT_EXERCISE_INSTRUCTIONS?latestWorkoutProtocol():[];
+  if(followUpIntent===WORKOUT_EXERCISE_INSTRUCTIONS&&priorWorkout.length){
+    finishWorkoutInstructionFollowUp(x,priorWorkout);
+    return;
+  }
   const token=localStorage.getItem('apexToken')||'';
   const body={message:val,lang:lang};
   if(options.voice===true)body.voice=true;

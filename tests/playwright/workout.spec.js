@@ -113,6 +113,68 @@ test.describe('APEX approved app shell — UX regression', () => {
     await page.evaluate(() => quitWorkout());
   });
 
+  test('WO-1C: technique follow-up renders one deterministic instruction card per existing exercise', async ({ page }) => {
+    const networkCalls = await page.evaluate(async () => {
+      const originalFetch = window.fetch;
+      let calls = 0;
+      window.fetch = (...args) => { calls += 1; return originalFetch(...args); };
+      const md = [
+        '| Exercise | Sets | Reps | Rest |',
+        '| --- | --- | --- | --- |',
+        '| Goblet Squat | 3 | 8–12 | 60 sec |',
+        '| Push-up | 3 | 8–12 | 60 sec |',
+        '| Inverted Row Under Table | 3 | 8–12 | 60 sec |',
+        '| Dumbbell Romanian Deadlift | 3 | 8–12 | 60 sec |',
+        '| Front Plank | 2 | 8–12 | 45 sec |'
+      ].join('\n');
+      const workout = appendCoach();
+      workout.innerHTML = renderMarkdown(md);
+      document.getElementById('user-in').value = 'Как се правят всички тези упражнения?';
+      await send();
+      return calls;
+    });
+
+    await expect(page.locator('.start-wo')).toHaveCount(1);
+    const section = page.locator('.exercise-instructions');
+    await expect(section).toHaveCount(1);
+    const cards = section.locator('.ei-card');
+    await expect(cards).toHaveCount(5);
+    await expect(cards.nth(0)).toContainText('Goblet Squat');
+    await expect(cards.nth(1)).toContainText('Push-up');
+    await expect(cards.nth(2)).toContainText('Inverted Row Under Table');
+    await expect(cards.nth(3)).toContainText('Dumbbell Romanian Deadlift');
+    await expect(cards.nth(4)).toContainText('Front Plank');
+    await cards.locator('details').evaluateAll((nodes) => nodes.forEach((node) => { node.open = true; }));
+    await expect(cards.nth(0)).toContainText('Дръж един дъмбел вертикално');
+    await expect(cards.nth(1)).toContainText('30–45 градуса');
+    await expect(cards.nth(2)).toContainText('нестабилна, лека или стъклена маса');
+    await expect(cards.nth(3)).not.toContainText('С мента в коленете');
+    await expect(cards.nth(4)).toContainText('2 серии × 20–40 сек');
+    await expect(cards.nth(4)).not.toContainText('8–12 повт.');
+    await expect(cards.first().locator('details')).toHaveCount(5);
+    expect(networkCalls).toBe(0);
+    await expect(section.locator(':scope > p')).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+  });
+
+  test('WO-1D: restored workout context renders the same technique cards without changing an active session', async ({ page }) => {
+    await page.evaluate(async () => {
+      const md = '| Exercise | Sets | Reps | Rest |\n| --- | --- | --- | --- |\n| Front Plank | 2 | 8–12 | 45 sec |';
+      const workout = appendCoach();
+      workout.innerHTML = renderMarkdown(md);
+      startWorkout();
+      const active = WO;
+      pendingWorkout = null;
+      document.getElementById('user-in').value = 'Explain each exercise';
+      await send();
+      window.__sameActiveWorkout = WO === active && WO.i === 0 && WO.phase === 'work';
+    });
+    await expect(page.locator('.exercise-instructions .ei-card')).toHaveCount(1);
+    await expect(page.locator('.exercise-instructions')).toContainText('20–40 сек');
+    expect(await page.evaluate(() => window.__sameActiveWorkout)).toBe(true);
+    await page.evaluate(() => quitWorkout());
+  });
+
   test('WO-1A: safe starter fallback keeps workout cards, rest and progression', async ({ page }) => {
     await page.evaluate(() => {
       const md = [
