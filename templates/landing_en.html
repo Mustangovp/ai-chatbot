@@ -746,7 +746,11 @@ async function goCheckout(btn,plan){
     const data=await res.json();
     if(data&&data.url){window.location.href=data.url;return;}
   }catch(e){}
-  window.location.href='/app?lang=en&plan='+encodeURIComponent(plan);
+  window.location.href=checkoutFallbackUrl('en',plan);
+}
+function checkoutFallbackUrl(language,plan){
+  const planId=typeof plan==='string'?plan.trim():'';
+  return planId?'/app?lang='+encodeURIComponent(language)+'&plan='+encodeURIComponent(planId):'/app';
 }
 
 /* ═══════════ SWITCH TO BG ═══════════ */

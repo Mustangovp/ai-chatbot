@@ -828,7 +828,7 @@ function heroGo(){
 /* ═══════════ PAID PLAN → STRIPE CHECKOUT ═══════════
    FREE button still goes straight to /app. CORE/PRO POST to
    /create-checkout-session and redirect to the returned Stripe URL.
-   Falls back to /app?plan=X if the call fails so users aren't stranded. */
+   Falls back to /app; a plan parameter is kept only when it is valid. */
 async function goCheckout(btn,plan){
   if(btn._busy)return;
   btn._busy=true;
@@ -839,7 +839,11 @@ async function goCheckout(btn,plan){
     const data=await res.json();
     if(data&&data.url){window.location.href=data.url;return;}
   }catch(e){}
-  window.location.href='/app?lang=bg&plan='+encodeURIComponent(plan);
+  window.location.href=checkoutFallbackUrl('bg',plan);
+}
+function checkoutFallbackUrl(language,plan){
+  const planId=typeof plan==='string'?plan.trim():'';
+  return planId?'/app?lang='+encodeURIComponent(language)+'&plan='+encodeURIComponent(planId):'/app';
 }
 
 /* ═══════════ HONEST COUNTER ═══════════ */
