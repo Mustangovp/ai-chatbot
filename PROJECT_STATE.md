@@ -94,14 +94,12 @@ Key JS objects / functions:
 ├── _woRenderEx(b)      → exercise card (SVG + set/rep display)
 ├── _woRenderFb(b)      → RPE feedback screen (easy/medium/hard)
 ├── _woRenderRest(b)    → smart rest timer with countdown bar
-├── _woRenderHr(b)      → rPPG heart rate measurement
 ├── _woRenderDone(b)    → completion screen — calls _woLogSave(), shows duration, BG/EN
 ├── _woFb(fb)           → records actual reps + RPE to _wo.exLog/_wo.fbLog, adapts repDelta
 ├── _woDetectType(exs)  → detects upper/lower/full/core/mixed from exercise names (BG+EN regex)
 ├── _woLogSave()        → saves completed workout to localStorage.apexWorkoutLog (cap 20)
 ├── _woGetSummary(lang) → generates bilingual coaching summary from last 30 days + last 3 sessions
 ├── _woRestSecs(name)   → calculates rest time from profile + exercise type
-├── _woCalcBpm(samples) → zero-crossing BPM from rPPG green channel
 ├── send()              → main chat function — injects _woGetSummary() into profile.workoutContext
 ├── readChatStream()    → reads SSE stream, renders markdown live
 ├── getChatHistory()    → reads localStorage apexHistory (last 30)
@@ -210,10 +208,6 @@ All use CSS `d:path()` morphing for limb paths + SMIL `<animate>` for joint circ
 - [x] Coach voice comments during rest (3 pools, randomized)
 - [x] Skip rest button
 - [x] Progress bar across full workout
-- [x] rPPG heart rate: 15s capture via rear camera, green channel, zero-crossing BPM
-- [x] HR zone classification (60%/<60%/>80% of max HR)
-- [x] Manual HR fallback (wrist pulse method with calculation instruction)
-- [x] Camera error: Brave browser detection with specific instructions
 - [x] Workout session resume via `localStorage` (`apexWo`)
 - [x] 5 exercise CSS SVG animations (all committed)
 
@@ -245,11 +239,6 @@ All use CSS `d:path()` morphing for limb paths + SMIL `<animate>` for joint circ
 **What works:** RPE → `repDelta` adapts reps live within the current workout session. Completed sessions are now saved to `apexWorkoutLog`. `_woFb()` records actual reps per set (with `repDelta` applied) and RPE into `_wo.exLog` / `_wo.fbLog`. `_woLogSave()` computes session difficulty (mode of RPE feedback), workout type (regex detection), and duration before persisting.
 **What's missing:** Cross-device sync. After localStorage clear, all history is lost. Weight/strength progression tracking. No deload detection.
 **Impact:** The AI can now say "last week you struggled with lunges" — the session is in context. Cannot detect multi-week trends without server-side storage.
-
-### Heart Rate (isolated measurement)
-**What works:** Single post-set rPPG measurement + zone classification + rest advice.
-**What's missing:** Pre-workout resting HR, HR stored across sessions, HR trend in recovery analysis.
-**Impact:** HR data is disposable. Cannot contribute to the recovery intelligence described in COACHING_ENGINE.md.
 
 ### Adaptive Training (in-session only)
 **What works:** RPE adaptation within a single workout session.

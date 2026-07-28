@@ -40,10 +40,9 @@ ${ex.note?`<div class="wo-ex-note">${ex.note}</div>`:''}
 
 ## Camera Pulse Measurement
 
-### C-2 — rPPG camera measurement is unreliable and must be removed from the primary flow
+### C-2 — Camera pulse measurement removed
 
-**Location:** `_woRunHr()`, `_woCalcBpm()` — `app.html:1892–1971`  
-**Currently visible as:** "❤️ Измери пулса" button on every exercise screen.
+**Status:** Resolved. Camera pulse controls and rPPG runtime code are absent; the server blocks camera access with `Permissions-Policy: camera=()`.
 
 **The algorithm:**
 - 4×4 pixel video capture at 5 FPS
@@ -69,7 +68,7 @@ Remove the "❤️ Измери пулса" camera button from the exercise scre
 Replace with the manual entry as an optional, explicitly opt-in feature labeled "Измери пулса ръчно."  
 If camera rPPG is reintroduced in a future version, it must be validated against a reference device before display.
 
-**Status: C — remove the camera button from exercise screen immediately.**
+**Status: resolved.**
 
 ---
 

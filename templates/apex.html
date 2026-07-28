@@ -265,6 +265,8 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 .ex-glyph{width:70px;height:70px;border-radius:13px;flex-shrink:0;display:flex;align-items:center;justify-content:center;
   font-size:30px;position:relative;overflow:hidden;border:1px solid var(--border2);}
 .ex-glyph::after{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(255,255,255,.04) 3px,rgba(255,255,255,.04) 4px);}
+.ex-glyph svg,.wo-ex-glyph svg{width:78%;height:78%;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;position:relative;z-index:1;}
+.ex-glyph .ex-neutral{position:relative;z-index:1;}
 .ex-body{flex:1;min-width:0;}
 .ex-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px;}
 .ex-name{font-family:'Unbounded';font-weight:600;font-size:14px;color:#fff;}
@@ -2179,7 +2181,22 @@ const MUSCLE_LABELS={
   arms:{bg:'\u0440\u044a\u0446\u0435',en:'arms'}, core:{bg:'\u043a\u043e\u0440\u0435\u043c',en:'core'},
   cardio:{bg:'\u043a\u0430\u0440\u0434\u0438\u043e',en:'cardio'}
 };
-function inferMuscle(name){for(const x of MUSCLE_MAP)if(x.re.test(name)){const labels=MUSCLE_LABELS[x.m]||{};return{...x,m:labels[lang==='bg'?'bg':'en']||x.m};}return{m:lang==='bg'?'\u0446\u044f\u043b\u043e \u0442\u044f\u043b\u043e':'full body',e:'⚡',ic:'#8B93A7'};}
+function inferMuscle(name){for(const x of MUSCLE_MAP)if(x.re.test(name)){const labels=MUSCLE_LABELS[x.m]||{};return{...x,known:true,m:labels[lang==='bg'?'bg':'en']||x.m};}return{known:false,m:lang==='bg'?'\u0446\u044f\u043b\u043e \u0442\u044f\u043b\u043e':'full body',e:'⚡',ic:'#8B93A7'};}
+function normalizedExerciseName(name){return String(name||'').toLowerCase().normalize('NFKD').replace(/[-\u2010-\u2015]/g,' ').replace(/[^\p{L}\p{N}]+/gu,' ').replace(/\s+/g,' ').trim();}
+function canonicalExerciseFamily(name){
+  const n=' '+normalizedExerciseName(name)+' ';
+  if(/ (?:pull up|pull ups|pullup|pullups|chin up|chin ups|chinup|chinups) /.test(n)||n.includes(' \u043d\u0430\u0431\u0438\u0440\u0430\u043d\u0435 ')||n.includes(' \u043d\u0430\u0431\u0438\u0440\u0430\u043d\u0438\u044f '))return'pull-up';
+  if(n.includes(' overhead press ')||n.includes(' shoulder press ')||n.includes(' military press ')||n.includes(' dumbbell shoulder press ')||n.includes(' \u043f\u0440\u0435\u0441\u0430 \u043d\u0430\u0434 \u0433\u043b\u0430\u0432\u0430 ')||n.includes(' \u0440\u0430\u043c\u0435\u043d\u043d\u0430 \u043f\u0440\u0435\u0441\u0430 ')||n.includes(' \u0432\u043e\u0435\u043d\u043d\u0430 \u043f\u0440\u0435\u0441\u0430 '))return'overhead-press';
+  if(/ (?:squat|back squat|front squat|goblet squat) /.test(n)||n.includes(' \u043a\u043b\u0435\u043a ')||n.includes(' \u043a\u043b\u0435\u043a\u043e\u0432\u0435 '))return'squat';
+  return null;
+}
+const EXERCISE_FIGURE_SVG=Object.freeze({
+  'pull-up':'<svg data-exercise-figure="pull-up" viewBox="0 0 64 64" aria-hidden="true"><path d="M12 11h40M22 11v8m20-8v8M25 25l7-6 7 6M32 19v17M32 27l-10 9m10-3 10 3M22 36l-5 14m25-14 5 14M16 50h6m20 0h6"/></svg>',
+  'overhead-press':'<svg data-exercise-figure="overhead-press" viewBox="0 0 64 64" aria-hidden="true"><path d="M18 13h28M22 13v5m20-5v5M32 20v14M32 25l-10 8m10-2 10 2M22 33l-4 14m24-12 4 12M18 47h6m16 0h6"/></svg>',
+  'squat':'<svg data-exercise-figure="squat" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="15" r="5"/><path d="M32 20v15m0-7-12 5m12-3 12 6M32 35l-11 9 9 10m2-19 11 9-8 10M15 54h15m19 0h-14"/></svg>'
+});
+function exerciseFigure(name,mu){const family=canonicalExerciseFamily(name);if(family)return{family,markup:EXERCISE_FIGURE_SVG[family]};if(mu.known)return{family:'generic',markup:'<span class="ex-neutral" aria-hidden="true">'+mu.e+'</span>'};return{family:'none',markup:''};}
+function exerciseGlyph(name,mu,className,color){const figure=exerciseFigure(name,mu);if(figure.family==='none')return'';return '<div class="'+className+'" data-exercise-figure="'+figure.family+'" style="background:radial-gradient(circle at 50% 35%,'+color+',rgba(18,23,36,.7))">'+figure.markup+'</div>';}
 function inferDiff(reps,name){
   const r=parseInt((reps||'').replace(/[^\d]/g,''))||10;
   if(/начинаещ|beginner|лек|light/i.test(name))return'easy';
@@ -2225,7 +2242,7 @@ function renderWorkout(header,body){
     '" onclick="startWorkout(decodeURIComponent(this.dataset.workoutKey))">▶ '+tr().woStart+'</button></div>';
   ex.forEach(e=>{
     const mu=inferMuscle(e.name),df=inferDiff(e.reps,e.name);
-    html+='<div class="ex-card"><div class="ex-glyph" style="background:radial-gradient(circle at 50% 35%,'+mu.ic+'33,rgba(18,23,36,.6))">'+mu.e+'</div>'+
+    html+='<div class="ex-card" data-exercise-figure="'+exerciseFigure(e.name,mu).family+'">'+exerciseGlyph(e.name,mu,'ex-glyph',mu.ic+'33')+
       '<div class="ex-body"><div class="ex-top"><span class="ex-name">'+esc(e.name)+'</span><span class="ex-diff '+df+'">'+diffLbl[df]+'</span></div>'+
       '<div class="ex-muscles"><span class="ex-muscle">'+mu.m+'</span><span class="ex-muscle">'+(lang==='bg'?'темп 2-0-2':'tempo 2-0-2')+'</span></div>'+
       '<div class="ex-stats"><span class="ex-stat"><b>'+esc(e.sets)+'</b>'+(lang==='bg'?'серии':'sets')+'</span>'+
@@ -2271,7 +2288,7 @@ function renderWO(){
     let dots='';for(let s=0;s<sets;s++)dots+='<div class="set-dot '+(s<WO.set?'done':(s===WO.set?'current':''))+'">'+(s+1)+'</div>';
     const nextEx=WO.i+1<WO.ex.length?WO.ex[WO.i+1].name:(lang==='bg'?'Завършек':'Finish');
     stage.innerHTML='<div class="wo-step">'+(lang==='bg'?'Серия':'Set')+' '+(WO.set+1)+'/'+sets+' · ~'+woEstRemaining()+(lang==='bg'?'мин остават':'min left')+'</div>'+
-      '<div class="wo-ex-glyph" style="background:radial-gradient(circle at 50% 35%,'+mu.ic+'44,rgba(18,23,36,.7))">'+mu.e+'</div>'+
+      exerciseGlyph(e.name,mu,'wo-ex-glyph',mu.ic+'44')+
       '<div class="wo-ex-name">'+esc(e.name)+'</div>'+
       '<div class="wo-ex-target">'+esc(e.reps)+' '+(lang==='bg'?'повторения':'reps')+'</div>'+
       '<div class="wo-ex-meta">'+mu.m+' · '+(lang==='bg'?'темп':'tempo')+' 2-0-2'+(e.note?(' · '+esc(e.note)):'')+'</div>'+

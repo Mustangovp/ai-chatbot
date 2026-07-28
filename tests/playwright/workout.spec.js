@@ -71,6 +71,50 @@ test.describe('APEX approved app shell — UX regression', () => {
     await expect(page.locator('.start-wo')).toBeVisible();
   });
 
+  test('WO-1B: exercise figures use explicit safe families and never request camera access', async ({ page }) => {
+    await page.evaluate(() => {
+      window.__cameraCalls = 0;
+      if (navigator.mediaDevices) {
+        navigator.mediaDevices.getUserMedia = () => {
+          window.__cameraCalls += 1;
+          return Promise.reject(new Error('camera must not be requested'));
+        };
+      }
+      const md = [
+        '| Exercise | Sets | Reps | Rest |',
+        '| --- | --- | --- | --- |',
+        '| Pull-up | 3 | 8 | 60 |',
+        '| \u041d\u0430\u0431\u0438\u0440\u0430\u043d\u0438\u044f | 3 | 8 | 60 |',
+        '| Overhead Press | 3 | 8 | 60 |',
+        '| \u0420\u0430\u043c\u0435\u043d\u043d\u0430 \u043f\u0440\u0435\u0441\u0430 | 3 | 8 | 60 |',
+        '| Goblet Squat | 3 | 8 | 60 |',
+        '| Unknown movement | 3 | 8 | 60 |'
+      ].join('\n');
+      const el = appendCoach();
+      el.innerHTML = renderMarkdown(md);
+    });
+
+    const cards = page.locator('.ex-card');
+    await expect(cards).toHaveCount(6);
+    await expect(cards.nth(0)).toHaveAttribute('data-exercise-figure', 'pull-up');
+    await expect(cards.nth(1)).toHaveAttribute('data-exercise-figure', 'pull-up');
+    await expect(cards.nth(2)).toHaveAttribute('data-exercise-figure', 'overhead-press');
+    await expect(cards.nth(3)).toHaveAttribute('data-exercise-figure', 'overhead-press');
+    await expect(cards.nth(4)).toHaveAttribute('data-exercise-figure', 'squat');
+    await expect(cards.nth(5)).toHaveAttribute('data-exercise-figure', 'none');
+    await expect(cards.nth(0).locator('svg[data-exercise-figure="squat"]')).toHaveCount(0);
+    await expect(cards.nth(2).locator('svg[data-exercise-figure="squat"]')).toHaveCount(0);
+    await expect(cards.nth(5).locator('.ex-glyph')).toHaveCount(0);
+    await expect(page.locator('[data-camera-hr], [aria-label*="pulse" i], [aria-label*="heart" i]')).toHaveCount(0);
+
+    await page.locator('.start-wo').click();
+    await expect(page.locator('#wo-stage > .wo-ex-glyph[data-exercise-figure="pull-up"]')).toHaveCount(1);
+    await page.evaluate(() => { WO.i = 2; WO.set = 0; renderWO(); });
+    await expect(page.locator('#wo-stage > .wo-ex-glyph[data-exercise-figure="overhead-press"]')).toHaveCount(1);
+    expect(await page.evaluate(() => window.__cameraCalls)).toBe(0);
+    await page.evaluate(() => quitWorkout());
+  });
+
   test('WO-1A: safe starter fallback keeps workout cards, rest and progression', async ({ page }) => {
     await page.evaluate(() => {
       const md = [
