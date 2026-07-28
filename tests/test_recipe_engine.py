@@ -131,14 +131,77 @@ def test_recipe_matcher_falls_back_when_no_exact_ingredient_overlap_exists():
     assert nutrition_plan.render(plan, "en") == nutrition_plan.render(plan, "en", {})
 
 
-def test_recipe_matcher_rejects_a_recipe_that_omits_a_displayed_food():
-    """A partial overlap must not attach an unrelated recipe to a meal."""
-    breakfast = SimpleNamespace(
-        meal_type="breakfast",
-        foods=tuple(SimpleNamespace(display_name=name) for name in ("Eggs", "Greek Yogurt", "Apple")),
+def _production_meal(meal_type, foods):
+    return SimpleNamespace(
+        meal_type=meal_type,
+        foods=tuple(SimpleNamespace(display_name=name, grams=grams) for name, grams in foods),
     )
 
-    assert match_meal(breakfast, load_recipes(), profile_equipment({})) is None
+
+def test_recipe_matcher_accepts_the_three_real_bulgarian_production_meals():
+    breakfast = _production_meal("breakfast", (
+        ("Белтъци, пастьоризирани", "300"),
+        ("Овесени ядки, сухи", "150"),
+        ("Ябълка, сурова", "150"),
+    ))
+    lunch = _production_meal("lunch", (
+        ("Пилешки гърди, печени без кожа", "300"),
+        ("Ориз, сварен", "200"),
+        ("Тиквички, сварени", "75"),
+        ("Зехтин", "5"),
+    ))
+    dinner = _production_meal("dinner", (
+        ("Пуешко филе, печено", "300"),
+        ("Паста, сварена", "200"),
+        ("Тиквички, сварени", "75"),
+        ("Зехтин", "5"),
+        ("Ориз, сварен", "275"),
+    ))
+
+    matches = [match_meal(meal, load_recipes(), profile_equipment({})) for meal in (breakfast, lunch, dinner)]
+
+    assert [match.recipe.id for match in matches] == [
+        "breakfast-egg-whites-oats-apple", "lunch-chicken-rice", "dinner-turkey-rice-pasta",
+    ]
+    assert all(len(match.recipe.steps) and len(match.recipe.healthy_cooking_tips) for match in matches)
+    assert all(any(char.isdigit() for char in match.recipe.storage) for match in matches)
+
+
+def test_recipe_matcher_ignores_vegetables_and_auxiliaries_but_not_protein_identity():
+    chicken = _production_meal("lunch", (
+        ("Chicken breast, roasted", "300"), ("Brown rice, cooked", "200"),
+        ("Zucchini, cooked", "75"), ("Olive oil", "5"),
+    ))
+    salmon = _production_meal("lunch", (
+        ("Salmon, grilled", "300"), ("Brown rice, cooked", "200"),
+        ("Zucchini, cooked", "75"),
+    ))
+
+    assert match_meal(chicken, load_recipes(), profile_equipment({})).recipe.id == "lunch-chicken-rice"
+    assert match_meal(salmon, load_recipes(), profile_equipment({})) is None
+
+
+def test_recipe_matcher_keeps_eggs_and_yogurt_on_their_matching_breakfast_recipe():
+    breakfast = _production_meal("breakfast", (
+        ("Eggs", "150"), ("Greek yogurt", "200"), ("Oats", "100"), ("Apple", "150"),
+    ))
+
+    assert match_meal(breakfast, load_recipes(), profile_equipment({})).recipe.id == (
+        "breakfast-eggs-yogurt-oats-apple"
+    )
+
+
+def test_recipe_matcher_uses_largest_carbohydrate_serving_deterministically():
+    dinner = _production_meal("dinner", (
+        ("Turkey breast", "300"), ("Pasta, cooked", "200"), ("Rice, cooked", "275"),
+        ("Zucchini", "75"),
+    ))
+
+    first = match_meal(dinner, load_recipes(), profile_equipment({}))
+    second = match_meal(dinner, load_recipes(), profile_equipment({}))
+
+    assert first.recipe.id == "dinner-turkey-rice-pasta"
+    assert second.recipe.id == first.recipe.id
 
 
 def test_recipe_equipment_filter_excludes_oven_only_match():
