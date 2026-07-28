@@ -14,7 +14,7 @@ _TOKEN = re.compile(r"[^a-z0-9\u0400-\u04ff]+")
 # cover display names produced by the current Bulgarian and English food catalogs.
 _ALIASES = {
     "chicken": "chicken", "chicken breast": "chicken", "chicken breast roasted": "chicken",
-    "\u043f\u0438\u043b\u0435\u0448\u043a\u043e": "chicken", "\u043f\u0438\u043b\u0435\u0448\u043a\u043e \u0444\u0438\u043b\u0435": "chicken", "\u043f\u0438\u043b\u0435\u0448\u043a\u0438 \u0433\u044a\u0440\u0434\u0438": "chicken",
+    "\u043f\u0438\u043b\u0435\u0448\u043a\u043e": "chicken", "\u043f\u0438\u043b\u0435\u0448\u043a\u043e \u0444\u0438\u043b\u0435": "chicken", "\u043f\u0438\u043b\u0435\u0448\u043a\u043e \u0433\u044a\u0440\u0434\u0438": "chicken", "\u043f\u0438\u043b\u0435\u0448\u043a\u0438 \u0433\u044a\u0440\u0434\u0438": "chicken",
     "\u043f\u0438\u043b\u0435\u0448\u043a\u0438 \u0433\u044a\u0440\u0434\u0438 \u043f\u0435\u0447\u0435\u043d\u0438 \u0431\u0435\u0437 \u043a\u043e\u0436\u0430": "chicken",
     "turkey": "turkey", "turkey breast": "turkey", "\u043f\u0443\u0435\u0448\u043a\u043e": "turkey", "\u043f\u0443\u0435\u0448\u043a\u043e \u0444\u0438\u043b\u0435": "turkey", "\u043f\u0443\u0435\u0448\u043a\u043e \u0444\u0438\u043b\u0435 \u043f\u0435\u0447\u0435\u043d\u043e": "turkey",
     "salmon": "salmon", "salmon grilled": "salmon", "\u0441\u044c\u043e\u043c\u0433\u0430": "salmon",

@@ -230,3 +230,13 @@ def test_recipe_equipment_filter_excludes_oven_only_match():
 
     assert match_meal(dinner, load_recipes(), frozenset({"pan"})) is None
     assert match_meal(dinner, load_recipes(), frozenset({"oven", "pan"})).recipe.id == "dinner-salmon-rice"
+
+
+def test_recipe_matcher_accepts_the_live_bulgarian_chicken_breast_label():
+    lunch = _production_meal("lunch", (
+        ("\u041f\u0438\u043b\u0435\u0448\u043a\u043e \u0433\u044a\u0440\u0434\u0438", "200"), ("\u041e\u0440\u0438\u0437", "180"),
+        ("\u0417\u0435\u043b\u0435\u043d\u0447\u0443\u043a\u043e\u0432\u0430 \u0441\u0430\u043b\u0430\u0442\u0430", "150"), ("\u0417\u0435\u0445\u0442\u0438\u043d", "20"),
+        ("\u041f\u044a\u043b\u043d\u043e\u0437\u044a\u0440\u043d\u0435\u0441\u0442 \u0445\u043b\u044f\u0431", "100"),
+    ))
+
+    assert match_meal(lunch, load_recipes(), profile_equipment({})).recipe.id == "lunch-chicken-rice"
