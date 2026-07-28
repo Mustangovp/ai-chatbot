@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import re
 import pytest
 
 import app as appmod
@@ -66,6 +67,14 @@ def _rendered_plan(payload=VALID_PLAN):
     plan = appmod.nutrition_plan.build_plan(payload, targets, restrictions=(), provenance={"test": "acceptance"})
     return appmod.nutrition_plan.render_delivery(plan, "en")
 
+
+_MEAL_ID_TOKEN = re.compile(r"meal-[0-9a-f]{32}-\d+")
+_RECIPE_TOKEN = re.compile(r"recipe:[A-Za-z0-9_-]+")
+
+
+def _stable_delivery_text(value):
+    return _RECIPE_TOKEN.sub("recipe:<bound>", _MEAL_ID_TOKEN.sub("meal-<plan>-<index>", value))
+
 PLAN_HISTORY = (
     {"role": "user", "content": "I want a nutrition plan"},
     {"role": "assistant", "content": _rendered_plan()},
@@ -114,7 +123,7 @@ SCENARIOS = (
     Scenario("continuation_more_rice", "\u0414\u043e\u0431\u0430\u0432\u0438 \u043f\u043e\u0432\u0435\u0447\u0435 \u043e\u0440\u0438\u0437", COMPLETE, True, nc.NutritionConversationState.READY, nc.NutritionConversationState.PLAN_READY),
     Scenario("continuation_replace_breakfast", "\u0417\u0430\u043c\u0435\u043d\u0438 \u0437\u0430\u043a\u0443\u0441\u043a\u0430\u0442\u0430", COMPLETE, True, nc.NutritionConversationState.READY, nc.NutritionConversationState.PLAN_READY),
     Scenario("repeat_identical", "I want a nutrition plan", COMPLETE, True, nc.NutritionConversationState.PLAN_READY, nc.NutritionConversationState.PLAN_READY),
-    Scenario("repeat_failed", "I want a nutrition plan", COMPLETE, True, nc.NutritionConversationState.PLAN_READY, nc.NutritionConversationState.PLAN_READY, model_reply=INVALID_PLAN),
+    Scenario("repeat_failed", "I want a nutrition plan", COMPLETE, True, nc.NutritionConversationState.PLAN_READY, nc.NutritionConversationState.FAILED, model_reply=INVALID_PLAN),
     Scenario("repeat_clarified", "I want a nutrition plan", INCOMPLETE, False, nc.NutritionConversationState.NEEDS_INFORMATION, nc.NutritionConversationState.NEEDS_INFORMATION),
     Scenario("unsupported_impossible_diet", "I want a vegan keto nutrition plan", COMPLETE, True, nc.NutritionConversationState.UNSUPPORTED, nc.NutritionConversationState.UNSUPPORTED),
     Scenario("unsupported_contradictory", "I want a nutrition plan using only peanuts", {**COMPLETE, "allergies": "peanuts"}, True, nc.NutritionConversationState.UNSUPPORTED, nc.NutritionConversationState.UNSUPPORTED),
@@ -247,4 +256,6 @@ def test_shadow_on_and_off_have_identical_canonical_acceptance_output(monkeypatc
     monkeypatch.setattr(shadow_hook, "dispatch", lambda *args, **kwargs: True)
     on = _events(appmod.app.test_client().post("/chat", json=payload))
 
-    assert on == off == [{"t": _rendered_plan()}, {"done": True}]
+    assert on[-1] == off[-1] == {"done": True}
+    assert _stable_delivery_text(on[0]["t"]) == _stable_delivery_text(off[0]["t"])
+    assert _stable_delivery_text(on[0]["t"]) == _stable_delivery_text(_rendered_plan())

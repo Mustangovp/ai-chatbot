@@ -15,6 +15,7 @@ WIRING for a permitted-but-constrained decision is exercised end-to-end.
 """
 import os
 import json
+import re
 import types
 from dataclasses import FrozenInstanceError, replace
 from decimal import Decimal
@@ -367,9 +368,9 @@ def test_conversation_composer_preserves_nutrition_contract_and_single_delivery_
     assert "CONVERSATION COMPOSER V1" in captured["system"]
     assert "Return a JSON object only" in captured["system"]
     saved = store.list_conversation(uid, limit=10)
-    assert [(turn["role"], turn["content"]) for turn in saved] == [
-        ("user", "Give me a full-day nutrition plan"), ("assistant", _structured_plan_text()),
-    ]
+    assert saved[0] == {"role": "user", "content": "Give me a full-day nutrition plan"}
+    assert saved[1]["role"] == "assistant"
+    assert _stable_delivery_text(saved[1]["content"]) == _stable_delivery_text(_structured_plan_text())
 
 
 def test_conversation_composer_active_consumes_free_quota_once(client, captured, monkeypatch):
@@ -1945,6 +1946,21 @@ def _structured_plan_text(lang="en"):
     return nutrition_plan.render_delivery(plan, lang)
 
 
+_MEAL_ID_TOKEN = re.compile(r"meal-[0-9a-f]{32}-\d+")
+_RECIPE_TOKEN = re.compile(r"recipe:[A-Za-z0-9_-]+")
+
+
+def _stable_delivery_text(value):
+    """Meal IDs are deliberately request-scoped; compare the stable delivery contract."""
+    return _RECIPE_TOKEN.sub("recipe:<bound>", _MEAL_ID_TOKEN.sub("meal-<plan>-<index>", value))
+
+
+def _assert_structured_plan_events(events, lang="en"):
+    assert events[-1] == {"done": True}
+    assert len(events) == 2
+    assert _stable_delivery_text(events[0]["t"]) == _stable_delivery_text(_structured_plan_text(lang))
+
+
 def test_nutrition_plan_is_immutable_structured_authority_with_deterministic_rendering():
     plan = nutrition_plan.build_plan(
         _structured_plan_payload(), _NUTRITION_TARGETS,
@@ -1956,7 +1972,7 @@ def test_nutrition_plan_is_immutable_structured_authority_with_deterministic_ren
     assert len({meal.id for meal in plan.meals}) == 3
     assert len({food.id for meal in plan.meals for food in meal.foods}) == 6
     assert nutrition_plan.render(plan, "en") == nutrition_plan.render(plan, "en")
-    assert plan.id not in nutrition_plan.render(plan, "en")
+    assert f"meal-{plan.id}-0" in nutrition_plan.render(plan, "en")
     assert nutrition_plan.to_record(plan)["meals"][0]["foods"][0]["catalog_id"] is None
     with pytest.raises(FrozenInstanceError):
         plan.version = "mutated"
@@ -1969,8 +1985,8 @@ def test_nutrition_delivery_adds_a_deterministic_explanation_after_the_canonical
 
     delivered = nutrition_plan.render_delivery(plan, "en")
 
-    assert delivered.startswith("| Meal | Food")
-    assert delivered.endswith("then adjust only through a follow-up request.")
+    assert delivered.startswith("| Meal | Meal ID | Food")
+    assert delivered.endswith("If anything does not work for you, tell me and we'll adapt it straight away.")
     assert "**Why this plan:**" in delivered
     assert delivered.count("Why this meal") == 1
     assert "Starts the day with 40 g protein toward your 175 g daily target." in delivered
@@ -2128,7 +2144,7 @@ def test_daily_nutrition_contract_repairs_one_rejected_generation_without_exposi
 
     response = _post(client, "Give me a full-day nutrition plan", profile=_profile())
 
-    assert _events(response) == [{"t": _structured_plan_text()}, {"done": True}]
+    _assert_structured_plan_events(_events(response))
     assert len(calls) == 2
     assert [call["model"] for call in calls] == ["gpt-4o-mini", "gpt-4o"]
     assert calls[1]["response_format"] == {"type": "json_object"}
@@ -2140,7 +2156,7 @@ def test_daily_nutrition_contract_repairs_one_rejected_generation_without_exposi
     assert len(plan_calls) == 1
 
 
-def test_daily_nutrition_contract_delivers_source_backed_plan_after_invalid_delivery(client, captured, monkeypatch):
+def test_daily_nutrition_contract_fails_closed_when_source_backed_recovery_misses_target(client, captured, monkeypatch):
     profile_block = "Calorie target: 2800 kcal\nProtein target: minimum 175g/day"
     invalid = _structured_plan_payload(total_kcal="2500")
     monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: profile_block)
@@ -2150,13 +2166,12 @@ def test_daily_nutrition_contract_delivers_source_backed_plan_after_invalid_deli
     events = _events(response)
 
     assert events[-1] == {"done": True}
-    assert "Daily Total" in events[0]["t"]
-    assert "2678.75" in events[0]["t"]
+    assert events[0]["t"] == nutrition_conversation.failed_message("en")
     assert len(calls) == 2
     assert json.dumps(invalid) not in events[0]["t"]
 
 
-def test_daily_nutrition_uses_source_backed_plan_when_both_model_deliveries_are_rejected(client, captured, monkeypatch):
+def test_daily_nutrition_fails_closed_when_rejected_deliveries_cannot_be_repaired(client, captured, monkeypatch):
     profile_block = "Calorie target: 2469 kcal\nProtein target: minimum 144g/day"
     invalid = _structured_plan_payload(total_kcal="2500")
     monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: profile_block)
@@ -2167,9 +2182,7 @@ def test_daily_nutrition_uses_source_backed_plan_when_both_model_deliveries_are_
 
     assert len(calls) == 2
     assert events[-1] == {"done": True}
-    assert "Daily Total" in events[0]["t"]
-    assert "2388.5" in events[0]["t"]
-    assert nutrition_conversation.failed_message("en") not in events[0]["t"]
+    assert events[0]["t"] == nutrition_conversation.failed_message("en")
 
 
 def test_daily_nutrition_source_backed_recovery_accepts_calorie_only_target(client, captured, monkeypatch):
@@ -2181,12 +2194,12 @@ def test_daily_nutrition_source_backed_recovery_accepts_calorie_only_target(clie
     events = _events(_post(client, "Give me a full-day nutrition plan", profile=_profile()))
 
     assert events[-1] == {"done": True}
-    assert events[0]["t"].startswith("| Meal | Food")
+    assert events[0]["t"].startswith("| Meal | Meal ID | Food")
     assert nutrition_conversation.failed_message("en") not in events[0]["t"]
     assert len(calls) == 2
 
 
-def test_voice_nutrition_source_backed_delivery_announces_only_the_visible_plan_once(client, captured, monkeypatch):
+def test_voice_nutrition_failure_announces_only_the_visible_failure_once(client, captured, monkeypatch):
     profile_block = "Calorie target: 2800 kcal\nProtein target: minimum 175g/day"
     invalid = _structured_plan_payload(total_kcal="2500")
     uid = _login_for_chat(client, _profile())
@@ -2198,21 +2211,21 @@ def test_voice_nutrition_source_backed_delivery_announces_only_the_visible_plan_
     calls = _set_sequence_stream(monkeypatch, captured, [invalid, invalid])
 
     events = _events(_post(client, "Give me a full-day nutrition plan", voice=True))
-    assert events[0]["t"].startswith("| Meal | Food")
+    assert events[0]["t"] == nutrition_conversation.failed_message("en")
     assert events[1] == {
-        "speech_text": "Your complete daily nutrition plan is ready. The meals and exact values are visible on screen."
+        "speech_text": events[0]["t"]
     }
     assert events[-1] == {"done": True}
     assert len(calls) == 2
     assert len(quota_calls) == 1
-    assert "couldn't generate" not in events[1]["speech_text"].lower()
+    assert "ready" not in events[1]["speech_text"].lower()
     saved = store.list_conversation(uid, limit=10)
     assert [(turn["role"], turn["content"]) for turn in saved] == [
         ("user", "Give me a full-day nutrition plan"), ("assistant", events[0]["t"]),
     ]
 
 
-def test_daily_nutrition_contract_persists_only_the_source_backed_recovery_plan(client, captured, monkeypatch):
+def test_daily_nutrition_contract_persists_only_the_terminal_failure_when_recovery_fails(client, captured, monkeypatch):
     profile_block = "Calorie target: 2800 kcal\nProtein target: minimum 175g/day"
     invalid = _structured_plan_payload(total_kcal="2500")
     uid = _login_for_chat(client, _profile())
@@ -2224,10 +2237,9 @@ def test_daily_nutrition_contract_persists_only_the_source_backed_recovery_plan(
 
     saved = store.list_conversation(uid, limit=10)
     assert saved[0]["content"] == "Give me a full-day nutrition plan"
-    assert saved[1]["content"].startswith("| Meal | Food")
+    assert saved[1]["content"] == nutrition_conversation.failed_message("en")
     records = store.list_nutrition_plans(uid)
-    assert len(records) == 1
-    assert records[0]["plan"]["provenance"]["generator"] == "source_backed_catalog_fallback"
+    assert records == []
 
 
 def test_nutrition_plan_intake_asks_one_precise_question_without_generation(client, captured):
@@ -2297,7 +2309,7 @@ def test_nutrition_plan_with_confirmed_targets_generates_once_and_delivers_one_p
 
     response = _post(client, "I want a nutrition plan", profile=_profile())
 
-    assert _events(response) == [{"t": _structured_plan_text()}, {"done": True}]
+    _assert_structured_plan_events(_events(response))
     assert len(calls) == 1
 
 
@@ -2421,7 +2433,7 @@ def test_structured_nutrition_generation_never_parses_display_text_and_persists_
 
     events = _events(_post(client, "Give me a full-day nutrition plan", profile=_profile()))
 
-    assert events == [{"t": _structured_plan_text()}, {"done": True}]
+    _assert_structured_plan_events(events)
     assert len(calls) == 1
     assert calls[0]["response_format"] == {"type": "json_object"}
     assert "stream" not in calls[0]
@@ -2433,8 +2445,9 @@ def test_structured_nutrition_generation_never_parses_display_text_and_persists_
     assert record["totals"] == {"protein_g": "175", "carbs_g": "350", "fat_g": "78", "kcal": "2800"}
     assert record["meals"][0]["foods"][0]["catalog_id"] is None
     assert store.list_nutrition(uid) == []
-    assert store.list_conversation(uid, limit=10)[-1] == {
-        "role": "assistant", "content": _structured_plan_text()}
+    saved = store.list_conversation(uid, limit=10)[-1]
+    assert saved["role"] == "assistant"
+    assert _stable_delivery_text(saved["content"]) == _stable_delivery_text(_structured_plan_text())
 
 
 @pytest.mark.parametrize("message", [
@@ -2516,7 +2529,7 @@ def test_known_nutrition_constraints_do_not_trigger_a_duplicate_clarification_or
 
     response = _post(client, "I want a nutrition plan", profile=_profile(**{profile_key: profile_value}))
 
-    assert _events(response) == [{"t": _structured_plan_text()}, {"done": True}]
+    _assert_structured_plan_events(_events(response))
     assert len(calls) == 1
 
 
@@ -2542,7 +2555,7 @@ def test_nutrition_shadow_flag_does_not_change_the_orchestrated_plan_outcome(cli
 
     response = _post(client, "Give me a full-day nutrition plan", profile=_profile())
 
-    assert _events(response) == [{"t": _structured_plan_text()}, {"done": True}]
+    _assert_structured_plan_events(_events(response))
     assert len(calls) == 1
     assert len(dispatched) == 1
 
@@ -2721,7 +2734,7 @@ def test_nutrition_validator_deterministically_joins_a_named_food_with_its_next_
     assert validate_daily_nutrition(plan, targets).valid is True
 
 
-def test_daily_nutrition_semantic_failure_uses_source_backed_recovery_without_leaking_rejected_plan(
+def test_daily_nutrition_semantic_failure_fails_closed_without_leaking_rejected_plan(
         client, captured, monkeypatch):
     profile_block = "Calorie target: 2800 kcal\nProtein target: minimum 175g/day"
     invalid_rows = [("Breakfast", "2 pcs", "70 g", "40", "100", "20", "700"),
@@ -2736,14 +2749,12 @@ def test_daily_nutrition_semantic_failure_uses_source_backed_recovery_without_le
     events = _events(response)
     delivered = events[0]["t"]
     assert events[-1] == {"done": True}
-    assert delivered.startswith("| Meal | Food")
+    assert delivered == nutrition_conversation.failed_message("en")
     assert invalid not in delivered
     assert len(calls) == 2
     saved = store.list_conversation(uid, limit=10)
     assert [turn["content"] for turn in saved] == ["Give me a full-day nutrition plan", delivered]
-    plans = store.list_nutrition_plans(uid)
-    assert len(plans) == 1
-    assert plans[0]["plan"]["provenance"]["generator"] == "source_backed_catalog_fallback"
+    assert store.list_nutrition_plans(uid) == []
 
 
 def _communication_projections(*, adaptation=None, recovery="fresh", blueprint=None, rules=()):
@@ -3074,7 +3085,7 @@ def test_missed_menu_phrase_never_streams_or_persists_rejected_daily_plan(client
     failure = events[0]["t"]
 
     assert events == [{"t": failure}, {"done": True}]
-    assert failure.startswith("| Meal | Food")
+    assert failure.startswith("| Meal | Meal ID | Food")
     assert _PRODUCTION_MALFORMED_NUTRITION not in str(events)
     saved = store.list_conversation(uid, limit=10)
     assert [turn["content"] for turn in saved] == ["дай ми меню", failure]

@@ -414,7 +414,8 @@ test.describe('APEX approved app shell — UX regression', () => {
     const card = page.locator('.nutri-meal');
     await expect(card).toHaveCount(1);
     await expect(card).toContainText('Eggs');
-    await expect(card).toContainText('No suitable recipe is available for this meal.');
+    await expect(card.locator('.nm-recipe-missing')).toHaveCount(1);
+    await expect(card.locator('.nm-recipe-missing')).toContainText(/No suitable recipe is available for this meal\.|Няма подходяща рецепта за това хранене\./);
     await expect(card.locator('.nm-recipe')).toHaveCount(0);
   });
 
@@ -469,14 +470,14 @@ test.describe('APEX approved app shell — UX regression', () => {
   test('NR-3: nutrition quantity is sourced only from semantic serving fields', async ({ page }) => {
     await page.evaluate(() => {
       const serving = [
-        '| Meal | Serving Size | Protein | Carbs | Fat | Calories |',
-        '| --- | --- | --- | --- | --- | --- |',
-        '| Breakfast | 80 g | 12.49 | 53.51 | 7.50 | 521.60 |'
+        '| Meal | Food | Serving Size | Protein | Carbs | Fat | Calories |',
+        '| --- | --- | --- | --- | --- | --- | --- |',
+        '| Breakfast | Eggs | 80 g | 12.49 | 53.51 | 7.50 | 521.60 |'
       ].join('\n');
       const unknown = [
-        '| Meal | Score | Protein | Carbs | Fat | Calories |',
-        '| --- | --- | --- | --- | --- | --- |',
-        '| Lunch | 9.75 | 12.49 | 53.51 | 7.50 | 521.60 |'
+        '| Meal | Food | Score | Protein | Carbs | Fat | Calories |',
+        '| --- | --- | --- | --- | --- | --- | --- |',
+        '| Lunch | Chicken | 9.75 | 12.49 | 53.51 | 7.50 | 521.60 |'
       ].join('\n');
       const first = appendCoach();
       first.innerHTML = renderMarkdown(serving);
@@ -486,8 +487,8 @@ test.describe('APEX approved app shell — UX regression', () => {
 
     const plans = page.locator('.nutri');
     await expect(plans).toHaveCount(2);
-    await expect(plans.nth(0).locator('.nm-qty')).toHaveText('80 g');
-    await expect(plans.nth(1).locator('.nm-qty')).toHaveCount(0);
+    await expect(plans.nth(0).locator('.nm-food-qty')).toHaveText('80 g');
+    await expect(plans.nth(1).locator('.nm-food-qty')).toHaveCount(0);
     await expect(plans.nth(1)).not.toContainText('9.75');
   });
 
@@ -1314,8 +1315,8 @@ test.describe('APEX approved app shell — UX regression', () => {
       const el = appendCoach();
       el.innerHTML = renderMarkdown(md);
     });
-    // meal-label card + two food cards
-    await expect(page.locator('.nutri-meal')).toHaveCount(3);
+    // One meal-level card contains all foods from the collapsed row.
+    await expect(page.locator('.nutri-meal')).toHaveCount(1);
     const nutri = page.locator('.nutri').first();
     await expect(nutri).toContainText('Обяд');
     await expect(nutri).toContainText('Пиле');
@@ -1330,7 +1331,7 @@ test.describe('APEX approved app shell — UX regression', () => {
       const el = appendCoach();
       el.innerHTML = renderMarkdown(md);
     });
-    await expect(page.locator('.nutri-meal')).toHaveCount(3);
+    await expect(page.locator('.nutri-meal')).toHaveCount(1);
     const nutri = page.locator('.nutri').first();
     await expect(nutri).toContainText('Lunch');
     await expect(nutri).toContainText('Chicken');
