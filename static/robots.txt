@@ -4,6 +4,8 @@
 
 User-agent: *
 Allow: /$
+Allow: /en
+Allow: /en$
 Disallow: /app
 Disallow: /app/
 Disallow: /app/success
