@@ -1208,7 +1208,7 @@ def test_combined_workout_and_nutrition_request_is_explicitly_delivered_as_contr
     assert events[1]["training_completion"]["plan_id"]
 
 
-def test_training_engine_fails_closed_for_invalid_json_explanation_completion(client, captured, monkeypatch):
+def test_training_engine_uses_default_explanation_when_model_json_is_invalid(client, captured, monkeypatch):
     profile = {"goal": "strength", "level": "intermediate",
                "equipment": "bodyweight, dumbbells, bench", "recoveryFeel": "fresh"}
     monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
@@ -1220,7 +1220,31 @@ def test_training_engine_fails_closed_for_invalid_json_explanation_completion(cl
     assert response.status_code == 200
     assert captured["response_format"] == {"type": "json_object"}
     assert captured["stream"] is None
-    assert not any("training_completion" in event for event in events)
+    assert events[0]["t"].startswith("**Workout**")
+    assert "Goblet Squat" in events[0]["t"]
+    assert "Why this workout:" in events[0]["t"]
+    assert events[1]["training_completion"]["plan_id"]
+    assert events[-1] == {"done": True}
+
+
+def test_training_engine_delivers_plan_when_explanation_request_fails(client, monkeypatch):
+    profile = {"goal": "strength", "level": "intermediate",
+               "equipment": "bodyweight, dumbbells, bench", "recoveryFeel": "fresh"}
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+
+    def unavailable(**_kwargs):
+        raise RuntimeError("explanation service unavailable")
+
+    monkeypatch.setattr(appmod.client.chat.completions, "create", unavailable)
+
+    response = _post(client, "build a workout", profile=profile)
+    events = _events(response)
+
+    assert response.status_code == 200
+    assert events[0]["t"].startswith("**Workout**")
+    assert "Goblet Squat" in events[0]["t"]
+    assert "Why this workout:" in events[0]["t"]
+    assert events[1]["training_completion"]["plan_id"]
     assert events[-1] == {"done": True}
 
 

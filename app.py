@@ -2749,18 +2749,23 @@ def chat():
                     return
                 if _training_plan_blueprint is not None:
                     # Training delivery accepts only the renderer's explanation
-                    # object. Request a JSON completion before exposing any SSE.
+                    # object. Explanation delivery is never allowed to suppress
+                    # an already validated deterministic training plan.
                     training_completion = None
                     try:
-                        completion = client.chat.completions.create(
-                            model=model_to_use,
-                            messages=messages,
-                            max_tokens=max_tokens,
-                            response_format={"type": "json_object"},
-                        )
-                        _bump_plans_today()
-                        raw_explanations = completion.choices[0].message.content or ""
-                        explanations = training_renderer.verified_explanations(raw_explanations)
+                        try:
+                            completion = client.chat.completions.create(
+                                model=model_to_use,
+                                messages=messages,
+                                max_tokens=max_tokens,
+                                response_format={"type": "json_object"},
+                            )
+                            _bump_plans_today()
+                            raw_explanations = completion.choices[0].message.content or ""
+                            explanations = training_renderer.verified_explanations(raw_explanations)
+                        except Exception as explanation_error:
+                            print(f"[training-engine] explanation fallback: {type(explanation_error).__name__}")
+                            explanations = ()
                         if not explanations:
                             explanations = training_renderer.default_explanations(
                                 _training_plan_blueprint, lang)
