@@ -183,7 +183,7 @@ def test_recipe_matcher_ignores_vegetables_and_auxiliaries_but_not_protein_ident
 
 def test_recipe_matcher_keeps_eggs_and_yogurt_on_their_matching_breakfast_recipe():
     breakfast = _production_meal("breakfast", (
-        ("Eggs", "150"), ("Greek yogurt", "200"), ("Oats", "100"), ("Apple", "150"),
+        ("Eggs", "150"), ("Кисело мляко Верея 2%", "200"), ("Oats", "100"), ("Banana", "120"),
     ))
 
     assert match_meal(breakfast, load_recipes(), profile_equipment({})).recipe.id == (
