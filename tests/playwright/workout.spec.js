@@ -71,7 +71,7 @@ test.describe('APEX approved app shell — UX regression', () => {
     await expect(page.locator('.start-wo')).toBeVisible();
   });
 
-  test('WO-1B: exercise figures use explicit safe families and never request camera access', async ({ page }) => {
+  test('WO-1B: classic muscle-group glyphs contain no exercise SVG and never request camera access', async ({ page }) => {
     await page.evaluate(() => {
       window.__cameraCalls = 0;
       if (navigator.mediaDevices) {
@@ -96,21 +96,19 @@ test.describe('APEX approved app shell — UX regression', () => {
 
     const cards = page.locator('.ex-card');
     await expect(cards).toHaveCount(6);
-    await expect(cards.nth(0)).toHaveAttribute('data-exercise-figure', 'pull-up');
-    await expect(cards.nth(1)).toHaveAttribute('data-exercise-figure', 'pull-up');
-    await expect(cards.nth(2)).toHaveAttribute('data-exercise-figure', 'overhead-press');
-    await expect(cards.nth(3)).toHaveAttribute('data-exercise-figure', 'overhead-press');
-    await expect(cards.nth(4)).toHaveAttribute('data-exercise-figure', 'squat');
-    await expect(cards.nth(5)).toHaveAttribute('data-exercise-figure', 'none');
-    await expect(cards.nth(0).locator('svg[data-exercise-figure="squat"]')).toHaveCount(0);
-    await expect(cards.nth(2).locator('svg[data-exercise-figure="squat"]')).toHaveCount(0);
-    await expect(cards.nth(5).locator('.ex-glyph')).toHaveCount(0);
+    await expect(cards.locator('svg')).toHaveCount(0);
+    await expect(cards.locator('[data-exercise-figure]')).toHaveCount(0);
+    await expect(cards.nth(0).locator('.ex-glyph')).toHaveCount(1);
+    await expect(cards.nth(2).locator('.ex-glyph')).toHaveCount(1);
+    await expect(cards.nth(5).locator('.ex-glyph')).toHaveCount(1);
     await expect(page.locator('[data-camera-hr], [aria-label*="pulse" i], [aria-label*="heart" i]')).toHaveCount(0);
 
     await page.locator('.start-wo').click();
-    await expect(page.locator('#wo-stage > .wo-ex-glyph[data-exercise-figure="pull-up"]')).toHaveCount(1);
+    await expect(page.locator('#wo-stage > .wo-ex-glyph')).toHaveCount(1);
+    await expect(page.locator('#wo-stage > .wo-ex-glyph svg')).toHaveCount(0);
     await page.evaluate(() => { WO.i = 2; WO.set = 0; renderWO(); });
-    await expect(page.locator('#wo-stage > .wo-ex-glyph[data-exercise-figure="overhead-press"]')).toHaveCount(1);
+    await expect(page.locator('#wo-stage > .wo-ex-glyph')).toHaveCount(1);
+    await expect(page.locator('#wo-stage > .wo-ex-glyph svg')).toHaveCount(0);
     expect(await page.evaluate(() => window.__cameraCalls)).toBe(0);
     await page.evaluate(() => quitWorkout());
   });
