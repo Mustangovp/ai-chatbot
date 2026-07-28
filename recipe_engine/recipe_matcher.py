@@ -14,27 +14,27 @@ _TOKEN = re.compile(r"[^a-z0-9\u0400-\u04ff]+")
 # cover display names produced by the current Bulgarian and English food catalogs.
 _ALIASES = {
     "chicken": "chicken", "chicken breast": "chicken", "chicken breast roasted": "chicken",
-    "\u043f\u0438\u043b\u0435\u0448\u043a\u043e": "chicken", "\u043f\u0438\u043b\u0435\u0448\u043a\u0438 \u0433\u044a\u0440\u0434\u0438": "chicken",
+    "\u043f\u0438\u043b\u0435\u0448\u043a\u043e": "chicken", "\u043f\u0438\u043b\u0435\u0448\u043a\u043e \u0444\u0438\u043b\u0435": "chicken", "\u043f\u0438\u043b\u0435\u0448\u043a\u0438 \u0433\u044a\u0440\u0434\u0438": "chicken",
     "\u043f\u0438\u043b\u0435\u0448\u043a\u0438 \u0433\u044a\u0440\u0434\u0438 \u043f\u0435\u0447\u0435\u043d\u0438 \u0431\u0435\u0437 \u043a\u043e\u0436\u0430": "chicken",
     "turkey": "turkey", "turkey breast": "turkey", "\u043f\u0443\u0435\u0448\u043a\u043e": "turkey", "\u043f\u0443\u0435\u0448\u043a\u043e \u0444\u0438\u043b\u0435": "turkey", "\u043f\u0443\u0435\u0448\u043a\u043e \u0444\u0438\u043b\u0435 \u043f\u0435\u0447\u0435\u043d\u043e": "turkey",
     "salmon": "salmon", "salmon grilled": "salmon", "\u0441\u044c\u043e\u043c\u0433\u0430": "salmon",
     "tuna": "tuna", "\u0442\u043e\u043d": "tuna", "\u0440\u0438\u0431\u0430 \u0442\u043e\u043d": "tuna",
-    "lean beef": "lean_beef", "beef": "lean_beef", "\u0442\u0435\u043b\u0435\u0448\u043a\u043e": "lean_beef", "\u043a\u0430\u0439\u043c\u0430": "lean_beef",
+    "lean beef": "lean_beef", "beef": "lean_beef", "\u0442\u0435\u043b\u0435\u0448\u043a\u043e": "lean_beef", "\u043a\u0430\u0439\u043c\u0430": "lean_beef", "\u0442\u0435\u043b\u0435\u0448\u043a\u0430 \u043a\u0430\u0439\u043c\u0430": "lean_beef",
     "eggs": "eggs", "egg": "eggs", "boiled whole egg": "eggs", "\u044f\u0439\u0446\u0430": "eggs", "\u044f\u0439\u0446\u0435": "eggs", "\u044f\u0439\u0446\u0435 \u0441\u0432\u0430\u0440\u0435\u043d\u043e": "eggs",
     "egg whites": "egg_whites", "pasteurized egg whites": "egg_whites", "\u0431\u0435\u043b\u0442\u044a\u0446\u0438": "egg_whites", "\u0431\u0435\u043b\u0442\u044a\u0446\u0438 \u043f\u0430\u0441\u0442\u044c\u043e\u0440\u0438\u0437\u0438\u0440\u0430\u043d\u0438": "egg_whites",
-    "greek yogurt": "greek_yogurt", "yogurt": "greek_yogurt", "\u043a\u0438\u0441\u0435\u043b\u043e \u043c\u043b\u044f\u043a\u043e": "greek_yogurt", "\u0433\u0440\u044a\u0446\u043a\u043e \u043a\u0438\u0441\u0435\u043b\u043e \u043c\u043b\u044f\u043a\u043e": "greek_yogurt",
+    "greek yogurt": "greek_yogurt", "yogurt": "greek_yogurt", "\u043a\u0438\u0441\u0435\u043b\u043e \u043c\u043b\u044f\u043a\u043e": "greek_yogurt", "\u0433\u0440\u044a\u0446\u043a\u043e \u043a\u0438\u0441\u0435\u043b\u043e \u043c\u043b\u044f\u043a\u043e": "greek_yogurt", "\u043a\u0438\u0441\u0435\u043b\u043e \u043c\u043b\u044f\u043a\u043e \u0432\u0435\u0440\u0435\u044f": "greek_yogurt",
     "cottage cheese": "cottage_cheese", "\u0438\u0437\u0432\u0430\u0440\u0430": "cottage_cheese", "whey": "whey", "\u0441\u0443\u0440\u043e\u0432\u0430\u0442\u044a\u0447\u0435\u043d \u043f\u0440\u043e\u0442\u0435\u0438\u043d": "whey",
     "lentils": "lentils", "\u043b\u0435\u0449\u0430": "lentils", "\u043b\u0435\u0449\u0430 \u0441\u0432\u0430\u0440\u0435\u043d\u0430": "lentils", "chickpeas": "chickpeas", "\u043d\u0430\u0445\u0443\u0442": "chickpeas", "\u043d\u0430\u0445\u0443\u0442 \u0441\u0432\u0430\u0440\u0435\u043d": "chickpeas",
     "oats": "oats", "oatmeal": "oats", "raw oats": "oats", "oats dry": "oats", "\u043e\u0432\u0435\u0441\u0435\u043d\u0438 \u044f\u0434\u043a\u0438": "oats", "\u043e\u0432\u0435\u0441\u0435\u043d\u0438 \u044f\u0434\u043a\u0438 \u0441\u0443\u0445\u0438": "oats",
-    "rice": "rice", "rice cooked": "rice", "brown rice": "rice", "brown rice cooked": "rice", "\u043e\u0440\u0438\u0437": "rice", "\u043e\u0440\u0438\u0437 \u0441\u0432\u0430\u0440\u0435\u043d": "rice",
+    "rice": "rice", "rice cooked": "rice", "brown rice": "rice", "brown rice cooked": "rice", "\u043e\u0440\u0438\u0437": "rice", "\u043e\u0440\u0438\u0437 \u0441\u0432\u0430\u0440\u0435\u043d": "rice", "\u043e\u0440\u0438\u0437 \u0431\u0430\u0441\u043c\u0430\u0442\u0438": "rice",
     "pasta": "pasta", "pasta cooked": "pasta", "\u043f\u0430\u0441\u0442\u0430": "pasta", "\u043f\u0430\u0441\u0442\u0430 \u0441\u0432\u0430\u0440\u0435\u043d\u0430": "pasta",
     "potatoes": "potatoes", "potatoes cooked": "potatoes", "\u043a\u0430\u0440\u0442\u043e\u0444\u0438": "potatoes", "\u043a\u0430\u0440\u0442\u043e\u0444\u0438 \u0441\u0432\u0430\u0440\u0435\u043d\u0438": "potatoes",
     "quinoa": "quinoa", "quinoa cooked": "quinoa", "wholegrain bread": "wholegrain_bread", "bread": "wholegrain_bread", "\u0445\u043b\u044f\u0431": "wholegrain_bread",
     "apple": "apple", "\u044f\u0431\u044a\u043b\u043a\u0430": "apple", "\u044f\u0431\u044a\u043b\u043a\u0430 \u0441\u0443\u0440\u043e\u0432\u0430": "apple", "banana": "banana", "\u0431\u0430\u043d\u0430\u043d": "banana",
-    "broccoli": "broccoli", "broccoli steamed": "broccoli", "\u0431\u0440\u043e\u043a\u043e\u043b\u0438": "broccoli", "spinach": "spinach", "spinach raw": "spinach", "\u0441\u043f\u0430\u043d\u0430\u043a": "spinach",
+    "broccoli": "broccoli", "broccoli steamed": "broccoli", "\u0431\u0440\u043e\u043a\u043e\u043b\u0438": "broccoli", "\u0437\u0430\u0434\u0443\u0448\u0435\u043d\u0438 \u0431\u0440\u043e\u043a\u043e\u043b\u0438": "broccoli", "spinach": "spinach", "spinach raw": "spinach", "\u0441\u043f\u0430\u043d\u0430\u043a": "spinach",
     "tomato": "tomato", "\u0434\u043e\u043c\u0430\u0442": "tomato", "zucchini": "zucchini", "\u0442\u0438\u043a\u0432\u0438\u0447\u043a\u0438": "zucchini", "\u0442\u0438\u043a\u0432\u0438\u0447\u043a\u0438 \u0441\u0432\u0430\u0440\u0435\u043d\u0438": "zucchini",
     "avocado": "avocado", "\u0430\u0432\u043e\u043a\u0430\u0434\u043e": "avocado", "salad": "salad", "\u0441\u0430\u043b\u0430\u0442\u0430": "salad",
-    "olive oil": "olive_oil", "\u0437\u0435\u0445\u0442\u0438\u043d": "olive_oil", "herbs": "herbs", "spices": "spices", "lemon": "lemon", "seasoning": "seasoning", "garnish": "garnish",
+    "olive oil": "olive_oil", "\u0437\u0435\u0445\u0442\u0438\u043d": "olive_oil", "almonds": "almonds", "\u0431\u0430\u0434\u0435\u043c\u0438": "almonds", "herbs": "herbs", "spices": "spices", "lemon": "lemon", "seasoning": "seasoning", "garnish": "garnish",
 }
 
 _PRIMARY_PROTEINS = frozenset({"chicken", "turkey", "salmon", "tuna", "lean_beef", "eggs", "egg_whites", "cottage_cheese", "greek_yogurt", "whey", "lentils", "chickpeas"})

@@ -204,6 +204,27 @@ def test_recipe_matcher_uses_largest_carbohydrate_serving_deterministically():
     assert second.recipe.id == first.recipe.id
 
 
+def test_recipe_matcher_covers_live_catalog_labels_without_cross_binding():
+    breakfast = _production_meal("breakfast", (
+        ("Овесени ядки", "80"), ("Банан", "120"), ("Кисело мляко Верея", "200"),
+        ("Бадеми", "20"),
+    ))
+    lunch = _production_meal("lunch", (
+        ("Пилешко филе", "200"), ("Ориз басмати", "150"),
+        ("Зеленчукова салата (домати, краставици, чушки)", "200"), ("Зехтин", "15"),
+    ))
+    dinner = _production_meal("dinner", (
+        ("Телешка кайма", "150"), ("Нахут", "150"), ("Задушени броколи", "150"),
+        ("Авокадо", "100"),
+    ))
+
+    matches = [match_meal(meal, load_recipes(), profile_equipment({})) for meal in (breakfast, lunch, dinner)]
+
+    assert [match.recipe.id for match in matches] == [
+        "breakfast-yogurt-oats-almond", "lunch-chicken-rice", "dinner-beef-chickpeas",
+    ]
+
+
 def test_recipe_equipment_filter_excludes_oven_only_match():
     dinner = _plan().meals[-1]
 
