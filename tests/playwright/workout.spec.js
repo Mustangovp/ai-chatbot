@@ -1762,6 +1762,8 @@ test.describe('APEX approved app shell — UX regression', () => {
     await expect(focused.locator('.start-wo')).toHaveCount(0);
     await expect(focused).toContainText('\u0422\u0435\u0445\u043d\u0438\u043a\u0430 \u043d\u0430 \u0443\u043f\u0440\u0430\u0436\u043d\u0435\u043d\u0438\u0435\u0442\u043e');
     await expect(focused).toContainText('\u041f\u0440\u043e\u0442\u0438\u0432\u043e\u043f\u043e\u043b\u043e\u0436\u043d\u0430 \u0440\u044a\u043a\u0430 \u0438 \u043a\u0440\u0430\u043a \u043e\u0442 \u0447\u0435\u0442\u0438\u0440\u0438 \u043e\u043f\u043e\u0440\u0438');
+    await expect(focused).toContainText('6 \u043f\u043e\u0432\u0442\u043e\u0440\u0435\u043d\u0438\u044f \u043d\u0430 \u0441\u0442\u0440\u0430\u043d\u0430');
+    await expect(focused).not.toContainText('6 \u043d\u0430 \u0441\u0442\u0440\u0430\u043d\u0430 \u043f\u043e\u0432\u0442\u043e\u0440\u0435\u043d\u0438\u044f');
     await expect(focused.locator('details[open]')).toHaveCount(5);
     expect(calls).toBe(0);
   });

@@ -2205,10 +2205,10 @@ function workoutPrescription(exercise){
   if(canonical){
     const type=canonical.prescription_type,raw=String(exercise.reps||'').trim();
     if(type==='duration'||type==='duration_per_side'){
-      const hasUnit=/\b(?:sec(?:ond)?s?|minutes?|mins?)\b|СЃРµРє|СЃРµРєСѓРЅ|РјРёРЅ/i.test(raw);
+      const hasUnit=/\b(?:sec(?:ond)?s?|minutes?|mins?)\b|\u0441\u0435\u043a|\u0441\u0435\u043a\u0443\u043d|\u043c\u0438\u043d/i.test(raw);
       return{type,value:(raw&&hasUnit)?localizedTime(raw):'20–40 '+(lang==='bg'?'секунди':'seconds')};
     }
-    return{type,value:raw.replace(/\b(?:reps?|per side)\b|РїРѕРІС‚(?:\.|РѕСЂРµРЅРёСЏ)?|РЅР° СЃС‚СЂР°РЅР°/ig,'').trim()||'8–12'};
+    return{type,value:raw.replace(/\b(?:reps?|per side)\b|\u043f\u043e\u0432\u0442(?:\.|\u043e\u0440\u0435\u043d\u0438\u044f)?|\u043d\u0430 \u0441\u0442\u0440\u0430\u043d\u0430/ig,'').trim()||'8–12'};
   }
   const record=window.ApexExerciseInstructions&&window.ApexExerciseInstructions.find(exercise.name);
   if(record&&record.prescription_type==='duration'){
