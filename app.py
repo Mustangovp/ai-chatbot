@@ -2693,7 +2693,7 @@ def chat():
             if brain_config.brain_shadow():
                 shadow_observability.submit(
                     locale=lang, authoritative_path=path, authoritative_intent=intent,
-                    components=("brain",), timeout_ms=250,
+                    components=("brain",), task_kind="brain", timeout_ms=250,
                     work=lambda: _brain_shadow_observation(
                         persist_profile, persist_user_msg, persist_conversation, model_to_use,
                         locale=lang, authoritative_path=path, authoritative_intent=intent),
@@ -2705,7 +2705,7 @@ def chat():
                          or _shadow_feature_enabled("EXPERT_CONSENSUS_SHADOW"))):
                 shadow_observability.submit(
                     locale=lang, authoritative_path=path, authoritative_intent=intent,
-                    components=("persona", "expert"), timeout_ms=250,
+                    components=("persona", "expert"), task_kind="persona_expert", timeout_ms=250,
                     work=lambda: _persona_expert_shadow_observation(
                         _snapshot, _shadow_decision, locale=lang, authoritative_path=path,
                         recommendation_engine_active=_recommendation_active),

@@ -6,6 +6,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import json
+import logging
 import os
 import threading
 import time
@@ -20,6 +21,9 @@ _LOCK = threading.Lock()
 _EXECUTOR_LOCK = threading.Lock()
 _EXECUTOR: ThreadPoolExecutor | None = None
 _EXECUTOR_PID: int | None = None
+_TASK_KINDS = ("brain", "persona_expert")
+_LOGGER = logging.getLogger("apex.shadow_observability")
+_LOGGER.setLevel(logging.INFO)
 
 
 def _latency_bucket(duration_ms: float) -> str:
@@ -33,16 +37,35 @@ def _latency_bucket(duration_ms: float) -> str:
 
 
 def emit_metric(event: str, *, component: str, status: str, locale: str,
-                intent_category: str, latency_ms: float = 0.0) -> None:
+                intent_category: str, latency_ms: float = 0.0,
+                task_kind: str | None = None, lifecycle: dict[str, bool] | None = None) -> None:
     """Fail-open, process-visible aggregate-only production metric."""
     try:
+        if task_kind is not None and task_kind not in _TASK_KINDS:
+            raise ValueError("invalid task kind")
         record = {
             "event": event, "component": component, "status": status,
             "locale": locale, "intent_category": intent_category,
             "executor_type": "thread_pool", "deployment_sha": os.getenv("RAILWAY_GIT_COMMIT_SHA", "unknown")[:64],
             "latency_bucket": _latency_bucket(latency_ms),
         }
-        print("APEX_SHADOW_METRIC " + json.dumps(record, separators=(",", ":"), sort_keys=True), flush=True)
+        if task_kind is not None:
+            record["task_kind"] = task_kind
+        if event == "task_lifecycle_summary":
+            state = lifecycle or {}
+            record.update({
+                "submitted": bool(state.get("submitted")),
+                "worker_started": bool(state.get("worker_started")),
+                "event_built": bool(state.get("event_built")),
+                "sink_completed": bool(state.get("sink_completed")),
+                "flush_completed": bool(state.get("flush_completed")),
+            })
+        _LOGGER.warning("APEX_SHADOW_METRIC %s", json.dumps(record, separators=(",", ":"), sort_keys=True))
+        for handler in (*_LOGGER.handlers, *logging.getLogger().handlers):
+            try:
+                handler.flush()
+            except Exception:
+                pass
     except Exception:
         pass
 
@@ -176,13 +199,23 @@ def _timeout_observation(locale: str, path: str, intent: str, components: tuple[
 
 
 def submit(*, locale: str, authoritative_path: str, authoritative_intent: str,
-           components: tuple[str, ...], timeout_ms: int,
+           components: tuple[str, ...], task_kind: str, timeout_ms: int,
            work: Callable[[], ShadowObservation], request_id: str | None = None) -> bool:
     """Start bounded shadow work without waiting for it in the request lifecycle."""
+    if task_kind not in _TASK_KINDS:
+        raise ValueError("invalid task kind")
     request_id = request_id or uuid.uuid4().hex
     timestamp = datetime.now(timezone.utc).isoformat()
     def stamp(observation: ShadowObservation) -> ShadowObservation:
         return replace(observation, request_id=request_id, timestamp_utc=timestamp)
+
+    lifecycle = {"submitted": False, "worker_started": False, "event_built": False,
+                 "sink_completed": False, "flush_completed": False}
+
+    def emit_summary(status: str, latency_ms: float) -> None:
+        emit_metric("task_lifecycle_summary", component="task", status=status, locale=locale,
+                    intent_category=authoritative_intent, latency_ms=latency_ms,
+                    task_kind=task_kind, lifecycle=lifecycle)
 
     if not _SLOTS.acquire(blocking=False):
         emit_metric("request_skipped", component="task", status="executor_unavailable", locale=locale,
@@ -193,12 +226,13 @@ def submit(*, locale: str, authoritative_path: str, authoritative_intent: str,
         _record(stamp(ShadowObservation(locale, authoritative_path, authoritative_intent,
                                   statuses["brain"], statuses["persona"], statuses["expert"], None, (),
                                   "NOT_COMPARABLE", "NOT_COMPARABLE", "NOT_COMPARABLE", 0.0,
-                                  "SHADOW_DISPATCH_SATURATED")))
+                                  "SHADOW_DISPATCH_SATURATED")), task_kind=task_kind, lifecycle=lifecycle)
+        emit_summary("skipped", 0.0)
         return False
 
     started = time.perf_counter()
     emit_metric("task_submit_started", component="task", status="started", locale=locale,
-                intent_category=authoritative_intent)
+                intent_category=authoritative_intent, task_kind=task_kind)
     resolved = threading.Event()
     slot_released = threading.Event()
 
@@ -208,8 +242,9 @@ def submit(*, locale: str, authoritative_path: str, authoritative_intent: str,
             _SLOTS.release()
 
     def worker() -> ShadowObservation:
+        lifecycle["worker_started"] = True
         emit_metric("worker_started", component="task", status="started", locale=locale,
-                    intent_category=authoritative_intent)
+                    intent_category=authoritative_intent, task_kind=task_kind)
         return work()
 
     try:
@@ -217,10 +252,12 @@ def submit(*, locale: str, authoritative_path: str, authoritative_intent: str,
     except Exception:
         release_slot()
         emit_metric("task_submit_failed", component="task", status="executor_unavailable", locale=locale,
-                    intent_category=authoritative_intent)
+                    intent_category=authoritative_intent, task_kind=task_kind)
+        emit_summary("failed", (time.perf_counter() - started) * 1000)
         return False
+    lifecycle["submitted"] = True
     emit_metric("task_submitted", component="task", status="submitted", locale=locale,
-                intent_category=authoritative_intent)
+                intent_category=authoritative_intent, task_kind=task_kind)
 
     def complete(done: Future[ShadowObservation]) -> None:
         try:
@@ -237,10 +274,11 @@ def submit(*, locale: str, authoritative_path: str, authoritative_intent: str,
                         statuses["brain"], statuses["persona"], statuses["expert"], None, (),
                         "NOT_COMPARABLE", "NOT_COMPARABLE", "NOT_COMPARABLE",
                         (time.perf_counter() - started) * 1000, "SHADOW_EXCEPTION")
-                _record(stamp(observation))
+                _record(stamp(observation), task_kind=task_kind, lifecycle=lifecycle)
                 emit_metric("task_completed", component="task", status="completed", locale=locale,
                             intent_category=authoritative_intent,
-                            latency_ms=(time.perf_counter() - started) * 1000)
+                            latency_ms=(time.perf_counter() - started) * 1000, task_kind=task_kind)
+                emit_summary("completed", (time.perf_counter() - started) * 1000)
         finally:
             timer.cancel()
             release_slot()
@@ -252,10 +290,12 @@ def submit(*, locale: str, authoritative_path: str, authoritative_intent: str,
             # so a visible timeout always permits the next bounded task.
             release_slot()
             _record(stamp(_timeout_observation(locale, authoritative_path, authoritative_intent, components,
-                                               (time.perf_counter() - started) * 1000)))
+                                               (time.perf_counter() - started) * 1000)),
+                    task_kind=task_kind, lifecycle=lifecycle)
             emit_metric("task_timeout", component="task", status="timeout", locale=locale,
                         intent_category=authoritative_intent,
-                        latency_ms=(time.perf_counter() - started) * 1000)
+                        latency_ms=(time.perf_counter() - started) * 1000, task_kind=task_kind)
+            emit_summary("timeout", (time.perf_counter() - started) * 1000)
 
     timer = threading.Timer(timeout_ms / 1000.0, timeout)
     timer.daemon = True
@@ -265,7 +305,8 @@ def submit(*, locale: str, authoritative_path: str, authoritative_intent: str,
     return True
 
 
-def _record(observation: ShadowObservation) -> None:
+def _record(observation: ShadowObservation, *, task_kind: str | None = None,
+            lifecycle: dict[str, bool] | None = None) -> None:
     _TELEMETRY.record(observation)
     for component, status, completed, abstained, failed in (
         ("brain", observation.brain_status, "brain_completed", None, "brain_failed"),
@@ -281,9 +322,18 @@ def _record(observation: ShadowObservation) -> None:
         elif status in ("ERROR", "TIMEOUT"):
             emit_metric(failed, component=component, status="component_error", locale=observation.locale,
                         intent_category=observation.authoritative_intent, latency_ms=observation.duration_ms)
+    if lifecycle is not None:
+        lifecycle["event_built"] = True
     emit_metric("event_built", component="telemetry", status="success", locale=observation.locale,
-                intent_category=observation.authoritative_intent, latency_ms=observation.duration_ms)
+                intent_category=observation.authoritative_intent, latency_ms=observation.duration_ms,
+                task_kind=task_kind)
+    if lifecycle is not None:
+        lifecycle["sink_completed"] = True
     emit_metric("sink_write_completed", component="telemetry", status="success", locale=observation.locale,
-                intent_category=observation.authoritative_intent, latency_ms=observation.duration_ms)
+                intent_category=observation.authoritative_intent, latency_ms=observation.duration_ms,
+                task_kind=task_kind)
+    if lifecycle is not None:
+        lifecycle["flush_completed"] = True
     emit_metric("flush_completed", component="telemetry", status="success", locale=observation.locale,
-                intent_category=observation.authoritative_intent, latency_ms=observation.duration_ms)
+                intent_category=observation.authoritative_intent, latency_ms=observation.duration_ms,
+                task_kind=task_kind)

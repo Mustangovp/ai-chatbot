@@ -1841,7 +1841,9 @@ def test_shadow_lifecycle_metrics_start_before_terminal_events(client, captured,
     assert _events(response)[-1] == {"done": True}
 
     deadline = time.monotonic() + 2
-    while shadow_observability.snapshot_for_internal_use()["total"] < 2 and time.monotonic() < deadline:
+    while ("expert_started" not in metrics or not any(
+            event in {"expert_completed", "expert_abstained", "expert_failed"}
+            for event in metrics[metrics.index("expert_started") + 1:])) and time.monotonic() < deadline:
         time.sleep(0.01)
 
     assert metrics.count("request_eligible") == 1
