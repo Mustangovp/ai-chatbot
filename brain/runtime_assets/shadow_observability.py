@@ -6,13 +6,20 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import json
 import logging
+import sys
 import threading
 import time
-from typing import Callable, Mapping
+from typing import Callable
 import uuid
 
 
 _LOGGER = logging.getLogger("apex.shadow")
+if not _LOGGER.handlers:
+    _handler = logging.StreamHandler(sys.stdout)
+    _handler.setFormatter(logging.Formatter("%(message)s"))
+    _LOGGER.addHandler(_handler)
+_LOGGER.setLevel(logging.INFO)
+_LOGGER.propagate = False
 _COMPONENTS = ("brain", "persona", "expert")
 _STATUSES = ("SUCCESS", "ABSTAIN", "ERROR", "TIMEOUT", "SKIPPED")
 _EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="apex-shadow")
