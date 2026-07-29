@@ -1,13 +1,13 @@
 """
-M1 — S1 shadow-pipeline wiring (v2 inspector trace).
-BRAIN_SHADOW OFF (default) writes nothing; ON writes one traceable S1 record
-whose decision_id matches the ledger row id.
+Brain shadow remains non-authoritative and records only safe in-memory/log telemetry.
 """
 import json
+import time
 import types
 import app as app_module
 import db as store
 from sqlalchemy import select
+from brain.runtime_assets import shadow_observability
 
 
 def _mock_openai(monkeypatch, reply="Good work. Controlled tempo."):
@@ -27,6 +27,13 @@ def _trace(row):
     return json.loads(tr) if isinstance(tr, str) else tr
 
 
+def _wait_for_shadow_event():
+    deadline = time.monotonic() + 2
+    while shadow_observability.snapshot_for_internal_use()["total"] < 1 and time.monotonic() < deadline:
+        time.sleep(0.01)
+    return shadow_observability.snapshot_for_internal_use()
+
+
 def test_shadow_off_writes_nothing(monkeypatch):
     monkeypatch.delenv("BRAIN_SHADOW", raising=False)
     _mock_openai(monkeypatch)
@@ -38,7 +45,8 @@ def test_shadow_off_writes_nothing(monkeypatch):
     assert len(_brain_rows()) == 0
 
 
-def test_shadow_on_writes_one_traceable_record(monkeypatch):
+def test_shadow_on_records_safe_telemetry_without_persisting_a_trace(monkeypatch):
+    shadow_observability.reset_for_testing()
     monkeypatch.setenv("BRAIN_SHADOW", "1")
     _mock_openai(monkeypatch)
     client = app_module.app.test_client()
@@ -49,27 +57,13 @@ def test_shadow_on_writes_one_traceable_record(monkeypatch):
     assert r.status_code == 200
     r.get_data()
 
-    rows = _brain_rows()
-    assert len(rows) == 1
-    row = rows[0]
-    assert not row["enforced"]
-    assert row["verdict"] is None
-
-    tr = _trace(row)
-    # Decision ID is stable: trace id == ledger row id.
-    assert tr["decision_id"] == str(row["id"])
-    assert tr["trace_schema"] == "brain-trace-v2"
-    assert "S1" in tr["cascade"]["stations_executed"]
-    s1 = tr["stations"]["S1"]
-    assert s1["executed"] is True
-    assert "stroke_history" in s1["evidence_changed_state"]["detected_conditions"]
-    assert any(c["movement"] == "valsalva" and c["tier"] == "absolute" for c in s1["constraints_added"])
-    assert s1["envelope"]["supported"] is True
-    # S2 now runs in the same shadow pass.
-    assert tr["stations"]["S2"]["executed"] is True
+    telemetry = _wait_for_shadow_event()
+    assert telemetry["components"]["brain"]["SUCCESS"] == 1
+    assert len(_brain_rows()) == 0
 
 
-def test_shadow_on_logs_s2_red_flag_and_halt(monkeypatch):
+def test_shadow_on_medical_like_input_remains_non_persistent(monkeypatch):
+    shadow_observability.reset_for_testing()
     monkeypatch.setenv("BRAIN_SHADOW", "1")
     _mock_openai(monkeypatch)
     client = app_module.app.test_client()
@@ -78,13 +72,13 @@ def test_shadow_on_logs_s2_red_flag_and_halt(monkeypatch):
         "lang": "en", "profile": {}})
     assert r.status_code == 200
     r.get_data()
-    tr = _trace(_brain_rows()[0])
-    s2 = tr["stations"]["S2"]
-    assert s2["halt"] is True and tr["cascade"]["halt"] is True
-    assert any(f["class_key"] == "exertional_chest" for f in s2["red_flags"])
+    telemetry = _wait_for_shadow_event()
+    assert telemetry["components"]["brain"]["SUCCESS"] == 1
+    assert len(_brain_rows()) == 0
 
 
-def test_shadow_on_anonymous_logs_with_null_user(monkeypatch):
+def test_shadow_on_anonymous_session_has_no_user_scoped_write(monkeypatch):
+    shadow_observability.reset_for_testing()
     monkeypatch.setenv("BRAIN_SHADOW", "1")
     _mock_openai(monkeypatch)
     client = app_module.app.test_client()
@@ -92,8 +86,6 @@ def test_shadow_on_anonymous_logs_with_null_user(monkeypatch):
                                    "profile": {"healthNotes": "osteoporosis"}})
     assert r.status_code == 200
     r.get_data()
-    rows = _brain_rows()
-    assert len(rows) == 1
-    assert rows[0]["user_id"] is None
-    s1 = _trace(rows[0])["stations"]["S1"]
-    assert "loaded_spinal_flexion" in [c["movement"] for c in s1["constraints_added"]]
+    telemetry = _wait_for_shadow_event()
+    assert telemetry["components"]["brain"]["SUCCESS"] == 1
+    assert len(_brain_rows()) == 0

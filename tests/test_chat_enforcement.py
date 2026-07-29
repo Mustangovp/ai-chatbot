@@ -16,6 +16,7 @@ WIRING for a permitted-but-constrained decision is exercised end-to-end.
 import os
 import json
 import re
+import time
 import types
 from dataclasses import FrozenInstanceError, replace
 from decimal import Decimal
@@ -34,6 +35,7 @@ from recommend.blueprint import NutritionBlueprint, WorkoutBlueprint, to_dict
 from context_builder import LockedPreferences, Subject, build_context
 from brain.runtime_assets import expert_consensus, persona_matcher
 from brain.runtime_assets import shadow_trace
+from brain.runtime_assets import shadow_observability
 from brain.runtime_assets import persona_expert_projection
 from brain.runtime_assets.expert_rules import ExpertRulePack, load_expert_rule_packs
 from brain.runtime_assets.personas import load_runtime_personas
@@ -1319,14 +1321,17 @@ def test_training_engine_active_trace_delivery_accepts_deterministic_training(
     monkeypatch.setenv("PERSONA_MATCHER_SHADOW", "true")
     monkeypatch.setenv("EXPERT_CONSENSUS_SHADOW", "true")
     _set_stream(monkeypatch, captured, json.dumps({"explanations": []}))
-    traces = _capture_shadow_traces(monkeypatch)
+    shadow_observability.reset_for_testing()
 
     response = _post(client, "build a workout", profile=profile)
 
     assert response.status_code == 200
     assert _events(response)[-1] == {"done": True}
-    assert len(traces) == 1
-    assert traces[0].production_path_used == "deterministic_training"
+    deadline = time.monotonic() + 2
+    while shadow_observability.snapshot_for_internal_use()["total"] < 1 and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert any(event.authoritative_path == "deterministic_training"
+               for event in shadow_observability._TELEMETRY.events)
 
 
 def test_training_engine_active_fails_closed_without_legacy_workout_generation(client, captured, monkeypatch):
@@ -1807,9 +1812,13 @@ def test_persona_and_expert_shadow_flags_preserve_prompt_sse_and_persistence(cli
                         (consensus_calls.append(args), original_consensus(*args, **kwargs))[1])
 
     response = _post(client, "build a workout", profile=profile)
+    events = _events(response)
+    deadline = time.monotonic() + 2
+    while (len(matcher_calls) < 1 or len(consensus_calls) < 1) and time.monotonic() < deadline:
+        time.sleep(0.01)
     assert len(matcher_calls) == len(consensus_calls) == 1
     assert captured["messages"] == expected
-    assert _events(response) == [{"t": "ok"}, {"done": True}]
+    assert events == [{"t": "ok"}, {"done": True}]
 
 
 def test_persona_and_expert_shadow_do_not_add_persistence_writes(client, captured, monkeypatch):
@@ -1825,6 +1834,22 @@ def test_persona_and_expert_shadow_do_not_add_persistence_writes(client, capture
     assert [(turn["role"], turn["content"]) for turn in saved] == [
         ("user", "build a workout"), ("assistant", "ok"),
     ]
+
+
+def test_persona_shadow_exception_isolated_from_chat_delivery(client, captured, monkeypatch):
+    shadow_observability.reset_for_testing()
+    monkeypatch.setenv("PERSONA_MATCHER_SHADOW", "true")
+    monkeypatch.setenv("EXPERT_CONSENSUS_SHADOW", "true")
+    monkeypatch.setattr(appmod.persona_matcher, "match",
+                        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("test only")))
+    response = _post(client, "build a workout", profile=_profile(level="beginner"))
+    assert _events(response) == [{"t": "ok"}, {"done": True}]
+    deadline = time.monotonic() + 2
+    while shadow_observability.snapshot_for_internal_use()["total"] < 1 and time.monotonic() < deadline:
+        time.sleep(0.01)
+    telemetry = shadow_observability.snapshot_for_internal_use()
+    assert telemetry["components"]["persona"]["ERROR"] == 1
+    assert "BLUEPRINT (render exactly, do not alter values)" not in captured["system"]
 
 
 @pytest.mark.parametrize("message", ["hello", "I need recovery today", "I have chest pain", "???"])

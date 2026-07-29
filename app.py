@@ -51,12 +51,13 @@ from training_engine import (
 )
 from training_engine import renderer as training_renderer
 from brain.runtime_assets import expert_consensus, persona_matcher
+from brain.runtime_assets.expert_rules import load_expert_rule_packs
 from brain.runtime_assets.personas import load_runtime_personas
 import brain.runtime_assets.shadow_trace as shadow_trace
+import brain.runtime_assets.shadow_observability as shadow_observability
 import brain.runtime_assets.persona_expert_projection as persona_expert_projection
 import athlete_store  # M0: Athlete Model substrate (failure-isolated observe wiring)
 import brain.config as brain_config             # M1: Brain shadow flags (default OFF)
-import brain.ledger as brain_ledger             # M1: shadow decision ledger
 import brain.inspector as brain_inspector       # M1/Commit3: Brain Inspector (observability)
 import brain.cascade as brain_cascade           # M3: the one orchestrator (Decision)
 import brain.enforcement as brain_enforcement   # M4: Safety-Front renderer
@@ -1888,6 +1889,75 @@ def _shadow_persona_expert(snapshot, decision, recommendation_engine_active):
     return (match if matcher_enabled else None), (consensus if consensus_enabled else None), trace
 
 
+def _shadow_expert_domains(result):
+    """Return only broad domains; rule IDs never enter diagnostic logs."""
+    if result is None:
+        return ()
+    ready = {
+        rule.rule_id: rule.domain
+        for pack in load_expert_rule_packs()
+        for rule in pack.rules if rule.runtime_ready
+    }
+    return tuple(sorted({ready[rule_id] for rule_id in result.applicable_rule_ids if rule_id in ready}))
+
+
+def _persona_expert_shadow_observation(snapshot, decision, *, locale, authoritative_path,
+                                       recommendation_engine_active):
+    """Pure worker body: it returns safe categories and cannot affect delivery."""
+    matcher_enabled = _shadow_feature_enabled("PERSONA_MATCHER_SHADOW")
+    consensus_enabled = _shadow_feature_enabled("EXPERT_CONSENSUS_SHADOW")
+    statuses = {"persona": "SKIPPED", "expert": "SKIPPED"}
+    fallback = None
+    match = consensus = None
+    started = time.perf_counter()
+    if matcher_enabled or consensus_enabled:
+        try:
+            match = persona_matcher.match(snapshot, decision.intent)
+            statuses["persona"] = "ABSTAIN" if match.abstained else "SUCCESS"
+        except Exception:
+            statuses["persona"] = "ERROR"
+            fallback = "PERSONA_EXCEPTION"
+    if consensus_enabled:
+        if match is None:
+            statuses["expert"] = "SKIPPED"
+        else:
+            try:
+                consensus = expert_consensus.evaluate(snapshot, match, decision.intent)
+                statuses["expert"] = "ABSTAIN" if consensus.abstained else "SUCCESS"
+            except Exception:
+                statuses["expert"] = "ERROR"
+                fallback = "EXPERT_EXCEPTION"
+    return shadow_observability.ShadowObservation(
+        locale=locale, authoritative_path=authoritative_path, authoritative_intent=decision.intent,
+        brain_status="SKIPPED", persona_status=statuses["persona"], expert_status=statuses["expert"],
+        persona_match_class=("ABSTAIN" if getattr(match, "abstained", False) else
+                             "MATCHED" if match is not None else None),
+        expert_domain_classes=_shadow_expert_domains(consensus),
+        decision_parity="NOT_COMPARABLE", safety_parity="NOT_COMPARABLE",
+        constraint_parity="NOT_COMPARABLE", duration_ms=(time.perf_counter() - started) * 1000,
+        fallback_category=fallback,
+    )
+
+
+def _brain_shadow_observation(profile, message, conversation, model, *, locale, authoritative_path,
+                              authoritative_intent):
+    """Run the existing Brain cascade without retaining its raw trace or evidence."""
+    started = time.perf_counter()
+    try:
+        brain_inspector.inspect(profile, message=message, conversation=conversation, model=model,
+                                decision_id=str(_uuid.uuid4()))
+        status, fallback = "SUCCESS", None
+    except Exception:
+        status, fallback = "ERROR", "BRAIN_EXCEPTION"
+    return shadow_observability.ShadowObservation(
+        locale=locale, authoritative_path=authoritative_path, authoritative_intent=authoritative_intent,
+        brain_status=status, persona_status="SKIPPED", expert_status="SKIPPED",
+        persona_match_class=None, expert_domain_classes=(), decision_parity="NOT_COMPARABLE",
+        safety_parity="NOT_COMPARABLE", constraint_parity="NOT_COMPARABLE",
+        duration_ms=(time.perf_counter() - started) * 1000, fallback_category=fallback,
+    )
+
+
 def _persona_adaptation(match):
     """Project a matched runtime persona into ID-free workout design inputs."""
     persona_id = getattr(match, "primary_persona_id", None)
@@ -2080,6 +2150,9 @@ def chat():
         _recommendation_plan = None
         _recommendation_trace = None
         _recommendation_path = "legacy"
+        _snapshot = None
+        _shadow_decision = None
+        _shadow_request_id = _uuid.uuid4().hex
         _recommendation_active = _recommendation_engine_active()
         _training_engine_active_for_request = _training_engine_active()
         _training_plan_blueprint = None
@@ -2145,9 +2218,9 @@ def chat():
                      _snapshot, _shadow_decision, _recommendation_active,
                      _persona_expert_communication_active_for_request, _recommendation_plan)
             else:
-                (_shadow_persona_match, _shadow_expert_consensus,
-                 _recommendation_trace) = _shadow_persona_expert(
-                     _snapshot, _shadow_decision, _recommendation_active)
+                # Persona/expert evaluation is scheduled after authoritative delivery.
+                # No shadow result is available to this request's planning or prompt.
+                _shadow_persona_match = _shadow_expert_consensus = None
             # Safety enforcement retains precedence when deliberately enabled.
             # The planner still runs for observability and deterministic inputs,
             # but it must not prevent an approved safety decision from shaping
@@ -2602,31 +2675,30 @@ def chat():
             athlete_store.observe(persist_uid, "exchange", {})
 
         def _shadow_log():
-            """SHADOW (M1/M2): compute the cascade so far (S1 + S2) and write a
-            fully-traceable record to the decision ledger. Gated by BRAIN_SHADOW
-            (OFF by default) and failure-isolated — zero effect on prompt, generation,
-            response, or the user. Reads only; writes only brain_decisions. No
-            enforcement, no routing, no refusals."""
-            if not brain_config.brain_shadow():
-                return
-            try:
-                phys = None
-                if persist_uid:
-                    try:
-                        phys = athlete_store.physiology(persist_uid)
-                    except Exception:
-                        phys = None
-                did = str(_uuid.uuid4())
-                trace = brain_inspector.inspect(persist_profile, message=persist_user_msg,
-                                                conversation=persist_conversation, physiology=phys,
-                                                model=model_to_use, decision_id=did)
-                mh = (hashlib.sha256(persist_user_msg.encode("utf-8")).hexdigest()
-                      if persist_user_msg else None)
-                brain_ledger.log_decision(persist_uid, verdict=None, intervention=None,
-                                          urgency=None, enforced=False, out_of_mandate=False,
-                                          trace=trace, message_hash=mh, decision_id=did)
-            except Exception as _se:
-                print(f"[shadow] cascade log failed: {_se}")
+            """Schedule isolated, post-delivery shadow work with safe-only telemetry."""
+            path = _recommendation_path
+            intent = getattr(_shadow_decision, "intent", "unknown")
+            if brain_config.brain_shadow():
+                shadow_observability.submit(
+                    locale=lang, authoritative_path=path, authoritative_intent=intent,
+                    components=("brain",), timeout_ms=250,
+                    work=lambda: _brain_shadow_observation(
+                        persist_profile, persist_user_msg, persist_conversation, model_to_use,
+                        locale=lang, authoritative_path=path, authoritative_intent=intent),
+                    request_id=_shadow_request_id,
+                )
+            if (_snapshot is not None and _shadow_decision is not None
+                    and _shadow_decision.outcome == "recommend"
+                    and (_shadow_feature_enabled("PERSONA_MATCHER_SHADOW")
+                         or _shadow_feature_enabled("EXPERT_CONSENSUS_SHADOW"))):
+                shadow_observability.submit(
+                    locale=lang, authoritative_path=path, authoritative_intent=intent,
+                    components=("persona", "expert"), timeout_ms=250,
+                    work=lambda: _persona_expert_shadow_observation(
+                        _snapshot, _shadow_decision, locale=lang, authoritative_path=path,
+                        recommendation_engine_active=_recommendation_active),
+                    request_id=_shadow_request_id,
+                )
 
         def _log_analytics(t0):
             # M5 Observatory — record the enforced decision + response latency.
@@ -2668,10 +2740,10 @@ def chat():
                         yield sse(speech_event)
                     _persist_reply(_controlled_reply)
                     _update_learning_engine(chat_uid, user_message, _controlled_reply, profile)
-                    _shadow_log()
                     _log_analytics(_t_start)
                     _ingest_state()
                     yield sse({"done": True})
+                    _shadow_log()
                     return
                 if _revised_nutrition_plan is not None:
                     reply_text = nutrition_plan.render_delivery(_revised_nutrition_plan, lang, profile)
@@ -2681,10 +2753,10 @@ def chat():
                         yield sse(speech_event)
                     _persist_reply(reply_text, _revised_nutrition_plan)
                     _update_learning_engine(chat_uid, user_message, reply_text, profile)
-                    _shadow_log()
                     _log_analytics(_t_start)
                     _ingest_state()
                     yield sse({"done": True})
+                    _shadow_log()
                     return
                 if _nutrition_revision_failure is not None:
                     reply_text = _nutrition_revision_failure
@@ -2694,10 +2766,10 @@ def chat():
                         yield sse(speech_event)
                     _persist_reply(reply_text)
                     _update_learning_engine(chat_uid, user_message, reply_text, profile)
-                    _shadow_log()
                     _log_analytics(_t_start)
                     _ingest_state()
                     yield sse({"done": True})
+                    _shadow_log()
                     return
                 if _recommendation_blueprint is not None and nutrition_delivery_target is not None:
                     reply_text = decision_engine.controlled_response(
@@ -2726,10 +2798,10 @@ def chat():
                         yield sse(speech_event)
                     _persist_reply(reply_text)
                     _update_learning_engine(chat_uid, user_message, reply_text, profile)
-                    _shadow_log()
                     _log_analytics(_t_start)
                     _ingest_state()
                     yield sse({"done": True})
+                    _shadow_log()
                     return
                 if _nutrition_conversation.state is nutrition_conversation.NutritionConversationState.PLAN_READY:
                     # Plan-ready nutrition is generated as structured JSON. The
@@ -2811,10 +2883,10 @@ def chat():
                         yield sse(speech_event)
                     _persist_reply(reply_text, authoritative_plan)
                     _update_learning_engine(chat_uid, user_message, reply_text, profile)
-                    _shadow_log()
                     _log_analytics(_t_start)
                     _ingest_state()
                     yield sse({"done": True})
+                    _shadow_log()
                     return
                 if _training_plan_blueprint is not None:
                     # Training delivery accepts only the renderer's explanation
@@ -2857,10 +2929,10 @@ def chat():
                         yield sse(speech_event)
                     _persist_reply(reply_text)
                     _update_learning_engine(chat_uid, user_message, reply_text, profile)
-                    _shadow_log()
                     _log_analytics(_t_start)
                     _ingest_state()
                     yield sse({"done": True})
+                    _shadow_log()
                     return
 
                 stream = client.chat.completions.create(
@@ -2905,7 +2977,6 @@ def chat():
                     yield sse(speech_event)
                 _persist_reply(reply_text)
                 _update_learning_engine(chat_uid, user_message, reply_text, profile)
-                _shadow_log()        # SHADOW (BRAIN_SHADOW off by default; no-op in prod)
                 _log_analytics(_t_start)   # M5 Observatory
                 _ingest_state()      # BUILD-001 Human State (HSE_INGEST off by default)
                 if is_first_contact:
@@ -2919,6 +2990,7 @@ def chat():
                     yield sse({"done": True, "profile": profile, "brain_state": brain_state})
                 else:
                     yield sse({"done": True})
+                _shadow_log()
             except Exception as openai_error:
                 print(f"[chat] OpenAI error: {openai_error}")
                 if nutrition_delivery_targets is not None:
@@ -2929,10 +3001,10 @@ def chat():
                         yield sse(speech_event)
                     _persist_reply(reply_text)
                     _update_learning_engine(chat_uid, user_message, reply_text, profile)
-                    _shadow_log()
                     _log_analytics(_t_start)
                     _ingest_state()
                     yield sse({"done": True})
+                    _shadow_log()
                     return
                 # An upstream interruption is never a completed coaching turn.
                 # Tokens may already be visible in the browser, but they remain

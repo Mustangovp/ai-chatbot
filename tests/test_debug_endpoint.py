@@ -7,6 +7,8 @@ import types
 import app as app_module
 import db as store
 from sqlalchemy import select
+import brain.inspector as brain_inspector
+import uuid
 
 
 def _mock_openai(monkeypatch, reply="Good work."):
@@ -36,18 +38,14 @@ def test_replay_from_evidence_when_debug_on(monkeypatch):
 
 
 def test_inspect_stored_decision_by_id(monkeypatch):
-    # Create a real shadow decision, then fetch it by its stable Decision ID.
-    monkeypatch.setenv("BRAIN_SHADOW", "1")
+    # Debug inspection covers explicitly stored diagnostic records; public shadow
+    # activation intentionally uses safe non-persistent telemetry instead.
     monkeypatch.setenv("BRAIN_DEBUG", "1")
-    _mock_openai(monkeypatch)
     client = app_module.app.test_client()
-    r = client.post("/chat", json={"message": "workout", "lang": "en",
-                                   "profile": {"healthNotes": "osteoporosis"}})
-    assert r.status_code == 200
-    r.get_data()
-    with store.engine.begin() as c:
-        row = c.execute(select(store.brain_decisions)).mappings().first()
-    did = str(row["id"])
+    did = str(uuid.uuid4())
+    trace = brain_inspector.inspect({"healthNotes": "osteoporosis"}, decision_id=did)
+    store.log_decision(None, verdict=None, intervention=None, urgency=None, enforced=False,
+                       out_of_mandate=False, trace=trace, message_hash=None, decision_id=did)
 
     got = client.get(f"/debug/brain/decision/{did}")
     assert got.status_code == 200
