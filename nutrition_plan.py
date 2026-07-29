@@ -109,8 +109,9 @@ _CYRILLIC = re.compile(r"[\u0400-\u04ff]")
 _LATIN = re.compile(r"[A-Za-z]")
 _MEASUREMENT_REQUIRED_FOOD_IDS = frozenset({
     "rice", "quinoa", "pasta", "oats", "lentils", "chickpeas", "chicken",
-    "turkey", "salmon", "tuna", "lean_beef", "potatoes",
+    "turkey", "salmon", "tuna", "lean_beef", "potatoes", "prawns", "shrimp", "cod", "pork",
 })
+_MEASUREMENT_REQUIRED_FRAGMENTS = ("frozen", "chicken", "turkey", "beef", "pork", "lamb", "fish", "salmon", "tuna", "cod", "prawn", "shrimp")
 
 
 def _decimal(value: object, field: str) -> Decimal:
@@ -181,7 +182,10 @@ def _canonical_food_id(name: str, supplied: object) -> str:
 
 def _measurement_state(value: object, food_id: str, *, require_for_ambiguous: bool = True) -> MeasurementState | None:
     if value is None or str(value).strip() == "":
-        if require_for_ambiguous and food_id in _MEASUREMENT_REQUIRED_FOOD_IDS:
+        requires_state = food_id in _MEASUREMENT_REQUIRED_FOOD_IDS or any(
+            fragment in food_id for fragment in _MEASUREMENT_REQUIRED_FRAGMENTS
+        )
+        if require_for_ambiguous and requires_state:
             raise NutritionPlanError(f"food.measurement_state is required for {food_id}")
         return None
     try:

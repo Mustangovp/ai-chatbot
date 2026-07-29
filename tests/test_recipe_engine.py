@@ -140,6 +140,13 @@ def test_measurement_state_is_required_for_ambiguous_foods():
         nutrition_plan.build_plan(payload, NutritionTargets(Decimal("700"), Decimal("65"), Decimal("30"), Decimal("28")), restrictions=(), provenance={})
 
 
+def test_measurement_state_is_required_for_frozen_foods_and_unlisted_fish():
+    with pytest.raises(nutrition_plan.NutritionPlanError, match="measurement_state"):
+        nutrition_plan._measurement_state(None, "frozen_broccoli")
+    with pytest.raises(nutrition_plan.NutritionPlanError, match="measurement_state"):
+        nutrition_plan._measurement_state(None, "white_fish")
+
+
 def test_measurement_state_renders_in_bulgarian_and_english_without_raw_enum_values():
     plan = _plan()
     english = nutrition_plan.render(plan, "en")
