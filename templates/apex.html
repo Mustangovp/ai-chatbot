@@ -1657,13 +1657,14 @@ async function loadSession(tokenAccess){
   if(SESSION.authenticated){
     await syncFromAccount();
     const savedProfile=pfLoad();
-    if(savedProfile&&savedProfile._medical_hold&&savedProfile._medical_hold.status==='ACTIVE_MEDICAL_HOLD'){
-      activateMedicalHold();
-    }
     const savedLanguage=String((savedProfile.language||savedProfile.lang||'')).toLowerCase();
     if(savedLanguage==='bg'||savedLanguage==='en'){
       lang=savedLanguage;localStorage.setItem('apexLang',lang);applyLang();
     }
+  }
+  const restoredProfile=pfLoad();
+  if(restoredProfile&&restoredProfile._medical_hold&&restoredProfile._medical_hold.status==='ACTIVE_MEDICAL_HOLD'){
+    activateMedicalHold(false);
   }
   buildMenu();
   return SESSION;
@@ -2242,9 +2243,16 @@ function parseExercises(header,body){
   return ex;
 }
 let pendingWorkout=null,pendingWorkouts={},pendingWorkoutContracts={},pendingTrainingCompletion=null,pendingCompletionSessions=[],medicalHoldActive=false;
-function activateMedicalHold(){
+function activateMedicalHold(persist=true){
   medicalHoldActive=true;pendingWorkout=null;pendingWorkouts={};pendingWorkoutContracts={};
   document.querySelectorAll('.start-wo').forEach(b=>{b.disabled=true;b.style.display='none';});
+  if(persist){
+    const profile=pfLoad();
+    if(!profile._medical_hold||profile._medical_hold.status!=='ACTIVE_MEDICAL_HOLD'){
+      profile._medical_hold={status:'ACTIVE_MEDICAL_HOLD',workout_blocked:true,session_blocked:true};
+      ownedStorageSet('apexProfile',JSON.stringify(profile));accountSaveProfile(profile);
+    }
+  }
 }
 const renderedWorkoutExercises={};
 const WORKOUT_ALL_EXERCISE_INSTRUCTIONS='WORKOUT_ALL_EXERCISE_INSTRUCTIONS';

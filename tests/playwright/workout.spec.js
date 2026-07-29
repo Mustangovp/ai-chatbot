@@ -221,12 +221,14 @@ test.describe('APEX approved app shell — UX regression', () => {
       document.getElementById('user-in').value = '\u0431\u043e\u043b\u0438 \u043c\u0435 \u043b\u044f\u0432\u043e\u0442\u043e \u0440\u0430\u043c\u043e, \u0446\u044f\u043b\u0430\u0442\u0430 \u043c\u0438 \u0440\u044a\u043a\u0430 \u0438\u0437\u0442\u0440\u044a\u043f\u0432\u0430';
       await send();
       window.__medicalHoldAfterSse = medicalHoldActive;
+      window.__medicalHoldPersisted = pfLoad()._medical_hold && pfLoad()._medical_hold.status;
       await loadSession();
       window.__medicalHoldAfterRestore = medicalHoldActive;
       window.fetch = originalFetch;
     });
 
     expect(await page.evaluate(() => window.__medicalHoldAfterSse)).toBe(true);
+    expect(await page.evaluate(() => window.__medicalHoldPersisted)).toBe('ACTIVE_MEDICAL_HOLD');
     expect(await page.evaluate(() => window.__medicalHoldAfterRestore)).toBe(true);
     await expect(page.locator('.start-wo')).toBeHidden();
     await expect(page.locator('.workout-protocol')).toHaveCount(1);
