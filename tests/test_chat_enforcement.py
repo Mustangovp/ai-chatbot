@@ -1821,6 +1821,44 @@ def test_persona_and_expert_shadow_flags_preserve_prompt_sse_and_persistence(cli
     assert events == [{"t": "ok"}, {"done": True}]
 
 
+def test_shadow_lifecycle_metrics_start_before_terminal_events(client, captured, monkeypatch):
+    """The live /chat scheduling boundary emits one ordered safe lifecycle per task."""
+    shadow_observability.reset_for_testing()
+    metrics = []
+    original_emit = shadow_observability.emit_metric
+
+    def capture_metric(event, **kwargs):
+        metrics.append(event)
+        return original_emit(event, **kwargs)
+
+    monkeypatch.setattr(shadow_observability, "emit_metric", capture_metric)
+    monkeypatch.setenv("BRAIN_SHADOW", "true")
+    monkeypatch.setenv("PERSONA_MATCHER_SHADOW", "true")
+    monkeypatch.setenv("EXPERT_CONSENSUS_SHADOW", "true")
+    _set_stream(monkeypatch, captured, "ok")
+
+    response = _post(client, "build a workout", profile=_profile(level="beginner"))
+    assert _events(response)[-1] == {"done": True}
+
+    deadline = time.monotonic() + 2
+    while shadow_observability.snapshot_for_internal_use()["total"] < 2 and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+    assert metrics.count("request_eligible") == 1
+    assert metrics.count("brain_started") == 1
+    assert metrics.count("persona_started") == 1
+    assert metrics.count("expert_started") == 1
+    assert metrics.index("request_eligible") < metrics.index("task_submitted")
+    for started, terminal in (
+        ("brain_started", ("brain_completed", "brain_failed")),
+        ("persona_started", ("persona_completed", "persona_abstained", "persona_failed")),
+        ("expert_started", ("expert_completed", "expert_abstained", "expert_failed")),
+    ):
+        terminal_events = [event for event in terminal if event in metrics]
+        assert len(terminal_events) == 1
+        assert metrics.index(started) < metrics.index(terminal_events[0])
+
+
 def test_persona_and_expert_shadow_do_not_add_persistence_writes(client, captured, monkeypatch):
     profile = _profile(level="beginner")
     uid = _login_for_chat(client, profile)
