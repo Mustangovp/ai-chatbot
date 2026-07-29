@@ -1,10 +1,12 @@
 """Bounded, PII-minimized telemetry for non-authoritative shadow evaluation."""
 from __future__ import annotations
 
+import atexit
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import json
+import os
 import threading
 import time
 from typing import Callable
@@ -13,9 +15,36 @@ import uuid
 
 _COMPONENTS = ("brain", "persona", "expert")
 _STATUSES = ("SUCCESS", "ABSTAIN", "ERROR", "TIMEOUT", "SKIPPED")
-_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="apex-shadow")
 _SLOTS = threading.BoundedSemaphore(16)
 _LOCK = threading.Lock()
+_EXECUTOR_LOCK = threading.Lock()
+_EXECUTOR: ThreadPoolExecutor | None = None
+_EXECUTOR_PID: int | None = None
+
+
+def _worker_executor() -> ThreadPoolExecutor:
+    """Create the pool lazily inside each post-fork worker process."""
+    global _EXECUTOR, _EXECUTOR_PID
+    pid = os.getpid()
+    with _EXECUTOR_LOCK:
+        if _EXECUTOR is None or _EXECUTOR_PID != pid:
+            if _EXECUTOR is not None:
+                _EXECUTOR.shutdown(wait=False, cancel_futures=True)
+            _EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="apex-shadow")
+            _EXECUTOR_PID = pid
+        return _EXECUTOR
+
+
+def _shutdown_executor() -> None:
+    """Release process-local worker threads during a graceful process exit."""
+    global _EXECUTOR
+    with _EXECUTOR_LOCK:
+        if _EXECUTOR is not None:
+            _EXECUTOR.shutdown(wait=False, cancel_futures=True)
+            _EXECUTOR = None
+
+
+atexit.register(_shutdown_executor)
 
 
 @dataclass(frozen=True)
@@ -142,7 +171,14 @@ def submit(*, locale: str, authoritative_path: str, authoritative_intent: str,
 
     started = time.perf_counter()
     resolved = threading.Event()
-    future: Future[ShadowObservation] = _EXECUTOR.submit(work)
+    slot_released = threading.Event()
+
+    def release_slot() -> None:
+        if not slot_released.is_set():
+            slot_released.set()
+            _SLOTS.release()
+
+    future: Future[ShadowObservation] = _worker_executor().submit(work)
 
     def complete(done: Future[ShadowObservation]) -> None:
         try:
@@ -161,18 +197,21 @@ def submit(*, locale: str, authoritative_path: str, authoritative_intent: str,
                         (time.perf_counter() - started) * 1000, "SHADOW_EXCEPTION")
                 _record(stamp(observation))
         finally:
-            _SLOTS.release()
+            timer.cancel()
+            release_slot()
 
     def timeout() -> None:
         if not resolved.is_set():
             resolved.set()
             _record(stamp(_timeout_observation(locale, authoritative_path, authoritative_intent, components,
                                                (time.perf_counter() - started) * 1000)))
+            release_slot()
 
-    future.add_done_callback(complete)
     timer = threading.Timer(timeout_ms / 1000.0, timeout)
     timer.daemon = True
-    timer.start()
+    future.add_done_callback(complete)
+    if not resolved.is_set():
+        timer.start()
     return True
 
 

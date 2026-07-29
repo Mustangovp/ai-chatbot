@@ -54,6 +54,42 @@ def test_timeout_is_recorded_without_waiting_for_the_shadow_worker():
     release.set()
 
 
+def test_timeout_releases_admission_for_the_next_shadow_request():
+    observability.reset_for_testing()
+    original_slots = observability._SLOTS
+    observability._SLOTS = threading.BoundedSemaphore(1)
+    release = threading.Event()
+    try:
+        assert observability.submit(
+            locale="en", authoritative_path="legacy", authoritative_intent="nutrition",
+            components=("brain",), timeout_ms=10,
+            work=lambda: (release.wait(1.0), _observation())[1], request_id="first",
+        )
+        _wait_for(lambda: observability.snapshot_for_internal_use()["components"]["brain"]["TIMEOUT"] == 1)
+        assert observability.submit(
+            locale="en", authoritative_path="legacy", authoritative_intent="workout",
+            components=("brain",), timeout_ms=250, work=_observation, request_id="second",
+        )
+        _wait_for(lambda: observability.snapshot_for_internal_use()["total"] == 2)
+    finally:
+        release.set()
+        time.sleep(0.02)
+        observability._SLOTS = original_slots
+
+
+def test_executor_is_recreated_when_the_worker_process_changes(monkeypatch):
+    observability._shutdown_executor()
+    monkeypatch.setattr(observability.os, "getpid", lambda: 101)
+    first = observability._worker_executor()
+    monkeypatch.setattr(observability.os, "getpid", lambda: 202)
+    second = observability._worker_executor()
+    try:
+        assert first is not second
+        assert observability._EXECUTOR_PID == 202
+    finally:
+        observability._shutdown_executor()
+
+
 def test_worker_exception_is_categorized_without_raising_to_the_caller():
     observability.reset_for_testing()
     assert observability.submit(
