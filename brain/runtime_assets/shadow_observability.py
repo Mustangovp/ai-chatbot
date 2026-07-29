@@ -5,21 +5,12 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import json
-import logging
-import sys
 import threading
 import time
 from typing import Callable
 import uuid
 
 
-_LOGGER = logging.getLogger("apex.shadow")
-if not _LOGGER.handlers:
-    _handler = logging.StreamHandler(sys.stdout)
-    _handler.setFormatter(logging.Formatter("%(message)s"))
-    _LOGGER.addHandler(_handler)
-_LOGGER.setLevel(logging.INFO)
-_LOGGER.propagate = False
 _COMPONENTS = ("brain", "persona", "expert")
 _STATUSES = ("SUCCESS", "ABSTAIN", "ERROR", "TIMEOUT", "SKIPPED")
 _EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="apex-shadow")
@@ -187,4 +178,6 @@ def submit(*, locale: str, authoritative_path: str, authoritative_intent: str,
 
 def _record(observation: ShadowObservation) -> None:
     _TELEMETRY.record(observation)
-    _LOGGER.info("%s", json.dumps(observation.as_log_record(), separators=(",", ":"), sort_keys=True))
+    # Railway captures the process stream reliably; the record shape has no
+    # messages, profiles, prompts, persona IDs, rule IDs, or user identifiers.
+    print(json.dumps(observation.as_log_record(), separators=(",", ":"), sort_keys=True), flush=True)
