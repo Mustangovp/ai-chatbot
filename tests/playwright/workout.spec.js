@@ -58,7 +58,7 @@ test.describe('APEX approved app shell — UX regression', () => {
     // 2. exercise name is visible
     const firstName = page.locator('.ex-card').first().locator('.ex-name');
     await expect(firstName).toBeVisible();
-    await expect(firstName).toHaveText('Лицеви опори');
+    await expect(firstName).toHaveText('\u041b\u0438\u0446\u0435\u0432\u0430 \u043e\u043f\u043e\u0440\u0430');
 
     // 3. sets AND reps are visible on the card
     const firstStats = page.locator('.ex-card').first().locator('.workout-card-stats');
@@ -87,20 +87,19 @@ test.describe('APEX approved app shell — UX regression', () => {
         '| \u041d\u0430\u0431\u0438\u0440\u0430\u043d\u0438\u044f | 3 | 8 | 60 |',
         '| Overhead Press | 3 | 8 | 60 |',
         '| \u0420\u0430\u043c\u0435\u043d\u043d\u0430 \u043f\u0440\u0435\u0441\u0430 | 3 | 8 | 60 |',
-        '| Goblet Squat | 3 | 8 | 60 |',
-        '| Unknown movement | 3 | 8 | 60 |'
+        '| Goblet Squat | 3 | 8 | 60 |'
       ].join('\n');
       const el = appendCoach();
       el.innerHTML = renderMarkdown(md);
     });
 
     const cards = page.locator('.ex-card');
-    await expect(cards).toHaveCount(6);
+    await expect(cards).toHaveCount(5);
     await expect(cards.locator('svg')).toHaveCount(0);
     await expect(cards.locator('[data-exercise-figure]')).toHaveCount(0);
     await expect(cards.nth(0).locator('.ex-glyph')).toHaveCount(1);
     await expect(cards.nth(2).locator('.ex-glyph')).toHaveCount(1);
-    await expect(cards.nth(5).locator('.ex-glyph')).toHaveCount(1);
+    await expect(cards.nth(4).locator('.ex-glyph')).toHaveCount(1);
     await expect(page.locator('[data-camera-hr], [aria-label*="pulse" i], [aria-label*="heart" i]')).toHaveCount(0);
 
     await page.locator('.start-wo').click();
@@ -136,11 +135,11 @@ test.describe('APEX approved app shell — UX regression', () => {
     await expect(page.locator('.workout-protocol')).toHaveCount(1);
     const cards = page.locator('.workout-protocol .workout-exercise-card');
     await expect(cards).toHaveCount(5);
-    await expect(cards.nth(0)).toContainText('Goblet Squat');
-    await expect(cards.nth(1)).toContainText('Push-up');
-    await expect(cards.nth(2)).toContainText('Inverted Row Under Table');
-    await expect(cards.nth(3)).toContainText('Dumbbell Romanian Deadlift');
-    await expect(cards.nth(4)).toContainText('Front Plank');
+    await expect(cards.nth(0)).toContainText('\u0413\u043e\u0431\u043b\u0435\u0442 \u043a\u043b\u0435\u043a');
+    await expect(cards.nth(1)).toContainText('\u041b\u0438\u0446\u0435\u0432\u0430 \u043e\u043f\u043e\u0440\u0430');
+    await expect(cards.nth(2)).toContainText('\u0413\u0440\u0435\u0431\u0430\u043d\u0435 \u043f\u043e\u0434 \u0441\u0442\u0430\u0431\u0438\u043b\u043d\u0430 \u043c\u0430\u0441\u0430');
+    await expect(cards.nth(3)).toContainText('\u0420\u0443\u043c\u044a\u043d\u0441\u043a\u0430 \u0442\u044f\u0433\u0430 \u0441 \u0434\u044a\u043c\u0431\u0435\u043b\u0438');
+    await expect(cards.nth(4)).toContainText('\u041f\u0440\u0435\u0434\u0435\u043d \u043f\u043b\u0430\u043d\u043a');
     await expect(cards.nth(0)).toContainText('Дръж един дъмбел вертикално');
     await expect(cards.nth(0)).toContainText('Начална позиция');
     await expect(cards.nth(0)).toContainText('Изпълнение');
@@ -1694,5 +1693,94 @@ test.describe('APEX approved app shell — UX regression', () => {
     const order = names.join('\n');
     expect(order.indexOf('Breakfast')).toBeLessThan(order.indexOf('Lunch'));
     expect(order.indexOf('Lunch')).toBeLessThan(order.indexOf('Dinner'));
+  });
+
+  test('WO-CAT-1: canonical catalog localizes every starter exercise and preserves prescription types', async ({ page }) => {
+    await page.evaluate(() => {
+      const md = [
+        '| Exercise | Sets | Reps | Rest |',
+        '| --- | --- | --- | --- |',
+        '| Easy march in place | 1 | 3 minutes | 30 sec |',
+        '| Chair squat | 2 | 6-8 | 60 sec |',
+        '| Wall Push-Up | 2 | 6-8 | 60 sec |',
+        '| Glute bridge | 2 | 8 | 60 sec |',
+        '| Bird-dog | 2 | 6 per side | 60 sec |'
+      ].join('\n');
+      const el = appendCoach();
+      el.innerHTML = renderMarkdown(md);
+    });
+
+    const protocol = page.locator('.workout-protocol');
+    await expect(protocol).toHaveCount(1);
+    await expect(protocol.locator('.workout-exercise-card')).toHaveCount(5);
+    await expect(protocol.locator('.start-wo')).toHaveCount(1);
+    await expect(protocol).not.toContainText('Bird-dog');
+    await expect(protocol.locator('[data-exercise-id="bird_dog"]')).toContainText('\u041f\u0440\u043e\u0442\u0438\u0432\u043e\u043f\u043e\u043b\u043e\u0436\u043d\u0430 \u0440\u044a\u043a\u0430 \u0438 \u043a\u0440\u0430\u043a \u043e\u0442 \u0447\u0435\u0442\u0438\u0440\u0438 \u043e\u043f\u043e\u0440\u0438');
+    await expect(protocol.locator('[data-exercise-id="marching_in_place"]')).toContainText('\u041f\u0440\u043e\u0434\u044a\u043b\u0436\u0438\u0442\u0435\u043b\u043d\u043e\u0441\u0442');
+    await expect(protocol.locator('[data-exercise-id="marching_in_place"]')).not.toContainText('\u043c\u0438\u043d\u0443\u0442\u0438 \u043f\u043e\u0432\u0442.');
+    await expect(protocol.locator('[data-exercise-id="bird_dog"]')).toContainText('\u041f\u043e\u0432\u0442\u043e\u0440\u0435\u043d\u0438\u044f \u043d\u0430 \u0441\u0442\u0440\u0430\u043d\u0430');
+    await expect(protocol.locator('.ei-section:empty')).toHaveCount(0);
+    await expect(protocol.locator('[data-exercise-figure], svg')).toHaveCount(0);
+    const catalog = await page.evaluate(() => {
+      const engineNames = ['Wall Push-Up', 'Incline Push-Up', 'Push-Up', 'Table Row',
+        'Bodyweight Squat', 'Goblet Squat', 'Reverse Lunge', 'Bodyweight Hip Hinge',
+        'Dumbbell Romanian Deadlift', 'Dumbbell Row', 'Resistance-Band Row',
+        'Dumbbell Overhead Press', 'Seated Dumbbell Press', 'Pull-Up', 'Front Plank',
+        'Barbell Back Squat', 'Easy march in place', 'Chair squat', 'Glute bridge', 'Bird-dog'];
+      const fields = ['overview', 'starting', 'execution', 'breathing', 'cues', 'mistakes', 'regression', 'safety'];
+      return {
+        missing: engineNames.filter((name) => !ApexExerciseInstructions.find(name)),
+        incomplete: ApexExerciseInstructions.records.filter((record) =>
+          ['bg', 'en'].some((language) => fields.some((field) => !record[language][field]))).map((record) => record.canonical_id)
+      };
+    });
+    expect(catalog.missing).toEqual([]);
+    expect(catalog.incomplete).toEqual([]);
+  });
+
+  test('WO-CAT-2: a single-exercise question renders one focused card without replay or network', async ({ page }) => {
+    const calls = await page.evaluate(async () => {
+      const md = [
+        '| Exercise | Sets | Reps | Rest |', '| --- | --- | --- | --- |',
+        '| Chair squat | 2 | 6-8 | 60 sec |', '| Bird-dog | 2 | 6 per side | 60 sec |'
+      ].join('\n');
+      const workout = appendCoach();
+      workout.innerHTML = renderMarkdown(md);
+      const originalFetch = window.fetch;
+      let count = 0;
+      window.fetch = (...args) => { count += 1; return originalFetch(...args); };
+      document.getElementById('user-in').value = '\u043a\u0430\u043a\u0432\u043e \u0435 \u0442\u043e\u0432\u0430 \u0443\u043f\u0440\u0430\u0436\u043d\u0435\u043d\u0438\u0435 bird dog';
+      await send();
+      return count;
+    });
+
+    await expect(page.locator('.workout-protocol')).toHaveCount(1);
+    await expect(page.locator('.workout-protocol .start-wo')).toHaveCount(1);
+    const focused = page.locator('.focused-exercise-instruction');
+    await expect(focused).toHaveCount(1);
+    await expect(focused.locator('.workout-exercise-card')).toHaveCount(1);
+    await expect(focused.locator('.start-wo')).toHaveCount(0);
+    await expect(focused).toContainText('\u0422\u0435\u0445\u043d\u0438\u043a\u0430 \u043d\u0430 \u0443\u043f\u0440\u0430\u0436\u043d\u0435\u043d\u0438\u0435\u0442\u043e');
+    await expect(focused).toContainText('\u041f\u0440\u043e\u0442\u0438\u0432\u043e\u043f\u043e\u043b\u043e\u0436\u043d\u0430 \u0440\u044a\u043a\u0430 \u0438 \u043a\u0440\u0430\u043a \u043e\u0442 \u0447\u0435\u0442\u0438\u0440\u0438 \u043e\u043f\u043e\u0440\u0438');
+    await expect(focused.locator('details[open]')).toHaveCount(5);
+    expect(calls).toBe(0);
+  });
+
+  test('WO-CAT-3: English session uses English canonical names and instructions', async ({ page }) => {
+    await page.evaluate(() => {
+      lang = 'en';
+      const md = [
+        '| Exercise | Sets | Reps | Rest |', '| --- | --- | --- | --- |',
+        '| Bird-dog | 2 | 6 per side | 60 sec |', '| Front Plank | 2 | 8-12 | 45 sec |'
+      ].join('\n');
+      const workout = appendCoach();
+      workout.innerHTML = renderMarkdown(md);
+    });
+    const protocol = page.locator('.workout-protocol');
+    await expect(protocol).toContainText('Bird-dog');
+    await expect(protocol).toContainText('Front Plank');
+    await expect(protocol).toContainText('Starting position');
+    await expect(protocol).toContainText('20–40 seconds');
+    await expect(protocol).not.toContainText('\u041f\u0440\u043e\u0442\u0438\u0432\u043e\u043f\u043e\u043b\u043e\u0436\u043d\u0430 \u0440\u044a\u043a\u0430');
   });
 });

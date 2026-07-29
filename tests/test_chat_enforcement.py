@@ -106,8 +106,8 @@ def _events(resp):
     return out
 
 
-def _post(client, message, profile=None, *, voice=False):
-    payload = {"message": message, "lang": "en", "profile": profile or {}}
+def _post(client, message, profile=None, *, voice=False, lang="en"):
+    payload = {"message": message, "lang": lang, "profile": profile or {}}
     if voice:
         payload["voice"] = True
     return client.post("/chat", json=payload)
@@ -1323,6 +1323,19 @@ def test_training_engine_profile_contract_failure_delivers_actionable_starter_wo
     assert _events(response) == [{"t": appmod._cold_start_workout_reply("en")}, {"done": True}]
     assert "| Exercise | Sets | Reps | Rest | Note |" in appmod._cold_start_workout_reply("en")
     assert "| Wall push-up | 2 | 6–8 | 60s |" in appmod._cold_start_workout_reply("en")
+    assert captured == {}
+
+
+def test_exact_bulgarian_workout_prompt_generates_on_its_first_turn(client, captured, monkeypatch):
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
+    message = "\u041d\u0430\u043f\u0440\u0430\u0432\u0438 \u043c\u0438 \u0442\u0440\u0435\u043d\u0438\u0440\u043e\u0432\u043a\u0430 \u0437\u0430 \u0434\u043d\u0435\u0441"
+
+    response = _post(client, message, profile=_profile(equipment="office"), lang="bg")
+
+    assert _events(response) == [{"t": appmod._cold_start_workout_reply("bg")}, {"done": True}]
+    assert "Bird-dog" in appmod._cold_start_workout_reply("bg")
+    assert "\u0421 \u043a\u0430\u043a\u0432\u043e \u0434\u0430 \u043f\u043e\u043c\u043e\u0433\u043d\u0430 \u0434\u043d\u0435\u0441?" not in _events(response)[0]["t"]
     assert captured == {}
 
 

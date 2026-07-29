@@ -1,147 +1,106 @@
-/* Deterministic instruction records for the workout-technique follow-up flow. */
+/* Canonical, localized workout instruction catalog. No LLM output is used here. */
 (function (global) {
   'use strict';
 
-  const records = [
-    {
-      id: 'goblet_squat',
-      aliases: ['goblet squat', 'goblet клек', 'клек с дъмбел пред гърди'],
-      prescription_type: 'repetitions',
-      bg: {
-        starting: ['Дръж един дъмбел вертикално и близо до гърдите.', 'Постави стъпалата приблизително на ширината на раменете.'],
-        steps: ['Стегни корема и седни надолу и леко назад.', 'Коленете следват посоката на пръстите, а цялото стъпало остава на пода.', 'Слез само до дълбочина, в която запазваш неутрална стойка, после се изправи.'],
-        breathing: 'Вдишай при слизане и издишай, докато се изправяш.',
-        cues: ['Дръж дъмбела близо до тялото.', 'Натискай пода с цялото стъпало.'],
-        mistakes: ['Коленете падат навътре.', 'Петите се повдигат или гърбът се заобля.'],
-        regression: 'Седни леко до стол и се изправи с контрол.',
-        safety: 'Спри, ако усещаш остра болка в коляно, тазобедрена става или кръст.'
-      },
-      en: {
-        starting: ['Hold one dumbbell vertically close to your chest.', 'Set your feet about shoulder width apart.'],
-        steps: ['Brace your abdomen and sit down and slightly back.', 'Let the knees track with the toes while the whole foot stays grounded.', 'Descend only as far as you can keep a neutral posture, then stand tall.'],
-        breathing: 'Inhale on the way down and exhale as you stand.',
-        cues: ['Keep the dumbbell close to your body.', 'Press the floor away with your whole foot.'],
-        mistakes: ['Letting the knees collapse inward.', 'Lifting the heels or rounding the back.'],
-        regression: 'Use a chair touch squat and stand with control.',
-        safety: 'Stop for sharp pain in the knee, hip, or low back.'
-      }
-    },
-    {
-      id: 'push_up',
-      aliases: ['push up', 'push-up', 'pushups', 'лицева опора', 'лицеви опори'],
-      prescription_type: 'repetitions',
-      bg: {
-        starting: ['Постави ръцете малко по-широко от раменете.', 'Направи права линия от глава до пети и стегни седалището и корема.'],
-        steps: ['Сгъвай лактите приблизително на 30–45 градуса от торса.', 'Спусни гърдите контролирано към пода.', 'Избутай пода, за да се върнеш в началната позиция.'],
-        breathing: 'Вдишай при спускане и издишай при избутване нагоре.',
-        cues: ['Дръж врата неутрален.', 'Тялото се движи като една линия.'],
-        mistakes: ['Провисване на таза.', 'Лактите се разтварят твърде широко.'],
-        regression: 'Изпълни упражнението с ръце върху стабилна висока опора.',
-        safety: 'Намали обхвата или спри при остра болка в китка, лакът или рамо.'
-      },
-      en: {
-        starting: ['Place your hands slightly wider than your shoulders.', 'Make one straight line from head to heels and brace your glutes and abdomen.'],
-        steps: ['Bend the elbows about 30–45 degrees from your torso.', 'Lower the chest under control.', 'Push the floor away to return to the start.'],
-        breathing: 'Inhale as you lower and exhale as you press up.',
-        cues: ['Keep your neck neutral.', 'Move your body as one line.'],
-        mistakes: ['Letting the hips sag.', 'Flaring the elbows too wide.'],
-        regression: 'Perform the movement with hands on a stable elevated surface.',
-        safety: 'Reduce range or stop for sharp wrist, elbow, or shoulder pain.'
-      }
-    },
-    {
-      id: 'inverted_row_under_table',
-      aliases: ['inverted row under table', 'table row', 'inverted row', 'гребане под маса'],
-      prescription_type: 'repetitions',
-      bg: {
-        starting: ['Използвай само здрава, стабилна маса, която не може да се размести или преобърне.', 'Хвани сигурен ръб и направи права линия с тялото.'],
-        steps: ['Дръпни гърдите към ръба на масата.', 'Прибери лопатките назад и надолу.', 'Спусни се контролирано до изпънати ръце.'],
-        breathing: 'Издишай при дърпане и вдишай при контролирано спускане.',
-        cues: ['Дръж таза стегнат.', 'Мисли за лакти към ребрата.'],
-        mistakes: ['Отпускане на таза към пода.', 'Дърпане с повдигнати към ушите рамене.'],
-        regression: 'Свий коленете и постави стъпалата по-близо до тялото.',
-        safety: 'Не изпълнявай под нестабилна, лека или стъклена маса.'
-      },
-      en: {
-        starting: ['Use only a strong, stable table that cannot move or tip.', 'Grip a secure edge and make one straight line with your body.'],
-        steps: ['Pull your chest toward the table edge.', 'Draw the shoulder blades back and down.', 'Lower under control to straight arms.'],
-        breathing: 'Exhale as you pull and inhale as you lower with control.',
-        cues: ['Keep the hips braced.', 'Think elbows toward ribs.'],
-        mistakes: ['Letting the hips drop.', 'Pulling with the shoulders shrugged toward the ears.'],
-        regression: 'Bend the knees and place the feet closer to your body.',
-        safety: 'Never perform this under an unstable, light, or glass table.'
-      }
-    },
-    {
-      id: 'dumbbell_romanian_deadlift',
-      aliases: ['dumbbell romanian deadlift', 'romanian deadlift', 'dumbbell rdl', 'румънска тяга с дъмбели', 'румънска тяга'],
-      prescription_type: 'repetitions',
-      bg: {
-        starting: ['Дръж по един дъмбел във всяка ръка.', 'Коленете са леко свити, без да клякаш дълбоко.'],
-        steps: ['Избутай таза назад и пази гръбнака неутрален.', 'Плъзгай дъмбелите близо до бедрата и пищялите.', 'Спри, когато усетиш разтягане в задната част на бедрата без загуба на стойка.', 'Избутай таза напред, за да се изправиш.'],
-        breathing: 'Вдишай при движението надолу и издишай при изправяне.',
-        cues: ['Това е сгъване в таза, не дълбок клек.', 'Дръж тежестите близо до тялото.'],
-        mistakes: ['Заобляне на кръста.', 'Прекалено сгъване в коленете.'],
-        regression: 'Намали тежестта и работи с по-къс обхват пред огледало.',
-        safety: 'Спри при остра болка в кръста или задната част на бедрото.'
-      },
-      en: {
-        starting: ['Hold one dumbbell in each hand.', 'Keep the knees softly bent, not deeply squatted.'],
-        steps: ['Push the hips back and keep the spine neutral.', 'Keep the dumbbells close to the thighs and shins.', 'Stop when the hamstrings stretch without losing posture.', 'Drive the hips forward to stand.'],
-        breathing: 'Inhale on the way down and exhale as you stand.',
-        cues: ['This is a hip hinge, not a deep squat.', 'Keep the weights close to your body.'],
-        mistakes: ['Rounding the low back.', 'Bending the knees too much.'],
-        regression: 'Use lighter dumbbells and a shorter range in front of a mirror.',
-        safety: 'Stop for sharp low-back or hamstring pain.'
-      }
-    },
-    {
-      id: 'front_plank',
-      aliases: ['front plank', 'plank', 'forearm plank', 'преден планк', 'планк'],
-      prescription_type: 'duration',
-      bg: {
-        starting: ['Постави лактите точно под раменете.', 'Направи права линия от глава до пети и стегни корема и седалището.'],
-        steps: ['Поддържай тялото неподвижно.', 'Не позволявай на таза да провисва или да се вдига високо.', 'Спри веднага щом стойката се наруши.'],
-        breathing: 'Дишай спокойно и равномерно през цялото задържане.',
-        cues: ['Натискай пода с предмишниците.', 'Дръж ребрата прибрани.'],
-        mistakes: ['Провисване на таза.', 'Задържане на дъха.'],
-        regression: 'Изпълни планка с колене на пода.',
-        safety: 'Спри при остра болка в рамо или кръст.'
-      },
-      en: {
-        starting: ['Place the elbows directly under the shoulders.', 'Make one straight line from head to heels and brace the abdomen and glutes.'],
-        steps: ['Keep the body still.', 'Do not let the hips sag or rise high.', 'Stop as soon as posture breaks.'],
-        breathing: 'Breathe calmly and normally throughout the hold.',
-        cues: ['Press the floor away through your forearms.', 'Keep the ribs gently down.'],
-        mistakes: ['Letting the hips sag.', 'Holding your breath.'],
-        regression: 'Perform the plank with knees on the floor.',
-        safety: 'Stop for sharp shoulder or low-back pain.'
-      }
-    }
+  const normalize = (value) => String(value || '').toLocaleLowerCase().normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+
+  function instruction(overview, starting, execution, breathing, cues, mistakes, regression, safety) {
+    return Object.freeze({ overview, starting, execution, breathing, cues, mistakes, regression, safety });
+  }
+
+  function record(canonical_id, display_name_bg, display_name_en, aliases_bg, aliases_en,
+                  prescription_type, muscle_group_bg, muscle_group_en, bg, en) {
+    const aliases = [canonical_id, display_name_bg, display_name_en, ...aliases_bg, ...aliases_en];
+    const complete = (copy) => copy && [copy.overview, copy.starting, copy.execution, copy.breathing,
+      copy.cues, copy.mistakes, copy.regression, copy.safety].every((value) =>
+        (Array.isArray(value) ? value.length > 0 && value.every(Boolean) : Boolean(value)));
+    if (!complete(bg) || !complete(en)) throw new Error('incomplete canonical exercise record:' + canonical_id);
+    return Object.freeze({ canonical_id, id: canonical_id, display_name_bg, display_name_en,
+      aliases_bg: Object.freeze(aliases_bg), aliases_en: Object.freeze(aliases_en),
+      aliases: Object.freeze(aliases), prescription_type, muscle_group_bg, muscle_group_en,
+      bg: Object.freeze(bg), en: Object.freeze(en) });
+  }
+
+  const catalog = [
+    record('marching_in_place', 'Ходене на място', 'Marching in Place', ['ходене на място', 'леко ходене на място'], ['easy march in place', 'march in place'], 'duration', 'цяло тяло', 'full body',
+      instruction('Леко кардио за загряване и координация.', ['Изправи се с ходила на ширината на таза.'], ['Повдигай последователно коленете до удобна височина.', 'Движи ръцете естествено и пази темпото спокойно.'], 'Дишай равномерно през цялото движение.', ['Стъпвай меко.', 'Дръж торса изправен.'], ['Прекалено бързо темпо.', 'Силно тропане с ходилата.'], 'Намали височината на коленете и темпото.', 'Спри при замайване, болка в гърдите или необичаен задух.'),
+      instruction('Low-intensity cardio for warm-up and coordination.', ['Stand tall with feet hip width apart.'], ['Lift one knee at a time to a comfortable height.', 'Let the arms move naturally and keep an easy pace.'], 'Breathe evenly throughout.', ['Land softly.', 'Keep the torso tall.'], ['Moving too fast.', 'Stomping the feet.'], 'Lower the knee height and slow the pace.', 'Stop for dizziness, chest pain, or unusual shortness of breath.')),
+    record('chair_squat', 'Клек до стол', 'Chair Squat', ['клек до стол', 'сядане до стол'], ['chair squat', 'sit to chair'], 'repetitions', 'крака', 'legs',
+      instruction('Контролиран клек към стабилен стол за изграждане на сила в краката.', ['Застани пред стабилен стол с ходила на ширината на таза.', 'Дръж гърдите повдигнати и корема стегнат.'], ['Избутай таза назад към стола.', 'Докосни леко седалката без да се отпускаш.', 'Натисни през цялото ходило и се изправи.'], 'Вдишай надолу и издишай при изправяне.', ['Коленете следват пръстите.', 'Тежестта остава в средата на ходилото.'], ['Падане върху стола.', 'Коленете се събират навътре.'], 'Използвай по-висок стол или по-къс обхват.', 'Спри при остра болка в коляно, тазобедрена става или кръст.'),
+      instruction('A controlled squat to a stable chair to build leg strength.', ['Stand in front of a stable chair with feet hip width apart.', 'Lift the chest and brace the abdomen.'], ['Send the hips back toward the chair.', 'Lightly touch the seat without relaxing.', 'Press through the whole foot to stand.'], 'Inhale down and exhale as you stand.', ['Let knees track the toes.', 'Keep pressure through the middle of the foot.'], ['Dropping onto the chair.', 'Letting knees cave inward.'], 'Use a higher chair or a shorter range.', 'Stop for sharp knee, hip, or low-back pain.')),
+    record('wall_push_up', 'Лицева опора на стена', 'Wall Push-Up', ['лицева опора на стена', 'лицеви опори на стена'], ['wall push up', 'wall push-up'], 'repetitions', 'гърди', 'chest',
+      instruction('Лесна хоризонтална преса за гърди, рамене и трицепс.', ['Застани на една ръка разстояние от стабилна стена.', 'Постави длани на височината на гърдите.'], ['Сгъни лактите и доближи гърдите към стената.', 'Избутай стената, за да се върнеш в началото.'], 'Вдишай към стената и издишай при избутване.', ['Дръж тялото като една линия.', 'Лактите сочат леко назад.'], ['Провисване в кръста.', 'Рамене към ушите.'], 'Приближи ходилата до стената.', 'Спри при остра болка в китка, лакът или рамо.'),
+      instruction('An easy horizontal press for the chest, shoulders, and triceps.', ['Stand an arm length from a stable wall.', 'Place palms at chest height.'], ['Bend the elbows and bring the chest toward the wall.', 'Press the wall away to return.'], 'Inhale toward the wall and exhale as you press.', ['Keep the body in one line.', 'Let elbows point slightly back.'], ['Sagging through the low back.', 'Shrugging shoulders toward the ears.'], 'Step closer to the wall.', 'Stop for sharp wrist, elbow, or shoulder pain.')),
+    record('incline_push_up', 'Лицева опора на наклон', 'Incline Push-Up', ['лицева опора на наклон'], ['incline push-up', 'incline push up'], 'repetitions', 'гърди', 'chest',
+      instruction('Лицева опора с ръце върху стабилна висока опора.', ['Постави длани върху стабилна пейка или плот.', 'Направи права линия от глава до пети.'], ['Спусни гърдите към опората с контрол.', 'Избутай се обратно без да пречупваш кръста.'], 'Вдишай надолу и издишай нагоре.', ['Стегни седалището и корема.', 'Дръж китките под раменете.'], ['Тазът провисва.', 'Лактите се отварят прекалено.'], 'Използвай по-висока опора.', 'Използвай само стабилна опора и спри при остра болка.'),
+      instruction('A push-up with hands on a stable elevated surface.', ['Place your palms on a stable bench or counter.', 'Make one straight line from head to heels.'], ['Lower the chest toward the surface with control.', 'Press back without bending through the low back.'], 'Inhale down and exhale up.', ['Brace glutes and abdomen.', 'Keep wrists under shoulders.'], ['Letting hips sag.', 'Flaring elbows too far.'], 'Use a higher surface.', 'Use only a stable surface and stop for sharp pain.')),
+    record('push_up', 'Лицева опора', 'Push-Up', ['лицева опора', 'лицеви опори'], ['push up', 'push-up', 'pushups'], 'repetitions', 'гърди', 'chest',
+      instruction('Класическа лицева опора за гърди, рамене и трицепс.', ['Постави ръцете малко по-широко от раменете.', 'Стегни корема и седалището в права линия.'], ['Сгъвай лактите на около 30–45 градуса от торса.', 'Спусни се контролирано и избутай пода.'], 'Вдишай при спускане и издишай при избутване.', ['Пази врата неутрален.', 'Движи тялото като една линия.'], ['Провисване на таза.', 'Широко разтваряне на лактите.'], 'Изпълни лицева опора на наклон.', 'Спри при остра болка в китка, лакът или рамо.'),
+      instruction('A classic push-up for chest, shoulders, and triceps.', ['Place hands slightly wider than shoulders.', 'Brace the abdomen and glutes in one straight line.'], ['Bend elbows about 30–45 degrees from the torso.', 'Lower under control and press the floor away.'], 'Inhale as you lower and exhale as you press.', ['Keep the neck neutral.', 'Move the body as one line.'], ['Letting hips sag.', 'Flaring elbows wide.'], 'Use an incline push-up.', 'Stop for sharp wrist, elbow, or shoulder pain.')),
+    record('inverted_row_under_table', 'Гребане под стабилна маса', 'Inverted Row Under a Stable Table', ['гребане под стабилна маса', 'гребане под маса', 'обратно гребане'], ['inverted row under table', 'table row', 'inverted row'], 'repetitions', 'гръб', 'back',
+      instruction('Хоризонтално дърпане под сигурна, стабилна маса.', ['Използвай само тежка стабилна маса.', 'Хвани здрав ръб и подравни тялото.'], ['Дръпни гърдите към ръба.', 'Прибери лопатките назад и надолу.', 'Спусни се до изпънати ръце с контрол.'], 'Издишай при дърпане и вдишай при спускане.', ['Дръж таза стегнат.', 'Мисли за лакти към ребрата.'], ['Провисване на таза.', 'Рамене към ушите.'], 'Свий коленете и приближи ходилата.', 'Не изпълнявай под нестабилна, лека или стъклена маса.'),
+      instruction('A horizontal pull beneath a secure, stable table.', ['Use only a heavy stable table.', 'Grip a secure edge and align the body.'], ['Pull the chest toward the edge.', 'Draw shoulder blades back and down.', 'Lower to straight arms with control.'], 'Exhale as you pull and inhale as you lower.', ['Brace the hips.', 'Think elbows toward ribs.'], ['Letting hips sag.', 'Shrugging shoulders.'], 'Bend the knees and bring feet closer.', 'Never use an unstable, light, or glass table.')),
+    record('bodyweight_squat', 'Клек', 'Bodyweight Squat', ['клек', 'клекове', 'клек със собствено тегло'], ['bodyweight squat', 'squat'], 'repetitions', 'крака', 'legs',
+      instruction('Основен клек за контрол и сила в краката.', ['Застани с ходила приблизително на ширината на раменете.', 'Стегни корема и пази гръдния кош повдигнат.'], ['Седни надолу и леко назад.', 'Коленете следват пръстите.', 'Натисни пода и се изправи.'], 'Вдишай надолу и издишай нагоре.', ['Дръж цялото ходило на пода.', 'Пази коленете стабилни.'], ['Пети се повдигат.', 'Коленете се събират навътре.'], 'Намали дълбочината или използвай стол.', 'Спри при остра болка в коляно, таз или кръст.'),
+      instruction('A foundational squat for control and leg strength.', ['Stand with feet about shoulder width apart.', 'Brace the abdomen and keep the chest lifted.'], ['Sit down and slightly back.', 'Let knees track the toes.', 'Press the floor away to stand.'], 'Inhale down and exhale up.', ['Keep the whole foot grounded.', 'Keep knees stable.'], ['Heels lifting.', 'Knees collapsing inward.'], 'Use a shorter range or a chair.', 'Stop for sharp knee, hip, or low-back pain.')),
+    record('goblet_squat', 'Гоблет клек', 'Goblet Squat', ['гоблет клек', 'клек с дъмбел пред гърди'], ['goblet squat'], 'repetitions', 'крака', 'legs',
+      instruction('Клек с дъмбел близо до гърдите за сила и стабилност.', ['Дръж един дъмбел вертикално до гърдите.', 'Постави ходила на ширината на раменете.'], ['Седни надолу и леко назад.', 'Коленете следват пръстите.', 'Изправи се без да губиш неутрална стойка.'], 'Вдишай надолу и издишай при изправяне.', ['Дръж дъмбела близо.', 'Натискай през цялото ходило.'], ['Коленете падат навътре.', 'Петите се повдигат.'], 'Докосни леко стол и се изправи.', 'Спри при остра болка в коляно, таз или кръст.'),
+      instruction('A dumbbell squat held close to the chest for strength and stability.', ['Hold one dumbbell vertically at the chest.', 'Set feet about shoulder width apart.'], ['Sit down and slightly back.', 'Let knees track the toes.', 'Stand without losing a neutral posture.'], 'Inhale down and exhale as you stand.', ['Keep the dumbbell close.', 'Press through the whole foot.'], ['Knees collapsing inward.', 'Heels lifting.'], 'Touch a chair lightly and stand.', 'Stop for sharp knee, hip, or low-back pain.')),
+    record('reverse_lunge', 'Напад назад', 'Reverse Lunge', ['напад назад'], ['reverse lunge'], 'repetitions_per_side', 'крака', 'legs',
+      instruction('Едностранен клек с крачка назад за крака и баланс.', ['Застани изправен с ходила под таза.', 'Стегни корема преди крачката.'], ['Направи контролирана крачка назад.', 'Спусни задното коляно към пода.', 'Натисни предното ходило и се върни.'], 'Вдишай назад и издишай при връщане.', ['Предното коляно следва пръстите.', 'Дръж таза равен.'], ['Прекалено тясна крачка.', 'Накланяне напред.'], 'Дръж се за стабилна опора.', 'Спри при остра болка в коляно, таз или глезен.'),
+      instruction('A single-leg squat with a step back for legs and balance.', ['Stand tall with feet beneath the hips.', 'Brace the abdomen before stepping.'], ['Step back with control.', 'Lower the rear knee toward the floor.', 'Press through the front foot to return.'], 'Inhale as you step back and exhale as you return.', ['Let the front knee track the toes.', 'Keep the pelvis level.'], ['Taking too narrow a step.', 'Leaning forward.'], 'Hold a stable support.', 'Stop for sharp knee, hip, or ankle pain.')),
+    record('bodyweight_hip_hinge', 'Хип хиндж със собствено тегло', 'Bodyweight Hip Hinge', ['хип хиндж със собствено тегло', 'хип хиндж'], ['bodyweight hip hinge', 'hip hinge'], 'repetitions', 'седалище и задни бедра', 'glutes and hamstrings',
+      instruction('Упражнение за движение от таза и задната верига.', ['Застани с леко свити колене и ръце на бедрата.', 'Пази гръбнака неутрален.'], ['Избутай таза назад, без да клякаш дълбоко.', 'Спри при разтягане в задните бедра.', 'Избутай таза напред, за да се изправиш.'], 'Вдишай назад и издишай при изправяне.', ['Движението идва от таза.', 'Дръж ребрата прибрани.'], ['Заобляне на кръста.', 'Превръщане на движението в клек.'], 'Работи с малък обхват пред огледало.', 'Спри при остра болка в кръста или задното бедро.'),
+      instruction('A hip-driven movement for the posterior chain.', ['Stand with softly bent knees and hands on the thighs.', 'Keep the spine neutral.'], ['Send the hips back without deeply squatting.', 'Stop at a hamstring stretch.', 'Drive the hips forward to stand.'], 'Inhale back and exhale as you stand.', ['Move from the hips.', 'Keep ribs gently down.'], ['Rounding the low back.', 'Turning the movement into a squat.'], 'Use a short range in front of a mirror.', 'Stop for sharp low-back or hamstring pain.')),
+    record('dumbbell_romanian_deadlift', 'Румънска тяга с дъмбели', 'Dumbbell Romanian Deadlift', ['румънска тяга с дъмбели', 'румънска тяга'], ['dumbbell romanian deadlift', 'romanian deadlift', 'dumbbell rdl'], 'repetitions', 'седалище и задни бедра', 'glutes and hamstrings',
+      instruction('Хип хиндж с дъмбели за задни бедра и седалище.', ['Дръж по един дъмбел във всяка ръка.', 'Коленете са леко свити.'], ['Избутай таза назад и плъзгай дъмбелите близо до бедрата.', 'Спри при разтягане без да губиш стойка.', 'Избутай таза напред, за да се изправиш.'], 'Вдишай надолу и издишай при изправяне.', ['Това е хиндж, не дълбок клек.', 'Дръж тежестите близо.'], ['Заобляне на кръста.', 'Прекалено сгъване в коленете.'], 'Намали тежестта и обхвата.', 'Спри при остра болка в кръста или задното бедро.'),
+      instruction('A dumbbell hip hinge for hamstrings and glutes.', ['Hold one dumbbell in each hand.', 'Keep the knees softly bent.'], ['Send the hips back and keep dumbbells close to the thighs.', 'Stop at a stretch without losing posture.', 'Drive the hips forward to stand.'], 'Inhale down and exhale as you stand.', ['This is a hinge, not a deep squat.', 'Keep weights close.'], ['Rounding the low back.', 'Bending knees too much.'], 'Use lighter weight and a shorter range.', 'Stop for sharp low-back or hamstring pain.')),
+    record('glute_bridge', 'Глутеус мост', 'Glute Bridge', ['глутеус мост'], ['glute bridge'], 'repetitions', 'седалище', 'glutes',
+      instruction('Упражнение за седалище и контрол на таза.', ['Легни по гръб със свити колене и ходила на пода.', 'Постави ходилата приблизително под коленете.'], ['Стегни седалището и повдигни таза.', 'Спри, когато торсът и бедрата са в една линия.', 'Спусни се контролирано.'], 'Издишай при повдигане и вдишай при спускане.', ['Дръж ребрата прибрани.', 'Натискай през петите.'], ['Прекомерно извиване в кръста.', 'Разтваряне на коленете.'], 'Изпълнявай с по-малък обхват.', 'Спри при остра болка в кръста или тазобедрената става.'),
+      instruction('An exercise for the glutes and pelvic control.', ['Lie on your back with knees bent and feet on the floor.', 'Place feet roughly under the knees.'], ['Squeeze the glutes and lift the hips.', 'Stop when the torso and thighs form one line.', 'Lower with control.'], 'Exhale as you lift and inhale as you lower.', ['Keep ribs gently down.', 'Press through the heels.'], ['Overarching the low back.', 'Letting knees drift apart.'], 'Use a smaller range.', 'Stop for sharp low-back or hip pain.')),
+    record('bird_dog', 'Противоположна ръка и крак от четири опори', 'Bird-dog', ['бърд дог', 'bird dog', 'bird-dog', 'упражнение bird dog', 'противоположна ръка и крак от четири опори'], ['bird dog', 'bird-dog'], 'repetitions_per_side', 'корем и стабилизатори', 'core and stabilizers',
+      instruction('Упражнение за стабилност на корема, кръста и таза от четири опори.', ['Застани на четири опори.', 'Постави длани под раменете и колене под таза.', 'Дръж гърба неутрален и стегни корема.'], ['Изпъни едновременно едната ръка напред и противоположния крак назад.', 'Не вдигай крайниците над линията на тялото.', 'Задръж кратко без да завърташ таза.', 'Върни контролирано и повтори от другата страна.'], 'Издишай при изпъване и вдишай при връщане. Не задържай дъха.', ['Представи си чаша вода върху кръста.', 'Дръж таза неподвижен.', 'Издължавай крайниците, вместо да ги повдигаш високо.'], ['Извиване на кръста.', 'Завъртане на таза.', 'Повдигане на крака твърде високо.', 'Прекалено бързо изпълнение.'], 'Движи само ръката, само крака или плъзгай пръстите по пода.', 'Спри при остра болка в кръста или рамото; намали обхвата, ако не пазиш неутрален гръб.'),
+      instruction('A four-point stability exercise for the core, low back, and pelvis.', ['Set up on hands and knees.', 'Place hands under shoulders and knees under hips.', 'Keep the spine neutral and brace the abdomen.'], ['Reach one arm forward and the opposite leg back at the same time.', 'Do not lift the limbs above the body line.', 'Pause briefly without rotating the pelvis.', 'Return with control and repeat on the other side.'], 'Exhale as you reach and inhale as you return. Do not hold your breath.', ['Imagine a glass of water on your low back.', 'Keep the pelvis still.', 'Lengthen the limbs rather than lifting them high.'], ['Arching the low back.', 'Rotating the pelvis.', 'Lifting the leg too high.', 'Moving too fast.'], 'Move only the arm, only the leg, or slide toes on the floor.', 'Stop for sharp low-back or shoulder pain; reduce range if you cannot keep a neutral spine.')),
+    record('dumbbell_row', 'Гребане с дъмбел', 'Dumbbell Row', ['гребане с дъмбел'], ['dumbbell row'], 'repetitions', 'гръб', 'back',
+      instruction('Едностранно гребане за гръб и бицепс.', ['Подпри едната ръка върху стабилна опора.', 'Дръж дъмбела под рамото и гърба неутрален.'], ['Дръпни лакътя към ханша.', 'Задръж кратко с прибрана лопатка.', 'Спусни дъмбела с контрол.'], 'Издишай при дърпане и вдишай при спускане.', ['Дръж таза неподвижен.', 'Води с лакътя.'], ['Завъртане на торса.', 'Дърпане с рамо към ухото.'], 'Използвай по-лек дъмбел или две ръце с опора.', 'Спри при остра болка в кръста или рамото.'),
+      instruction('A one-arm row for the back and biceps.', ['Support one hand on a stable surface.', 'Let the dumbbell hang under the shoulder with a neutral spine.'], ['Pull the elbow toward the hip.', 'Pause with the shoulder blade drawn back.', 'Lower the dumbbell with control.'], 'Exhale as you pull and inhale as you lower.', ['Keep the pelvis still.', 'Lead with the elbow.'], ['Twisting the torso.', 'Shrugging toward the ear.'], 'Use a lighter dumbbell or both hands with support.', 'Stop for sharp low-back or shoulder pain.')),
+    record('band_row', 'Гребане с ластик', 'Resistance-Band Row', ['гребане с ластик'], ['resistance band row', 'band row'], 'repetitions', 'гръб', 'back',
+      instruction('Хоризонтално дърпане с добре закрепен ластик.', ['Закрепи ластика сигурно на височината на гърдите.', 'Застани стабилно с изпънати ръце.'], ['Дръпни лактите назад към ребрата.', 'Прибери лопатките.', 'Върни бавно до изпънати ръце.'], 'Издишай при дърпане и вдишай при връщане.', ['Дръж раменете далеч от ушите.', 'Пази торса неподвижен.'], ['Разтягане на ластика към лицето.', 'Отпускане на лопатките.'], 'Използвай по-лек ластик или по-къс обхват.', 'Провери закрепването преди всяка серия и спри при болка.'),
+      instruction('A horizontal pull using a securely anchored resistance band.', ['Anchor the band securely at chest height.', 'Stand stable with arms extended.'], ['Pull elbows back toward the ribs.', 'Draw shoulder blades together.', 'Return slowly to straight arms.'], 'Exhale as you pull and inhale as you return.', ['Keep shoulders away from the ears.', 'Keep the torso still.'], ['Pulling the band toward the face.', 'Relaxing the shoulder blades.'], 'Use a lighter band or shorter range.', 'Check the anchor before every set and stop for pain.')),
+    record('overhead_press', 'Раменна преса над глава', 'Overhead Press', ['раменна преса над глава', 'раменна преса', 'военна преса', 'преса над глава'], ['overhead press', 'dumbbell overhead press', 'shoulder press', 'military press', 'dumbbell shoulder press'], 'repetitions', 'рамене', 'shoulders',
+      instruction('Вертикална преса за рамене и трицепс.', ['Застани изправен с дъмбели на нивото на раменете.', 'Стегни корема и седалището.'], ['Избутай тежестите над главата без да извиваш кръста.', 'Спусни бавно до нивото на раменете.'], 'Издишай при пресата и вдишай при спускане.', ['Дръж ребрата прибрани.', 'Пази китките над лактите.'], ['Прекомерно извиване в кръста.', 'Пускане на тежестите бързо.'], 'Изпълнявай седнал с опора за гърба.', 'Спри при остра болка в рамо, врат или кръст.'),
+      instruction('A vertical press for shoulders and triceps.', ['Stand tall with dumbbells at shoulder height.', 'Brace the abdomen and glutes.'], ['Press weights overhead without arching the low back.', 'Lower slowly to shoulder height.'], 'Exhale as you press and inhale as you lower.', ['Keep ribs down.', 'Stack wrists over elbows.'], ['Overarching the low back.', 'Dropping weights quickly.'], 'Perform seated with back support.', 'Stop for sharp shoulder, neck, or low-back pain.')),
+    record('seated_dumbbell_press', 'Седнала раменна преса с дъмбели', 'Seated Dumbbell Press', ['седнала раменна преса с дъмбели'], ['seated dumbbell press', 'seated press'], 'repetitions', 'рамене', 'shoulders',
+      instruction('Раменна преса от седеж с опора за гърба.', ['Седни на стабилна пейка с опрян гръб.', 'Дръж дъмбелите до раменете.'], ['Избутай дъмбелите нагоре над главата.', 'Спусни ги бавно до началната позиция.'], 'Издишай при избутване и вдишай при спускане.', ['Пази гърба в опората.', 'Дръж китките стабилни.'], ['Отлепяне на кръста от облегалката.', 'Сблъскване на дъмбелите горе.'], 'Намали тежестта или работи с една ръка.', 'Спри при остра болка в рамо или врат.'),
+      instruction('A shoulder press seated with back support.', ['Sit on a stable bench with the back supported.', 'Hold dumbbells by the shoulders.'], ['Press dumbbells overhead.', 'Lower slowly to the start.'], 'Exhale as you press and inhale as you lower.', ['Keep the back against support.', 'Keep wrists stable.'], ['Lifting the low back from the pad.', 'Banging dumbbells together overhead.'], 'Use lighter weight or one arm at a time.', 'Stop for sharp shoulder or neck pain.')),
+    record('pull_up', 'Набиране', 'Pull-Up', ['набиране', 'набирания'], ['pull up', 'pull-up', 'pull ups', 'chin up', 'chin-up'], 'repetitions', 'гръб', 'back',
+      instruction('Вертикално дърпане на лост за гръб и бицепс.', ['Хвани стабилен лост с длани напред.', 'Започни от активни рамене, без да висиш отпуснато.'], ['Дръпни лактите надолу към ребрата.', 'Повдигни гърдите към лоста с контрол.', 'Спусни се до изпънати ръце без да губиш позиция.'], 'Издишай при дърпане и вдишай при спускане.', ['Дръж ребрата прибрани.', 'Избягвай люлеене.'], ['Ритане и люлеене.', 'Повдигане на раменете към ушите.'], 'Използвай ластик или гребане с ластик.', 'Използвай само стабилен лост и спри при остра болка в рамо или лакът.'),
+      instruction('A vertical pull on a bar for the back and biceps.', ['Grip a stable bar with palms forward.', 'Begin with active shoulders rather than a relaxed hang.'], ['Pull elbows down toward the ribs.', 'Bring the chest toward the bar with control.', 'Lower to straight arms without losing position.'], 'Exhale as you pull and inhale as you lower.', ['Keep ribs down.', 'Avoid swinging.'], ['Kicking and swinging.', 'Shrugging shoulders toward ears.'], 'Use a band or a band row.', 'Use only a stable bar and stop for sharp shoulder or elbow pain.')),
+    record('front_plank', 'Преден планк', 'Front Plank', ['преден планк', 'планк'], ['front plank', 'plank', 'forearm plank'], 'duration', 'корем', 'core',
+      instruction('Изометрично упражнение за корем и стабилност.', ['Постави лактите точно под раменете.', 'Направи права линия от глава до пети.'], ['Поддържай тялото неподвижно.', 'Спри веднага щом стойката се наруши.'], 'Дишай спокойно и равномерно през цялото задържане.', ['Натискай пода с предмишниците.', 'Дръж ребрата прибрани.'], ['Провисване на таза.', 'Задържане на дъха.'], 'Изпълнявай с колене на пода.', 'Спри при остра болка в рамо или кръст.'),
+      instruction('An isometric exercise for core stability.', ['Place elbows directly under shoulders.', 'Make one straight line from head to heels.'], ['Keep the body still.', 'Stop as soon as posture breaks.'], 'Breathe calmly and evenly throughout the hold.', ['Press the floor away through the forearms.', 'Keep ribs gently down.'], ['Letting hips sag.', 'Holding the breath.'], 'Perform with knees on the floor.', 'Stop for sharp shoulder or low-back pain.')),
+    record('back_squat', 'Клек с щанга на гърба', 'Back Squat', ['клек с щанга на гърба', 'клек с щанга'], ['back squat', 'barbell back squat'], 'repetitions', 'крака', 'legs',
+      instruction('Клек със щанга за напреднали с контролирана дълбочина.', ['Постави щангата стабилно върху горната част на гърба в стойка със safety arms.', 'Стегни корема преди да изнесеш щангата.'], ['Седни надолу и леко назад с контрол.', 'Коленете следват пръстите.', 'Изправи се през средата на ходилото.'], 'Вдишай и стегни преди слизане; издишай контролирано при изправяне.', ['Пази гръбнака неутрален.', 'Използвай safety arms.'], ['Колене навътре.', 'Загуба на стегнат корем.'], 'Използвай гоблет клек.', 'Не изпълнявай без стойка или предпазни опори; спри при остра болка.'),
+      instruction('An advanced barbell squat with controlled depth.', ['Set the bar securely across the upper back in a rack with safety arms.', 'Brace before unracking.'], ['Sit down and slightly back with control.', 'Let knees track toes.', 'Stand through the middle of the foot.'], 'Inhale and brace before descending; exhale with control as you stand.', ['Keep the spine neutral.', 'Use safety arms.'], ['Knees caving inward.', 'Losing the abdominal brace.'], 'Use a goblet squat.', 'Do not perform without a rack or safety supports; stop for sharp pain.'))
   ];
 
-  function normalize(value) {
-    return String(value || '').toLocaleLowerCase().normalize('NFKD')
-      .replace(/[\u0300-\u036f]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  const normalizedAliases = catalog.flatMap((item) => item.aliases.map((alias) => ({ item, key: normalize(alias) })))
+    .sort((left, right) => right.key.length - left.key.length);
+
+  function find(value) {
+    const key = normalize(value);
+    if (!key) return null;
+    const match = normalizedAliases.find((entry) => key === entry.key || key.startsWith(entry.key + ' '));
+    return match ? match.item : null;
   }
 
-  function find(name) {
-    const normalized = normalize(name);
-    return records.find((record) => record.aliases.some((alias) => {
-      const key = normalize(alias);
-      return normalized === key || normalized.startsWith(key + ' ');
-    })) || null;
+  function display(recordValue, language) {
+    return language === 'en' ? recordValue.display_name_en : recordValue.display_name_bg;
   }
 
-  function prescription(record, exercise, language) {
-    const bg = language !== 'en';
-    const sets = String(exercise && exercise.sets || (record.id === 'front_plank' ? 2 : 3));
-    const supplied = String(exercise && exercise.reps || '');
-    const validDuration = /(?:\bsec(?:ond)?s?\b|\bseconds?\b|сек\b|секун)/i.test(supplied);
-    const unit = bg ? (record.prescription_type === 'duration' ? 'сек' : 'повт.') : (record.prescription_type === 'duration' ? 'sec' : 'reps');
-    const value = record.prescription_type === 'duration' ? (validDuration ? supplied : '20–40') : (supplied || '8–12');
-    return `${sets} ${bg ? 'серии' : 'sets'} × ${value} ${unit}`;
-  }
-
-  global.ApexExerciseInstructions = Object.freeze({ find, prescription, records: Object.freeze(records) });
+  global.ApexExerciseInstructions = Object.freeze({
+    find, display, normalize, records: Object.freeze(catalog),
+    require(value) { const item = find(value); if (!item) throw new Error('unsupported exercise'); return item; }
+  });
 })(window);

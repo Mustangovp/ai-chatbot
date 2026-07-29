@@ -2195,7 +2195,21 @@ function inferDiff(reps,name){
   if(/начинаещ|beginner|лек|light/i.test(name))return'easy';
   if(r>=15)return'easy'; if(r<=6)return'hard'; return'med';
 }
+function localizedTime(value){
+  const raw=String(value||'').trim();
+  if(lang==='bg')return raw.replace(/\bseconds?\b|\bsecs?\b/ig,'сек').replace(/\bminutes?\b|\bmins?\b/ig,'минути');
+  return raw.replace(/секунди?/ig,'seconds').replace(/минути?/ig,'minutes');
+}
 function workoutPrescription(exercise){
+  const canonical=exercise.instruction_record||(window.ApexExerciseInstructions&&window.ApexExerciseInstructions.find(exercise.name));
+  if(canonical){
+    const type=canonical.prescription_type,raw=String(exercise.reps||'').trim();
+    if(type==='duration'||type==='duration_per_side'){
+      const hasUnit=/\b(?:sec(?:ond)?s?|minutes?|mins?)\b|СЃРµРє|СЃРµРєСѓРЅ|РјРёРЅ/i.test(raw);
+      return{type,value:(raw&&hasUnit)?localizedTime(raw):'20–40 '+(lang==='bg'?'секунди':'seconds')};
+    }
+    return{type,value:raw.replace(/\b(?:reps?|per side)\b|РїРѕРІС‚(?:\.|РѕСЂРµРЅРёСЏ)?|РЅР° СЃС‚СЂР°РЅР°/ig,'').trim()||'8–12'};
+  }
   const record=window.ApexExerciseInstructions&&window.ApexExerciseInstructions.find(exercise.name);
   if(record&&record.prescription_type==='duration'){
     const raw=String(exercise.reps||'');
@@ -2210,19 +2224,23 @@ function parseExercises(header,body){
   const iReps=colIndex(header,[/повторения|reps|повтор/]);
   const iRest=colIndex(header,[/пауза|почивка|rest/]);
   const iNote=colIndex(header,[/бележка|note|защо|замяна/]);
-  const ex=[];
+  const ex=[];ex.unsupported=[];
   body.forEach(r=>{
     const name=(r[iName]||'').trim(); if(!name||/общо|total/i.test(name))return;
-    const exercise={name,sets:iSets>-1?(r[iSets]||'3'):'3',reps:iReps>-1?(r[iReps]||'10'):'10',
+    const record=window.ApexExerciseInstructions&&window.ApexExerciseInstructions.find(name);
+    if(!record){ex.unsupported.push(name);return;}
+    const exercise={name:window.ApexExerciseInstructions.display(record,lang),contract_display_name:name,canonical_id:record.canonical_id,instruction_record:record,sets:iSets>-1?(r[iSets]||'3'):'3',reps:iReps>-1?(r[iReps]||'10'):'10',
       rest:iRest>-1?(r[iRest]||'60'):'60',note:iNote>-1?(r[iNote]||''):''};
     const prescription=workoutPrescription(exercise);
-    if(prescription.type==='duration')exercise.reps=prescription.value;
+    if(prescription.type==='duration'||prescription.type==='duration_per_side')exercise.reps=prescription.value;
     ex.push(exercise);
   });
   return ex;
 }
 let pendingWorkout=null,pendingWorkouts={},pendingWorkoutContracts={},pendingTrainingCompletion=null,pendingCompletionSessions=[];
-const WORKOUT_EXERCISE_INSTRUCTIONS='WORKOUT_EXERCISE_INSTRUCTIONS';
+const renderedWorkoutExercises={};
+const WORKOUT_ALL_EXERCISE_INSTRUCTIONS='WORKOUT_ALL_EXERCISE_INSTRUCTIONS';
+const WORKOUT_SINGLE_EXERCISE_EXPLANATION='WORKOUT_SINGLE_EXERCISE_EXPLANATION';
 function normalizedInstructionIntent(value){return String(value||'').toLocaleLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^\p{L}\p{N}]+/gu,' ').trim();}
 function workoutFollowUpIntent(value){
   const q=normalizedInstructionIntent(value);
@@ -2231,7 +2249,14 @@ function workoutFollowUpIntent(value){
     'как се правят тези упражнения','как се правят всички тези упражнения','как се изпълняват','покажи ми как се изпълняват',
     'обясни упражненията','обясни техниката','обясни ми техниката','покажи техниката','как да ги правя','техника на упражненията','обясни ми всяко упражнение'
   ];
-  return english.includes(q)||bulgarian.includes(q)?WORKOUT_EXERCISE_INSTRUCTIONS:null;
+  if(english.includes(q)||bulgarian.includes(q))return{type:WORKOUT_ALL_EXERCISE_INSTRUCTIONS};
+  if(!/(?:what is|how (?:do|to)|explain|technique|какво е|как се|обясни|техника|изпълнява)/i.test(q))return null;
+  const protocol=latestWorkoutProtocol();if(!protocol||!window.ApexExerciseInstructions)return null;
+  const key=decodeURIComponent(protocol.dataset.workoutKey||''),current=renderedWorkoutExercises[key]||[];
+  const record=window.ApexExerciseInstructions.records.find(item=>current.some(exercise=>exercise.canonical_id===item.canonical_id)&&item.aliases.some(alias=>{
+    const aliasKey=normalizedInstructionIntent(alias);return q===aliasKey||q.includes(' '+aliasKey)||q.endsWith(aliasKey);
+  }));
+  return record?{type:WORKOUT_SINGLE_EXERCISE_EXPLANATION,record,key}:null;
 }
 function instructionList(items,ordered=false){const tag=ordered?'ol':'ul';return '<'+tag+'>'+items.map(item=>'<li>'+esc(item)+'</li>').join('')+'</'+tag+'>';}
 function instructionSection(label,content,ordered=false,open=false){
@@ -2251,11 +2276,11 @@ function instructionLabels(){
 }
 function instructionRecordFor(exercise){
   const api=window.ApexExerciseInstructions;
-  return (api&&api.find(exercise.name))||fallbackInstructionRecord(exercise);
+  return exercise.instruction_record||(api&&api.find(exercise.name))||null;
 }
-function workoutInstructionSections(exercise){
+function workoutInstructionSections(exercise,includeOverview=false){
   const labels=instructionLabels(),record=instructionRecordFor(exercise),copy=record[lang==='bg'?'bg':'en'];
-  return instructionStaticSection(labels.start,copy.starting)+instructionStaticSection(labels.steps,copy.steps,true)+
+  return (includeOverview?'<p class="ei-overview">'+esc(copy.overview)+'</p>':'')+instructionStaticSection(labels.start,copy.starting)+instructionStaticSection(labels.steps,copy.execution,true)+
     instructionSection(labels.breathing,copy.breathing)+instructionSection(labels.cues,copy.cues)+
     instructionSection(labels.mistakes,copy.mistakes)+instructionSection(labels.regression,copy.regression)+instructionSection(labels.safety,copy.safety);
 }
@@ -2264,38 +2289,50 @@ function workoutDisplayMeta(exercise){
   const rpe=(note.match(/RPE\s*([\d.]+)/i)||[])[1]||'—',rir=(note.match(/RIR\s*([\d.]+)/i)||[])[1]||'—';
   return{tempo,rpe,rir,note};
 }
-function renderWorkoutExerciseCard(exercise,diffLabel){
+function renderWorkoutExerciseCard(exercise,diffLabel,includeOverview=false){
   const api=window.ApexExerciseInstructions;
-  const record=(api&&api.find(exercise.name))||fallbackInstructionRecord(exercise),mu=inferMuscle(exercise.name),df=inferDiff(exercise.reps,exercise.name),prescription=workoutPrescription(exercise),meta=workoutDisplayMeta(exercise);
+  const record=instructionRecordFor(exercise);if(!record)return '';
+  const mu={...inferMuscle(exercise.name),m:lang==='bg'?record.muscle_group_bg:record.muscle_group_en},df=inferDiff(exercise.reps,exercise.name),prescription=workoutPrescription(exercise),meta=workoutDisplayMeta(exercise);
   const unit=prescription.type==='duration'?(lang==='bg'?'сек':'sec'):(lang==='bg'?'повт.':'reps');
   const labels=lang==='bg'?{sets:'Серии',target:'Повторения',rest:'Почивка',tempo:'Темпо',rpe:'RPE',rir:'RIR'}:{sets:'Sets',target:'Repetitions',rest:'Rest',tempo:'Tempo',rpe:'RPE',rir:'RIR'};
   if(prescription.type==='duration')labels.target=lang==='bg'?'Продължителност':'Duration';
-  return '<article class="ex-card ei-card workout-exercise-card" data-exercise-instruction-id="'+esc(record.id)+'"><div class="workout-card-hero"><div class="ex-glyph" style="background:radial-gradient(circle at 50% 35%,'+mu.ic+'33,rgba(18,23,36,.6))">'+mu.e+'</div><div class="workout-card-title"><div class="ex-top"><h3 class="ex-name">'+esc(exercise.name)+'</h3><span class="ex-diff '+df+'">'+diffLabel[df]+'</span></div><div class="ex-muscles"><span class="ex-muscle">'+mu.m+'</span></div></div></div><div class="workout-card-stats">'+
-    '<span class="workout-card-stat"><b>'+esc(exercise.sets)+'</b>'+labels.sets+'</span><span class="workout-card-stat"><b>'+esc(prescription.value)+' '+unit+'</b>'+labels.target+'</span><span class="workout-card-stat"><b>'+esc(exercise.rest)+'</b>'+labels.rest+'</span><span class="workout-card-stat meta"><b>'+esc(meta.tempo)+'</b>'+labels.tempo+'</span><span class="workout-card-stat meta"><b>'+esc(meta.rpe)+'</b>'+labels.rpe+'</span><span class="workout-card-stat meta"><b>'+esc(meta.rir)+'</b>'+labels.rir+'</span></div>'+
-    (meta.note?'<div class="workout-card-note">'+esc(meta.note)+'</div>':'')+workoutInstructionSections(exercise)+'</article>';
+  const displayUnit=(prescription.type==='duration'||prescription.type==='duration_per_side')?'':(prescription.type==='repetitions_per_side'?(lang==='bg'?' повторения на страна':' reps / side'):(' '+unit));
+  const displayTarget=prescription.type==='duration'||prescription.type==='duration_per_side'?(lang==='bg'?'Продължителност':'Duration'):(prescription.type==='repetitions_per_side'?(lang==='bg'?'Повторения на страна':'Repetitions per side'):labels.target);
+  return '<article class="ex-card ei-card workout-exercise-card" data-exercise-id="'+esc(record.canonical_id)+'" data-exercise-instruction-id="'+esc(record.id)+'"><div class="workout-card-hero"><div class="ex-glyph" style="background:radial-gradient(circle at 50% 35%,'+mu.ic+'33,rgba(18,23,36,.6))">'+mu.e+'</div><div class="workout-card-title"><div class="ex-top"><h3 class="ex-name">'+esc(exercise.name)+'</h3><span class="ex-diff '+df+'">'+diffLabel[df]+'</span></div><div class="ex-muscles"><span class="ex-muscle">'+mu.m+'</span></div></div></div><div class="workout-card-stats">'+
+    '<span class="workout-card-stat"><b>'+esc(exercise.sets)+'</b>'+labels.sets+'</span><span class="workout-card-stat"><b>'+esc(prescription.value)+displayUnit+'</b>'+displayTarget+'</span><span class="workout-card-stat"><b>'+esc(localizedTime(exercise.rest))+'</b>'+labels.rest+'</span><span class="workout-card-stat meta"><b>'+esc(meta.tempo)+'</b>'+labels.tempo+'</span><span class="workout-card-stat meta"><b>'+esc(meta.rpe)+'</b>'+labels.rpe+'</span><span class="workout-card-stat meta"><b>'+esc(meta.rir)+'</b>'+labels.rir+'</span></div>'+
+    (meta.note?'<div class="workout-card-note">'+esc(meta.note)+'</div>':'')+workoutInstructionSections(exercise,includeOverview)+'</article>';
 }
 function reopenWorkoutInstructions(){
-  const protocols=document.querySelectorAll('.workout-protocol');
-  const protocol=protocols[protocols.length-1];if(!protocol)return false;
+  const protocol=latestWorkoutProtocol();if(!protocol)return false;
   const cards=protocol.querySelectorAll('.workout-exercise-card');if(!cards.length)return false;
   cards.forEach(card=>card.querySelectorAll('details').forEach(section=>{section.open=true;}));
   cards[0].scrollIntoView({behavior:'smooth',block:'start'});return true;
 }
+function latestWorkoutProtocol(){const protocols=document.querySelectorAll('.workout-protocol');return protocols[protocols.length-1]||null;}
+function renderFocusedExerciseInstruction(record,key){
+  const exercise=(renderedWorkoutExercises[key]||[]).find(item=>item.canonical_id===record.canonical_id);if(!exercise)return false;
+  const label=lang==='bg'?'Техника на упражнението':'Exercise technique';
+  const diffLbl={easy:lang==='bg'?'Лесно':'Easy',med:lang==='bg'?'Средно':'Medium',hard:lang==='bg'?'Трудно':'Hard'};
+  const coach=appendCoach();coach.innerHTML='<section class="focused-exercise-instruction"><h3>'+label+'</h3>'+renderWorkoutExerciseCard(exercise,diffLbl,true)+'</section>';
+  coach.querySelectorAll('details').forEach(section=>{section.open=true;});coach.scrollIntoView({behavior:'smooth',block:'start'});return true;
+}
 function completionSessionFor(exercises){
   const session=pendingCompletionSessions.shift();
   if(!session||!Array.isArray(session.exercises)||session.exercises.length!==exercises.length)return null;
-  const valid=session.exercises.every((item,index)=>item&&item.display_name===exercises[index].name&&
+  const valid=session.exercises.every((item,index)=>item&&item.display_name===exercises[index].contract_display_name&&
     typeof item.prescription_id==='string'&&typeof item.exercise_id==='string'&&typeof item.exercise_version==='string');
   if(!valid)return null;
   exercises.forEach((exercise,index)=>{exercise.completion=Object.assign({},session.exercises[index]);});
   return session;
 }
 function renderWorkout(header,body){
-  const ex=parseExercises(header,body); if(!ex.length)return renderGenericTable(header,body);
+  const ex=parseExercises(header,body); if(ex.unsupported.length)return '<p>'+(lang==='bg'?'Тренировката не можа да бъде потвърдена безопасно. Опитай отново.':'The workout could not be safely verified. Please try again.')+'</p>';
+  if(!ex.length)return renderGenericTable(header,body);
   const completionSession=completionSessionFor(ex);
   const workoutKey=completionSession?completionSession.session_id:('legacy-'+Date.now()+'-'+Math.random());
   pendingWorkout=ex;
   pendingWorkouts[workoutKey]=ex;
+  renderedWorkoutExercises[workoutKey]=ex;
   pendingWorkoutContracts[workoutKey]=completionSession?{
     plan_id:pendingTrainingCompletion.plan_id,plan_version:pendingTrainingCompletion.plan_version,
     session_id:completionSession.session_id
@@ -2635,8 +2672,11 @@ async function send(options={}){
   }
   if(isStopTurn(val)){inp.value='';return;}
   const followUpIntent=workoutFollowUpIntent(val);
-  if(followUpIntent===WORKOUT_EXERCISE_INSTRUCTIONS&&reopenWorkoutInstructions()){
+  if(followUpIntent&&followUpIntent.type===WORKOUT_ALL_EXERCISE_INSTRUCTIONS&&reopenWorkoutInstructions()){
     inp.value='';appendUser(val);saveHistory('user',val);hardScroll();return;
+  }
+  if(followUpIntent&&followUpIntent.type===WORKOUT_SINGLE_EXERCISE_EXPLANATION&&renderFocusedExerciseInstruction(followUpIntent.record,followUpIntent.key)){
+    inp.value='';appendUser(val);saveHistory('user',val);saveHistory('assistant',lang==='bg'?'Техника на упражнението':'Exercise technique');hardScroll();return;
   }
   const priorHistory=getHistory(),x=ChatLifecycle.begin(val,options,priorHistory);if(!x)return;
   inp.value='';pendingTrainingCompletion=null;pendingCompletionSessions=[];
