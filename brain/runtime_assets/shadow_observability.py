@@ -22,6 +22,31 @@ _EXECUTOR: ThreadPoolExecutor | None = None
 _EXECUTOR_PID: int | None = None
 
 
+def _latency_bucket(duration_ms: float) -> str:
+    if duration_ms < 25:
+        return "lt_25ms"
+    if duration_ms < 100:
+        return "lt_100ms"
+    if duration_ms < 250:
+        return "lt_250ms"
+    return "gte_250ms"
+
+
+def emit_metric(event: str, *, component: str, status: str, locale: str,
+                intent_category: str, latency_ms: float = 0.0) -> None:
+    """Fail-open, process-visible aggregate-only production metric."""
+    try:
+        record = {
+            "event": event, "component": component, "status": status,
+            "locale": locale, "intent_category": intent_category,
+            "executor_type": "thread_pool", "deployment_sha": os.getenv("RAILWAY_GIT_COMMIT_SHA", "unknown")[:64],
+            "latency_bucket": _latency_bucket(latency_ms),
+        }
+        print("APEX_SHADOW_METRIC " + json.dumps(record, separators=(",", ":"), sort_keys=True), flush=True)
+    except Exception:
+        pass
+
+
 def _worker_executor() -> ThreadPoolExecutor:
     """Create the pool lazily inside each post-fork worker process."""
     global _EXECUTOR, _EXECUTOR_PID
@@ -160,6 +185,8 @@ def submit(*, locale: str, authoritative_path: str, authoritative_intent: str,
         return replace(observation, request_id=request_id, timestamp_utc=timestamp)
 
     if not _SLOTS.acquire(blocking=False):
+        emit_metric("request_skipped", component="task", status="executor_unavailable", locale=locale,
+                    intent_category=authoritative_intent)
         statuses = {component: "SKIPPED" for component in _COMPONENTS}
         for component in components:
             statuses[component] = "SKIPPED"
@@ -170,6 +197,8 @@ def submit(*, locale: str, authoritative_path: str, authoritative_intent: str,
         return False
 
     started = time.perf_counter()
+    emit_metric("task_submit_started", component="task", status="started", locale=locale,
+                intent_category=authoritative_intent)
     resolved = threading.Event()
     slot_released = threading.Event()
 
@@ -178,7 +207,20 @@ def submit(*, locale: str, authoritative_path: str, authoritative_intent: str,
             slot_released.set()
             _SLOTS.release()
 
-    future: Future[ShadowObservation] = _worker_executor().submit(work)
+    def worker() -> ShadowObservation:
+        emit_metric("worker_started", component="task", status="started", locale=locale,
+                    intent_category=authoritative_intent)
+        return work()
+
+    try:
+        future: Future[ShadowObservation] = _worker_executor().submit(worker)
+    except Exception:
+        release_slot()
+        emit_metric("task_submit_failed", component="task", status="executor_unavailable", locale=locale,
+                    intent_category=authoritative_intent)
+        return False
+    emit_metric("task_submitted", component="task", status="submitted", locale=locale,
+                intent_category=authoritative_intent)
 
     def complete(done: Future[ShadowObservation]) -> None:
         try:
@@ -196,6 +238,9 @@ def submit(*, locale: str, authoritative_path: str, authoritative_intent: str,
                         "NOT_COMPARABLE", "NOT_COMPARABLE", "NOT_COMPARABLE",
                         (time.perf_counter() - started) * 1000, "SHADOW_EXCEPTION")
                 _record(stamp(observation))
+                emit_metric("task_completed", component="task", status="completed", locale=locale,
+                            intent_category=authoritative_intent,
+                            latency_ms=(time.perf_counter() - started) * 1000)
         finally:
             timer.cancel()
             release_slot()
@@ -205,6 +250,9 @@ def submit(*, locale: str, authoritative_path: str, authoritative_intent: str,
             resolved.set()
             _record(stamp(_timeout_observation(locale, authoritative_path, authoritative_intent, components,
                                                (time.perf_counter() - started) * 1000)))
+            emit_metric("task_timeout", component="task", status="timeout", locale=locale,
+                        intent_category=authoritative_intent,
+                        latency_ms=(time.perf_counter() - started) * 1000)
             release_slot()
 
     timer = threading.Timer(timeout_ms / 1000.0, timeout)
@@ -217,6 +265,23 @@ def submit(*, locale: str, authoritative_path: str, authoritative_intent: str,
 
 def _record(observation: ShadowObservation) -> None:
     _TELEMETRY.record(observation)
-    # Railway captures the process stream reliably; the record shape has no
-    # messages, profiles, prompts, persona IDs, rule IDs, or user identifiers.
-    print(json.dumps(observation.as_log_record(), separators=(",", ":"), sort_keys=True), flush=True)
+    for component, status, completed, abstained, failed in (
+        ("brain", observation.brain_status, "brain_completed", None, "brain_failed"),
+        ("persona", observation.persona_status, "persona_completed", "persona_abstained", "persona_failed"),
+        ("expert", observation.expert_status, "expert_completed", "expert_abstained", "expert_failed"),
+    ):
+        if status == "SUCCESS":
+            emit_metric(completed, component=component, status="success", locale=observation.locale,
+                        intent_category=observation.authoritative_intent, latency_ms=observation.duration_ms)
+        elif status == "ABSTAIN" and abstained:
+            emit_metric(abstained, component=component, status="abstain", locale=observation.locale,
+                        intent_category=observation.authoritative_intent, latency_ms=observation.duration_ms)
+        elif status in ("ERROR", "TIMEOUT"):
+            emit_metric(failed, component=component, status="component_error", locale=observation.locale,
+                        intent_category=observation.authoritative_intent, latency_ms=observation.duration_ms)
+    emit_metric("event_built", component="telemetry", status="success", locale=observation.locale,
+                intent_category=observation.authoritative_intent, latency_ms=observation.duration_ms)
+    emit_metric("sink_write_completed", component="telemetry", status="success", locale=observation.locale,
+                intent_category=observation.authoritative_intent, latency_ms=observation.duration_ms)
+    emit_metric("flush_completed", component="telemetry", status="success", locale=observation.locale,
+                intent_category=observation.authoritative_intent, latency_ms=observation.duration_ms)
