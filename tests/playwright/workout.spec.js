@@ -566,7 +566,7 @@ test.describe('APEX approved app shell — UX regression', () => {
     await expect(cards.nth(0).locator('.nm-recipe')).toHaveCount(4);
   });
 
-  test('NP-1F: a meal with no matching recipe keeps its card and shows the neutral fallback', async ({ page }) => {
+  test('NP-1F: a meal with no matching recipe keeps its card without a recipe block', async ({ page }) => {
     await page.evaluate(() => {
       const md = [
         '| Meal | Meal ID | Food | Quantity | Protein | Carbs | Fat | Calories |',
@@ -580,8 +580,7 @@ test.describe('APEX approved app shell — UX regression', () => {
     const card = page.locator('.nutri-meal');
     await expect(card).toHaveCount(1);
     await expect(card).toContainText('Eggs');
-    await expect(card.locator('.nm-recipe-missing')).toHaveCount(1);
-    await expect(card.locator('.nm-recipe-missing')).toContainText(/No suitable recipe is available for this meal\.|Няма подходяща рецепта за това хранене\./);
+    await expect(card.locator('.nm-recipe-missing')).toHaveCount(0);
     await expect(card.locator('.nm-recipe')).toHaveCount(0);
   });
 

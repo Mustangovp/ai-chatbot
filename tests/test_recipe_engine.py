@@ -1,40 +1,71 @@
 from decimal import Decimal
 import base64
 import json
+from dataclasses import replace
 from types import SimpleNamespace
+
+import pytest
 
 import nutrition_plan
 from nutrition_validation import NutritionTargets
 from recipe_engine.recipe_engine import match_plan
 from recipe_engine.recipe_library import load_recipes
-from recipe_engine.recipe_matcher import match_meal, profile_equipment
+from recipe_engine.recipe_matcher import (
+    match_meal,
+    profile_equipment,
+    validate_recipe_for_meal,
+)
 from recipe_engine.recipe_renderer import recipe_token
 
 
+def _food(food_id, name, grams, protein, carbs, fat, kcal, state):
+    return {
+        "food_id": food_id,
+        "display_name": name,
+        "grams": str(grams),
+        "measurement_state": state,
+        "protein_g": str(protein),
+        "carbs_g": str(carbs),
+        "fat_g": str(fat),
+        "kcal": str(kcal),
+    }
+
+
 def _plan():
-    return nutrition_plan.build_plan({"meals": [
+    payload = {"meals": [
         {"meal_type": "breakfast", "foods": [
-            {"display_name": "Eggs", "grams": "200", "protein_g": "40", "carbs_g": "0", "fat_g": "20", "kcal": "340"},
-            {"display_name": "Oats", "grams": "100", "protein_g": "0", "carbs_g": "100", "fat_g": "0", "kcal": "360"},
+            _food("eggs", "Eggs", 200, 40, 0, 20, 340, "raw"),
+            _food("oats", "Oats", 100, 15, 90, 7, 450, "raw"),
+            _food("banana", "Banana", 120, 1, 28, 0, 120, "ready_to_eat"),
+            _food("milk", "Milk", 250, 8, 12, 8, 150, "raw"),
         ]},
         {"meal_type": "lunch", "foods": [
-            {"display_name": "Chicken breast", "grams": "200", "protein_g": "70", "carbs_g": "0", "fat_g": "15", "kcal": "500"},
-            {"display_name": "Rice", "grams": "200", "protein_g": "0", "carbs_g": "140", "fat_g": "15", "kcal": "600"},
+            _food("chicken", "Chicken breast", 200, 60, 0, 12, 360, "raw"),
+            _food("rice", "Rice", 200, 5, 55, 1, 250, "cooked"),
+            _food("broccoli", "Broccoli", 100, 3, 7, 0, 35, "cooked"),
         ]},
         {"meal_type": "dinner", "foods": [
-            {"display_name": "Salmon", "grams": "200", "protein_g": "65", "carbs_g": "0", "fat_g": "28", "kcal": "600"},
-            {"display_name": "Rice", "grams": "300", "protein_g": "0", "carbs_g": "110", "fat_g": "0", "kcal": "400"},
+            _food("salmon", "Salmon", 180, 40, 0, 24, 380, "raw"),
+            _food("quinoa", "Quinoa", 180, 8, 38, 6, 250, "cooked"),
+            _food("spinach", "Spinach", 80, 2, 3, 0, 25, "ready_to_eat"),
+            _food("olives", "Olives", 30, 0, 2, 5, 55, "ready_to_eat"),
         ]},
-    ]}, NutritionTargets(Decimal("2800"), Decimal("175"), Decimal("350"), Decimal("78")),
-        restrictions=(), provenance={"test": "recipe"})
+    ]}
+    return nutrition_plan.build_plan(
+        payload,
+        NutritionTargets(Decimal("2415"), Decimal("182"), Decimal("235"), Decimal("83")),
+        restrictions=(), provenance={"test": "recipe"}, language="en",
+    )
+
+
+def _recipe(recipe_id):
+    return next(recipe for recipe in load_recipes() if recipe.id == recipe_id)
 
 
 def test_recipe_library_is_small_and_curated():
     recipes = load_recipes()
     assert 20 <= len(recipes) <= 25
-    assert sum(recipe.meal_type == "breakfast" for recipe in recipes) >= 8
-    assert sum(recipe.meal_type in {"lunch", "dinner"} for recipe in recipes) >= 8
-    assert sum(recipe.meal_type == "snack" for recipe in recipes) >= 5
+    assert all(recipe.food_ids for recipe in recipes)
     assert all(1 <= len(recipe.steps) <= 6 for recipe in recipes)
     assert all(1 <= len(recipe.healthy_cooking_tips) <= 3 for recipe in recipes)
 
@@ -49,194 +80,103 @@ def test_recipe_matching_is_deterministic_and_preserves_plan_macros():
     assert {key: value.recipe.id for key, value in first.items()} == {
         key: value.recipe.id for key, value in second.items()
     }
-    assert len(first) == 3
+    assert [item.recipe.id for item in first.values()] == ["breakfast-eggs-oats", "dinner-salmon-quinoa"]
     assert before == tuple((meal.id, meal.macros, tuple((food.id, food.macros) for food in meal.foods)) for meal in plan.meals)
 
 
-def test_recipe_token_is_emitted_in_its_own_table_column():
-    plan = _plan()
-    match = match_plan(plan, {"cooking_equipment": ["pan", "oven"]})
-    rendered = nutrition_plan.render(
-        plan,
-        "en",
-        {meal_id: f"recipe:{item.recipe.id}" for meal_id, item in match.items()},
-    )
-
-    breakfast_row = rendered.splitlines()[2].split("|")
-    assert breakfast_row[2].strip() == plan.meals[0].id
-    assert breakfast_row[9].strip().startswith("Starts the day")
-    assert breakfast_row[10].strip().startswith("recipe:")
-
-
-def test_recipe_token_carries_the_immutable_meal_id():
-    match = match_plan(_plan(), {"cooking_equipment": ["pan", "oven"]})
-    meal_id, recipe_match = next(iter(match.items()))
-
-    token = recipe_token(recipe_match, meal_id)
-    payload = json.loads(base64.b64decode(token.removeprefix("recipe:")))
-
+def test_recipe_token_carries_the_immutable_meal_id_and_recipe_food_identity():
+    meal_id, recipe_match = next(iter(match_plan(_plan(), {"cooking_equipment": ["pan", "oven"]}).items()))
+    payload = json.loads(base64.b64decode(recipe_token(recipe_match, meal_id).removeprefix("recipe:")))
     assert payload["meal_id"] == meal_id
     assert payload["id"] == recipe_match.recipe.id
+    assert payload["food_ids"] == list(recipe_match.recipe.food_ids)
+    assert payload["substitutions"]
 
 
-def test_recipe_matcher_accepts_exact_bulgarian_catalog_display_names():
-    breakfast = nutrition_plan.NutritionMeal(
-        id="meal-bg", name="Закуска", meal_type="breakfast", time="08:00",
-        foods=(
-            nutrition_plan.NutritionFood("food-bg-oats", None, "Овесени ядки, сухи", Decimal("150"),
-                                        nutrition_plan.NutritionMacros(Decimal("20"), Decimal("100"), Decimal("10"), Decimal("570"))),
-            nutrition_plan.NutritionFood("food-bg-eggs", None, "Яйце, сварено", Decimal("150"),
-                                        nutrition_plan.NutritionMacros(Decimal("18"), Decimal("1"), Decimal("15"), Decimal("215"))),
-        ), macros=nutrition_plan.NutritionMacros(Decimal("38"), Decimal("101"), Decimal("25"), Decimal("785")),
-    )
-
-    assert match_meal(breakfast, load_recipes(), profile_equipment({})).recipe.id == "breakfast-eggs-oats"
+def test_exact_meal_identity_rejects_recipe_with_an_absent_ingredient():
+    meal = _plan().meals[0]
+    assert validate_recipe_for_meal(_recipe("breakfast-yogurt-oats"), meal)
+    assert match_meal(meal, (_recipe("breakfast-yogurt-oats"),), profile_equipment({})) is None
 
 
-def test_recipe_matcher_matches_the_live_delivery_ingredient_variants():
-    samples = (
-        ("breakfast", ("Oatmeal", "Greek Yogurt", "Almonds"), "breakfast-yogurt-oats-almond"),
-        ("lunch", ("Chicken breast, roasted", "Brown rice, cooked", "Broccoli, steamed", "Olive oil"), "lunch-chicken-rice"),
-        ("dinner", ("Salmon, grilled", "Quinoa, cooked", "Spinach, raw", "Avocado", "Cherry tomatoes"), "dinner-salmon-quinoa"),
-    )
-    for meal_type, ingredient_names, expected in samples:
-        meal = SimpleNamespace(
-            meal_type=meal_type,
-            foods=tuple(SimpleNamespace(display_name=name) for name in ingredient_names),
-        )
-        assert match_meal(meal, load_recipes(), profile_equipment({})).recipe.id == expected
+def test_recipe_with_missing_significant_meal_food_is_hidden():
+    meal = _plan().meals[0]
+    assert match_meal(meal, (_recipe("breakfast-eggs-yogurt-oats-apple"),), profile_equipment({})) is None
 
 
-def test_recipe_matcher_does_not_substitute_chicken_for_live_salmon_rice_dinner():
-    dinner = SimpleNamespace(
-        meal_type="dinner",
-        foods=tuple(SimpleNamespace(display_name=name) for name in (
-            "Salmon", "Brown Rice", "Broccoli",
-        )),
-    )
-
-    assert match_meal(dinner, load_recipes(), profile_equipment({})).recipe.id == "dinner-salmon-rice"
+def test_legacy_free_prose_substitution_is_never_delivered():
+    meal = _plan().meals[1]
+    recipe = _recipe("lunch-chicken-rice")
+    assert "substitution" in validate_recipe_for_meal(recipe, meal)
+    assert match_meal(meal, (recipe,), profile_equipment({})) is None
 
 
-def test_recipe_matcher_falls_back_when_no_exact_ingredient_overlap_exists():
+def test_recipe_prose_cannot_introduce_a_caloric_food_not_in_the_meal():
+    meal = _plan().meals[-1]
+    recipe = replace(_recipe("dinner-salmon-quinoa"), steps=(
+        "Cook the quinoa.", "Bake the salmon.", "Serve with spinach, olives, and avocado.",
+    ))
+    reason = validate_recipe_for_meal(recipe, meal)
+    assert reason is not None and "absent" in reason
+    assert match_meal(meal, (recipe,), profile_equipment({})) is None
+
+
+def test_invalid_recipe_falls_back_to_the_valid_meal_card_without_a_recipe_token():
     plan = _plan()
-    unmatched = nutrition_plan.NutritionMeal(
-        id="meal-unmatched", name="Dinner", meal_type="dinner", time="19:00",
-        foods=(nutrition_plan.NutritionFood("food-unmatched", None, "Prawns", Decimal("200"),
-                                            nutrition_plan.NutritionMacros(Decimal("40"), Decimal("0"), Decimal("2"), Decimal("180"))),),
-        macros=nutrition_plan.NutritionMacros(Decimal("40"), Decimal("0"), Decimal("2"), Decimal("180")),
+    matches = match_plan(plan, {"cooking_equipment": ["pan", "oven"]})
+    rendered = nutrition_plan.render(plan, "en", {meal_id: "recipe:ok" for meal_id in matches})
+    assert "Chicken breast" in rendered
+    assert "recipe:ok" not in next(line for line in rendered.splitlines() if "Chicken breast" in line)
+
+
+def test_measurement_state_is_required_for_ambiguous_foods():
+    payload = {"meals": [
+        {"meal_type": "breakfast", "foods": [_food("eggs", "Eggs", 100, 20, 0, 10, 180, "raw"),
+                                             {"food_id": "oats", "display_name": "Oats", "grams": "50", "protein_g": "5", "carbs_g": "30", "fat_g": "3", "kcal": "170"}]},
+        {"meal_type": "lunch", "foods": [_food("chicken", "Chicken", 100, 20, 0, 5, 150, "raw")]},
+        {"meal_type": "dinner", "foods": [_food("salmon", "Salmon", 100, 20, 0, 10, 200, "raw")]},
+    ]}
+    with pytest.raises(nutrition_plan.NutritionPlanError, match="measurement_state"):
+        nutrition_plan.build_plan(payload, NutritionTargets(Decimal("700"), Decimal("65"), Decimal("30"), Decimal("28")), restrictions=(), provenance={})
+
+
+def test_measurement_state_renders_in_bulgarian_and_english_without_raw_enum_values():
+    plan = _plan()
+    english = nutrition_plan.render(plan, "en")
+    bulgarian = nutrition_plan.render(plan, "bg")
+    assert "100 g, raw weight" in english
+    assert "raw" not in bulgarian.lower()
+    assert "сурово тегло" in bulgarian
+
+
+def test_target_status_reports_within_tolerance_not_exact():
+    totals = nutrition_plan.NutritionMacros(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("2458"))
+    status = nutrition_plan.target_status(totals, NutritionTargets(Decimal("2559"), None, None, None))
+    assert status is nutrition_plan.PlanTargetStatus.WITHIN_TOLERANCE
+
+
+def test_target_status_rejects_outside_current_approved_tolerance():
+    totals = nutrition_plan.NutritionMacros(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("2400"))
+    assert nutrition_plan.target_status(totals, NutritionTargets(Decimal("2559"), None, None, None)) is nutrition_plan.PlanTargetStatus.OUTSIDE_TOLERANCE
+
+
+def test_delivery_wording_discloses_within_tolerance_instead_of_claiming_exact_match():
+    targets = NutritionTargets(Decimal("2559"), None, None, None)
+    totals = nutrition_plan.NutritionMacros(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("2458"))
+    plan = nutrition_plan.NutritionPlan(
+        id="status-plan", version="nutrition-plan-v1", created_at_utc="2026-01-01T00:00:00+00:00",
+        targets=targets, restrictions=(), meals=(), totals=totals, provenance=(),
+        target_status=nutrition_plan.PlanTargetStatus.WITHIN_TOLERANCE,
     )
-
-    assert match_meal(unmatched, load_recipes(), profile_equipment({})) is None
-    assert nutrition_plan.render(plan, "en") == nutrition_plan.render(plan, "en", {})
+    assert "within the approved target tolerance" in nutrition_plan.render_delivery(plan, "en")
 
 
-def _production_meal(meal_type, foods):
-    return SimpleNamespace(
-        meal_type=meal_type,
-        foods=tuple(SimpleNamespace(display_name=name, grams=grams) for name, grams in foods),
-    )
-
-
-def test_recipe_matcher_accepts_the_three_real_bulgarian_production_meals():
-    breakfast = _production_meal("breakfast", (
-        ("Белтъци, пастьоризирани", "300"),
-        ("Овесени ядки, сухи", "150"),
-        ("Ябълка, сурова", "150"),
-    ))
-    lunch = _production_meal("lunch", (
-        ("Пилешки гърди, печени без кожа", "300"),
-        ("Ориз, сварен", "200"),
-        ("Тиквички, сварени", "75"),
-        ("Зехтин", "5"),
-    ))
-    dinner = _production_meal("dinner", (
-        ("Пуешко филе, печено", "300"),
-        ("Паста, сварена", "200"),
-        ("Тиквички, сварени", "75"),
-        ("Зехтин", "5"),
-        ("Ориз, сварен", "275"),
-    ))
-
-    matches = [match_meal(meal, load_recipes(), profile_equipment({})) for meal in (breakfast, lunch, dinner)]
-
-    assert [match.recipe.id for match in matches] == [
-        "breakfast-egg-whites-oats-apple", "lunch-chicken-rice", "dinner-turkey-rice-pasta",
-    ]
-    assert all(len(match.recipe.steps) and len(match.recipe.healthy_cooking_tips) for match in matches)
-    assert all(any(char.isdigit() for char in match.recipe.storage) for match in matches)
-
-
-def test_recipe_matcher_ignores_vegetables_and_auxiliaries_but_not_protein_identity():
-    chicken = _production_meal("lunch", (
-        ("Chicken breast, roasted", "300"), ("Brown rice, cooked", "200"),
-        ("Zucchini, cooked", "75"), ("Olive oil", "5"),
-    ))
-    salmon = _production_meal("lunch", (
-        ("Salmon, grilled", "300"), ("Brown rice, cooked", "200"),
-        ("Zucchini, cooked", "75"),
-    ))
-
-    assert match_meal(chicken, load_recipes(), profile_equipment({})).recipe.id == "lunch-chicken-rice"
-    assert match_meal(salmon, load_recipes(), profile_equipment({})) is None
-
-
-def test_recipe_matcher_keeps_eggs_and_yogurt_on_their_matching_breakfast_recipe():
-    breakfast = _production_meal("breakfast", (
-        ("Eggs", "150"), ("Кисело мляко Верея 2%", "200"), ("Oats", "100"), ("Banana", "120"),
-    ))
-
-    assert match_meal(breakfast, load_recipes(), profile_equipment({})).recipe.id == (
-        "breakfast-eggs-yogurt-oats-apple"
-    )
-
-
-def test_recipe_matcher_uses_largest_carbohydrate_serving_deterministically():
-    dinner = _production_meal("dinner", (
-        ("Turkey breast", "300"), ("Pasta, cooked", "200"), ("Rice, cooked", "275"),
-        ("Zucchini", "75"),
-    ))
-
-    first = match_meal(dinner, load_recipes(), profile_equipment({}))
-    second = match_meal(dinner, load_recipes(), profile_equipment({}))
-
-    assert first.recipe.id == "dinner-turkey-rice-pasta"
-    assert second.recipe.id == first.recipe.id
-
-
-def test_recipe_matcher_covers_live_catalog_labels_without_cross_binding():
-    breakfast = _production_meal("breakfast", (
-        ("Овесени ядки", "80"), ("Банан", "120"), ("Кисело мляко Верея", "200"),
-        ("Бадеми", "20"),
-    ))
-    lunch = _production_meal("lunch", (
-        ("Пилешко филе", "200"), ("Ориз басмати", "150"),
-        ("Зеленчукова салата (домати, краставици, чушки)", "200"), ("Зехтин", "15"),
-    ))
-    dinner = _production_meal("dinner", (
-        ("Телешка кайма", "150"), ("Нахут", "150"), ("Задушени броколи", "150"),
-        ("Авокадо", "100"),
-    ))
-
-    matches = [match_meal(meal, load_recipes(), profile_equipment({})) for meal in (breakfast, lunch, dinner)]
-
-    assert [match.recipe.id for match in matches] == [
-        "breakfast-yogurt-oats-almond", "lunch-chicken-rice", "dinner-beef-chickpeas",
-    ]
-
-
-def test_recipe_equipment_filter_excludes_oven_only_match():
+def test_equipment_filter_still_applies_after_identity_validation():
     dinner = _plan().meals[-1]
+    assert match_meal(dinner, (_recipe("dinner-salmon-quinoa"),), frozenset({"pan"})) is None
+    assert match_meal(dinner, (_recipe("dinner-salmon-quinoa"),), frozenset({"oven", "pan"})).recipe.id == "dinner-salmon-quinoa"
 
-    assert match_meal(dinner, load_recipes(), frozenset({"pan"})) is None
-    assert match_meal(dinner, load_recipes(), frozenset({"oven", "pan"})).recipe.id == "dinner-salmon-rice"
 
-
-def test_recipe_matcher_accepts_the_live_bulgarian_chicken_breast_label():
-    lunch = _production_meal("lunch", (
-        ("\u041f\u0438\u043b\u0435\u0448\u043a\u043e \u0433\u044a\u0440\u0434\u0438", "200"), ("\u041e\u0440\u0438\u0437", "180"),
-        ("\u0417\u0435\u043b\u0435\u043d\u0447\u0443\u043a\u043e\u0432\u0430 \u0441\u0430\u043b\u0430\u0442\u0430", "150"), ("\u0417\u0435\u0445\u0442\u0438\u043d", "20"),
-        ("\u041f\u044a\u043b\u043d\u043e\u0437\u044a\u0440\u043d\u0435\u0441\u0442 \u0445\u043b\u044f\u0431", "100"),
-    ))
-
-    assert match_meal(lunch, load_recipes(), profile_equipment({})).recipe.id == "lunch-chicken-rice"
+def test_unknown_food_never_receives_a_recipe():
+    meal = SimpleNamespace(meal_type="dinner", foods=(SimpleNamespace(food_id="prawns", display_name="Prawns"),))
+    assert match_meal(meal, load_recipes(), profile_equipment({})) is None

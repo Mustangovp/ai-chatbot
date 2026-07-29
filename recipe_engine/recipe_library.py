@@ -5,7 +5,8 @@ import json
 from functools import lru_cache
 from pathlib import Path
 
-from .recipe_models import Recipe
+from .recipe_matcher import ingredient_key
+from .recipe_models import Recipe, RecipeSubstitution
 
 
 _LIBRARY_PATH = Path(__file__).resolve().parent.parent / "data" / "recipes" / "recipes_v1.json"
@@ -16,6 +17,28 @@ def _as_strings(value: object, field: str, recipe_id: str) -> tuple[str, ...]:
     if not isinstance(value, list) or not value or not all(isinstance(item, str) and item.strip() for item in value):
         raise ValueError(f"recipe {recipe_id}: {field} must be a non-empty string list")
     return tuple(item.strip() for item in value)
+
+
+def _substitutions(value: object, recipe_id: str) -> tuple[RecipeSubstitution, ...]:
+    if not isinstance(value, list):
+        raise ValueError(f"recipe {recipe_id}: substitutions must be a list")
+    result: list[RecipeSubstitution] = []
+    for item in value:
+        if isinstance(item, dict):
+            source = item.get("source_food_id")
+            replacement = item.get("replacement_food_id")
+            text = item.get("text")
+            if not all(isinstance(part, str) and part.strip() for part in (source, replacement, text)):
+                raise ValueError(f"recipe {recipe_id}: substitution metadata is incomplete")
+            result.append(RecipeSubstitution(source.strip(), replacement.strip(), text.strip()))
+        elif isinstance(item, str) and item.strip():
+            # Legacy prose remains readable by the loader, but the integrity
+            # validator refuses to deliver it because it cannot prove source
+            # and replacement identity.
+            result.append(RecipeSubstitution("", "", item.strip()))
+        else:
+            raise ValueError(f"recipe {recipe_id}: substitution is invalid")
+    return tuple(result)
 
 
 def _recipe(value: object) -> Recipe:
@@ -44,13 +67,15 @@ def _recipe(value: object) -> Recipe:
         raise ValueError(f"recipe {recipe_id}: title, difficulty, and storage are required")
     if not isinstance(meal_prep, bool):
         raise ValueError(f"recipe {recipe_id}: meal_prep must be boolean")
+    ingredients = _as_strings(value.get("ingredients"), "ingredients", recipe_id)
     return Recipe(
         id=recipe_id.strip(), title=title.strip(), meal_type=meal_type,
         difficulty=difficulty.strip(), cook_time_minutes=cook_time,
         equipment=_as_strings(value.get("equipment"), "equipment", recipe_id),
-        ingredients=_as_strings(value.get("ingredients"), "ingredients", recipe_id),
+        ingredients=ingredients,
+        food_ids=tuple(ingredient_key(item) for item in ingredients),
         steps=steps, healthy_cooking_tips=tips,
-        substitutions=_as_strings(value.get("substitutions"), "substitutions", recipe_id),
+        substitutions=_substitutions(value.get("substitutions"), recipe_id),
         storage=storage.strip(), meal_prep=meal_prep,
     )
 

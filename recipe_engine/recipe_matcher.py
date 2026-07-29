@@ -37,6 +37,11 @@ _ALIASES = {
     "olive oil": "olive_oil", "\u0437\u0435\u0445\u0442\u0438\u043d": "olive_oil", "almonds": "almonds", "\u0431\u0430\u0434\u0435\u043c\u0438": "almonds", "herbs": "herbs", "spices": "spices", "lemon": "lemon", "seasoning": "seasoning", "garnish": "garnish",
 }
 
+_ALIASES.update({
+    "milk": "milk", "cow milk": "milk", "прясно мляко": "milk", "краве мляко": "milk",
+    "olives": "olives", "olive": "olives", "маслини": "olives",
+})
+
 _PRIMARY_PROTEINS = frozenset({"chicken", "turkey", "salmon", "tuna", "lean_beef", "eggs", "egg_whites", "cottage_cheese", "greek_yogurt", "whey", "lentils", "chickpeas"})
 _PRIMARY_CARBS = frozenset({"oats", "rice", "pasta", "potatoes", "quinoa", "wholegrain_bread"})
 _VEGETABLE_OR_FRUIT = frozenset({"apple", "banana", "broccoli", "spinach", "tomato", "zucchini", "avocado", "salad"})
@@ -77,6 +82,54 @@ def _meal_ingredients(meal: object) -> tuple[tuple[str, Decimal, int], ...]:
     )
 
 
+_NEGLIGIBLE_COOKING_AIDS = frozenset({"water", "salt", "pepper", "herbs", "spices", "lemon", "seasoning", "garnish"})
+_APPROVED_SUBSTITUTIONS = frozenset({
+    ("banana", "apple"),
+    ("spinach", "broccoli"),
+})
+
+
+def _meal_food_ids(meal: object) -> frozenset[str]:
+    ids = []
+    for food in getattr(meal, "foods", ()):
+        supplied = getattr(food, "food_id", None)
+        ids.append(str(supplied).strip() if isinstance(supplied, str) and supplied.strip()
+                   else ingredient_key(str(getattr(food, "display_name", ""))))
+    return frozenset(item for item in ids if item)
+
+
+def _mentioned_food_ids(text: str) -> frozenset[str]:
+    normalized = " ".join(part for part in _TOKEN.split(text.lower()) if part)
+    mentions: set[str] = set()
+    for alias, food_id in _ALIASES.items():
+        if re.search(r"(?<!\\w)" + re.escape(alias) + r"(?!\\w)", normalized):
+            mentions.add(food_id)
+    return frozenset(mentions)
+
+
+def validate_recipe_for_meal(recipe: Recipe, meal: object) -> str | None:
+    """Return an integrity reason, or ``None`` for an exact safe recipe binding."""
+    meal_ids = _meal_food_ids(meal)
+    recipe_ids = frozenset(recipe.food_ids)
+    if not meal_ids or recipe_ids != meal_ids or len(recipe.food_ids) != len(recipe_ids):
+        return "recipe food IDs do not exactly match the meal food IDs"
+
+    allowed_mentions = meal_ids | _NEGLIGIBLE_COOKING_AIDS
+    for substitution in recipe.substitutions:
+        pair = (substitution.source_food_id, substitution.replacement_food_id)
+        if (not substitution.source_food_id or not substitution.replacement_food_id
+                or not substitution.text or substitution.source_food_id not in meal_ids
+                or pair not in _APPROVED_SUBSTITUTIONS):
+            return "recipe substitution is not an approved mapping for a present food"
+        allowed_mentions = allowed_mentions | {substitution.replacement_food_id}
+
+    prose = " ".join((recipe.title, *recipe.steps, *recipe.healthy_cooking_tips, recipe.storage))
+    absent = _mentioned_food_ids(prose) - allowed_mentions
+    if absent:
+        return "recipe prose mentions food IDs absent from the linked meal: " + ", ".join(sorted(absent))
+    return None
+
+
 def _dominant_carb(ingredients: tuple[tuple[str, Decimal, int], ...]) -> str | None:
     carbs = [item for item in ingredients if item[0] in _PRIMARY_CARBS]
     if not carbs:
@@ -87,33 +140,16 @@ def _dominant_carb(ingredients: tuple[tuple[str, Decimal, int], ...]) -> str | N
 
 def match_meal(meal: object, recipes: Iterable[Recipe], available_equipment: frozenset[str], *,
                threshold: float = 0.4) -> RecipeMatch | None:
-    """Return a role-compatible recipe without altering the authoritative meal."""
-    del threshold  # Kept for source compatibility; semantic eligibility is explicit.
+    """Return only a recipe proven to describe this exact authoritative meal."""
+    del threshold  # Retained as a source-compatible argument; identity is exact.
     meal_type = str(getattr(meal, "meal_type", "")).lower()
-    ingredients = _meal_ingredients(meal)
-    food_keys = frozenset(item[0] for item in ingredients)
-    proteins = food_keys & _PRIMARY_PROTEINS
-    dominant_carb = _dominant_carb(ingredients)
-    if not food_keys or not proteins:
+    if not _meal_food_ids(meal):
         return None
 
     candidates: list[RecipeMatch] = []
     for recipe in recipes:
         if recipe.meal_type != meal_type or not set(recipe.equipment).issubset(available_equipment):
             continue
-        recipe_keys = frozenset(ingredient_key(item) for item in recipe.ingredients)
-        # Protein identity is the safety boundary. Do not label chicken as
-        # yoghurt, salmon as tuna, or whole eggs as egg whites.
-        if recipe_keys & _PRIMARY_PROTEINS != proteins:
-            continue
-        # When a meal has a primary carb, its largest portion determines the
-        # matching carb. Vegetables and oils stay visible but never block it.
-        if dominant_carb is not None and dominant_carb not in recipe_keys:
-            continue
-        # Supporting ingredients break otherwise equal compatible candidates,
-        # but never make an eligible meal fail. This keeps almond recipes from
-        # being replaced by a banana recipe while allowing vegetable swaps.
-        supporting_matches = len((food_keys & recipe_keys) - _PRIMARY_PROTEINS - _PRIMARY_CARBS - _AUXILIARY)
-        score = 1.0 + (0.01 * supporting_matches)
-        candidates.append(RecipeMatch(recipe, score))
+        if validate_recipe_for_meal(recipe, meal) is None:
+            candidates.append(RecipeMatch(recipe, 1.0))
     return min(candidates, key=lambda item: (-item.score, item.recipe.id), default=None)

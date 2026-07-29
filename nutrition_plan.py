@@ -21,6 +21,21 @@ class NutritionPlanError(ValueError):
     pass
 
 
+class MeasurementState(str, Enum):
+    RAW = "raw"
+    COOKED = "cooked"
+    DRAINED = "drained"
+    READY_TO_EAT = "ready_to_eat"
+    AS_SERVED = "as_served"
+    PACKAGE_WEIGHT = "package_weight"
+
+
+class PlanTargetStatus(str, Enum):
+    EXACT = "EXACT"
+    WITHIN_TOLERANCE = "WITHIN_TOLERANCE"
+    OUTSIDE_TOLERANCE = "OUTSIDE_TOLERANCE"
+
+
 class RevisionKind(str, Enum):
     REPLACE_INGREDIENT = "replace_ingredient"
     REPLACE_MEAL = "replace_meal"
@@ -60,6 +75,8 @@ class NutritionFood:
     display_name: str
     grams: Decimal
     macros: NutritionMacros
+    food_id: str | None = None
+    measurement_state: MeasurementState | None = None
 
 
 @dataclass(frozen=True)
@@ -82,6 +99,7 @@ class NutritionPlan:
     meals: tuple[NutritionMeal, ...]
     totals: NutritionMacros
     provenance: tuple[tuple[str, str], ...]
+    target_status: PlanTargetStatus = PlanTargetStatus.EXACT
 
 
 _MEALS = ("breakfast", "lunch", "dinner")
@@ -89,6 +107,10 @@ _OPTIONAL_MEALS = ("snack",)
 _COMPOUND_NAME = re.compile(r"\s(?:and|with)\s|\s\u0438\s|[&+/]", re.I)
 _CYRILLIC = re.compile(r"[\u0400-\u04ff]")
 _LATIN = re.compile(r"[A-Za-z]")
+_MEASUREMENT_REQUIRED_FOOD_IDS = frozenset({
+    "rice", "quinoa", "pasta", "oats", "lentils", "chickpeas", "chicken",
+    "turkey", "salmon", "tuna", "lean_beef", "potatoes",
+})
 
 
 def _decimal(value: object, field: str) -> Decimal:
@@ -114,7 +136,8 @@ def _within(actual: Decimal, target: Decimal | None, tolerance: Decimal) -> bool
     return target is None or abs(actual - target) <= abs(target) * tolerance
 
 
-def _validate_totals(totals: NutritionMacros, targets: NutritionTargets) -> None:
+def target_status(totals: NutritionMacros, targets: NutritionTargets) -> PlanTargetStatus:
+    """Classify the current approved five-percent nutrition target contract."""
     tolerance = Decimal("0.05")
     checks = (
         (totals.kcal, targets.kcal, "kcal"),
@@ -122,9 +145,49 @@ def _validate_totals(totals: NutritionMacros, targets: NutritionTargets) -> None
         (totals.carbs_g, targets.carbs, "carbs"),
         (totals.fat_g, targets.fat, "fat"),
     )
-    for actual, target, name in checks:
+    if all(target is None or actual == target for actual, target, _ in checks):
+        return PlanTargetStatus.EXACT
+    for actual, target, _ in checks:
         if not _within(actual, target, tolerance):
-            raise NutritionPlanError(f"{name} is outside the confirmed target")
+            return PlanTargetStatus.OUTSIDE_TOLERANCE
+    return PlanTargetStatus.WITHIN_TOLERANCE
+
+
+def _validate_totals(totals: NutritionMacros, targets: NutritionTargets) -> PlanTargetStatus:
+    status = target_status(totals, targets)
+    if status is PlanTargetStatus.OUTSIDE_TOLERANCE:
+        checks = (
+            (totals.kcal, targets.kcal, "kcal"),
+            (totals.protein_g, targets.protein, "protein"),
+            (totals.carbs_g, targets.carbs, "carbs"),
+            (totals.fat_g, targets.fat, "fat"),
+        )
+        for actual, target, name in checks:
+            if not _within(actual, target, Decimal("0.05")):
+                raise NutritionPlanError(f"{name} is outside the confirmed target")
+    return status
+
+
+def _canonical_food_id(name: str, supplied: object) -> str:
+    if supplied is not None:
+        if not isinstance(supplied, str) or not supplied.strip():
+            raise NutritionPlanError("food.food_id must be a non-empty string")
+        return supplied.strip()
+    # Legacy structured deliveries did not carry a food ID. Normalize once at
+    # the plan boundary so recipe matching never scans rendered card text.
+    from recipe_engine.recipe_matcher import ingredient_key
+    return ingredient_key(name)
+
+
+def _measurement_state(value: object, food_id: str, *, require_for_ambiguous: bool = True) -> MeasurementState | None:
+    if value is None or str(value).strip() == "":
+        if require_for_ambiguous and food_id in _MEASUREMENT_REQUIRED_FOOD_IDS:
+            raise NutritionPlanError(f"food.measurement_state is required for {food_id}")
+        return None
+    try:
+        return MeasurementState(str(value).strip())
+    except ValueError as exc:
+        raise NutritionPlanError("food.measurement_state is invalid") from exc
 
 
 def _food_from_payload(value: Mapping[str, object], plan_id: str, meal_index: int,
@@ -147,12 +210,15 @@ def _food_from_payload(value: Mapping[str, object], plan_id: str, meal_index: in
     catalog_id = value.get("catalog_id")
     if catalog_id is not None and not isinstance(catalog_id, str):
         raise NutritionPlanError("food.catalog_id must be a string or null")
+    food_id = _canonical_food_id(name, value.get("food_id"))
     return NutritionFood(
         id=f"food-{plan_id}-{meal_index}-{food_index}",
         catalog_id=catalog_id,
         display_name=name,
         grams=grams,
         macros=macros,
+        food_id=food_id,
+        measurement_state=_measurement_state(value.get("measurement_state"), food_id),
     )
 
 
@@ -202,7 +268,7 @@ def build_plan(payload: Mapping[str, object], targets: NutritionTargets, *,
     totals = NutritionMacros.zero()
     for meal in meals:
         totals = totals.plus(meal.macros)
-    _validate_totals(totals, targets)
+    status = _validate_totals(totals, targets)
     stamp = (now or dt.datetime.now(dt.timezone.utc)).astimezone(dt.timezone.utc).isoformat()
     return NutritionPlan(
         id=plan_id,
@@ -213,6 +279,7 @@ def build_plan(payload: Mapping[str, object], targets: NutritionTargets, *,
         meals=tuple(meals),
         totals=totals,
         provenance=tuple(sorted((str(key), str(value)) for key, value in provenance.items())),
+        target_status=status,
     )
 
 
@@ -293,9 +360,13 @@ def build_source_backed_plan(targets: NutritionTargets, lang: str, *,
 
         def catalog_food_payload(source, grams: Decimal) -> dict[str, str]:
             factor = grams / Decimal("100")
+            food_id = source.food_id
+            measurement_state = "cooked" if "cooked" in food_id else "raw"
             return {
                 "display_name": source.display_name_en if str(lang).lower() == "en" else source.display_name_bg,
                 "catalog_id": source.food_id,
+                "food_id": food_id,
+                "measurement_state": measurement_state,
                 "grams": str(grams),
                 "protein_g": str(source.protein_per_100g * factor),
                 "carbs_g": str(source.carbs_per_100g * factor),
@@ -324,6 +395,8 @@ def build_source_backed_plan(targets: NutritionTargets, lang: str, *,
                 foods.append({
                     "display_name": food.name,
                     "catalog_id": source.food_id,
+                    "food_id": source.food_id,
+                    "measurement_state": "cooked" if "cooked" in source.food_id else "raw",
                     "grams": str(grams),
                     "protein_g": str(food.macros.protein_g),
                     "carbs_g": str(food.macros.carbs_g),
@@ -444,7 +517,13 @@ def from_record(record: Mapping[str, object]) -> NutritionPlan:
             catalog_id = raw_food.get("catalog_id")
             if catalog_id is not None and not isinstance(catalog_id, str):
                 raise NutritionPlanError("stored food catalog_id is invalid")
-            food = NutritionFood(food_id, catalog_id, name, grams, food_macros)
+            canonical_food_id = _canonical_food_id(name, raw_food.get("food_id"))
+            food = NutritionFood(
+                food_id, catalog_id, name, grams, food_macros,
+                canonical_food_id, _measurement_state(
+                    raw_food.get("measurement_state"), canonical_food_id, require_for_ambiguous=False,
+                ),
+            )
             foods.append(food)
             macros = macros.plus(food_macros)
         meals.append(NutritionMeal(
@@ -458,7 +537,7 @@ def from_record(record: Mapping[str, object]) -> NutritionPlan:
     totals = NutritionMacros.zero()
     for meal in meals:
         totals = totals.plus(meal.macros)
-    _validate_totals(totals, targets)
+    status = _validate_totals(totals, targets)
     restrictions = record.get("restrictions") or []
     provenance = record.get("provenance") or {}
     if not isinstance(restrictions, list) or not isinstance(provenance, Mapping):
@@ -468,6 +547,7 @@ def from_record(record: Mapping[str, object]) -> NutritionPlan:
         tuple(sorted({str(item).strip() for item in restrictions if str(item).strip()})),
         tuple(meals), totals,
         tuple(sorted((str(key), str(value)) for key, value in provenance.items())),
+        status,
     )
 
 
@@ -488,7 +568,7 @@ def _revision_plan(plan: NutritionPlan, meals: tuple[NutritionMeal, ...], *,
     totals = NutritionMacros.zero()
     for meal in meals:
         totals = totals.plus(meal.macros)
-    _validate_totals(totals, plan.targets)
+    status = _validate_totals(totals, plan.targets)
     provenance = dict(plan.provenance)
     provenance.update({"parent_plan_id": plan.id, "revision": operation.kind.value})
     return NutritionPlan(
@@ -500,6 +580,7 @@ def _revision_plan(plan: NutritionPlan, meals: tuple[NutritionMeal, ...], *,
         meals=meals,
         totals=totals,
         provenance=tuple(sorted(provenance.items())),
+        target_status=status,
     )
 
 
@@ -516,7 +597,10 @@ def apply_revision(plan: NutritionPlan, operation: RevisionOperation) -> Nutriti
             foods = []
             for food in meal.foods:
                 if target in food.display_name.lower():
-                    foods.append(NutritionFood(food.id, food.catalog_id, replacement, food.grams, food.macros))
+                    foods.append(NutritionFood(
+                        food.id, food.catalog_id, replacement, food.grams, food.macros,
+                        food.food_id, food.measurement_state,
+                    ))
                     changed = True
                 else:
                     foods.append(food)
@@ -538,7 +622,7 @@ def apply_revision(plan: NutritionPlan, operation: RevisionOperation) -> Nutriti
                 food.id, food.catalog_id,
                 next((replacement for name, replacement in _BREAKFAST_REPLACEMENTS.items()
                       if name in food.display_name.lower()), f"Alternative {food.display_name}"),
-                food.grams, food.macros) for food in meal.foods)
+                food.grams, food.macros, food.food_id, food.measurement_state) for food in meal.foods)
             meals.append(NutritionMeal(meal.id, "Alternative breakfast", meal.meal_type, meal.time, foods, meal.macros))
             changed = True
         if not changed:
@@ -559,8 +643,10 @@ def apply_revision(plan: NutritionPlan, operation: RevisionOperation) -> Nutriti
                     updated_macros = NutritionMacros(
                         food.macros.protein_g * factor, food.macros.carbs_g * factor,
                         food.macros.fat_g * factor, food.macros.kcal * factor)
-                    food = NutritionFood(food.id, food.catalog_id, food.display_name,
-                                         food.grams * factor, updated_macros)
+                    food = NutritionFood(
+                        food.id, food.catalog_id, food.display_name,
+                        food.grams * factor, updated_macros, food.food_id, food.measurement_state,
+                    )
                     changed = True
                 foods.append(food)
                 macros = macros.plus(food.macros)
@@ -587,6 +673,22 @@ def parse_generation_response(response: object) -> Mapping[str, object]:
 def _display_decimal(value: Decimal) -> str:
     result = format(value.normalize(), "f")
     return result.rstrip("0").rstrip(".") if "." in result else result
+
+
+def _quantity_label(food: NutritionFood, lang: str) -> str:
+    amount = _display_decimal(food.grams)
+    if food.measurement_state is None:
+        return f"{amount} g"
+    english = str(lang).lower() == "en"
+    labels = {
+        MeasurementState.RAW: ("raw weight", "сурово тегло"),
+        MeasurementState.COOKED: ("cooked", "сготвено"),
+        MeasurementState.DRAINED: ("drained", "отцедено"),
+        MeasurementState.READY_TO_EAT: ("ready to eat", "готово за консумация"),
+        MeasurementState.AS_SERVED: ("as served", "в готов вид"),
+        MeasurementState.PACKAGE_WEIGHT: ("package weight", "тегло от опаковката"),
+    }
+    return f"{amount} {'g' if english else 'г'}, {labels[food.measurement_state][0 if english else 1]}"
 
 
 def _meal_reason(meal: NutritionMeal, targets: NutritionTargets, lang: str) -> str:
@@ -635,8 +737,8 @@ def render(plan: NutritionPlan, lang: str, recipe_tokens: Mapping[str, str] | No
             label = labels[meal.meal_type][0 if english else 1] if index == 0 else ""
             reason = _meal_reason(meal, plan.targets, lang) if index == 0 else ""
             recipe = (recipe_tokens or {}).get(meal.id, "") if index == 0 else ""
-            row = "| {} | {} | {} | {} g | {} | {} | {} | {} | {} |".format(
-                label, meal.id if index == 0 else "", food.display_name, _display_decimal(food.grams),
+            row = "| {} | {} | {} | {} | {} | {} | {} | {} | {} |".format(
+                label, meal.id if index == 0 else "", food.display_name, _quantity_label(food, lang),
                 _display_decimal(food.macros.protein_g), _display_decimal(food.macros.carbs_g),
                 _display_decimal(food.macros.fat_g), _display_decimal(food.macros.kcal), reason,
             )
@@ -665,10 +767,20 @@ def render_delivery(plan: NutritionPlan, lang: str, profile: Mapping[str, object
     table = render(plan, lang, recipe_tokens)
     target = _display_decimal(plan.targets.kcal)
     delivered = _display_decimal(plan.totals.kcal)
+    status_text_en = (
+        "exactly meets the confirmed target"
+        if plan.target_status is PlanTargetStatus.EXACT
+        else "is within the approved target tolerance"
+    )
+    status_text_bg = (
+        "\u0442\u043e\u0447\u043d\u043e \u043f\u043e\u043a\u0440\u0438\u0432\u0430 \u043f\u043e\u0442\u0432\u044a\u0440\u0434\u0435\u043d\u0430\u0442\u0430 \u0446\u0435\u043b"
+        if plan.target_status is PlanTargetStatus.EXACT
+        else "\u0435 \u0432 \u043e\u0434\u043e\u0431\u0440\u0435\u043d\u0438\u044f \u0434\u043e\u043f\u0443\u0441\u043a \u0441\u043f\u0440\u044f\u043c\u043e \u043f\u043e\u0442\u0432\u044a\u0440\u0434\u0435\u043d\u0430\u0442\u0430 \u0446\u0435\u043b"
+    )
     if str(lang).lower() == "en":
         explanation = (
             "**Why this plan:** the three meals distribute your day around the confirmed "
-            f"{target} kcal target; the displayed foods add up to {delivered} kcal. "
+            f"{target} kcal target; the displayed foods add up to {delivered} kcal and {status_text_en}. "
             "Stick to these portions today. If anything does not work for you, tell me and we'll adapt it straight away."
         )
     else:
@@ -677,6 +789,8 @@ def render_delivery(plan: NutritionPlan, lang: str, profile: Mapping[str, object
             f"таргет от {target} ккал; показаните храни дават общо {delivered} ккал. "
             "Дръж се към тези количества днес. Ако нещо не ти пасва — кажи ми и го адаптираме веднага."
         )
+    if str(lang).lower() != "en":
+        explanation += f" \u041e\u0431\u0449\u0438\u044f\u0442 \u0440\u0435\u0437\u0443\u043b\u0442\u0430\u0442 {status_text_bg}."
     return table + "\n\n" + explanation
 
 
@@ -692,12 +806,14 @@ def to_record(plan: NutritionPlan) -> dict[str, object]:
     }
     return {
         "id": plan.id, "version": plan.version, "created_at_utc": plan.created_at_utc,
-        "targets": targets, "restrictions": list(plan.restrictions),
+        "targets": targets, "restrictions": list(plan.restrictions), "target_status": plan.target_status.value,
         "totals": macros(plan.totals), "provenance": dict(plan.provenance),
         "meals": [
             {"id": meal.id, "name": meal.name, "meal_type": meal.meal_type, "time": meal.time,
              "macros": macros(meal.macros), "foods": [
-                 {"id": food.id, "catalog_id": food.catalog_id, "display_name": food.display_name,
+                 {"id": food.id, "catalog_id": food.catalog_id, "food_id": food.food_id,
+                  "display_name": food.display_name, "measurement_state": (
+                      food.measurement_state.value if food.measurement_state is not None else None),
                   "grams": str(food.grams), "macros": macros(food.macros)}
                  for food in meal.foods]}
             for meal in plan.meals],
@@ -710,7 +826,9 @@ def generation_contract(targets: NutritionTargets, lang: str) -> str:
         "[STRUCTURED DAILY NUTRITION PLAN]\n"
         "Return a JSON object only. Never return markdown or prose. The object has a meals array. "
         "Each meal has meal_type (breakfast, optional snack, lunch, dinner), name, time, and foods. "
-        "Each food has display_name, optional catalog_id, grams, protein_g, carbs_g, fat_g, and kcal. "
+        "Each food has food_id, display_name, optional catalog_id, measurement_state, grams, protein_g, carbs_g, fat_g, and kcal. "
+        "measurement_state is one of raw, cooked, drained, ready_to_eat, as_served, package_weight; "
+        "it is mandatory for rice, quinoa, pasta, oats, legumes, meat, fish, potatoes, and frozen foods. "
         "Every food is exactly one food ingredient; never combine foods in one name. "
         + ("Every display_name must be English only. " if str(lang).lower() == "en"
            else "Every display_name must be Bulgarian only; do not mix English food names. ")
@@ -746,7 +864,7 @@ def regeneration_contract(validation_failure: Exception, targets: NutritionTarge
         f"Validation failure: {reason}.\n"
         "Return one complete corrected JSON object only. Do not include markdown, prose, "
         "or the rejected output. Keep the original request and confirmed targets. "
-        "Every food must include display_name, grams, protein_g, carbs_g, fat_g, and kcal; "
+        "Every food must include food_id, display_name, measurement_state, grams, protein_g, carbs_g, fat_g, and kcal; "
         + ("every display_name must be English only; " if str(lang).lower() == "en"
            else "every display_name must be Bulgarian only with no English food names; ")
         +

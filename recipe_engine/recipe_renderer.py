@@ -11,9 +11,11 @@ def recipe_token(match: RecipeMatch, meal_id: str) -> str:
     """Bind recipe presentation to one immutable NutritionPlan meal ID."""
     recipe = match.recipe
     payload = {
-        "id": recipe.id, "meal_id": meal_id, "title": recipe.title, "difficulty": recipe.difficulty,
+        "id": recipe.id, "meal_id": meal_id, "food_ids": list(recipe.food_ids),
+        "title": recipe.title, "difficulty": recipe.difficulty,
         "minutes": recipe.cook_time_minutes, "steps": list(recipe.steps),
-        "tips": list(recipe.healthy_cooking_tips), "substitutions": list(recipe.substitutions),
+        "tips": list(recipe.healthy_cooking_tips),
+        "substitutions": [item.text for item in recipe.substitutions],
         "storage": recipe.storage, "meal_prep": recipe.meal_prep,
     }
     encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
