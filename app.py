@@ -1912,6 +1912,8 @@ def _persona_expert_shadow_observation(snapshot, decision, *, locale, authoritat
     started = time.perf_counter()
     if matcher_enabled or consensus_enabled:
         try:
+            shadow_observability.emit_metric("persona_started", component="persona", status="started",
+                                              locale=locale, intent_category=decision.intent)
             match = persona_matcher.match(snapshot, decision.intent)
             statuses["persona"] = "ABSTAIN" if match.abstained else "SUCCESS"
         except Exception:
@@ -1922,6 +1924,8 @@ def _persona_expert_shadow_observation(snapshot, decision, *, locale, authoritat
             statuses["expert"] = "SKIPPED"
         else:
             try:
+                shadow_observability.emit_metric("expert_started", component="expert", status="started",
+                                                  locale=locale, intent_category=decision.intent)
                 consensus = expert_consensus.evaluate(snapshot, match, decision.intent)
                 statuses["expert"] = "ABSTAIN" if consensus.abstained else "SUCCESS"
             except Exception:
@@ -1944,6 +1948,8 @@ def _brain_shadow_observation(profile, message, conversation, model, *, locale, 
     """Run the existing Brain cascade without retaining its raw trace or evidence."""
     started = time.perf_counter()
     try:
+        shadow_observability.emit_metric("brain_started", component="brain", status="started",
+                                          locale=locale, intent_category=authoritative_intent)
         brain_inspector.inspect(profile, message=message, conversation=conversation, model=model,
                                 decision_id=str(_uuid.uuid4()))
         status, fallback = "SUCCESS", None
@@ -2678,6 +2684,12 @@ def chat():
             """Schedule isolated shadow work after authoritative content is fixed."""
             path = _recommendation_path
             intent = getattr(_shadow_decision, "intent", "unknown")
+            if brain_config.brain_shadow() or (_snapshot is not None and _shadow_decision is not None
+                                               and _shadow_decision.outcome == "recommend"
+                                               and (_shadow_feature_enabled("PERSONA_MATCHER_SHADOW")
+                                                    or _shadow_feature_enabled("EXPERT_CONSENSUS_SHADOW"))):
+                shadow_observability.emit_metric("request_eligible", component="request", status="eligible",
+                                                  locale=lang, intent_category=intent)
             if brain_config.brain_shadow():
                 shadow_observability.submit(
                     locale=lang, authoritative_path=path, authoritative_intent=intent,
