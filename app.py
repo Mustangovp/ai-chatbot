@@ -1813,6 +1813,43 @@ def _shadow_feature_enabled(name):
     return os.getenv(name, "false").strip().lower() == "true"
 
 
+_MEDICAL_HOLD_KEY = "_medical_hold"
+
+
+def _medical_hold_from_message(message):
+    """Recognize only personally reported arm-neurologic red flags; never diagnose."""
+    text = str(message or "").casefold()
+    shoulder = ("shoulder" in text or "\u0440\u0430\u043c\u043e" in text)
+    arm = ("arm" in text or "\u0440\u044a\u043a" in text)
+    numb = ("numb" in text or "tingl" in text or "loss of sensation" in text or
+            "\u0438\u0437\u0442\u0440\u044a\u043f" in text or "\u043c\u0440\u0430\u0432\u0443\u0447" in text)
+    weak = ("arm weakness" in text or "weakness in" in text or "\u0441\u043b\u0430\u0431\u043e\u0441\u0442" in text)
+    urgent = (("chest" in text or "\u0433\u0440\u044a\u0434" in text or "shortness of breath" in text or
+               "\u0437\u0430\u0434\u0443\u0445" in text or "dizz" in text or "\u0437\u0430\u043c\u0430\u0439" in text or
+               "facial droop" in text or "speech difficulty" in text) and arm)
+    # A general educational question is not a personal symptom report.
+    personal = any(token in text for token in ("\u043c\u0435", "\u043c\u0438", "i have", "my ", "i'm", "i am"))
+    if personal and ((shoulder and arm and numb) or (arm and (numb or weak)) or urgent):
+        return {"status": "ACTIVE_MEDICAL_HOLD", "reason_category": "ARM_NUMBNESS_WITH_SHOULDER_PAIN",
+                "workout_blocked": True, "session_blocked": True,
+                "body_region": ["shoulder", "arm"]}
+    return None
+
+
+def _medical_hold_reply(lang, correction=False):
+    if lang == "en":
+        if correction:
+            return ("You're right - I should not have given you a workout after those symptoms. "
+                    "Your current plan is suspended. Do not train, and seek medical assessment.")
+        return ("Stop training and do not load the affected arm. Shoulder pain with numbness through the arm needs prompt medical assessment. "
+                "If symptoms are sudden or you have chest pressure, shortness of breath, sweating, dizziness, weakness, facial droop, or speech difficulty, seek emergency help now.")
+    if correction:
+        return ("Прав си - не трябваше да ти давам тренировка след тези симптоми. "
+                "Текущият план е временно спрян. Не тренирай и потърси медицинска оценка.")
+    return ("Спри тренировките и не натоварвай ръката. Болка в рамото с изтръпване на цялата ръка изисква своевременна медицинска оценка. "
+            "Ако симптомите са внезапни или имаш гръдна болка/натиск, задух, изпотяване, замайване, слабост, изкривяване на лицето или затруднен говор, потърси спешна помощ веднага.")
+
+
 def _observe_shadow_trace_for_testing(trace):
     """No-op test seam; request-local traces are never retained or delivered."""
     return None
@@ -2021,6 +2058,19 @@ def chat():
                 history = store.list_conversation(chat_uid, limit=memory_cap)
             except Exception as _ce:
                 print(f"[chat] conversation load failed: {_ce}")
+
+        # Medical safety is server-authoritative state, not assistant prose.  Persist it
+        # before planning so flags, fallbacks, blueprints, and renderers cannot bypass it.
+        _medical_hold = profile.get(_MEDICAL_HOLD_KEY) if isinstance(profile, dict) else None
+        _new_medical_hold = _medical_hold_from_message(user_message)
+        if _new_medical_hold is not None:
+            _new_medical_hold["created_at"] = _dt.datetime.now(_dt.timezone.utc).isoformat()
+            _new_medical_hold["source_message_id"] = _uuid.uuid4().hex
+            profile = dict(profile or {})
+            profile[_MEDICAL_HOLD_KEY] = _new_medical_hold
+            _medical_hold = _new_medical_hold
+            if chat_uid:
+                store.save_profile(chat_uid, profile)
 
         # Phase A2 compatibility bridge: ContextSnapshot now owns the normal-chat
         # context boundary, then its legacy adapter restores the exact variables
@@ -2352,6 +2402,23 @@ def chat():
                         "[nutrition-v2-shadow] event=hook_import_failed reason=runtime_error "
                         "exception=%s worker_id=unknown", type(_v2_err).__name__)
 
+        if _medical_hold and _medical_hold.get("status") == "ACTIVE_MEDICAL_HOLD":
+            # Highest authority: no workout or plan delivery can survive a hold, even
+            # when a prior deterministic blueprint or legacy fallback was prepared.
+            _recommendation_blueprint = None
+            _training_plan_blueprint = None
+            _recommendation_plan = None
+            _planning_reply = None
+            _controlled_reply = _medical_hold_reply(
+                lang, correction=bool(_new_medical_hold is None and
+                                       ("\u0434\u0430\u0432\u0430\u0448" in user_message.casefold() or
+                                        "gave me" in user_message.casefold())))
+            nutrition_delivery_targets = None
+            nutrition_delivery_target = None
+            nutrition_response_guard = False
+            _revised_nutrition_plan = None
+            _nutrition_revision_failure = None
+
         if nutrition_delivery_targets is not None:
             system_content = system_content + "\n\n" + nutrition_plan.generation_contract(
                 nutrition_delivery_targets, lang)
@@ -2590,6 +2657,8 @@ def chat():
             try:
                 if _controlled_reply is not None:
                     full.append(_controlled_reply)
+                    if _medical_hold and _medical_hold.get("status") == "ACTIVE_MEDICAL_HOLD":
+                        yield sse({"medical_hold": True, "workout_suspended": True})
                     yield sse({"t": _controlled_reply})
                     speech_event = _speech_event(
                         _controlled_reply,

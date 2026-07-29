@@ -1656,7 +1656,11 @@ async function loadSession(tokenAccess){
   // If just signed in, pull the account's canonical data down (DB → cache) once.
   if(SESSION.authenticated){
     await syncFromAccount();
-    const savedLanguage=String((pfLoad().language||pfLoad().lang||'')).toLowerCase();
+    const savedProfile=pfLoad();
+    if(savedProfile&&savedProfile._medical_hold&&savedProfile._medical_hold.status==='ACTIVE_MEDICAL_HOLD'){
+      activateMedicalHold();
+    }
+    const savedLanguage=String((savedProfile.language||savedProfile.lang||'')).toLowerCase();
     if(savedLanguage==='bg'||savedLanguage==='en'){
       lang=savedLanguage;localStorage.setItem('apexLang',lang);applyLang();
     }
@@ -2237,7 +2241,11 @@ function parseExercises(header,body){
   });
   return ex;
 }
-let pendingWorkout=null,pendingWorkouts={},pendingWorkoutContracts={},pendingTrainingCompletion=null,pendingCompletionSessions=[];
+let pendingWorkout=null,pendingWorkouts={},pendingWorkoutContracts={},pendingTrainingCompletion=null,pendingCompletionSessions=[],medicalHoldActive=false;
+function activateMedicalHold(){
+  medicalHoldActive=true;pendingWorkout=null;pendingWorkouts={};pendingWorkoutContracts={};
+  document.querySelectorAll('.start-wo').forEach(b=>{b.disabled=true;b.style.display='none';});
+}
 const renderedWorkoutExercises={};
 const WORKOUT_ALL_EXERCISE_INSTRUCTIONS='WORKOUT_ALL_EXERCISE_INSTRUCTIONS';
 const WORKOUT_SINGLE_EXERCISE_EXPLANATION='WORKOUT_SINGLE_EXERCISE_EXPLANATION';
@@ -2352,6 +2360,7 @@ function renderWorkout(header,body){
    ═══════════════════════════════════════════════════════════════════ */
 let WO=null,restTimer=null,sessionStart=0,lastWorkoutCompletion=null,lastWorkoutSummary=null;
 function startWorkout(workoutKey=null){
+  if(medicalHoldActive)return;
   const source=workoutKey?pendingWorkoutContracts[workoutKey]:null;
   const exercises=workoutKey?pendingWorkouts[workoutKey]:pendingWorkout;
   if(!exercises||!exercises.length)return;
@@ -2711,6 +2720,7 @@ async function runChatExchange(x,body){
         for(const part of parts){const line=part.trim();if(!line.startsWith('data:'))continue;
           let o;try{o=JSON.parse(line.slice(5).trim());}catch(e){throw new Error('malformed_sse');}
           kick();
+          if(o.medical_hold){activateMedicalHold();}
           if(o.t){
             ChatLifecycle.content(x,o.t);paintBatch++;
             if(paintBatch>=STREAM_PAINT_BATCH){await ChatLifecycle.schedulePaint(x);paintBatch=0;}

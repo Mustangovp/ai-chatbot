@@ -113,6 +113,49 @@ def _post(client, message, profile=None, *, voice=False, lang="en"):
     return client.post("/chat", json=payload)
 
 
+def test_medical_hold_blocks_workout_delivery_and_persists_for_authenticated_user(client, captured):
+    uid = _login_for_chat(client, _profile())
+    symptom = "My left shoulder hurts and my whole arm is numb"
+    first = _events(_post(client, symptom))
+    assert first[0] == {"medical_hold": True, "workout_suspended": True}
+    assert "Stop training" in first[1]["t"]
+    assert "workout" not in captured
+    stored = store.get_profile(uid)
+    assert stored["_medical_hold"]["status"] == "ACTIVE_MEDICAL_HOLD"
+
+    blocked = _events(_post(client, "Give me a light workout today"))
+    assert blocked[0] == {"medical_hold": True, "workout_suspended": True}
+    assert "Stop training" in blocked[1]["t"]
+    assert not any("Workout protocol" in str(event) or "Start session" in str(event) for event in blocked)
+
+
+def test_medical_hold_correction_is_deterministic_and_never_calls_the_model(client, captured):
+    _login_for_chat(client, _profile())
+    _post(client, "My shoulder hurts and my arm is numb").get_data()
+    reply = _events(_post(client, "You said my shoulder hurts but gave me exercise again"))
+    assert reply[0]["medical_hold"] is True
+    assert "should not have given you a workout" in reply[1]["t"]
+    assert "system" not in captured
+
+
+def test_medical_hold_bulgarian_reply_is_direct_and_never_contains_workout_delivery(client, captured):
+    _login_for_chat(client, _profile())
+    reply = _events(_post(client, "\u0431\u043e\u043b\u0438 \u043c\u0435 \u043b\u044f\u0432\u043e\u0442\u043e \u0440\u0430\u043c\u043e, \u0446\u044f\u043b\u0430\u0442\u0430 \u043c\u0438 \u0440\u044a\u043a\u0430 \u0438\u0437\u0442\u0440\u044a\u043f\u0432\u0430", lang="bg"))
+    text = reply[1]["t"]
+    assert reply[0] == {"medical_hold": True, "workout_suspended": True}
+    assert "\u0421\u043f\u0440\u0438 \u0442\u0440\u0435\u043d\u0438\u0440\u043e\u0432\u043a\u0438\u0442\u0435" in text
+    assert "\u043c\u0435\u0434\u0438\u0446\u0438\u043d\u0441\u043a\u0430 \u043e\u0446\u0435\u043d\u043a\u0430" in text
+    assert "ELITE STATUS" not in text
+    assert "\u0442\u0440\u0435\u043d\u0438\u0440\u043e\u0432\u044a\u0447\u0435\u043d \u043f\u0440\u043e\u0442\u043e\u043a\u043e\u043b" not in text.lower()
+    assert "system" not in captured
+
+
+def test_medical_hold_does_not_match_general_questions_or_ordinary_soreness():
+    assert appmod._medical_hold_from_message("What can arm numbness mean?") is None
+    assert appmod._medical_hold_from_message("I have mild delayed shoulder soreness after lifting") is None
+    assert appmod._medical_hold_from_message("I feel tired today") is None
+
+
 def _set_stream(monkeypatch, captured, reply, *, raw_structured_completion=False):
     def fake_create(**kwargs):
         captured["system"] = kwargs["messages"][0]["content"]

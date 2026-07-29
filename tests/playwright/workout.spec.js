@@ -185,6 +185,56 @@ test.describe('APEX approved app shell — UX regression', () => {
     await page.evaluate(() => quitWorkout());
   });
 
+  test('WO-MED-1: medical hold suspends the current workout and survives authenticated session restore', async ({ page }) => {
+    await page.evaluate(async () => {
+      const workout = appendCoach();
+      workout.innerHTML = renderMarkdown([
+        '| Exercise | Sets | Reps | Rest |',
+        '| --- | --- | --- | --- |',
+        '| Goblet Squat | 3 | 8 | 60 sec |'
+      ].join('\n'));
+
+      const originalFetch = window.fetch;
+      window.fetch = async (url) => {
+        if (url === '/chat') {
+          return new Response([
+            'data: {"medical_hold":true,"workout_suspended":true}',
+            '',
+            'data: {"t":"medical safety"}',
+            '',
+            'data: {"done":true}',
+            '',
+            ''
+          ].join('\n'), { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+        }
+        if (url === '/auth/me') {
+          return new Response(JSON.stringify({ authenticated: true, plan: 'free', status: 'free', email: 'medical@example.test' }), { status: 200 });
+        }
+        if (url === '/api/profile') {
+          return new Response(JSON.stringify({ profile: { _medical_hold: { status: 'ACTIVE_MEDICAL_HOLD' } } }), { status: 200 });
+        }
+        if (url === '/api/history') return new Response(JSON.stringify({ workouts: [] }), { status: 200 });
+        if (url.startsWith('/api/conversations')) return new Response(JSON.stringify({ messages: [] }), { status: 200 });
+        return originalFetch(url);
+      };
+
+      document.getElementById('user-in').value = '\u0431\u043e\u043b\u0438 \u043c\u0435 \u043b\u044f\u0432\u043e\u0442\u043e \u0440\u0430\u043c\u043e, \u0446\u044f\u043b\u0430\u0442\u0430 \u043c\u0438 \u0440\u044a\u043a\u0430 \u0438\u0437\u0442\u0440\u044a\u043f\u0432\u0430';
+      await send();
+      window.__medicalHoldAfterSse = medicalHoldActive;
+      await loadSession();
+      window.__medicalHoldAfterRestore = medicalHoldActive;
+      window.fetch = originalFetch;
+    });
+
+    expect(await page.evaluate(() => window.__medicalHoldAfterSse)).toBe(true);
+    expect(await page.evaluate(() => window.__medicalHoldAfterRestore)).toBe(true);
+    await expect(page.locator('.start-wo')).toBeHidden();
+    await expect(page.locator('.workout-protocol')).toHaveCount(1);
+    await expect(page.locator('#feed')).toContainText('medical safety');
+    await page.evaluate(() => startWorkout());
+    await expect(page.locator('#workout')).not.toHaveClass(/on/);
+  });
+
   test('WO-1A: safe starter fallback keeps workout cards, rest and progression', async ({ page }) => {
     await page.evaluate(() => {
       const md = [
