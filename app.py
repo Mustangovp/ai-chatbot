@@ -2675,7 +2675,7 @@ def chat():
             athlete_store.observe(persist_uid, "exchange", {})
 
         def _shadow_log():
-            """Schedule isolated, post-delivery shadow work with safe-only telemetry."""
+            """Schedule isolated shadow work after authoritative content is fixed."""
             path = _recommendation_path
             intent = getattr(_shadow_decision, "intent", "unknown")
             if brain_config.brain_shadow():
@@ -2742,8 +2742,8 @@ def chat():
                     _update_learning_engine(chat_uid, user_message, _controlled_reply, profile)
                     _log_analytics(_t_start)
                     _ingest_state()
-                    yield sse({"done": True})
                     _shadow_log()
+                    yield sse({"done": True})
                     return
                 if _revised_nutrition_plan is not None:
                     reply_text = nutrition_plan.render_delivery(_revised_nutrition_plan, lang, profile)
@@ -2755,8 +2755,8 @@ def chat():
                     _update_learning_engine(chat_uid, user_message, reply_text, profile)
                     _log_analytics(_t_start)
                     _ingest_state()
-                    yield sse({"done": True})
                     _shadow_log()
+                    yield sse({"done": True})
                     return
                 if _nutrition_revision_failure is not None:
                     reply_text = _nutrition_revision_failure
@@ -2768,8 +2768,8 @@ def chat():
                     _update_learning_engine(chat_uid, user_message, reply_text, profile)
                     _log_analytics(_t_start)
                     _ingest_state()
-                    yield sse({"done": True})
                     _shadow_log()
+                    yield sse({"done": True})
                     return
                 if _recommendation_blueprint is not None and nutrition_delivery_target is not None:
                     reply_text = decision_engine.controlled_response(
@@ -2800,8 +2800,8 @@ def chat():
                     _update_learning_engine(chat_uid, user_message, reply_text, profile)
                     _log_analytics(_t_start)
                     _ingest_state()
-                    yield sse({"done": True})
                     _shadow_log()
+                    yield sse({"done": True})
                     return
                 if _nutrition_conversation.state is nutrition_conversation.NutritionConversationState.PLAN_READY:
                     # Plan-ready nutrition is generated as structured JSON. The
@@ -2885,8 +2885,8 @@ def chat():
                     _update_learning_engine(chat_uid, user_message, reply_text, profile)
                     _log_analytics(_t_start)
                     _ingest_state()
-                    yield sse({"done": True})
                     _shadow_log()
+                    yield sse({"done": True})
                     return
                 if _training_plan_blueprint is not None:
                     # Training delivery accepts only the renderer's explanation
@@ -2931,8 +2931,8 @@ def chat():
                     _update_learning_engine(chat_uid, user_message, reply_text, profile)
                     _log_analytics(_t_start)
                     _ingest_state()
-                    yield sse({"done": True})
                     _shadow_log()
+                    yield sse({"done": True})
                     return
 
                 stream = client.chat.completions.create(
@@ -2979,6 +2979,7 @@ def chat():
                 _update_learning_engine(chat_uid, user_message, reply_text, profile)
                 _log_analytics(_t_start)   # M5 Observatory
                 _ingest_state()      # BUILD-001 Human State (HSE_INGEST off by default)
+                _shadow_log()
                 if is_first_contact:
                     brain_state = {
                         "decision": decision_state,
@@ -2990,7 +2991,6 @@ def chat():
                     yield sse({"done": True, "profile": profile, "brain_state": brain_state})
                 else:
                     yield sse({"done": True})
-                _shadow_log()
             except Exception as openai_error:
                 print(f"[chat] OpenAI error: {openai_error}")
                 if nutrition_delivery_targets is not None:
@@ -3003,8 +3003,8 @@ def chat():
                     _update_learning_engine(chat_uid, user_message, reply_text, profile)
                     _log_analytics(_t_start)
                     _ingest_state()
-                    yield sse({"done": True})
                     _shadow_log()
+                    yield sse({"done": True})
                     return
                 # An upstream interruption is never a completed coaching turn.
                 # Tokens may already be visible in the browser, but they remain
