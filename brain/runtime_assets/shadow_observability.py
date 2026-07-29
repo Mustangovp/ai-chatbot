@@ -248,12 +248,14 @@ def submit(*, locale: str, authoritative_path: str, authoritative_intent: str,
     def timeout() -> None:
         if not resolved.is_set():
             resolved.set()
+            # Admission is released before publishing the terminal timeout state,
+            # so a visible timeout always permits the next bounded task.
+            release_slot()
             _record(stamp(_timeout_observation(locale, authoritative_path, authoritative_intent, components,
                                                (time.perf_counter() - started) * 1000)))
             emit_metric("task_timeout", component="task", status="timeout", locale=locale,
                         intent_category=authoritative_intent,
                         latency_ms=(time.perf_counter() - started) * 1000)
-            release_slot()
 
     timer = threading.Timer(timeout_ms / 1000.0, timeout)
     timer.daemon = True
