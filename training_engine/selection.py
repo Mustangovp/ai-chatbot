@@ -163,6 +163,7 @@ class TrainingSelectionRequest:
     muscle_priorities: tuple[str, ...]
     requested_split: TrainingSplit = TrainingSplit.FULL_BODY
     safety: TrainingSafetyConstraints = TrainingSafetyConstraints()
+    deprioritized_exercise_ids: frozenset[str] = frozenset()
     policy: TrainingGoalPolicy | None = None
 
     def __post_init__(self) -> None:
@@ -181,6 +182,9 @@ class TrainingSelectionRequest:
             raise ValueError("requested_split must use the split taxonomy")
         if not isinstance(self.safety, TrainingSafetyConstraints):
             raise ValueError("safety must be TrainingSafetyConstraints")
+        if not isinstance(self.deprioritized_exercise_ids, frozenset) or any(
+                not isinstance(item, str) or not item for item in self.deprioritized_exercise_ids):
+            raise ValueError("deprioritized exercise ids must be a frozen set of identities")
         if self.policy is not None and (self.policy.goal is not self.goal
                                         or self.policy.split is not self.requested_split):
             raise ValueError("goal policy does not match requested goal and split")
@@ -303,7 +307,10 @@ class TrainingSelectionEngine:
         priority = len(set(exercise.primary_muscles).intersection(request.muscle_priorities))
         difficulty = _DIFFICULTY_RANK[exercise.difficulty]
         preferred_difficulty = -difficulty if policy.prefer_highest_compatible_difficulty else difficulty
-        return (-priority, preferred_difficulty, exercise.exercise_id)
+        # Follow-up variation is an explicit deterministic preference, never a
+        # relaxation of a safety or equipment constraint.
+        prior_penalty = int(exercise.exercise_id in request.deprioritized_exercise_ids)
+        return (prior_penalty, -priority, preferred_difficulty, exercise.exercise_id)
 
     @staticmethod
     def _blueprint_id(library: ExerciseLibrary, request: TrainingSelectionRequest,

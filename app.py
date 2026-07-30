@@ -42,10 +42,14 @@ from knowledge import KnowledgeResolver, load_default_registry
 from recommend import architect as recommendation_architect, engine as recommendation_planning, renderer as recommendation_renderer
 from training_engine import (
     TrainingRuntimeError,
+    apply_followup,
     advance_training_lifecycle,
     build_training_plan,
+    followup_message,
     load_exercise_library,
+    parse_workout_followup,
     recovery_from_payload,
+    state_for,
     validate_workout_completion_payload,
     workout_result_from_payload,
 )
@@ -78,6 +82,32 @@ APP_URL = os.getenv("APP_URL", "")
 COOKIE_SECURE = APP_URL.startswith("https")
 SESSION_COOKIE = "apex_session"
 DEVICE_COOKIE = "apex_device"
+_WORKOUT_CONVERSATION_ID = re.compile(r"^[A-Za-z0-9_-]{16,128}$")
+_workout_conversation_lock = threading.Lock()
+_workout_conversation_state = {}
+
+
+def _workout_conversation_scope(payload, user_id, device_id):
+    """Return a tab-scoped, subject-bound key for an immutable last workout."""
+    conversation_id = str((payload or {}).get("conversation_id") or "")
+    if not _WORKOUT_CONVERSATION_ID.fullmatch(conversation_id):
+        return None
+    subject = f"account:{user_id}" if user_id else f"device:{device_id or ''}"
+    return subject, conversation_id
+
+
+def _last_workout_for(scope):
+    if scope is None:
+        return None
+    with _workout_conversation_lock:
+        return _workout_conversation_state.get(scope)
+
+
+def _remember_workout(scope, plan):
+    if scope is None or plan is None:
+        return
+    with _workout_conversation_lock:
+        _workout_conversation_state[scope] = state_for(plan)
 
 
 @app.before_request
@@ -1722,12 +1752,22 @@ def _plan_coaching_request(snapshot, intent, history, lang):
     return blueprint, None
 
 
-def _active_training_plan(snapshot, planning_blueprint):
+def _active_training_plan(snapshot, planning_blueprint, *, followup=None, previous_workout=None):
     """Build the deterministic workout artifact from verified request facts only."""
     if (snapshot.intent != "workout" or planning_blueprint is None
             or planning_blueprint.outcome is not recommendation_planning.RecommendationOutcome.RECOMMEND):
         return None
     facts = {key: fact.value for key, fact in snapshot.profile.items()}
+    if followup is not None:
+        if previous_workout is None:
+            raise TrainingRuntimeError("previous workout is required for this change")
+        return apply_followup(
+            followup=followup,
+            previous=previous_workout,
+            recommendation_blueprint_id=planning_blueprint.blueprint_id,
+            facts=facts,
+            locked_preferences=snapshot.locked_preferences.as_dict(),
+        )
     return build_training_plan(
         recommendation_blueprint_id=planning_blueprint.blueprint_id,
         facts=facts,
@@ -2107,6 +2147,16 @@ def chat():
                 return jsonify({"limit_reached": True, "hours_left": q["hours_left"], "remaining": 0}), 200
 
         chat_uid = str(g.user["id"]) if g.get("user") else None
+        _workout_scope = _workout_conversation_scope(data, chat_uid, g.device_id)
+        _workout_followup = parse_workout_followup(user_message)
+        _previous_workout = _last_workout_for(_workout_scope)
+        _followup_reply = None
+        _followup_failure_reply = None
+        if _workout_followup is not None:
+            if _workout_followup.requires_previous and _previous_workout is None:
+                _followup_reply = followup_message("previous workout is required", lang)
+            elif _workout_followup.operation.value == "unknown_exercise":
+                _followup_reply = followup_message("unknown requested exercise", lang)
         pers_workouts = []
         if chat_uid:
             db_profile = store.get_profile(chat_uid)
@@ -2173,6 +2223,9 @@ def chat():
             _legacy_profile = profile if isinstance(profile, dict) else {}
             _legacy_history = history if isinstance(history, list) else []
             _shadow_intent = decision_engine.classify_intent(user_message)
+            if (_workout_followup is not None and _previous_workout is not None
+                    and _workout_followup.requires_previous):
+                _shadow_intent = "workout"
             _snapshot = context_builder.build_context(
                 intent=_shadow_intent,
                 subject=(context_builder.Subject("account", chat_uid, True)
@@ -2197,14 +2250,24 @@ def chat():
             pers_workouts = _legacy["workouts"]
             _shadow_decision = decision_engine.decide(_snapshot, _shadow_intent)
             _planning_request_intent = _planning_intent(user_message, history, _shadow_intent)
-            _recommendation_plan, _planning_reply = _plan_coaching_request(
-                _snapshot, _planning_request_intent, history, lang)
+            if _followup_reply is not None:
+                _planning_request_intent = None
+                _recommendation_plan, _planning_reply = None, _followup_reply
+            else:
+                _recommendation_plan, _planning_reply = _plan_coaching_request(
+                    _snapshot, _planning_request_intent, history, lang)
             if (_training_engine_active_for_request and _shadow_decision.outcome == "recommend"
                     and _shadow_decision.intent == "workout"
                     and _recommendation_plan is not None
                     and _recommendation_plan.outcome is recommendation_planning.RecommendationOutcome.RECOMMEND):
                 try:
-                    _training_plan_blueprint = _active_training_plan(_snapshot, _recommendation_plan)
+                    if _workout_followup is not None and _workout_followup.requires_previous:
+                        _training_plan_blueprint = _active_training_plan(
+                            _snapshot, _recommendation_plan,
+                            followup=_workout_followup, previous_workout=_previous_workout,
+                        )
+                    else:
+                        _training_plan_blueprint = _active_training_plan(_snapshot, _recommendation_plan)
                     _training_plan_blueprint = _advance_active_training_plan(_training_plan_blueprint, data)
                     if _training_plan_blueprint is None:
                         _training_engine_failure = "training_engine_profile_contract"
@@ -2212,7 +2275,10 @@ def chat():
                         _recommendation_path = "deterministic_training"
                 except TrainingRuntimeError as _training_error:
                     print(f"[training-engine] construction rejected: {type(_training_error).__name__}")
-                    _training_engine_failure = "training_engine_profile_contract"
+                    if _workout_followup is not None:
+                        _followup_failure_reply = followup_message(_training_error, lang)
+                    else:
+                        _training_engine_failure = "training_engine_profile_contract"
             _active_workout = (not _training_engine_active_for_request and _recommendation_active and _shadow_decision.outcome == "recommend" and
                                _shadow_decision.intent == "workout"
                                and (_recommendation_plan is None or
@@ -2239,6 +2305,10 @@ def chat():
                      or not brain_config.brain_enforce()))
                 else decision_engine.controlled_response(_shadow_decision, lang)
             )
+            if _followup_reply is not None:
+                _controlled_reply = _followup_reply
+            if _followup_failure_reply is not None:
+                _controlled_reply = _followup_failure_reply
             if _training_engine_failure is not None:
                 # An incomplete or legacy browser profile must never turn an
                 # explicit workout request into the generic clarify message.
@@ -2935,6 +3005,7 @@ def chat():
                                                            "training_engine_delivery_contract", (), 1.0), lang)
                     yield sse({"t": reply_text})
                     if training_completion is not None:
+                        _remember_workout(_workout_scope, _training_plan_blueprint)
                         yield sse({"training_completion": training_completion})
                     speech_event = _speech_event(reply_text)
                     if speech_event:

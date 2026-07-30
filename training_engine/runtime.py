@@ -24,6 +24,7 @@ from .selection import (
     TrainingSelectionEngine,
     TrainingSelectionRequest,
     TrainingSplit,
+    TrainingGoalPolicy,
     resolve_training_split,
     training_goal_policy,
 )
@@ -70,18 +71,30 @@ _EQUIPMENT = {
 def build_training_plan(*, recommendation_blueprint_id: str, facts: Mapping[str, Any],
                         locked_preferences: Mapping[str, tuple[str, ...]] | None = None,
                         requested_split: object | None = None,
-                        library: ExerciseLibrary | None = None) -> TrainingPlanBlueprintV2:
+                        library: ExerciseLibrary | None = None,
+                        excluded_exercise_ids: frozenset[str] = frozenset(),
+                        excluded_movement_patterns: frozenset[MovementPattern] = frozenset(),
+                        deprioritized_exercise_ids: frozenset[str] = frozenset(),
+                        level_override: Difficulty | None = None) -> TrainingPlanBlueprintV2:
     """Build one deterministic weekly plan or fail without producing a partial plan."""
     profile = dict(facts)
     locked = dict(locked_preferences or {})
     _reject_unreviewed_safety_constraints(profile, locked)
     goal = _goal(profile.get("goal"))
-    level = _level(profile.get("level") or profile.get("experience_level"))
+    level = level_override or _level(profile.get("level") or profile.get("experience_level"))
+    if not isinstance(level, Difficulty):
+        raise TrainingRuntimeError("training level override is invalid")
     split = _split(requested_split if requested_split is not None
                    else profile.get("training_split") or profile.get("split"))
     equipment = _equipment(locked.get("equipment") or profile.get("equipment"))
     selected_library = library or load_exercise_library()
-    safety = _safety(locked, selected_library)
+    base_safety = _safety(locked, selected_library)
+    safety = TrainingSafetyConstraints(
+        excluded_exercise_ids=base_safety.excluded_exercise_ids | frozenset(excluded_exercise_ids),
+        excluded_movement_patterns=base_safety.excluded_movement_patterns | frozenset(excluded_movement_patterns),
+        excluded_training_tags=base_safety.excluded_training_tags,
+    )
+    policy = _policy_for_constraints(goal, split, safety)
     selection = TrainingSelectionEngine.select(
         selected_library,
         TrainingSelectionRequest(
@@ -92,13 +105,15 @@ def build_training_plan(*, recommendation_blueprint_id: str, facts: Mapping[str,
             muscle_priorities=_priorities(profile),
             requested_split=split,
             safety=safety,
-            policy=training_goal_policy(goal, split),
+            deprioritized_exercise_ids=frozenset(deprioritized_exercise_ids),
+            policy=policy,
         ),
     )
     if selection.blueprint is None:
         raise TrainingRuntimeError("training selection rejected: " + ",".join(selection.rejection_reasons))
     return TrainingPlanConstructionEngine.construct(
-        selection.blueprint, selected_library, _structure_policy(goal, level, split, _recovery(profile)),
+        selection.blueprint, selected_library, _structure_policy(
+            goal, level, split, _recovery(profile), policy=policy),
     )
 
 
@@ -193,8 +208,30 @@ def _safety(locked: Mapping[str, Any], library: ExerciseLibrary) -> TrainingSafe
     return TrainingSafetyConstraints(frozenset(exercise_ids), frozenset(patterns))
 
 
+def _policy_for_constraints(goal: TrainingGoal, split: TrainingSplit,
+                            safety: TrainingSafetyConstraints) -> TrainingGoalPolicy:
+    base = training_goal_policy(goal, split)
+    sessions = tuple(
+        tuple(pattern for pattern in session if pattern not in safety.excluded_movement_patterns)
+        for session in base.session_patterns
+    )
+    sessions = tuple(session for session in sessions if session)
+    patterns = tuple(pattern for session in sessions for pattern in session)
+    if not patterns:
+        raise TrainingRuntimeError("all required movement patterns are excluded")
+    return TrainingGoalPolicy(
+        version=base.version + ":constraints:" + ",".join(
+            sorted(pattern.value for pattern in safety.excluded_movement_patterns)),
+        goal=goal,
+        required_patterns=patterns,
+        prefer_highest_compatible_difficulty=base.prefer_highest_compatible_difficulty,
+        split=split,
+        session_patterns=sessions,
+    )
+
+
 def _structure_policy(goal: TrainingGoal, level: Difficulty, split: TrainingSplit,
-                      recovery: RecoveryAssumption) -> TrainingStructurePolicy:
+                      recovery: RecoveryAssumption, *, policy: TrainingGoalPolicy | None = None) -> TrainingStructurePolicy:
     base_sets = 3 if goal is TrainingGoal.MUSCLE_GAIN else 2
     if recovery is RecoveryAssumption.LIMITED:
         base_sets = max(1, base_sets - 1)
@@ -209,7 +246,7 @@ def _structure_policy(goal: TrainingGoal, level: Difficulty, split: TrainingSpli
                          "3-1-1-0" if pattern is not MovementPattern.CORE_ANTI_EXTENSION else "2-1-2-0",
                          4 if pattern is not MovementPattern.CORE_ANTI_EXTENSION else 3,
                          Decimal("2") if pattern is not MovementPattern.CORE_ANTI_EXTENSION else Decimal("1"))
-        for pattern in training_goal_policy(goal, split).required_patterns
+        for pattern in (policy or training_goal_policy(goal, split)).required_patterns
     )
     requested_sessions = {TrainingSplit.FULL_BODY: 2, TrainingSplit.UPPER_LOWER: 2,
                           TrainingSplit.PUSH_PULL_LEGS: 3}[split]
@@ -217,7 +254,7 @@ def _structure_policy(goal: TrainingGoal, level: Difficulty, split: TrainingSpli
     return TrainingStructurePolicy(
         version=f"training-structure-policy-v1:{goal.value}:{level.value}:{split.value}:{recovery.value}",
         goal=goal, experience_level=level, training_split=split, recovery=recovery, sessions_per_week=sessions,
-        session_patterns=training_goal_policy(goal, split).session_patterns,
+        session_patterns=(policy or training_goal_policy(goal, split)).session_patterns,
         movement_order=(MovementPattern.SQUAT, MovementPattern.LUNGE,
                         MovementPattern.HORIZONTAL_PUSH, MovementPattern.HORIZONTAL_PULL,
                         MovementPattern.VERTICAL_PUSH, MovementPattern.HINGE,
