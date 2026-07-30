@@ -2243,6 +2243,14 @@ function parseExercises(header,body){
   return ex;
 }
 let pendingWorkout=null,pendingWorkouts={},pendingWorkoutContracts={},pendingTrainingCompletion=null,pendingCompletionSessions=[],medicalHoldActive=false;
+function activeWorkoutConversationId(){
+  const key='apexWorkoutConversationId';let value=sessionStorage.getItem(key)||'';
+  if(!/^[A-Za-z0-9_-]{16,128}$/.test(value)){
+    value=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+'-'+Math.random()).replace(/[^A-Za-z0-9_-]/g,'');
+    sessionStorage.setItem(key,value);
+  }
+  return value;
+}
 function activateMedicalHold(persist=true){
   medicalHoldActive=true;pendingWorkout=null;pendingWorkouts={};pendingWorkoutContracts={};
   document.querySelectorAll('.start-wo').forEach(b=>{b.disabled=true;b.style.display='none';});
@@ -2699,6 +2707,7 @@ async function send(options={}){
   inp.value='';pendingTrainingCompletion=null;pendingCompletionSessions=[];
   const token=localStorage.getItem('apexToken')||'';
   const body={message:val,lang:lang};
+  body.conversation_id=activeWorkoutConversationId();
   if(options.voice===true)body.voice=true;
   if(options.completedWorkout){
     body.completed_workout=options.completedWorkout;
