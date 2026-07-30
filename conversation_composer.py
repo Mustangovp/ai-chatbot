@@ -7,7 +7,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
-from typing import Iterable, Literal, Mapping
+from typing import Iterable, Literal, Mapping, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from brain.shoulder_validator import ShoulderSafetyProof
 
 
 Mode = Literal[
@@ -63,6 +66,9 @@ class ConversationFrame:
     optional_prose_allowed: bool = True
     persona_projection: object | None = None
     expert_communication_constraints: object | None = None
+    # Grounding proof: the composer must not claim shoulder safety
+    # unless this is present and proof.may_claim_safe is True.
+    shoulder_safety_proof: object | None = None
 
 
 _FRUSTRATION = (
@@ -163,7 +169,8 @@ def compose(policy: ConversationPolicy, *, verified_memory: Iterable[Mapping[str
             validated_blueprint=None, validated_nutrition_contract: bool = False,
             authority_facts: Mapping[str, object] | None = None,
             persona_projection: object | None = None,
-            expert_communication_constraints: object | None = None) -> ConversationFrame:
+            expert_communication_constraints: object | None = None,
+            shoulder_safety_proof: object | None = None) -> ConversationFrame:
     """Create a safe communication frame from approved, non-internal inputs only."""
     facts = authority_facts or {}
     reference_fact = next((key for key in ("recoveryFeel", "sleepQuality", "stressLevel", "goal")
@@ -191,6 +198,7 @@ def compose(policy: ConversationPolicy, *, verified_memory: Iterable[Mapping[str
         persona_projection=persona_projection if policy.optional_prose_allowed else None,
         expert_communication_constraints=(expert_communication_constraints
                                           if policy.optional_prose_allowed else None),
+        shoulder_safety_proof=shoulder_safety_proof,
     )
 
 
@@ -231,6 +239,27 @@ def render_prompt(frame: ConversationFrame, lang: str) -> str:
         lines.append("The supplied structured plan remains authoritative. Do not change, omit, add, reorder, or reinterpret any supplied value. These communication instructions affect wording only; the supplied plan wins if they conflict.")
     if frame.nutrition_contract_present:
         lines.append("The existing nutrition delivery contract remains authoritative. Never present an incomplete nutrition plan as complete.")
+    # ── SHOULDER SAFETY GROUNDING RULE ────────────────────────────────────────────
+    # The composer MUST NOT claim that the shoulder constraint is satisfied
+    # unless a machine-checkable proof is present and validated.
+    proof = frame.shoulder_safety_proof
+    if proof is not None and getattr(proof, "shoulder_constraint_active", False):
+        if getattr(proof, "may_claim_safe", False):
+            lines.append(
+                "SHOULDER SAFETY GROUNDING: The deterministic plan validator has confirmed "
+                "zero shoulder-loading exercises. You MAY note that shoulder load is avoided, "
+                "but only as a single factual statement. Do not elaborate or promise outcomes."
+            )
+        else:
+            lines.append(
+                "SHOULDER SAFETY GROUNDING: The plan has NOT been validated as shoulder-safe "
+                "(validation absent or failed). You MUST NOT claim, imply, or suggest that "
+                "shoulder load is avoided, the shoulder is protected, or the constraint is "
+                "satisfied. Do not use phrases such as: ‘избягваме натоварването’, "
+                "'рамото не участва', 'constraint satisfied', 'no shoulder involvement', "
+                "'shoulder-safe', or any equivalent. If you cannot describe the workout without "
+                "such a claim, describe only what exercises are included and their purpose."
+            )
     persona = frame.persona_projection
     expert = frame.expert_communication_constraints
     if persona is not None or expert is not None:

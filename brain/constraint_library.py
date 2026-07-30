@@ -19,7 +19,7 @@ and bilingual coverage expansion are documented pre-M4 work (Review H-2/H-3).
 """
 from brain.types import Constraint, ConstraintTier as T
 
-LIBRARY_VERSION = "seed-2026-07-05"
+LIBRARY_VERSION = "seed-2026-07-30"
 
 _A, _R, _M = T.ABSOLUTE, T.RELATIVE, T.MONITOR
 
@@ -73,6 +73,63 @@ CONSTRAINT_LIBRARY: dict[str, list[Constraint]] = {
     "falls_risk": [
         Constraint("unsupported_balance", _R, "balance_safety"),
     ],
+    # ── Shoulder ────────────────────────────────────────────────────────────────
+    # Any movement that loads the shoulder joint directly, requires shoulder
+    # stabilisation under bodyweight, or transmits external load through the
+    # upper limb is ABSOLUTELY contraindicated when the shoulder is affected.
+    # This intentionally over-excludes: unknown metadata → fail closed.
+    "shoulder_pain": [
+        Constraint("shoulder_direct_load",        _A, "shoulder_load_forbidden"),
+        Constraint("shoulder_stabilisation",       _A, "shoulder_load_forbidden"),
+        Constraint("upper_limb_external_load",     _A, "shoulder_load_forbidden"),
+        Constraint("push",                         _A, "shoulder_load_forbidden"),
+        Constraint("pull",                         _A, "shoulder_load_forbidden"),
+        Constraint("press",                        _A, "shoulder_load_forbidden"),
+        Constraint("overhead",                     _A, "shoulder_load_forbidden"),
+        Constraint("loaded_carry",                 _A, "shoulder_load_forbidden"),
+        Constraint("plank",                        _A, "shoulder_load_forbidden"),
+        Constraint("row",                          _A, "shoulder_load_forbidden"),
+        Constraint("push_up",                      _A, "shoulder_load_forbidden"),
+        Constraint("dip",                          _A, "shoulder_load_forbidden"),
+        Constraint("pull_up",                      _A, "shoulder_load_forbidden"),
+        Constraint("hanging",                      _A, "shoulder_load_forbidden"),
+        Constraint("hand_supported_bodyweight",    _A, "shoulder_load_forbidden"),
+        Constraint("elbow_supported_bodyweight",   _A, "shoulder_load_forbidden"),
+        Constraint("forearm_supported_bodyweight", _A, "shoulder_load_forbidden"),
+        Constraint("goblet_hold",                  _A, "shoulder_load_forbidden"),
+        Constraint("dumbbell_hinge",               _A, "shoulder_load_forbidden"),
+        Constraint("dumbbell_deadlift",            _A, "shoulder_load_forbidden"),
+        Constraint("farmers_carry",                _A, "shoulder_load_forbidden"),
+        Constraint("unknown_shoulder_load",        _A, "shoulder_load_forbidden"),
+    ],
+    "left_shoulder_pain": [
+        Constraint("left_upper_limb_load",         _A, "left_shoulder_load_forbidden"),
+        Constraint("shoulder_direct_load",         _A, "left_shoulder_load_forbidden"),
+        Constraint("push",                         _A, "left_shoulder_load_forbidden"),
+        Constraint("pull",                         _A, "left_shoulder_load_forbidden"),
+        Constraint("plank",                        _A, "left_shoulder_load_forbidden"),
+        Constraint("push_up",                      _A, "left_shoulder_load_forbidden"),
+        Constraint("row",                          _A, "left_shoulder_load_forbidden"),
+        Constraint("upper_limb_external_load",     _A, "left_shoulder_load_forbidden"),
+        Constraint("goblet_hold",                  _A, "left_shoulder_load_forbidden"),
+        Constraint("dumbbell_hinge",               _A, "left_shoulder_load_forbidden"),
+        Constraint("hand_supported_bodyweight",    _A, "left_shoulder_load_forbidden"),
+        Constraint("unknown_shoulder_load",        _A, "left_shoulder_load_forbidden"),
+    ],
+    "right_shoulder_pain": [
+        Constraint("right_upper_limb_load",        _A, "right_shoulder_load_forbidden"),
+        Constraint("shoulder_direct_load",         _A, "right_shoulder_load_forbidden"),
+        Constraint("push",                         _A, "right_shoulder_load_forbidden"),
+        Constraint("pull",                         _A, "right_shoulder_load_forbidden"),
+        Constraint("plank",                        _A, "right_shoulder_load_forbidden"),
+        Constraint("push_up",                      _A, "right_shoulder_load_forbidden"),
+        Constraint("row",                          _A, "right_shoulder_load_forbidden"),
+        Constraint("upper_limb_external_load",     _A, "right_shoulder_load_forbidden"),
+        Constraint("goblet_hold",                  _A, "right_shoulder_load_forbidden"),
+        Constraint("dumbbell_hinge",               _A, "right_shoulder_load_forbidden"),
+        Constraint("hand_supported_bodyweight",    _A, "right_shoulder_load_forbidden"),
+        Constraint("unknown_shoulder_load",        _A, "right_shoulder_load_forbidden"),
+    ],
 }
 
 # free-text token (lowercase) → condition key. Bilingual EN/BG. Conservative.
@@ -106,6 +163,59 @@ CONDITION_TOKENS: dict[str, str] = {
     "neuropathy": "diabetes_neuropathy", "numb feet": "diabetes_neuropathy", "невропатия": "diabetes_neuropathy",
     # falls / balance
     "falls": "falls_risk", "fallen": "falls_risk", "падам": "falls_risk", "падания": "falls_risk",
+    # shoulder — bilateral (EN)
+    "shoulder pain": "shoulder_pain",
+    "shoulder injury": "shoulder_pain",
+    "shoulder problem": "shoulder_pain",
+    "shoulder issue": "shoulder_pain",
+    "shoulder damage": "shoulder_pain",
+    "rotator cuff": "shoulder_pain",
+    "shoulder impingement": "shoulder_pain",
+    "no shoulder loading": "shoulder_pain",
+    "avoid shoulder": "shoulder_pain",
+    "without shoulder involvement": "shoulder_pain",
+    "no shoulder involvement": "shoulder_pain",
+    "do not use my shoulder": "shoulder_pain",
+    "workout without shoulder": "shoulder_pain",
+    "avoid loading the shoulder": "shoulder_pain",
+    # shoulder — bilateral (BG)
+    "болка в рамото": "shoulder_pain",
+    "болки в рамото": "shoulder_pain",
+    "проблем с рамото": "shoulder_pain",
+    "проблеми с рамото": "shoulder_pain",
+    "увредено рамо": "shoulder_pain",
+    "наранено рамо": "shoulder_pain",
+    "без натоварване на рамото": "shoulder_pain",
+    "рамото да не участва": "shoulder_pain",
+    "без упражнения за рамо": "shoulder_pain",
+    "само упражнения без участие на рамото": "shoulder_pain",
+    "без участие на рамото": "shoulder_pain",
+    "не натоварвай рамото": "shoulder_pain",
+    "рамото ме боли": "shoulder_pain",
+    "болно рамо": "shoulder_pain",
+    "рамото": "shoulder_pain",
+    # shoulder — left (EN)
+    "left shoulder": "left_shoulder_pain",
+    "avoid loading the left shoulder": "left_shoulder_pain",
+    "no left shoulder": "left_shoulder_pain",
+    # shoulder — left (BG)
+    "лявото рамо": "left_shoulder_pain",
+    "ляво рамо": "left_shoulder_pain",
+    "лявото ми рамо": "left_shoulder_pain",
+    "не натоварвай лявото рамо": "left_shoulder_pain",
+    "болка в лявото рамо": "left_shoulder_pain",
+    "боли ме лявото рамо": "left_shoulder_pain",
+    "заболя ме лявото рамо": "left_shoulder_pain",
+    # shoulder — right (EN)
+    "right shoulder": "right_shoulder_pain",
+    "avoid loading the right shoulder": "right_shoulder_pain",
+    "no right shoulder": "right_shoulder_pain",
+    # shoulder — right (BG)
+    "дясното рамо": "right_shoulder_pain",
+    "дясно рамо": "right_shoulder_pain",
+    "не натоварвай дясното рамо": "right_shoulder_pain",
+    "болка в дясното рамо": "right_shoulder_pain",
+    "боли ме дясното рамо": "right_shoulder_pain",
 }
 
 
