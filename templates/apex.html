@@ -1238,7 +1238,7 @@ function buildWorkoutContext(en){
 const T={
   en:{eyebrow:'SYSTEM ONLINE',ctaTrain:'Start training',ctaConsult:'Consult',back:'Back',live:'LIVE',
     feedback:'Send feedback',profile:'Profile',chEngine:'APEX COACH ENGINE',placeholder:'Describe your goal…',
-    recovery:'Recovery',fatigue:'Fatigue',stress:'Stress',coach:'APEX',typing:'CALIBRATING',
+    recovery:'Recovery',fatigue:'Fatigue',stress:'Stress',assessmentTitle:'Profile assessment',assessmentPending:'Assessment pending',assessmentSupport:'Complete your profile to calculate these values.',coach:'APEX',typing:'CALIBRATING',
     greetHi:'I read your signals.',greetSub:'Goal on file:',
     chips:[{label:"Today's Workout",q:'Make me a workout for today'},{label:'Nutrition Plan',q:'Make me a nutrition plan'},{label:'Progress',q:'How am I progressing?'},{label:'Ask APEX',q:null}],
     states:{peak:{h:'Peak readiness',s:'Recovery is high. Your nervous system is primed — this is your window to push.'},
@@ -1287,7 +1287,7 @@ const T={
       freeDesc:'You are on the free plan. Unlock unlimited coaching, deeper memory and the PRO model.',
       upgrade:'View plans →',upgradePro:'Go PRO — €14.99 / 30 days',upgradeCore:'Get CORE — €9.99 / 30 days',checkoutErr:'Checkout unavailable. Try again.',
       access:'Access until',oneTime:'One-time 30-day pass (not a recurring subscription)',
-      eu:'EU right of withdrawal: a full refund is available within 14 days if you have not started using the digital content. A 7-day money-back guarantee also applies. Cancellation is never hidden.',
+      eu:'Refund requests are handled under the Refund Policy and applicable consumer-law rules.',
       confirmCancel:'Cancel your subscription and request a refund? This cannot be undone.'},
     hist:{title:'History',desc:'Your completed sessions and coaching activity.',empty:'No completed workouts yet. Finish a session and it appears here.',
       sets:'sets',exercises:'exercises'},
@@ -1297,7 +1297,7 @@ const T={
     about:{title:'About APEX',b:'<p><strong>APEX PULSE PRO</strong> is a living AI biological operating system — a personal coach that reads your physiology and adapts every plan to you.</p><h4>What it does</h4><ul><li>Personalized training & nutrition</li><li>Recovery-aware coaching</li><li>Persistent coaching memory</li></ul><p style="color:var(--faint);margin-top:12px">Version 3.3 · Your peak. Your pulse.</p>'}},
   bg:{eyebrow:'СИСТЕМАТА Е АКТИВНА',ctaTrain:'Започни тренировка',ctaConsult:'Консултация',back:'Назад',live:'НА ЖИВО',
     feedback:'Изпрати обратна връзка',profile:'Профил',chEngine:'APEX ТРЕНЬОРСКО ЯДРО',placeholder:'Опиши целта си…',
-    recovery:'Възстановяване',fatigue:'Умора',stress:'Стрес',coach:'APEX',typing:'ПРЕСМЯТАМ',
+    recovery:'Възстановяване',fatigue:'Умора',stress:'Стрес',assessmentTitle:'Оценка на профила',assessmentPending:'Очаква оценка',assessmentSupport:'Попълни профила си, за да изчислим стойностите.',coach:'APEX',typing:'ПРЕСМЯТАМ',
     greetHi:'Прочетох сигналите ти.',greetSub:'Цел във файла:',
     chips:[{label:'Тренировка за днес',q:'Направи ми тренировка за днес'},{label:'Хранителен план',q:'Направи ми хранителен план'},{label:'Прогрес',q:'Как напредвам?'},{label:'Попитай APEX',q:null}],
     states:{peak:{h:'Пиково състояние',s:'Възстановяването е високо. Нервната ти система е заредена — това е моментът да натиснеш.'},
@@ -1346,7 +1346,7 @@ const T={
       freeDesc:'Ти си на безплатния план. Отключи неограничено треньорство, по-дълбока памет и PRO модела.',
       upgrade:'Виж плановете →',upgradePro:'Към PRO — €14.99 / 30 дни',upgradeCore:'Вземи CORE — €9.99 / 30 дни',checkoutErr:'Плащането е недостъпно. Опитай пак.',
       access:'Достъп до',oneTime:'Еднократен 30-дневен достъп (не е повтарящ се абонамент)',
-      eu:'Право на отказ (ЕС): пълно възстановяване в рамките на 14 дни, ако не си започнал да ползваш дигиталното съдържание. Важи и 7-дневна гаранция за връщане на парите. Отказът никога не е скрит.',
+      eu:'Исканията за възстановяване се разглеждат съгласно Политиката за възстановяване и приложимите правила за защита на потребителите.',
       confirmCancel:'Да откажа абонамента и да поискам възстановяване? Това е необратимо.'},
     hist:{title:'История',desc:'Твоите завършени сесии и треньорска активност.',empty:'Още няма завършени тренировки. Завърши сесия и тя ще се появи тук.',
       sets:'серии',exercises:'упражнения'},
@@ -1367,7 +1367,21 @@ function readoutKey(ph){
   if(ph.recovery>.7&&ph.fatigue<.45)return'peak';
   return'ready';
 }
+function hasCompletedProfileAssessment(){
+  const p=pfLoad();
+  return ['goal','age','weight','height','gender','level','equipment','sleepQuality','stressLevel','recoveryFeel','activityLevel','frequency']
+    .every(key=>String(p[key]||'').trim()!=='');
+}
 function applyReadout(){
+  if(!hasCompletedProfileAssessment()){
+    const t=tr();
+    document.getElementById('read-state').textContent=t.assessmentTitle;
+    document.getElementById('read-sub').textContent=t.assessmentSupport;
+    document.getElementById('m-rec').textContent=t.assessmentPending;
+    document.getElementById('m-fat').textContent=t.assessmentPending;
+    document.getElementById('m-str').textContent=t.assessmentPending;
+    return;
+  }
   const ph=computePhysiology(); core.setPhysiology(ph);
   const s=tr().states[readoutKey(ph)];
   document.getElementById('read-state').textContent=s.h;
