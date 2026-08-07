@@ -105,3 +105,17 @@ def test_malformed_subscription_cannot_fall_through_to_new_entitlement(client, m
     response = client.get(f"/poll-token?session_id={session_id}")
 
     assert response.get_json() == {"ready": False}
+
+
+def test_checkout_session_creation_is_disabled_by_default(client, monkeypatch):
+    monkeypatch.delenv("PAID_ACCESS_ENABLED", raising=False)
+    monkeypatch.setattr(
+        appmod.stripe.checkout.Session,
+        "create",
+        lambda **_: pytest.fail("disabled paid access must not call Stripe"),
+    )
+
+    response = client.post("/create-checkout-session", json={"plan": "pro"})
+
+    assert response.status_code == 503
+    assert response.get_json() == {"error": "paid_access_unavailable"}

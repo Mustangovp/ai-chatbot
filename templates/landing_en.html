@@ -283,8 +283,6 @@ h2{font-family:'Unbounded';font-weight:700;font-size:clamp(21px,4vw,32px);line-h
 /* PRICING */
 .plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;margin-top:30px;align-items:start;}
 .plan{background:var(--surface);border:1px solid rgba(255,255,255,.1);border-radius:var(--radius);padding:28px 24px;}
-.plan.hot{border:2px solid transparent;background:linear-gradient(var(--surface),var(--surface)) padding-box,var(--pulse) border-box;position:relative;}
-.plan.hot .tag{position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:var(--pulse);font-size:11px;font-weight:800;letter-spacing:1px;padding:5px 16px;border-radius:20px;white-space:nowrap;}
 .plan .p-name{font-family:'Unbounded';font-weight:700;font-size:14px;letter-spacing:1px;}
 .plan .p-price{font-family:'Unbounded';font-weight:900;font-size:36px;margin:12px 0 2px;}
 .plan .p-price span{font-size:14px;color:var(--muted);font-weight:500;font-family:'Manrope';}
@@ -296,21 +294,9 @@ h2{font-family:'Unbounded';font-weight:700;font-size:clamp(21px,4vw,32px);line-h
 .plan li.off::before{content:'—';}
 .p-btn{display:block;text-align:center;font-weight:800;font-size:15px;padding:14px;border-radius:14px;text-decoration:none;color:#fff;border:1px solid rgba(255,255,255,.2);cursor:pointer;background:none;width:100%;font-family:'Manrope';transition:transform .15s,border-color .15s,box-shadow .15s;}
 .p-btn:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.4);}
-.plan.hot .p-btn{background:var(--pulse);border:none;box-shadow:0 6px 24px rgba(245,33,45,.32);}
-.plan.hot .p-btn:hover{box-shadow:0 10px 30px rgba(245,33,45,.45);border:none;}
-/* EU consumer-rights: cancellation / withdrawal policy — visible to every visitor */
-.cancel-policy-wrap{text-align:center;margin-top:24px;}
-.cancel-policy-btn{display:inline-flex;align-items:center;gap:9px;background:var(--surface2);border:1px solid rgba(255,255,255,.2);color:var(--text);font-family:'Manrope';font-weight:700;font-size:13.5px;padding:12px 22px;border-radius:30px;cursor:pointer;transition:border-color .2s,color .2s,transform .15s;}
-.cancel-policy-btn:hover{border-color:var(--gold);color:var(--gold);transform:translateY(-1px);}
-.cancel-policy-note{margin-top:8px;font-size:11.5px;color:var(--muted);}
-
-/* TRUST BLOCK */
-.trustblock{margin-top:24px;background:var(--surface);border:1px solid rgba(255,255,255,.1);border-radius:var(--radius);padding:20px;text-align:center;}
-.trustblock .tb-logos{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
-.trustblock .tb-logos img{height:28px;width:auto;border-radius:5px;background:#fff;padding:3px 6px;}
-.trustblock .tb-logos img.dark{background:#000;}
-.trustblock .tb-row{font-size:13px;color:#C9D0DF;padding:3px 0;}
-.trustblock .tb-row b{color:var(--text);}
+.p-btn.unavailable{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.16);color:var(--muted);cursor:default;}
+.p-btn.unavailable:hover{transform:none;border-color:rgba(255,255,255,.16);}
+.plan-unavailable{color:var(--muted)!important;min-height:34px;line-height:1.35;}
 
 /* FAQ */
 .faq-item{background:var(--surface);border:1px solid rgba(255,255,255,.1);border-radius:14px;margin-bottom:10px;overflow:hidden;}
@@ -464,16 +450,6 @@ footer a:hover{color:var(--text);}
     </a>
   </div>
 
-  <div class="paystrip">
-    <div class="ps-label">Secure payments via</div>
-    <img src="/static/payment-logos/visa.svg" alt="Visa">
-    <img src="/static/payment-logos/mastercard.svg" alt="Mastercard">
-    <img src="/static/payment-logos/applepay.svg" alt="Apple Pay" class="dark">
-    <img src="/static/payment-logos/googlepay.svg" alt="Google Pay">
-    <img src="/static/payment-logos/revolut.svg" alt="Revolut" class="dark">
-    <img src="/static/payment-logos/stripe.svg" alt="Stripe">
-  </div>
-
   <div class="marquee" aria-hidden="true">
     <div class="marquee-track">
       <span>Fat loss</span><span>Muscle</span><span>Tone</span><span>Nutrition</span><span>Cardio</span><span>Strength</span><span>Energy</span>
@@ -579,8 +555,8 @@ footer a:hover{color:var(--text);}
 
 <section class="wrap" id="pricing">
   <div class="sec-label">Premium access</div>
-  <h2>Pay once. Use it for 30 days.</h2>
-  <p class="sec-sub">No auto-renewal. No subscription games. When 30 days pass, you decide whether to renew.</p>
+  <h2>APEX is available for free.</h2>
+  <p class="sec-sub">CORE and PRO are temporarily unavailable while we prepare the next APEX release.</p>
   <div class="plans">
     <div class="plan">
       <div class="p-name">FREE</div>
@@ -594,53 +570,32 @@ footer a:hover{color:var(--text);}
       </ul>
       <a href="/app?lang=en" class="p-btn" onclick="track('cta_click',{place:'plan_free'})">Try for free</a>
     </div>
-    <div class="plan hot">
-      <div class="tag">MOST POPULAR</div>
+    <div class="plan">
       <div class="p-name">CORE</div>
       <div class="p-price">€9.99<span>/30 days</span></div>
-      <div class="p-day">€0.33 per day</div>
+      <div class="p-day plan-unavailable">Premium access is temporarily unavailable.</div>
       <ul>
         <li><b>Unlimited</b> messages</li>
         <li>AI remembers your goals &amp; progress</li>
         <li>PDF export for every plan</li>
         <li>EN / BG interface</li>
       </ul>
-      <a href="/app?lang=en&plan=core" class="p-btn" onclick="goCheckout(this,'core');return false;">Activate CORE</a>
+      <span class="p-btn unavailable" data-paid-unavailable="core">Coming soon</span>
     </div>
     <div class="plan">
       <div class="p-name">PRO</div>
       <div class="p-price">€14.99<span>/30 days</span></div>
-      <div class="p-day">€0.50 per day</div>
+      <div class="p-day plan-unavailable">Premium access is temporarily unavailable.</div>
       <ul>
         <li>Everything in CORE</li>
         <li><b>The most capable AI model</b></li>
         <li>6× longer memory window</li>
         <li>Programs detailed down to the gram</li>
       </ul>
-      <a href="/app?lang=en&plan=pro" class="p-btn" onclick="goCheckout(this,'pro');return false;">Go PRO</a>
+      <span class="p-btn unavailable" data-paid-unavailable="pro">Coming soon</span>
     </div>
   </div>
 
-  <div class="cancel-policy-wrap">
-    <button class="cancel-policy-btn" onclick="track('cancel_policy_view',{place:'pricing'});showLegal('refund')">↩ Cancel subscription &amp; refund policy</button>
-    <div class="cancel-policy-note">Your right to cancel and request a refund — EU consumer rights, explained.</div>
-  </div>
-
-  <div class="trustblock">
-    <div class="tb-logos">
-      <img src="/static/payment-logos/visa.svg" alt="Visa">
-      <img src="/static/payment-logos/mastercard.svg" alt="Mastercard">
-      <img src="/static/payment-logos/applepay.svg" alt="Apple Pay" class="dark">
-      <img src="/static/payment-logos/googlepay.svg" alt="Google Pay">
-      <img src="/static/payment-logos/revolut.svg" alt="Revolut" class="dark">
-      <img src="/static/payment-logos/stripe.svg" alt="Stripe">
-      <img src="/static/payment-logos/amex.svg" alt="Amex">
-    </div>
-    <div class="tb-row">🔒 Payments handled entirely by <b>Stripe</b> — same processor as Spotify, Klarna, Booking.com</div>
-    <div class="tb-row">🏦 Your card data <b>never touches our servers</b></div>
-    <div class="tb-row">💶 Refund requests are handled under the <b>Refund Policy</b></div>
-    <div class="tb-row">🇪🇺 <b>GDPR-aligned</b> · Hosted in the EU · Full data export &amp; deletion on request</div>
-  </div>
 </section>
 
 <!-- ═══ FINAL START FREE ═══ -->
@@ -734,24 +689,6 @@ function heroGo(){
   },{threshold:.15});
   els.forEach(e=>io.observe(e));
 })();
-
-/* ═══════════ PAID PLAN → STRIPE CHECKOUT ═══════════ */
-async function goCheckout(btn,plan){
-  if(btn._busy)return;
-  btn._busy=true;
-  btn.style.opacity='.6';btn.style.pointerEvents='none';
-  track('checkout_intent',{plan:plan,place:'landing_en'});
-  try{
-    const res=await fetch('/create-checkout-session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plan:plan})});
-    const data=await res.json();
-    if(data&&data.url){window.location.href=data.url;return;}
-  }catch(e){}
-  window.location.href=checkoutFallbackUrl('en',plan);
-}
-function checkoutFallbackUrl(language,plan){
-  const planId=typeof plan==='string'?plan.trim():'';
-  return planId?'/app?lang='+encodeURIComponent(language)+'&plan='+encodeURIComponent(planId):'/app';
-}
 
 /* ═══════════ SWITCH TO BG ═══════════ */
 function goBg(){

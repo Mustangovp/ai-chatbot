@@ -176,6 +176,11 @@ PLANS = {
     "pro":  {"name": "APEX PULSE PRO - 30 Days",  "amount": 1499, "memory": 30},
 }
 
+
+def _paid_access_enabled():
+    """Keep Stripe checkout explicitly opt-in while paid sales are paused."""
+    return os.getenv("PAID_ACCESS_ENABLED", "false").strip().lower() == "true"
+
 # ═══════════════════════════════════════════════════════════
 # FREE LIMIT — enforced entirely in the database (db.free_usage),
 # keyed by account (logged in) or a signed httpOnly device id.
@@ -3149,6 +3154,8 @@ def create_checkout_session():
     Creates a Stripe checkout session for the chosen plan.
     Plans: 'founding' (€1.99), 'core' (€9.99), 'pro' (€14.99)
     """
+    if not _paid_access_enabled():
+        return jsonify({'error': 'paid_access_unavailable'}), 503
     try:
         data = request.json or {}
         plan_key = data.get('plan', 'core')

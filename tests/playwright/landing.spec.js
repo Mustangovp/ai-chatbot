@@ -1,20 +1,26 @@
 const { test, expect } = require('@playwright/test');
 
-test.describe('landing checkout fallback URLs', () => {
+test.describe('landing paid access pause', () => {
   for (const route of ['/', '/en']) {
-    test(`${route} never produces an empty plan query parameter`, async ({ page }) => {
+    test(`${route} keeps FREE available and has no paid checkout action`, async ({ page }) => {
+      if (route === '/') {
+        await page.addInitScript(() => localStorage.setItem('apexLang', 'bg'));
+      }
       await page.goto(route);
 
-      const urls = await page.evaluate(() => [
-        checkoutFallbackUrl('bg', ''),
-        checkoutFallbackUrl('bg', null),
-        checkoutFallbackUrl('bg', undefined),
-        checkoutFallbackUrl('bg', '   '),
-        checkoutFallbackUrl('bg', 'core'),
-      ]);
+      await expect(page.locator('#pricing a[href^="/app?lang="]')).toHaveCount(1);
+      await expect(page.locator('#pricing [data-paid-unavailable]')).toHaveCount(2);
+      await expect(page.locator('#pricing [data-paid-unavailable]')).toHaveText(
+        [route === '/' ? 'Очаквайте скоро' : 'Coming soon', route === '/' ? 'Очаквайте скоро' : 'Coming soon'],
+      );
 
-      expect(urls.slice(0, 4)).toEqual(['/app', '/app', '/app', '/app']);
-      expect(urls[4]).toBe('/app?lang=bg&plan=core');
+      const paidActions = await page.locator(
+        '#pricing a[href*="plan="], #pricing [onclick*="goCheckout"]',
+      ).count();
+      expect(paidActions).toBe(0);
+      await expect(page.locator('body')).not.toContainText(
+        route === '/' ? 'НАЙ-ИЗБИРАН' : 'MOST POPULAR',
+      );
     });
   }
 });

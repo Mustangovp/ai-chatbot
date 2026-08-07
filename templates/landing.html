@@ -279,8 +279,6 @@ h2{font-family:'Unbounded';font-weight:700;font-size:clamp(21px,4vw,32px);line-h
 /* PRICING */
 .plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;margin-top:30px;align-items:start;}
 .plan{background:var(--surface);border:1px solid rgba(255,255,255,.1);border-radius:var(--radius);padding:28px 24px;}
-.plan.hot{border:2px solid transparent;background:linear-gradient(var(--surface),var(--surface)) padding-box,var(--pulse) border-box;position:relative;}
-.plan.hot .tag{position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:var(--pulse);font-size:11px;font-weight:800;letter-spacing:1px;padding:5px 16px;border-radius:20px;white-space:nowrap;}
 .plan .p-name{font-family:'Unbounded';font-weight:700;font-size:14px;letter-spacing:1px;}
 .plan .p-price{font-family:'Unbounded';font-weight:900;font-size:36px;margin:12px 0 2px;}
 .plan .p-price span{font-size:14px;color:var(--muted);font-weight:500;font-family:'Manrope';}
@@ -292,8 +290,9 @@ h2{font-family:'Unbounded';font-weight:700;font-size:clamp(21px,4vw,32px);line-h
 .plan li.off::before{content:'—';}
 .p-btn{display:block;text-align:center;font-weight:800;font-size:15px;padding:14px;border-radius:14px;text-decoration:none;color:#fff;border:1px solid rgba(255,255,255,.2);cursor:pointer;background:none;width:100%;font-family:'Manrope';transition:transform .15s,border-color .15s,box-shadow .15s;}
 .p-btn:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.4);}
-.plan.hot .p-btn{background:var(--pulse);border:none;box-shadow:0 6px 24px rgba(245,33,45,.32);}
-.plan.hot .p-btn:hover{box-shadow:0 10px 30px rgba(245,33,45,.45);border:none;}
+.p-btn.unavailable{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.16);color:var(--muted);cursor:default;}
+.p-btn.unavailable:hover{transform:none;border-color:rgba(255,255,255,.16);}
+.plan-unavailable{color:var(--muted)!important;min-height:34px;line-height:1.35;}
 
 /* TRUST BLOCK */
 .trustblock{margin-top:24px;background:var(--surface);border:1px solid rgba(255,255,255,.1);border-radius:var(--radius);padding:20px;text-align:center;}
@@ -455,16 +454,6 @@ footer a:hover{color:var(--text);}
     </a>
   </div>
 
-  <div class="paystrip">
-    <div class="ps-label" data-key="ps-label">Сигурно плащане чрез</div>
-    <img src="/static/payment-logos/visa.svg" alt="Visa">
-    <img src="/static/payment-logos/mastercard.svg" alt="Mastercard">
-    <img src="/static/payment-logos/applepay.svg" alt="Apple Pay" class="dark">
-    <img src="/static/payment-logos/googlepay.svg" alt="Google Pay">
-    <img src="/static/payment-logos/revolut.svg" alt="Revolut" class="dark">
-    <img src="/static/payment-logos/stripe.svg" alt="Stripe">
-  </div>
-
   <div class="marquee" aria-hidden="true">
     <div class="marquee-track">
       <span data-key="mq-1">Отслабване</span><span data-key="mq-2">Мускули</span><span data-key="mq-3">Тонус</span><span data-key="mq-4">Хранене</span><span data-key="mq-5">Кардио</span><span data-key="mq-6">Сила</span><span data-key="mq-7">Енергия</span>
@@ -569,9 +558,9 @@ footer a:hover{color:var(--text);}
 <svg class="divider" viewBox="0 0 1200 44" preserveAspectRatio="none" aria-hidden="true"><path d="M0 22 H400 L430 6 L465 38 L495 14 L515 22 H1200"/></svg>
 
 <section class="wrap" id="pricing">
-  <div class="sec-label" data-key="pr-label">Планове</div>
-  <h2 data-key="pr-title">Колкото едно кафе на ден.</h2>
-  <p class="sec-sub" data-key="pr-sub">Без абонамент-капан: плащаш за 30 дни, без автоматично подновяване.</p>
+  <div class="sec-label" data-key="pr-label">Платен достъп</div>
+  <h2 data-key="pr-title">APEX е достъпен безплатно.</h2>
+  <p class="sec-sub" data-key="pr-sub">CORE и PRO са временно недостъпни, докато подготвяме следващото издание на APEX.</p>
   <div class="plans">
     <div class="plan">
       <div class="p-name">FREE</div>
@@ -585,48 +574,32 @@ footer a:hover{color:var(--text);}
       </ul>
       <a href="/app?lang=bg" class="p-btn" data-key="pr-free-btn" onclick="track('cta_click',{place:'plan_free'})">Пробвай безплатно</a>
     </div>
-    <div class="plan hot">
-      <div class="tag" data-key="pr-tag">НАЙ-ИЗБИРАН</div>
+    <div class="plan">
       <div class="p-name">CORE</div>
       <div class="p-price">€9.99<span data-key="pr-per">/30 дни</span></div>
-      <div class="p-day" data-key="pr-core-day">€0.33 на ден</div>
+      <div class="p-day plan-unavailable" data-key="pr-core-day">Платеният достъп е временно недостъпен.</div>
       <ul>
         <li data-key="pr-c1"><b>Неограничени</b> съобщения</li>
         <li data-key="pr-c2">AI помни целите и прогреса ти</li>
         <li data-key="pr-c3">PDF на всеки план</li>
         <li data-key="pr-c4">BG / EN</li>
       </ul>
-      <a href="/app?lang=bg&plan=core" class="p-btn" data-key="pr-core-btn" onclick="goCheckout(this,'core');return false;">Активирай CORE</a>
+      <span class="p-btn unavailable" data-paid-unavailable="core" data-key="pr-core-btn">Очаквайте скоро</span>
     </div>
     <div class="plan">
       <div class="p-name">PRO</div>
       <div class="p-price">€14.99<span data-key="pr-per2">/30 дни</span></div>
-      <div class="p-day" data-key="pr-pro-day">€0.50 на ден</div>
+      <div class="p-day plan-unavailable" data-key="pr-pro-day">Платеният достъп е временно недостъпен.</div>
       <ul>
         <li data-key="pr-p1">Всичко от CORE</li>
         <li data-key="pr-p2"><b>Най-умният AI модел</b></li>
         <li data-key="pr-p3">6× по-дълга памет</li>
         <li data-key="pr-p4">Детайлни програми до последния грам</li>
       </ul>
-      <a href="/app?lang=bg&plan=pro" class="p-btn" data-key="pr-pro-btn" onclick="goCheckout(this,'pro');return false;">Към PRO</a>
+      <span class="p-btn unavailable" data-paid-unavailable="pro" data-key="pr-pro-btn">Очаквайте скоро</span>
     </div>
   </div>
 
-  <div class="trustblock">
-    <div class="tb-logos">
-      <img src="/static/payment-logos/visa.svg" alt="Visa">
-      <img src="/static/payment-logos/mastercard.svg" alt="Mastercard">
-      <img src="/static/payment-logos/applepay.svg" alt="Apple Pay" class="dark">
-      <img src="/static/payment-logos/googlepay.svg" alt="Google Pay">
-      <img src="/static/payment-logos/revolut.svg" alt="Revolut" class="dark">
-      <img src="/static/payment-logos/stripe.svg" alt="Stripe">
-      <img src="/static/payment-logos/amex.svg" alt="Amex">
-    </div>
-    <div class="tb-row" data-key="tb1">🔒 Плащането минава изцяло през <b>Stripe</b> — системата на Amazon, Google и Shopify</div>
-    <div class="tb-row" data-key="tb2">🏦 Картовите ти данни <b>никога не докосват наши сървъри</b></div>
-    <div class="tb-row" data-key="tb3">💶 Исканията за възстановяване се разглеждат съгласно <b>Политиката за възстановяване</b></div>
-    <div class="tb-row" data-key="tb4">🚫 <b>Без абонамент-капан</b> — плащаш веднъж за 30 дни, нищо не се подновява само</div>
-  </div>
 </section>
 
 <!-- ═══ FINAL START FREE ═══ -->
@@ -698,7 +671,6 @@ const T={
     'gl-btn':'Get my plan — free →',
     'gl-alt1':'Different goal?','gl-alt2':'Muscle, tone or starting from zero ↓',
     'micro':'10 free messages every day · no card, no signup',
-    'ps-label':'Secure payments via',
     'proof-label':'plans created today',
     'mq-1':'Fat loss','mq-2':'Muscle','mq-3':'Tone','mq-4':'Nutrition','mq-5':'Cardio','mq-6':'Strength','mq-7':'Energy',
     'mq-1b':'Fat loss','mq-2b':'Muscle','mq-3b':'Tone','mq-4b':'Nutrition','mq-5b':'Cardio','mq-6b':'Strength','mq-7b':'Energy',
@@ -715,15 +687,11 @@ const T={
     'g2-t':'From zero','g2-p':"Never trained? Step-by-step plan, no embarrassment, no pain.",'g2-go':"I'm starting →",
     'g3-t':'Build muscle','g3-p':'Strength and mass with progressive overload and precise macros.','g3-go':'Show me →',
     'g4-t':'Elite mode','g4-p':'Advanced: precise macros, periodization, maximum results.','g4-go':"I'm in →",
-    'pr-label':'Plans','pr-title':'Less than a coffee a day.','pr-sub':'No subscription trap: pay for 30 days, nothing auto-renews.',
+    'pr-label':'Premium access','pr-title':'APEX is available for free.','pr-sub':'CORE and PRO are temporarily unavailable while we prepare the next APEX release.',
     'pr-free-day':'forever','pr-f1':'10 messages per day','pr-f2':'Nutrition & training plans','pr-f3':'AI memory for your goals','pr-f4':'PDF of your plans','pr-free-btn':'Try for free',
-    'pr-tag':'MOST POPULAR','pr-per':'/30 days','pr-per2':'/30 days',
-    'pr-core-day':'€0.33 per day','pr-c1':'<b>Unlimited</b> messages','pr-c2':'AI remembers your goals & progress','pr-c3':'PDF for every plan','pr-c4':'BG / EN','pr-core-btn':'Activate CORE',
-    'pr-pro-day':'€0.50 per day','pr-p1':'Everything in CORE','pr-p2':'<b>The smartest AI model</b>','pr-p3':'6× longer memory','pr-p4':'Detailed programs down to the gram','pr-pro-btn':'Go PRO',
-    'tb1':'🔒 Payments handled entirely by <b>Stripe</b> — trusted by Amazon, Google & Shopify',
-    'tb2':'🏦 Your card data <b>never touches our servers</b>',
-    'tb3':'💶 Refund requests are handled under the <b>Refund Policy</b>',
-    'tb4':'🚫 <b>No subscription trap</b> — one payment for 30 days, nothing renews on its own',
+    'pr-per':'/30 days','pr-per2':'/30 days',
+    'pr-core-day':'Premium access is temporarily unavailable.','pr-c1':'<b>Unlimited</b> messages','pr-c2':'AI remembers your goals & progress','pr-c3':'PDF for every plan','pr-c4':'BG / EN','pr-core-btn':'Coming soon',
+    'pr-pro-day':'Premium access is temporarily unavailable.','pr-p1':'Everything in CORE','pr-p2':'<b>The smartest AI model</b>','pr-p3':'6× longer memory','pr-p4':'Detailed programs down to the gram','pr-pro-btn':'Coming soon',
     'faq-title':'Honest answers',
     'fq1':'Is the payment safe?','fa1':'Yes. Payments are processed entirely by Stripe — the same system Amazon and Google use. We never see or store your card number. Refund requests are handled under the Refund Policy.',
     'fq2':'What exactly is the AI coach?','fa2':'An AI trained to build personal nutrition and movement programs. You ask in plain language, it asks back what it needs, and you get a plan for your body and your day — not a magazine template.',
@@ -824,27 +792,6 @@ function heroGo(){
   },{threshold:.15});
   els.forEach(e=>io.observe(e));
 })();
-
-/* ═══════════ PAID PLAN → STRIPE CHECKOUT ═══════════
-   FREE button still goes straight to /app. CORE/PRO POST to
-   /create-checkout-session and redirect to the returned Stripe URL.
-   Falls back to /app; a plan parameter is kept only when it is valid. */
-async function goCheckout(btn,plan){
-  if(btn._busy)return;
-  btn._busy=true;
-  btn.style.opacity='.6';btn.style.pointerEvents='none';
-  track('checkout_intent',{plan:plan,place:'landing'});
-  try{
-    const res=await fetch('/create-checkout-session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plan:plan})});
-    const data=await res.json();
-    if(data&&data.url){window.location.href=data.url;return;}
-  }catch(e){}
-  window.location.href=checkoutFallbackUrl('bg',plan);
-}
-function checkoutFallbackUrl(language,plan){
-  const planId=typeof plan==='string'?plan.trim():'';
-  return planId?'/app?lang='+encodeURIComponent(language)+'&plan='+encodeURIComponent(planId):'/app';
-}
 
 /* ═══════════ HONEST COUNTER ═══════════ */
 fetch('/stats').then(r=>r.json()).then(d=>{

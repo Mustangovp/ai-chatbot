@@ -1284,8 +1284,8 @@ const T={
     sub:{title:'Subscription',plan:'Current plan',billing:'Next billing date',method:'Payment method',
       history:'Billing history',cancel:'Cancel subscription',free:'Free',card:'Card on file',none:'—',
       statusL:'Status',statuses:{active:'Active',grace:'Active (cancels at period end)',cancelled:'Cancelled',expired:'Expired',free:'Free'},
-      freeDesc:'You are on the free plan. Unlock unlimited coaching, deeper memory and the PRO model.',
-      upgrade:'View plans →',upgradePro:'Go PRO — €14.99 / 30 days',upgradeCore:'Get CORE — €9.99 / 30 days',checkoutErr:'Checkout unavailable. Try again.',
+      freeDesc:'You are on the free plan. Premium access is temporarily unavailable while we prepare the next APEX release.',
+      upgrade:'View plans →',upgradePro:'PRO — €14.99 / 30 days',upgradeCore:'CORE — €9.99 / 30 days',comingSoon:'Coming soon',comingSoonNote:'Premium access is temporarily unavailable while we prepare the next APEX release.',
       access:'Access until',oneTime:'One-time 30-day pass (not a recurring subscription)',
       eu:'Refund requests are handled under the Refund Policy and applicable consumer-law rules.',
       confirmCancel:'Cancel your subscription and request a refund? This cannot be undone.'},
@@ -1343,8 +1343,8 @@ const T={
     sub:{title:'Абонамент',plan:'Текущ план',billing:'Следваща дата на плащане',method:'Метод на плащане',
       history:'История на плащанията',cancel:'Откажи абонамента',free:'Безплатен',card:'Записана карта',none:'—',
       statusL:'Статус',statuses:{active:'Активен',grace:'Активен (спира в края на периода)',cancelled:'Отказан',expired:'Изтекъл',free:'Безплатен'},
-      freeDesc:'Ти си на безплатния план. Отключи неограничено треньорство, по-дълбока памет и PRO модела.',
-      upgrade:'Виж плановете →',upgradePro:'Към PRO — €14.99 / 30 дни',upgradeCore:'Вземи CORE — €9.99 / 30 дни',checkoutErr:'Плащането е недостъпно. Опитай пак.',
+      freeDesc:'Ти си на безплатния план. Платеният достъп е временно спрян, докато подготвяме следващото издание на APEX.',
+      upgrade:'Виж плановете →',upgradePro:'PRO — €14.99 / 30 дни',upgradeCore:'CORE — €9.99 / 30 дни',comingSoon:'Очаквайте скоро',comingSoonNote:'Платеният достъп е временно спрян, докато подготвяме следващото издание на APEX.',
       access:'Достъп до',oneTime:'Еднократен 30-дневен достъп (не е повтарящ се абонамент)',
       eu:'Исканията за възстановяване се разглеждат съгласно Политиката за възстановяване и приложимите правила за защита на потребителите.',
       confirmCancel:'Да откажа абонамента и да поискам възстановяване? Това е необратимо.'},
@@ -1564,19 +1564,11 @@ async function showSubscription(){
     if(status!=='cancelled') body+='<button class="cancel-btn" onclick="doWithdraw(tr().sub.confirmCancel)">'+s.cancel+'</button>';
   } else {
     body+='<div class="eu-note">'+s.freeDesc+'</div>';
-    body+='<button class="save" onclick="goCheckout(\'pro\')">'+s.upgradePro+'</button>';
-    body+='<button class="save" style="margin-top:10px;background:rgba(56,224,255,.12);border:1px solid rgba(56,224,255,.35);color:var(--cyan)" onclick="goCheckout(\'core\')">'+s.upgradeCore+'</button>';
+    body+='<div class="panel-row"><span class="pr-l">'+s.upgradePro+'</span><span class="pr-v">'+s.comingSoon+'</span></div>';
+    body+='<div class="panel-row"><span class="pr-l">'+s.upgradeCore+'</span><span class="pr-v">'+s.comingSoon+'</span></div>';
     if(!SESSION.authenticated) body+='<button class="mlink" onclick="showLogin()">'+a.haveAccount+'</button>';
   }
   showPanel(s.title,body);
-}
-// One continuous purchase path — go straight to Stripe Checkout.
-async function goCheckout(plan){
-  try{
-    const r=await fetch('/create-checkout-session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plan})});
-    const d=await r.json();
-    if(d&&d.url){ location.href=d.url; } else { toast(tr().sub.checkoutErr); }
-  }catch(e){ toast(tr().sub.checkoutErr); }
 }
 function showHistory(){
   witness('historyOpened');   // fact: the shared past is being touched
