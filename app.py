@@ -65,6 +65,8 @@ import brain.config as brain_config             # M1: Brain shadow flags (defaul
 import brain.inspector as brain_inspector       # M1/Commit3: Brain Inspector (observability)
 import brain.cascade as brain_cascade           # M3: the one orchestrator (Decision)
 import brain.enforcement as brain_enforcement   # M4: Safety-Front renderer
+import brain.shoulder_validator as shoulder_validator
+from brain.shoulder_exercise_index import EXERCISE_SHOULDER_LOAD
 import brain_analytics                          # M5: Brain Observatory (analytics only)
 import human_state                              # BUILD-001: Human State ingestion (flag-gated)
 import human_state.observatory as human_state_observatory  # BUILD-002: HSE Observatory (audit)
@@ -1781,6 +1783,64 @@ def _active_training_plan(snapshot, planning_blueprint, *, followup=None, previo
     )
 
 
+def _shoulder_validator_id(exercise_id):
+    """Map a namespaced registry ID to the shoulder index's explicit movement ID.
+
+    The training registry owns stable IDs such as ``bodyweight.squat``. The
+    shoulder index owns its canonical movement IDs such as ``bodyweight_squat``
+    or ``squat``. An unknown registry ID is deliberately left unknown so the
+    existing validator fails closed.
+    """
+    value = str(exercise_id or "")
+    for candidate in (value, value.replace(".", "_"), value.rsplit(".", 1)[-1]):
+        if candidate in EXERCISE_SHOULDER_LOAD:
+            return candidate
+    return value
+
+
+def _validate_training_plan_shoulder_safety(plan, profile):
+    """Validate the final immutable plan before renderer and Composer delivery."""
+    try:
+        constraints = brain_cascade.decide(
+            profile if isinstance(profile, dict) else {}
+        ).constraints
+        exercises = [
+            {"canonical_id": _shoulder_validator_id(prescription.exercise_id)}
+            for session in plan.sessions
+            for prescription in session.prescriptions
+        ]
+        return shoulder_validator.validate_blueprint(exercises, constraints)
+    except Exception as error:
+        print(f"[training-engine] shoulder validation unavailable: {type(error).__name__}")
+        return None
+
+
+def _shoulder_constraint_state(profile):
+    """Return ``active``, ``none``, or ``unavailable`` for delivery decisions."""
+    try:
+        constraints = brain_cascade.decide(
+            profile if isinstance(profile, dict) else {}
+        ).constraints
+        if shoulder_validator.is_shoulder_constraint_active(constraints):
+            return "active"
+        return "none"
+    except Exception as error:
+        print(f"[training-engine] shoulder constraint lookup failed: {type(error).__name__}")
+        return "unavailable"
+
+
+def _shoulder_safety_failure_reply(lang):
+    if str(lang).lower() == "en":
+        return "I can't safely deliver this workout with the current shoulder restriction."
+    return "Не мога безопасно да изпратя тази тренировка при текущото ограничение за рамото."
+
+
+def _safety_constraints_unavailable_reply(lang):
+    if str(lang).lower() == "en":
+        return "I can't safely deliver this workout because I couldn't verify the current safety constraints."
+    return "Не мога безопасно да изпратя тази тренировка, защото не успях да потвърдя текущите ограничения за безопасност."
+
+
 def _cold_start_workout_reply(lang):
     """Deliver the Brain-approved starter session through the workout-card contract."""
     if str(lang).lower() == "en":
@@ -2218,6 +2278,7 @@ def chat():
         _training_engine_active_for_request = _training_engine_active()
         _training_plan_blueprint = None
         _training_engine_failure = None
+        _shoulder_safety_validation = None
         _persona_expert_communication_active_for_request = _persona_expert_communication_active()
         _persona_projection = None
         _expert_communication_constraints = None
@@ -2275,12 +2336,30 @@ def chat():
                         _training_plan_blueprint = _active_training_plan(_snapshot, _recommendation_plan)
                     _training_plan_blueprint = _advance_active_training_plan(_training_plan_blueprint, data)
                     if _training_plan_blueprint is None:
-                        _training_engine_failure = "training_engine_profile_contract"
+                        _constraint_state = _shoulder_constraint_state(profile)
+                        _training_engine_failure = {
+                            "active": "training_engine_shoulder_safety_contract",
+                            "unavailable": "training_engine_safety_constraints_unavailable",
+                        }.get(_constraint_state, "training_engine_profile_contract")
                     else:
-                        _recommendation_path = "deterministic_training"
+                        _shoulder_safety_validation = _validate_training_plan_shoulder_safety(
+                            _training_plan_blueprint, profile)
+                        if _shoulder_safety_validation is None:
+                            _training_plan_blueprint = None
+                            _training_engine_failure = "training_engine_safety_constraints_unavailable"
+                        elif not _shoulder_safety_validation.passed:
+                            _training_plan_blueprint = None
+                            _training_engine_failure = "training_engine_shoulder_safety_contract"
+                        else:
+                            _recommendation_path = "deterministic_training"
                 except TrainingRuntimeError as _training_error:
                     print(f"[training-engine] construction rejected: {type(_training_error).__name__}")
-                    if _workout_followup is not None:
+                    _constraint_state = _shoulder_constraint_state(profile)
+                    if _constraint_state == "active":
+                        _training_engine_failure = "training_engine_shoulder_safety_contract"
+                    elif _constraint_state == "unavailable":
+                        _training_engine_failure = "training_engine_safety_constraints_unavailable"
+                    elif _workout_followup is not None:
                         _followup_failure_reply = followup_message(_training_error, lang)
                     else:
                         _training_engine_failure = "training_engine_profile_contract"
@@ -2319,9 +2398,14 @@ def chat():
                 # explicit workout request into the generic clarify message.
                 # The bounded starter session is safe, deterministic, and keeps
                 # the coaching turn actionable while the profile is completed.
-                _controlled_reply = _cold_start_workout_reply(lang)
-                if _requests_workout_and_nutrition(user_message):
-                    _controlled_reply += _combined_request_follow_up(lang)
+                if _training_engine_failure == "training_engine_safety_constraints_unavailable":
+                    _controlled_reply = _safety_constraints_unavailable_reply(lang)
+                elif _training_engine_failure == "training_engine_shoulder_safety_contract":
+                    _controlled_reply = _shoulder_safety_failure_reply(lang)
+                else:
+                    _controlled_reply = _cold_start_workout_reply(lang)
+                    if _requests_workout_and_nutrition(user_message):
+                        _controlled_reply += _combined_request_follow_up(lang)
             if _conversation_composer_active_for_request:
                 try:
                     _conversation_policy = conversation_composer.build_policy(
@@ -2401,12 +2485,29 @@ def chat():
                     _training_plan_blueprint = _active_training_plan(_snapshot, _recommendation_plan)
                     _training_plan_blueprint = _advance_active_training_plan(_training_plan_blueprint, data)
                     if _training_plan_blueprint is None:
-                        _training_engine_failure = "training_engine_profile_contract"
+                        _constraint_state = _shoulder_constraint_state(profile)
+                        _training_engine_failure = {
+                            "active": "training_engine_shoulder_safety_contract",
+                            "unavailable": "training_engine_safety_constraints_unavailable",
+                        }.get(_constraint_state, "training_engine_profile_contract")
                     else:
-                        _recommendation_path = "deterministic_training"
+                        _shoulder_safety_validation = _validate_training_plan_shoulder_safety(
+                            _training_plan_blueprint, profile)
+                        if _shoulder_safety_validation is None:
+                            _training_plan_blueprint = None
+                            _training_engine_failure = "training_engine_safety_constraints_unavailable"
+                        elif not _shoulder_safety_validation.passed:
+                            _training_plan_blueprint = None
+                            _training_engine_failure = "training_engine_shoulder_safety_contract"
+                        else:
+                            _recommendation_path = "deterministic_training"
                 except TrainingRuntimeError as _training_error:
                     print(f"[training-engine] construction rejected: {type(_training_error).__name__}")
-                    _training_engine_failure = "training_engine_profile_contract"
+                    _constraint_state = _shoulder_constraint_state(profile)
+                    _training_engine_failure = {
+                        "active": "training_engine_shoulder_safety_contract",
+                        "unavailable": "training_engine_safety_constraints_unavailable",
+                    }.get(_constraint_state, "training_engine_profile_contract")
             
             # 3. Decision mapping
             if _decision.s2.halt:
@@ -2437,9 +2538,14 @@ def chat():
             system_content = prompts[decision_state]
             _controlled_reply = _planning_reply
             if _training_engine_failure is not None:
-                _controlled_reply = _cold_start_workout_reply(lang)
-                if _requests_workout_and_nutrition(user_message):
-                    _controlled_reply += _combined_request_follow_up(lang)
+                if _training_engine_failure == "training_engine_safety_constraints_unavailable":
+                    _controlled_reply = _safety_constraints_unavailable_reply(lang)
+                elif _training_engine_failure == "training_engine_shoulder_safety_contract":
+                    _controlled_reply = _shoulder_safety_failure_reply(lang)
+                else:
+                    _controlled_reply = _cold_start_workout_reply(lang)
+                    if _requests_workout_and_nutrition(user_message):
+                        _controlled_reply += _combined_request_follow_up(lang)
             profile_block = _build_profile_block(profile, lang) if isinstance(profile, dict) else ""
             
             # 5. Memory: Write confirmed profile facts to store (logged-in accounts)
@@ -2593,6 +2699,10 @@ def chat():
                     authority_facts=profile if isinstance(profile, dict) else {},
                     persona_projection=_persona_projection,
                     expert_communication_constraints=_expert_communication_constraints,
+                    shoulder_safety_proof=(
+                        _shoulder_safety_validation.proof
+                        if _shoulder_safety_validation is not None else None
+                    ),
                 )
                 system_content = system_content + "\n\n" + conversation_composer.render_prompt(
                     _conversation_frame, lang)

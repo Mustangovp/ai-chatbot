@@ -42,6 +42,7 @@ from brain.runtime_assets.personas import load_runtime_personas
 from nutrition_validation import NutritionTargets, validate_daily_nutrition
 from brain.types import (Decision, Verdict, Intervention, S2State, ConstraintSet,
                          Constraint, ConstraintTier, CapacityEnvelope)
+from brain.shoulder_validator import ShoulderSafetyProof, ValidationResult
 from datetime import datetime, timedelta, timezone
 
 
@@ -1237,6 +1238,92 @@ def test_training_engine_active_delivers_only_deterministic_training_plan(client
     assert "Goblet Squat" in events[0]["t"]
     assert "RPE" in events[0]["t"] and "tempo" in events[0]["t"]
     assert "Keep every rep controlled." in events[0]["t"]
+
+
+def test_training_engine_blocks_an_initial_plan_that_violates_a_shoulder_constraint(
+        client, captured, monkeypatch):
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
+
+    events = _events(_post(client, "build a workout", profile=_profile(healthNotes="shoulder pain")))
+
+    assert events == [{"t": appmod._shoulder_safety_failure_reply("en")}, {"done": True}]
+    assert captured == {}
+
+
+def test_training_engine_revalidates_a_harder_followup_before_delivery(client, captured, monkeypatch):
+    profile = _profile(healthNotes="shoulder pain")
+    uid = _login_for_chat(client, profile)
+    conversation_id = "shoulder-followup-0001"
+    unsafe_plan = build_training_plan(recommendation_blueprint_id="shoulder-followup", facts=_profile())
+    appmod._remember_workout((f"account:{uid}", conversation_id), unsafe_plan)
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod, "_active_training_plan", lambda *_args, **_kwargs: unsafe_plan)
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
+
+    response = client.post("/chat", json={
+        "message": "make it harder", "lang": "en", "conversation_id": conversation_id,
+    })
+
+    assert _events(response) == [{"t": appmod._shoulder_safety_failure_reply("en")}, {"done": True}]
+    assert captured == {}
+
+
+def test_training_engine_passes_final_shoulder_proof_to_the_composer(client, captured, monkeypatch):
+    proof = ShoulderSafetyProof(True, True, 0)
+    validation = ValidationResult(True, proof)
+    seen = {}
+    original_compose = conversation_composer.compose
+
+    def capture_compose(*args, **kwargs):
+        seen["proof"] = kwargs.get("shoulder_safety_proof")
+        return original_compose(*args, **kwargs)
+
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setenv("CONVERSATION_COMPOSER_ACTIVE", "true")
+    monkeypatch.setattr(appmod, "_validate_training_plan_shoulder_safety",
+                        lambda *_args: validation)
+    monkeypatch.setattr(conversation_composer, "compose", capture_compose)
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": []}))
+
+    events = _events(_post(client, "build a workout", profile=_profile()))
+
+    assert events[-1] == {"done": True}
+    assert seen["proof"] is proof
+    assert "SHOULDER SAFETY GROUNDING" in captured["system"]
+    assert "MAY note" in captured["system"]
+
+
+def test_runtime_shoulder_validation_fails_closed_for_an_unknown_exercise_id():
+    unknown_plan = types.SimpleNamespace(
+        sessions=(types.SimpleNamespace(
+            prescriptions=(types.SimpleNamespace(exercise_id="unknown.exercise"),),
+        ),),
+    )
+
+    result = appmod._validate_training_plan_shoulder_safety(
+        unknown_plan, _profile(healthNotes="shoulder pain"))
+
+    assert result is not None
+    assert result.passed is False
+    assert result.proof.may_claim_safe is False
+
+
+def test_training_engine_blocks_delivery_when_shoulder_constraint_resolution_fails(
+        client, captured, monkeypatch):
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(
+        appmod.brain_cascade,
+        "decide",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("cascade unavailable")),
+    )
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
+
+    events = _events(_post(client, "build a workout", profile=_profile()))
+
+    assert events == [{"t": appmod._safety_constraints_unavailable_reply("en")}, {"done": True}]
+    assert "shoulder restriction" not in events[0]["t"]
+    assert captured == {}
 
 
 def test_combined_workout_and_nutrition_request_is_explicitly_delivered_as_controlled_partial(client, captured, monkeypatch):
