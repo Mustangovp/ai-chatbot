@@ -3235,14 +3235,19 @@ def chat():
 # without touching the Brain or the UI.
 # ═══════════════════════════════════════════════════════════
 _speak_rate = {}  # subject -> [timestamps]  (bounds a billable endpoint)
+_SELECTOR_TTS_VOICES = frozenset(("ash", "alloy"))
 
 @app.route("/speak", methods=["POST"])
 def speak():
     data = request.get_json(silent=True) or {}
     text = str(data.get("text", "")).strip()[:1600]
     lang = "en" if str(data.get("lang", "bg")).lower() == "en" else "bg"
+    selected_voice = data.get("voice")
     if not text:
         return jsonify({"error": "empty"}), 400
+    if (selected_voice is not None and
+            (not isinstance(selected_voice, str) or selected_voice not in _SELECTOR_TTS_VOICES)):
+        return jsonify({"error": "invalid_voice"}), 400
     # Cost guard: cap synthesis calls per subject (account or httpOnly device / IP).
     subj = str(g.user["id"]) if g.get("user") else (g.device_id or _client_ip())
     now = time.time()
@@ -3251,7 +3256,8 @@ def speak():
         return jsonify({"error": "rate_limited"}), 429
     stamps.append(now); _speak_rate[subj] = stamps
     try:
-        audio, mime = apex_voice.synthesize(text, lang=lang, client=client)
+        audio, mime = apex_voice.synthesize(
+            text, lang=lang, client=client, voice=selected_voice)
     except Exception as e:
         print(f"[speak] TTS failed: {e}")
         return jsonify({"error": "tts_unavailable"}), 502

@@ -64,6 +64,7 @@ test_*.py
 !tests/test_shadow_s1.py
 !tests/test_enforcement.py
 !tests/test_chat_enforcement.py
+!tests/test_voice_selection.py
 !tests/test_cold_start.py
 !tests/test_brain_analytics.py
 !tests/test_recommend.py
