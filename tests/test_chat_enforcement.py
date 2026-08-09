@@ -3162,6 +3162,116 @@ def test_active_persona_expert_communication_appends_id_free_wording_after_bluep
     assert all(token not in system for token in ("P-", "WNK-003", "GRV-", "MCG-", "confidence", "cluster"))
 
 
+def _deterministic_communication_plan(profile=None):
+    return build_training_plan(
+        recommendation_blueprint_id="deterministic-communication",
+        facts=profile or _profile(equipment="home", level="beginner", recoveryFeel="fresh"),
+    )
+
+
+def test_training_communication_projection_is_grounded_in_registry_backed_plan_only():
+    plan = _deterministic_communication_plan()
+    persona, expert = persona_expert_projection.build_training_projections(
+        persona_adaptation={"beginner": True, "home_equipment": True},
+        profile_facts=_profile(equipment="home", recoveryFeel="fresh"),
+        locked_preferences={"exercise_exclusions": ("bodyweight.push_up",)},
+        training_plan=plan, exercise_library=load_exercise_library(),
+        expert_consensus=types.SimpleNamespace(applicable_rule_ids=("MCG-001", "WNK-003", "internal-rule")),
+    )
+
+    assert persona.guided_explanation and persona.equipment_reality
+    assert expert.state_exclusion_reason and expert.single_actionable_cue
+    rendered = repr((persona, expert))
+    assert all(token not in rendered for token in ("bodyweight.", "MCG-001", "WNK-003", "internal-rule"))
+
+
+def test_deterministic_training_reuses_one_evaluation_for_id_free_communication_projection(
+        client, captured, monkeypatch):
+    profile = _profile(equipment="home", level="beginner", recoveryFeel="fresh")
+    calls, seen = [], []
+    match = types.SimpleNamespace(primary_persona_id="internal-persona-id")
+    consensus = types.SimpleNamespace(applicable_rule_ids=("WNK-003", "internal-expert-id"))
+    original_compose = conversation_composer.compose
+
+    def evaluate_once(*_args, **_kwargs):
+        calls.append(True)
+        return None, (match, consensus)
+
+    def capture_compose(*args, **kwargs):
+        seen.append(kwargs.get("validated_blueprint"))
+        return original_compose(*args, **kwargs)
+
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setenv("PERSONA_EXPERT_TRAINING_ACTIVE", "true")
+    monkeypatch.setenv("CONVERSATION_COMPOSER_ACTIVE", "true")
+    monkeypatch.setenv("PERSONA_EXPERT_COMMUNICATION_ACTIVE", "true")
+    monkeypatch.setattr(appmod, "_evaluate_training_persona_expert", evaluate_once)
+    monkeypatch.setattr(appmod, "_persona_adaptation",
+                        lambda received: {"beginner": received is match, "home_equipment": received is match})
+    monkeypatch.setattr(conversation_composer, "compose", capture_compose)
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": []}))
+
+    events = _events(_post(client, "build a workout", profile=profile))
+
+    assert len(calls) == 1
+    assert any(item is not None and item.plan_id == events[1]["training_completion"]["plan_id"]
+               for item in seen)
+    assert "[ADDITIONAL PRESENTATION CONSTRAINTS]" in captured["system"]
+    assert "clear practical language" in captured["system"]
+    assert all(token not in captured["system"] for token in (
+        "internal-persona-id", "internal-expert-id", "WNK-003"))
+    assert events[-1] == {"done": True}
+
+
+def test_deterministic_training_communication_changes_wording_not_plan_values(client, captured, monkeypatch):
+    profile = _profile(equipment="home", level="advanced", recoveryFeel="fresh")
+
+    def deliver(communication_active):
+        monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+        monkeypatch.setenv("PERSONA_EXPERT_TRAINING_ACTIVE", "true")
+        monkeypatch.setenv("CONVERSATION_COMPOSER_ACTIVE", "true")
+        if communication_active:
+            monkeypatch.setenv("PERSONA_EXPERT_COMMUNICATION_ACTIVE", "true")
+        else:
+            monkeypatch.delenv("PERSONA_EXPERT_COMMUNICATION_ACTIVE", raising=False)
+        monkeypatch.setattr(
+            appmod, "_evaluate_training_persona_expert",
+            lambda *_args, **_kwargs: (None, (types.SimpleNamespace(primary_persona_id="advanced"),
+                                             types.SimpleNamespace(applicable_rule_ids=()))),
+        )
+        monkeypatch.setattr(appmod, "_persona_adaptation", lambda *_args: {"advanced": True})
+        _set_stream(monkeypatch, captured, json.dumps({"explanations": []}))
+        return _events(_post(client, "build a workout", profile=profile)), captured["system"]
+
+    off_events, off_system = deliver(False)
+    on_events, on_system = deliver(True)
+
+    assert off_events[1]["training_completion"] == on_events[1]["training_completion"]
+    assert "ADDITIONAL PRESENTATION CONSTRAINTS" not in off_system
+    assert "Be concise and autonomous" in on_system
+    assert "[FIXED TRAINING PLAN]" in on_system
+
+
+def test_deterministic_training_communication_does_not_bypass_shoulder_or_followup_exclusions(
+        client, captured, monkeypatch):
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setenv("PERSONA_EXPERT_TRAINING_ACTIVE", "true")
+    monkeypatch.setenv("CONVERSATION_COMPOSER_ACTIVE", "true")
+    monkeypatch.setenv("PERSONA_EXPERT_COMMUNICATION_ACTIVE", "true")
+    monkeypatch.setattr(appmod, "_evaluate_training_persona_expert",
+                        lambda *_args, **_kwargs: (None, (types.SimpleNamespace(primary_persona_id="beginner"),
+                                                         types.SimpleNamespace(applicable_rule_ids=("WNK-003",)))))
+    monkeypatch.setattr(appmod, "_persona_adaptation", lambda *_args: {"beginner": True})
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
+
+    shoulder = _events(_post(client, "build a workout", profile=_profile(healthNotes="shoulder pain")))
+    exclusion = _events(_post(client, "Do not include push-ups. Give me a workout", profile=_profile()))
+
+    assert shoulder == [{"t": appmod._shoulder_safety_failure_reply("en")}, {"done": True}]
+    assert exclusion[-1] == {"done": True}
+    assert "Push-Up" not in exclusion[0]["t"]
+
+
 def test_persona_expert_communication_failure_preserves_existing_composer_prompt(client, captured, monkeypatch):
     blueprint = _workout_blueprint()
     monkeypatch.setenv("RECOMMENDATION_ENGINE_ACTIVE", "true")

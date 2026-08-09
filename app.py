@@ -2756,6 +2756,28 @@ def chat():
         if nutrition_delivery_targets is not None:
             system_content = system_content + "\n\n" + nutrition_plan.generation_contract(
                 nutrition_delivery_targets, lang)
+        if (_persona_expert_communication_active_for_request
+                and _training_plan_blueprint is not None
+                and _training_persona_expert_evaluation is not None):
+            # The deterministic engine already evaluated Persona/Expert once for
+            # bounded training advice. Reuse only its ID-free wording projection.
+            try:
+                _match, _consensus = _training_persona_expert_evaluation
+                if _match is not None and _consensus is not None:
+                    _persona_projection, _expert_communication_constraints = (
+                        persona_expert_projection.build_training_projections(
+                            persona_adaptation=_persona_adaptation(_match),
+                            profile_facts={key: fact.value for key, fact in _snapshot.profile.items()},
+                            locked_preferences=_snapshot.locked_preferences.as_dict(),
+                            training_plan=_training_plan_blueprint,
+                            exercise_library=load_exercise_library(),
+                            expert_consensus=_consensus,
+                        ))
+                    if (_persona_projection.is_none
+                            and _expert_communication_constraints.is_none):
+                        _persona_projection = _expert_communication_constraints = None
+            except Exception:
+                _persona_projection = _expert_communication_constraints = None
         if _training_plan_blueprint is not None:
             # Preserve the established APEX coach context. The fixed training
             # contract remains last and authoritative for immutable plan values.
@@ -2768,7 +2790,9 @@ def chat():
                 _conversation_frame = conversation_composer.compose(
                     _conversation_policy,
                     verified_memory=history,
-                    validated_blueprint=_recommendation_blueprint,
+                    validated_blueprint=(_training_plan_blueprint
+                                         if _training_plan_blueprint is not None
+                                         else _recommendation_blueprint),
                     validated_nutrition_contract=nutrition_delivery_targets is not None,
                     authority_facts=profile if isinstance(profile, dict) else {},
                     persona_projection=_persona_projection,
