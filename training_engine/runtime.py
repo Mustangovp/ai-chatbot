@@ -75,6 +75,7 @@ def build_training_plan(*, recommendation_blueprint_id: str, facts: Mapping[str,
                         excluded_exercise_ids: frozenset[str] = frozenset(),
                         excluded_movement_patterns: frozenset[MovementPattern] = frozenset(),
                         deprioritized_exercise_ids: frozenset[str] = frozenset(),
+                        advisory_preferred_exercise_ids: tuple[str, ...] = (),
                         level_override: Difficulty | None = None) -> TrainingPlanBlueprintV2:
     """Build one deterministic weekly plan or fail without producing a partial plan."""
     profile = dict(facts)
@@ -106,6 +107,7 @@ def build_training_plan(*, recommendation_blueprint_id: str, facts: Mapping[str,
             requested_split=split,
             safety=safety,
             deprioritized_exercise_ids=frozenset(deprioritized_exercise_ids),
+            advisory_preferred_exercise_ids=tuple(advisory_preferred_exercise_ids),
             policy=policy,
         ),
     )

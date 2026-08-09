@@ -54,6 +54,7 @@ from training_engine import (
     workout_result_from_payload,
 )
 from training_engine import renderer as training_renderer
+from training_engine.advisory import persona_expert_training_signals
 from brain.runtime_assets import expert_consensus, persona_matcher
 from brain.runtime_assets.expert_rules import load_expert_rule_packs
 from brain.runtime_assets.personas import load_runtime_personas
@@ -1759,7 +1760,8 @@ def _plan_coaching_request(snapshot, intent, history, lang):
     return blueprint, None
 
 
-def _active_training_plan(snapshot, planning_blueprint, *, followup=None, previous_workout=None):
+def _active_training_plan(snapshot, planning_blueprint, *, followup=None, previous_workout=None,
+                          advisory_signals=None):
     """Build the deterministic workout artifact from verified request facts only."""
     if (snapshot.intent != "workout" or planning_blueprint is None
             or planning_blueprint.outcome is not recommendation_planning.RecommendationOutcome.RECOMMEND):
@@ -1774,12 +1776,14 @@ def _active_training_plan(snapshot, planning_blueprint, *, followup=None, previo
             recommendation_blueprint_id=planning_blueprint.blueprint_id,
             facts=facts,
             locked_preferences=snapshot.locked_preferences.as_dict(),
+            advisory_preferred_exercise_ids=getattr(advisory_signals, "preferred_exercise_ids", ()),
         )
     return build_training_plan(
         recommendation_blueprint_id=planning_blueprint.blueprint_id,
         facts=facts,
         locked_preferences=snapshot.locked_preferences.as_dict(),
         requested_split=planning_blueprint.training_split,
+        advisory_preferred_exercise_ids=getattr(advisory_signals, "preferred_exercise_ids", ()),
     )
 
 
@@ -1906,6 +1910,11 @@ def _persona_expert_communication_active():
     return os.getenv("PERSONA_EXPERT_COMMUNICATION_ACTIVE", "false").strip().lower() == "true"
 
 
+def _persona_expert_training_active():
+    """Allow bounded Persona/Expert advice to influence training only by opt-in."""
+    return os.getenv("PERSONA_EXPERT_TRAINING_ACTIVE", "false").strip().lower() == "true"
+
+
 def _conversation_composer_active():
     return os.getenv("CONVERSATION_COMPOSER_ACTIVE", "false").strip().lower() == "true"
 
@@ -1994,6 +2003,25 @@ def _shadow_persona_expert(snapshot, decision, recommendation_engine_active):
     return (match if matcher_enabled else None), (consensus if consensus_enabled else None), trace
 
 
+def _evaluate_training_persona_expert(snapshot, decision):
+    """Return bounded advice only when its explicit production flag is enabled."""
+    if (decision.outcome != "recommend" or decision.intent != "workout"
+            or not _persona_expert_training_active()):
+        return None, None
+    match, consensus, _trace = _evaluate_persona_expert(snapshot, decision, False)
+    if match is None or consensus is None:
+        return None, (match, consensus)
+    signals = persona_expert_training_signals(
+        persona_match=match, expert_consensus=consensus)
+    return (signals if signals.preferred_exercise_ids else None), (match, consensus)
+
+
+def _training_persona_expert_signals(snapshot, decision):
+    """Compatibility seam for tests and non-delivery callers."""
+    signals, _evaluation = _evaluate_training_persona_expert(snapshot, decision)
+    return signals
+
+
 def _shadow_expert_domains(result):
     """Return only broad domains; rule IDs never enter diagnostic logs."""
     if result is None:
@@ -2007,7 +2035,7 @@ def _shadow_expert_domains(result):
 
 
 def _persona_expert_shadow_observation(snapshot, decision, *, locale, authoritative_path,
-                                       recommendation_engine_active):
+                                       recommendation_engine_active, pre_evaluated=None):
     """Pure worker body: it returns safe categories and cannot affect delivery."""
     matcher_enabled = _shadow_feature_enabled("PERSONA_MATCHER_SHADOW")
     consensus_enabled = _shadow_feature_enabled("EXPERT_CONSENSUS_SHADOW")
@@ -2019,7 +2047,10 @@ def _persona_expert_shadow_observation(snapshot, decision, *, locale, authoritat
         try:
             shadow_observability.emit_metric("persona_started", component="persona", status="started",
                                               locale=locale, intent_category=decision.intent)
-            match = persona_matcher.match(snapshot, decision.intent)
+            if pre_evaluated is not None:
+                match, consensus = pre_evaluated
+            else:
+                match = persona_matcher.match(snapshot, decision.intent)
             statuses["persona"] = "ABSTAIN" if match.abstained else "SUCCESS"
         except Exception:
             statuses["persona"] = "ERROR"
@@ -2031,7 +2062,8 @@ def _persona_expert_shadow_observation(snapshot, decision, *, locale, authoritat
             try:
                 shadow_observability.emit_metric("expert_started", component="expert", status="started",
                                                   locale=locale, intent_category=decision.intent)
-                consensus = expert_consensus.evaluate(snapshot, match, decision.intent)
+                if pre_evaluated is None:
+                    consensus = expert_consensus.evaluate(snapshot, match, decision.intent)
                 statuses["expert"] = "ABSTAIN" if consensus.abstained else "SUCCESS"
             except Exception:
                 statuses["expert"] = "ERROR"
@@ -2279,6 +2311,8 @@ def chat():
         _training_plan_blueprint = None
         _training_engine_failure = None
         _shoulder_safety_validation = None
+        _training_advisory_signals = None
+        _training_persona_expert_evaluation = None
         _persona_expert_communication_active_for_request = _persona_expert_communication_active()
         _persona_projection = None
         _expert_communication_constraints = None
@@ -2327,13 +2361,21 @@ def chat():
                     and _recommendation_plan is not None
                     and _recommendation_plan.outcome is recommendation_planning.RecommendationOutcome.RECOMMEND):
                 try:
+                    (_training_advisory_signals,
+                     _training_persona_expert_evaluation) = _evaluate_training_persona_expert(
+                         _snapshot, _shadow_decision)
                     if _workout_followup is not None and _workout_followup.requires_previous:
                         _training_plan_blueprint = _active_training_plan(
                             _snapshot, _recommendation_plan,
                             followup=_workout_followup, previous_workout=_previous_workout,
+                            **({"advisory_signals": _training_advisory_signals}
+                               if _training_advisory_signals is not None else {}),
                         )
                     else:
-                        _training_plan_blueprint = _active_training_plan(_snapshot, _recommendation_plan)
+                        _training_plan_blueprint = _active_training_plan(
+                            _snapshot, _recommendation_plan,
+                            **({"advisory_signals": _training_advisory_signals}
+                               if _training_advisory_signals is not None else {}))
                     _training_plan_blueprint = _advance_active_training_plan(_training_plan_blueprint, data)
                     if _training_plan_blueprint is None:
                         _constraint_state = _shoulder_constraint_state(profile)
@@ -2482,7 +2524,13 @@ def chat():
                     and _recommendation_plan is not None
                     and _recommendation_plan.outcome is recommendation_planning.RecommendationOutcome.RECOMMEND):
                 try:
-                    _training_plan_blueprint = _active_training_plan(_snapshot, _recommendation_plan)
+                    (_training_advisory_signals,
+                     _training_persona_expert_evaluation) = _evaluate_training_persona_expert(
+                         _snapshot, _shadow_decision)
+                    _training_plan_blueprint = _active_training_plan(
+                        _snapshot, _recommendation_plan,
+                        **({"advisory_signals": _training_advisory_signals}
+                           if _training_advisory_signals is not None else {}))
                     _training_plan_blueprint = _advance_active_training_plan(_training_plan_blueprint, data)
                     if _training_plan_blueprint is None:
                         _constraint_state = _shoulder_constraint_state(profile)
@@ -2893,7 +2941,8 @@ def chat():
                     components=("persona", "expert"), task_kind="persona_expert", timeout_ms=250,
                     work=lambda: _persona_expert_shadow_observation(
                         _snapshot, _shadow_decision, locale=lang, authoritative_path=path,
-                        recommendation_engine_active=_recommendation_active),
+                        recommendation_engine_active=_recommendation_active,
+                        pre_evaluated=_training_persona_expert_evaluation),
                     request_id=_shadow_request_id,
                 )
 

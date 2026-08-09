@@ -96,6 +96,7 @@ def _enforce_off_by_default(monkeypatch):
     monkeypatch.delenv("CONVERSATION_COMPOSER_ACTIVE", raising=False)
     monkeypatch.delenv("PERSONA_MATCHER_SHADOW", raising=False)
     monkeypatch.delenv("EXPERT_CONSENSUS_SHADOW", raising=False)
+    monkeypatch.delenv("PERSONA_EXPERT_TRAINING_ACTIVE", raising=False)
     monkeypatch.delenv("PERSONA_EXPERT_COMMUNICATION_ACTIVE", raising=False)
     monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "false")
     yield
@@ -1994,6 +1995,75 @@ def test_shadow_flags_off_do_not_invoke_new_modules(client, captured, monkeypatc
     response = _post(client, "build a workout", profile=_profile())
     assert response.status_code == 200
     assert "BLUEPRINT (render exactly, do not alter values)" not in captured["system"]
+
+
+def test_training_persona_expert_bridge_requires_explicit_active_flag(monkeypatch):
+    snapshot = _shadow_snapshot(profile=_profile(goal="strength", recoveryFeel="fresh"))
+    decision = decision_engine.decide(snapshot, "workout")
+    match = persona_matcher.PersonaMatchResult(
+        "test", "persona", (), (), (), ("strength",), (), 0.9, False, None)
+    consensus = expert_consensus.ExpertConsensusResult(
+        "test", (), (), (), (), (), (), 0.0, True)
+    calls = {"matcher": 0, "expert": 0}
+
+    def fake_match(*_args):
+        calls["matcher"] += 1
+        return match
+
+    def fake_consensus(*_args):
+        calls["expert"] += 1
+        return consensus
+
+    monkeypatch.setattr(appmod.persona_matcher, "match", fake_match)
+    monkeypatch.setattr(appmod.expert_consensus, "evaluate", fake_consensus)
+
+    monkeypatch.setenv("PERSONA_MATCHER_SHADOW", "true")
+    monkeypatch.setenv("EXPERT_CONSENSUS_SHADOW", "true")
+    assert appmod._training_persona_expert_signals(snapshot, decision) is None
+    assert calls == {"matcher": 0, "expert": 0}
+
+    monkeypatch.delenv("PERSONA_MATCHER_SHADOW")
+    monkeypatch.delenv("EXPERT_CONSENSUS_SHADOW")
+    monkeypatch.setenv("PERSONA_EXPERT_TRAINING_ACTIVE", "true")
+    signals = appmod._training_persona_expert_signals(snapshot, decision)
+
+    assert signals is not None
+    assert signals.preferred_exercise_ids == ("dumbbell.row",)
+    assert calls == {"matcher": 1, "expert": 1}
+
+
+def test_active_and_shadow_persona_expert_reuse_one_evaluation(monkeypatch):
+    snapshot = _shadow_snapshot(profile=_profile(goal="strength", recoveryFeel="fresh"))
+    decision = decision_engine.decide(snapshot, "workout")
+    match = persona_matcher.PersonaMatchResult(
+        "test", "persona", (), (), (), ("strength",), (), 0.9, False, None)
+    consensus = expert_consensus.ExpertConsensusResult(
+        "test", (), (), (), (), (), (), 0.0, True)
+    calls = {"matcher": 0, "expert": 0}
+
+    def fake_match(*_args):
+        calls["matcher"] += 1
+        return match
+
+    def fake_consensus(*_args):
+        calls["expert"] += 1
+        return consensus
+
+    monkeypatch.setenv("PERSONA_MATCHER_SHADOW", "true")
+    monkeypatch.setenv("EXPERT_CONSENSUS_SHADOW", "true")
+    monkeypatch.setenv("PERSONA_EXPERT_TRAINING_ACTIVE", "true")
+    monkeypatch.setattr(appmod.persona_matcher, "match", fake_match)
+    monkeypatch.setattr(appmod.expert_consensus, "evaluate", fake_consensus)
+
+    signals, evaluated = appmod._evaluate_training_persona_expert(snapshot, decision)
+    observation = appmod._persona_expert_shadow_observation(
+        snapshot, decision, locale="en", authoritative_path="deterministic_training",
+        recommendation_engine_active=False, pre_evaluated=evaluated)
+
+    assert signals is not None
+    assert observation.persona_status == "SUCCESS"
+    assert observation.expert_status == "ABSTAIN"
+    assert calls == {"matcher": 1, "expert": 1}
 
 
 @pytest.mark.parametrize("matcher_enabled,consensus_enabled,expected", [

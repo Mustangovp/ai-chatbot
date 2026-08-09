@@ -164,6 +164,7 @@ class TrainingSelectionRequest:
     requested_split: TrainingSplit = TrainingSplit.FULL_BODY
     safety: TrainingSafetyConstraints = TrainingSafetyConstraints()
     deprioritized_exercise_ids: frozenset[str] = frozenset()
+    advisory_preferred_exercise_ids: tuple[str, ...] = ()
     policy: TrainingGoalPolicy | None = None
 
     def __post_init__(self) -> None:
@@ -185,6 +186,10 @@ class TrainingSelectionRequest:
         if not isinstance(self.deprioritized_exercise_ids, frozenset) or any(
                 not isinstance(item, str) or not item for item in self.deprioritized_exercise_ids):
             raise ValueError("deprioritized exercise ids must be a frozen set of identities")
+        if (not isinstance(self.advisory_preferred_exercise_ids, tuple) or any(
+                not isinstance(item, str) or not item for item in self.advisory_preferred_exercise_ids)
+                or len(self.advisory_preferred_exercise_ids) != len(set(self.advisory_preferred_exercise_ids))):
+            raise ValueError("advisory exercise ids must be a unique tuple of identities")
         if self.policy is not None and (self.policy.goal is not self.goal
                                         or self.policy.split is not self.requested_split):
             raise ValueError("goal policy does not match requested goal and split")
@@ -259,9 +264,10 @@ class TrainingSelectionEngine:
                 continue
             chosen = min(candidates, key=lambda exercise: cls._rank(exercise, request, policy))
             priority = "priority" if set(chosen.primary_muscles).intersection(request.muscle_priorities) else "balance"
+            advisory = ";advisory_preference" if chosen.exercise_id in request.advisory_preferred_exercise_ids else ""
             selections.append(ExerciseSelection(
                 chosen.exercise_id, chosen.version, pattern,
-                f"goal:{request.goal.value};{priority}:{pattern.value};equipment_compatible",
+                f"goal:{request.goal.value};{priority}:{pattern.value};equipment_compatible{advisory}",
             ))
         if rejected:
             return TrainingSelectionResult(SelectionOutcome.REJECTED, None, tuple(rejected))
@@ -303,14 +309,15 @@ class TrainingSelectionEngine:
 
     @staticmethod
     def _rank(exercise: Exercise, request: TrainingSelectionRequest,
-              policy: TrainingGoalPolicy) -> tuple[int, int, str]:
+              policy: TrainingGoalPolicy) -> tuple[int, int, int, int, str]:
         priority = len(set(exercise.primary_muscles).intersection(request.muscle_priorities))
         difficulty = _DIFFICULTY_RANK[exercise.difficulty]
         preferred_difficulty = -difficulty if policy.prefer_highest_compatible_difficulty else difficulty
         # Follow-up variation is an explicit deterministic preference, never a
         # relaxation of a safety or equipment constraint.
         prior_penalty = int(exercise.exercise_id in request.deprioritized_exercise_ids)
-        return (prior_penalty, -priority, preferred_difficulty, exercise.exercise_id)
+        advisory_penalty = int(exercise.exercise_id not in request.advisory_preferred_exercise_ids)
+        return (prior_penalty, -priority, preferred_difficulty, advisory_penalty, exercise.exercise_id)
 
     @staticmethod
     def _blueprint_id(library: ExerciseLibrary, request: TrainingSelectionRequest,

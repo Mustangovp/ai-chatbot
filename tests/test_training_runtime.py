@@ -9,9 +9,16 @@ from training_engine import (
     MovementPattern,
     TrainingRuntimeError,
     TrainingSplit,
+    WorkoutFollowUp,
+    WorkoutFollowUpOperation,
+    apply_followup,
     build_training_plan,
     load_exercise_library,
+    state_for,
 )
+from training_engine.advisory import TrainingAdvisorySignals, persona_expert_training_signals
+from brain.runtime_assets.expert_consensus import ExpertConsensusResult
+from brain.runtime_assets.persona_matcher import PersonaMatchResult
 from training_engine import renderer
 
 
@@ -21,6 +28,21 @@ _PROFILE = {
     "equipment": "bodyweight, dumbbells, bench",
     "recoveryFeel": "fresh",
 }
+_BEGINNER_PROFILE = {**_PROFILE, "level": "beginner"}
+
+
+def _persona(*, goals=(), problems=()):
+    return PersonaMatchResult(
+        "test", "persona", (), tuple(problems), (), tuple(goals), (), 0.9, False, None)
+
+
+def _expert(*rule_ids):
+    return ExpertConsensusResult(
+        "test", tuple(rule_ids), (), (), (), (), (), 0.9, not bool(rule_ids))
+
+
+def _exercise_ids(plan):
+    return {item.exercise_id for session in plan.sessions for item in session.prescriptions}
 
 
 def test_runtime_adapter_builds_a_deterministic_traceable_training_plan():
@@ -127,3 +149,92 @@ def test_split_support_rejects_unknown_split_without_falling_back_to_full_body()
         build_training_plan(recommendation_blueprint_id="rec-split", facts={
             **_PROFILE, "training_split": "bro split",
         })
+
+
+def test_persona_signal_changes_only_a_safe_deterministic_rank_tie():
+    signals = persona_expert_training_signals(persona_match=_persona(goals=("strength",)))
+    baseline = build_training_plan(recommendation_blueprint_id="rec-base", facts=_PROFILE)
+    advised = build_training_plan(
+        recommendation_blueprint_id="rec-advised", facts=_PROFILE,
+        advisory_preferred_exercise_ids=signals.preferred_exercise_ids,
+    )
+
+    assert "bodyweight.table_row" in _exercise_ids(baseline)
+    assert "dumbbell.row" in _exercise_ids(advised)
+
+
+def test_expert_consensus_changes_only_a_safe_deterministic_rank_tie():
+    signals = persona_expert_training_signals(expert_consensus=_expert("CLR-002"))
+    baseline = build_training_plan(recommendation_blueprint_id="rec-base", facts=_BEGINNER_PROFILE)
+    advised = build_training_plan(
+        recommendation_blueprint_id="rec-advised", facts=_BEGINNER_PROFILE,
+        advisory_preferred_exercise_ids=signals.preferred_exercise_ids,
+    )
+
+    assert "bodyweight.incline_push_up" in _exercise_ids(baseline)
+    assert "bodyweight.wall_push_up" in _exercise_ids(advised)
+
+
+def test_hard_exclusions_beat_persona_and_expert_preferences():
+    persona = persona_expert_training_signals(persona_match=_persona(goals=("strength",)))
+    expert = persona_expert_training_signals(expert_consensus=_expert("CLR-002"))
+    persona_plan = build_training_plan(
+        recommendation_blueprint_id="rec-persona-exclusion", facts=_PROFILE,
+        locked_preferences={"exercise_exclusions": ("dumbbell.row",)},
+        advisory_preferred_exercise_ids=persona.preferred_exercise_ids,
+    )
+    expert_plan = build_training_plan(
+        recommendation_blueprint_id="rec-expert-exclusion", facts=_BEGINNER_PROFILE,
+        locked_preferences={"exercise_exclusions": ("bodyweight.wall_push_up",)},
+        advisory_preferred_exercise_ids=expert.preferred_exercise_ids,
+    )
+
+    assert "dumbbell.row" not in _exercise_ids(persona_plan)
+    assert "bodyweight.table_row" in _exercise_ids(persona_plan)
+    assert "bodyweight.wall_push_up" not in _exercise_ids(expert_plan)
+    assert "bodyweight.incline_push_up" in _exercise_ids(expert_plan)
+
+
+def test_shoulder_review_and_followup_exclusions_beat_advisory_preferences():
+    signals = TrainingAdvisorySignals(("dumbbell.overhead_press",))
+    with pytest.raises(TrainingRuntimeError, match="safety constraints"):
+        build_training_plan(
+            recommendation_blueprint_id="rec-shoulder", facts={**_PROFILE, "healthNotes": "shoulder pain"},
+            advisory_preferred_exercise_ids=signals.preferred_exercise_ids,
+        )
+
+    facts = {**_PROFILE, "equipment": "gym", "training_split": "upper_lower"}
+    previous = state_for(build_training_plan(recommendation_blueprint_id="rec-prior", facts=facts))
+    followup = WorkoutFollowUp(
+        WorkoutFollowUpOperation.EXCLUDE_MOVEMENT_FAMILY,
+        excluded_patterns=frozenset({MovementPattern.VERTICAL_PUSH}),
+    )
+    revised = apply_followup(
+        followup=followup, previous=previous, recommendation_blueprint_id="rec-followup", facts=facts,
+        advisory_preferred_exercise_ids=signals.preferred_exercise_ids,
+    )
+
+    assert MovementPattern.VERTICAL_PUSH not in {
+        item.movement_pattern for session in revised.sessions for item in session.prescriptions
+    }
+    assert "dumbbell.overhead_press" not in _exercise_ids(revised)
+
+
+def test_unknown_advisory_exercise_is_ignored_and_disabled_signals_keep_output_identical():
+    ignored = persona_expert_training_signals(
+        persona_match=_persona(goals=("unknown.exercise",), problems=("unknown.exercise",)),
+        expert_consensus=_expert("UNKNOWN-001"),
+    )
+    baseline = build_training_plan(recommendation_blueprint_id="rec-compatible", facts=_PROFILE)
+    no_signals = build_training_plan(
+        recommendation_blueprint_id="rec-compatible", facts=_PROFILE,
+        advisory_preferred_exercise_ids=(),
+    )
+    unknown_signal = build_training_plan(
+        recommendation_blueprint_id="rec-compatible", facts=_PROFILE,
+        advisory_preferred_exercise_ids=("unknown.exercise",),
+    )
+
+    assert ignored.preferred_exercise_ids == ()
+    assert baseline == no_signals == unknown_signal
+    assert "unknown.exercise" not in _exercise_ids(unknown_signal)

@@ -132,7 +132,8 @@ def _materially_different(previous: TrainingPlanBlueprintV2, candidate: Training
 def apply_followup(*, followup: WorkoutFollowUp, previous: WorkoutConversationState,
                    recommendation_blueprint_id: str, facts: Mapping[str, object],
                    locked_preferences: Mapping[str, tuple[str, ...]] | None = None,
-                   library: ExerciseLibrary | None = None) -> TrainingPlanBlueprintV2:
+                   library: ExerciseLibrary | None = None,
+                   advisory_preferred_exercise_ids: tuple[str, ...] = ()) -> TrainingPlanBlueprintV2:
     """Return a validated revised plan or fail without mutating the prior state."""
     if followup.operation is WorkoutFollowUpOperation.REPEAT_PREVIOUS:
         return previous.plan
@@ -146,6 +147,7 @@ def apply_followup(*, followup: WorkoutFollowUp, previous: WorkoutConversationSt
         "library": selected_library,
         "excluded_exercise_ids": followup.excluded_exercise_ids,
         "excluded_movement_patterns": followup.excluded_patterns,
+        "advisory_preferred_exercise_ids": advisory_preferred_exercise_ids,
     }
     if followup.operation is WorkoutFollowUpOperation.ALTERNATIVE:
         candidate = build_training_plan(**kwargs, deprioritized_exercise_ids=frozenset(previous.exercise_ids))
