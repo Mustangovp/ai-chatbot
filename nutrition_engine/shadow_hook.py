@@ -29,6 +29,7 @@ from .models import (
     CallerRouteStatus, CatalogMode, DietConstraints, NutritionPlanCode,
     NutritionPlanOutcome, NutritionPlanRequest, NutritionTargets, PracticalityPolicy,
 )
+from .daily_policy import DAILY_PLAN_PRACTICALITY_POLICY
 from .service import SERVICE_VERSION, build_nutrition_plan
 from .shadow import build_shadow_record
 
@@ -36,17 +37,7 @@ FLAG = "NUTRITION_ENGINE_V2_SHADOW"
 _SHADOW_CATALOG_VERSION = "development-v2-source-backed"
 _REQUIRED_MEALS = ("breakfast", "lunch", "dinner")
 # Fixed, shadow-only development policy. Bounded search via max_search_nodes.
-_SHADOW_POLICY = PracticalityPolicy(
-    maximum_foods_per_meal=4,
-    category_portion_overrides=(
-        ("protein", Decimal("200"), Decimal("300"), Decimal("50")),
-        ("carbohydrate", Decimal("100"), Decimal("200"), Decimal("50")),
-        ("vegetable", Decimal("75"), Decimal("75"), Decimal("25")),
-        ("fruit", Decimal("100"), Decimal("150"), Decimal("50")),
-        ("fat", Decimal("5"), Decimal("5"), Decimal("5")),
-    ),
-    max_search_nodes=200_000,
-)
+_SHADOW_POLICY = DAILY_PLAN_PRACTICALITY_POLICY
 _MAX_WORKERS = 1
 _MAX_INFLIGHT = 2  # one executing + one queued; hard bound on admitted work
 _SEMAPHORE_CAPACITY = _MAX_INFLIGHT
@@ -332,6 +323,11 @@ def _record_result(result) -> None:
         _record(quality_failure=1)
     elif result.outcome is NutritionPlanOutcome.INFEASIBLE:
         _record(optimizer_failure=1)
+
+
+def record_evaluated_result(result) -> None:
+    """Record an already-evaluated V2 result without scheduling another run."""
+    _record_result(result)
 
 
 def _run(task_id: int, state: _TaskState, projection: NutritionShadowTargetProjection,

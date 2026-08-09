@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 import app as appmod
+import db as store
 from nutrition_engine import shadow_hook as sh
 from nutrition_engine.feasibility import FeasibilityCode
 from nutrition_engine.optimizer import optimize
@@ -24,7 +25,8 @@ from nutrition_engine.shadow_hook import ShadowSkipReason
 # ── module-state reset ───────────────────────────────────────────────────────
 
 @pytest.fixture(autouse=True)
-def _reset_shadow_state():
+def _reset_shadow_state(monkeypatch):
+    monkeypatch.delenv("NUTRITION_ENGINE_V2_ACTIVE", raising=False)
     sh._reset_runtime_for_testing()
     yield
     sh._reset_runtime_for_testing()
@@ -327,6 +329,20 @@ def test_flag_off_does_not_dispatch_and_is_inert(client, monkeypatch):
     assert any(e.get("done") for e in ev_off)  # canonical stream still completes
 
 
+def test_active_off_preserves_legacy_nutrition_delivery(client, monkeypatch):
+    monkeypatch.delenv("NUTRITION_ENGINE_V2_SHADOW", raising=False)
+    monkeypatch.delenv("NUTRITION_ENGINE_V2_ACTIVE", raising=False)
+    baseline_calls = _nutrition_env(monkeypatch)
+    baseline = _events(_post(client))
+
+    monkeypatch.setenv("NUTRITION_ENGINE_V2_ACTIVE", "false")
+    inactive_calls = _nutrition_env(monkeypatch)
+    inactive = _events(_post(client))
+
+    assert inactive == baseline
+    assert inactive_calls == baseline_calls
+
+
 def test_flag_on_dispatches_once_and_leaves_canonical_identical(client, monkeypatch):
     # baseline (flag off)
     monkeypatch.delenv("NUTRITION_ENGINE_V2_SHADOW", raising=False)
@@ -373,6 +389,68 @@ def test_voice_speech_text_unchanged_with_flag_on(client, monkeypatch):
     _nutrition_env(monkeypatch, dispatch_spy=lambda *a, **k: True)
     on = [e for e in _events(client.post("/chat", json={"message": "give me a full day menu", "lang": "en", "voice": True, "profile": {}}))]
     assert [e for e in on if "speech_text" in e] == [e for e in base if "speech_text" in e]
+
+
+def test_active_and_shadow_reuse_one_v2_evaluation(client, monkeypatch):
+    from nutrition_engine import canonical_delivery as delivery
+    from nutrition_engine.models import NutritionPlanCode, NutritionPlanOutcome
+    from nutrition_engine.service import NutritionPlanResult
+
+    monkeypatch.setenv("NUTRITION_ENGINE_V2_SHADOW", "true")
+    monkeypatch.setenv("NUTRITION_ENGINE_V2_ACTIVE", "true")
+    calls = {"active": 0, "dispatch": 0, "observed": 0}
+    failed = NutritionPlanResult(
+        NutritionPlanOutcome.CATALOG_NOT_READY, NutritionPlanCode.CATALOG_NOT_READY,
+        "test", "test")
+
+    def active(**_kwargs):
+        calls["active"] += 1
+        return delivery.CanonicalV2Evaluation(None, failed)
+
+    monkeypatch.setattr(delivery, "evaluate_canonical_v2", active)
+    monkeypatch.setattr(sh, "dispatch", lambda *_args, **_kwargs: calls.__setitem__("dispatch", calls["dispatch"] + 1))
+    monkeypatch.setattr(sh, "record_evaluated_result",
+                        lambda result: calls.__setitem__("observed", calls["observed"] + 1))
+    request_calls = _nutrition_env(monkeypatch)
+
+    events = _events(_post(client))
+
+    assert calls == {"active": 1, "dispatch": 0, "observed": 1}
+    assert request_calls["llm"] == 0
+    assert events[-1] == {"done": True}
+
+
+def test_active_valid_v2_plan_uses_existing_render_sse_and_persistence(client, monkeypatch):
+    from dataclasses import replace
+    from nutrition_engine import canonical_delivery as delivery
+    from nutrition_engine.catalog import Catalog
+    from tests.test_nutrition_engine_phase5 import CATALOG
+
+    ready_catalog = Catalog(
+        CATALOG.version,
+        tuple(replace(food, review_status="PRODUCTION_READY") for food in CATALOG.foods),
+    )
+    monkeypatch.setenv("NUTRITION_ENGINE_V2_ACTIVE", "true")
+    monkeypatch.setattr(delivery, "load_production_food_catalog", lambda: ready_catalog)
+    monkeypatch.setattr(appmod, "_plan_coaching_request", lambda *_args, **_kwargs: (None, None))
+    request_calls = _nutrition_env(monkeypatch)
+    render_calls = []
+    original_render = appmod.nutrition_plan.render_delivery
+    monkeypatch.setattr(appmod.nutrition_plan, "render_delivery",
+                        lambda plan, *args, **kwargs: render_calls.append(plan) or original_render(plan, *args, **kwargs))
+
+    uid = store.get_or_create_user("nutrition-v2-canonical@example.com")
+    client.set_cookie("apex_session", store.create_session(uid))
+    events = _events(client.post("/chat", json={
+        "message": "give me a full day menu", "lang": "en", "profile": {},
+    }))
+
+    assert request_calls["llm"] == 0
+    assert len(render_calls) == 1
+    assert events[0]["t"] == original_render(render_calls[0], "en", {})
+    assert events[-1] == {"done": True}
+    assert store.list_nutrition_plans(uid, limit=1)
+    assert store.get_athlete_state(uid)["evidence"]["sources"]["nutrition"] >= 1
 
 
 # ── operational telemetry endpoint ─────────────────────────────────────────

@@ -1924,6 +1924,11 @@ def _nutrition_engine_v2_shadow_active():
     return os.getenv("NUTRITION_ENGINE_V2_SHADOW", "false").strip().lower() == "true"
 
 
+def _nutrition_engine_v2_active():
+    """Canonical V2 delivery is opt-in and independent from shadow evaluation."""
+    return os.getenv("NUTRITION_ENGINE_V2_ACTIVE", "false").strip().lower() == "true"
+
+
 def _shadow_feature_enabled(name):
     return os.getenv(name, "false").strip().lower() == "true"
 
@@ -2638,6 +2643,9 @@ def chat():
         nutrition_guard_targets = _nutrition_conversation.targets
         nutrition_delivery_target = (int(nutrition_delivery_targets.kcal)
                                      if nutrition_delivery_targets is not None else None)
+        _nutrition_v2_active_for_request = _nutrition_engine_v2_active()
+        _nutrition_v2_evaluation = None
+        _nutrition_v2_authoritative_plan = None
         _nutrition_revision = nutrition_conversation.parse_revision_operation(user_message)
         _revised_nutrition_plan = None
         _nutrition_revision_failure = None
@@ -2662,6 +2670,21 @@ def chat():
             # A recognized typed revision has a deterministic terminal path and
             # must not be diverted into the normal unknown-intent response.
             _controlled_reply = None
+
+        if (_nutrition_v2_active_for_request and nutrition_delivery_targets is not None
+                and _nutrition_conversation.state is nutrition_conversation.NutritionConversationState.PLAN_READY
+                and not (_medical_hold and _medical_hold.get("status") == "ACTIVE_MEDICAL_HOLD")):
+            try:
+                from nutrition_engine.canonical_delivery import evaluate_canonical_v2
+                _nutrition_v2_evaluation = evaluate_canonical_v2(
+                    language=lang,
+                    targets=nutrition_delivery_targets,
+                    restrictions=_nutrition_restrictions(profile),
+                    medical_route=(getattr(_shadow_decision, "outcome", None) == "route"),
+                )
+                _nutrition_v2_authoritative_plan = _nutrition_v2_evaluation.plan
+            except Exception as _v2_active_error:
+                print(f"[nutrition-v2] canonical evaluation failed: {type(_v2_active_error).__name__}")
 
         # ── Nutrition Engine V2 SHADOW (read-only, flag-off by default) ──────
         # Non-blocking: reuses the already-computed canonical typed targets, builds
@@ -2689,15 +2712,18 @@ def chat():
                     if _v2_elig.eligible:
                         g.nutrition_v2_shadow_attempted = True  # marks ATTEMPT, before dispatch
                         _v2_shadow.record_eligible()
-                        _v2_proj = _v2_shadow.build_projection(
-                            language=lang,
-                            calorie_target=nutrition_delivery_targets.kcal,
-                            protein_target=nutrition_delivery_targets.protein,
-                            carbs_target=nutrition_delivery_targets.carbs,
-                            fat_target=nutrition_delivery_targets.fat,
-                        )
-                        if not _v2_shadow.dispatch(_v2_proj):
-                            _v2_shadow.record_skip(_v2_shadow.ShadowSkipReason.DISPATCH_SATURATED)
+                        if _nutrition_v2_evaluation is not None:
+                            _v2_shadow.record_evaluated_result(_nutrition_v2_evaluation.result)
+                        else:
+                            _v2_proj = _v2_shadow.build_projection(
+                                language=lang,
+                                calorie_target=nutrition_delivery_targets.kcal,
+                                protein_target=nutrition_delivery_targets.protein,
+                                carbs_target=nutrition_delivery_targets.carbs,
+                                fat_target=nutrition_delivery_targets.fat,
+                            )
+                            if not _v2_shadow.dispatch(_v2_proj):
+                                _v2_shadow.record_skip(_v2_shadow.ShadowSkipReason.DISPATCH_SATURATED)
                     else:
                         _v2_shadow.record_skip(_v2_elig.reason)
             except Exception as _v2_err:  # hook can never affect the request
@@ -3053,6 +3079,28 @@ def chat():
                     # Plan-ready nutrition is generated as structured JSON. The
                     # visible table is rendered only after canonical validation.
                     authoritative_plan = None
+                    if _nutrition_v2_active_for_request:
+                        _bump_plans_today()
+                        authoritative_plan = _nutrition_v2_authoritative_plan
+                        if authoritative_plan is None:
+                            failed_nutrition_turn = nutrition_conversation.fail_generation(
+                                _nutrition_conversation, lang, "nutrition_v2_delivery_rejected")
+                            reply_text = (failed_nutrition_turn.user_response
+                                          or nutrition_conversation.failed_message(lang))
+                            nutrition_delivery_failed = True
+                        else:
+                            reply_text = nutrition_plan.render_delivery(authoritative_plan, lang, profile)
+                        yield sse({"t": reply_text})
+                        speech_event = _speech_event(reply_text, preserve_visible=nutrition_delivery_failed)
+                        if speech_event:
+                            yield sse(speech_event)
+                        _persist_reply(reply_text, authoritative_plan)
+                        _update_learning_engine(chat_uid, user_message, reply_text, profile)
+                        _log_analytics(_t_start)
+                        _ingest_state()
+                        _shadow_log()
+                        yield sse({"done": True})
+                        return
                     try:
                         completion = client.chat.completions.create(
                             model=model_to_use,

@@ -79,10 +79,12 @@ class NutritionPlanResult:
     internal_metrics: InternalMetrics | None = None
     target_deviations: tuple[tuple[str, Decimal], ...] | None = None
     deterministic_output_hash: str | None = None
+    source_day: object | None = None
 
     def __post_init__(self) -> None:
-        if self.outcome is not NutritionPlanOutcome.SUCCESS and self.projection is not None:
-            raise ValueError("a non-success result must not carry a projection")
+        if self.outcome is not NutritionPlanOutcome.SUCCESS and (
+                self.projection is not None or self.source_day is not None):
+            raise ValueError("a non-success result must not carry a delivery source")
 
 
 # ── ordering-only rotation & preference helpers (pure, deterministic) ────────
@@ -325,6 +327,7 @@ def build_nutrition_plan(request: NutritionPlanRequest, *,
             internal_metrics=metrics,
             target_deviations=day.target_deviations,
             deterministic_output_hash=output_hash,
+            source_day=meal_day,
         )
     except Exception:  # noqa: BLE001 — fail closed, expose nothing
         return NutritionPlanResult(
