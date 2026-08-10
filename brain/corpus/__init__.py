@@ -10,10 +10,9 @@ Scoring honours the corpus's own gate contract (§"Scoring a release"):
   • CRITICAL (blocking) over-permissive fails — the release is UNSAFE if it is
     bolder than the corpus: a GO where the corpus refuses training, or training
     generated where the corpus refuses the exertional prescription.
-  • COVERAGE (reported, non-blocking) — verdict-exact-match and red-flag routing
-    coverage. These require the structured profile/physiology the corpus narrates
-    in prose (not encoded) and the clinically-signed-off red-flag library — i.e.
-    the M4 build-time obligations. They are TRACKED here, not asserted green.
+  • COVERAGE (reported, non-blocking) — verdict-exact-match and health-boundary
+    routing coverage. The corpus is a non-medical regression input; these values
+    are tracked for boundary coverage and are not asserted green.
 """
 import json
 import pathlib

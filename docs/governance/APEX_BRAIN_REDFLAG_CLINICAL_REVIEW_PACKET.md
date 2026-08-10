@@ -1,11 +1,13 @@
-# APEX Brain Red-Flag Clinical Governance Review Packet
+# APEX Brain Red-Flag Clinical Governance Review Packet (Historical)
 
 > **Historical/development record.** This packet documents the earlier M4
 > enforcement review concept. APEX is now explicitly a health-aware fitness
 > safety product, not a medical diagnosis, triage, treatment, or rehabilitation
 > product. Red-flag data remains internal safety-matching evidence and does not
 > authorize a medical product claim. See
-> `docs/architecture/APEX_HEALTH_SAFETY_SCOPE.md` for the authoritative scope.
+> `docs/architecture/APEX_HEALTH_SAFETY_SCOPE.md` and
+> `docs/governance/APEX_HEALTH_SAFETY_PRODUCTION_GATE.md` for the authoritative
+> current scope and production gate.
 
 **Purpose:** a qualified human reviewer can approve, reject, or request changes to
 the current APEX Brain red-flag library before any production enforcement decision.
@@ -15,9 +17,9 @@ behaviour.
 | Field | Current value |
 |---|---|
 | Repository baseline | `7a3ba465394616ad69464ff0795b1dfa4467b70b` |
-| Library version | `redflag-seed-2026-07-05` |
-| Enforcement flag | `BRAIN_ENFORCE` must remain **OFF** |
-| Library status in source | **SEED - CLINICAL REVIEW + BILINGUAL EXPANSION REQUIRED BEFORE M4 ENFORCEMENT** |
+| Historical library version | `redflag-seed-2026-07-05` |
+| Enforcement flag | Governed by the current non-medical production gate |
+| Historical status in source | Superseded clinical-triage proposal |
 | Current classes | 15 |
 | Corpus reference | 140-persona fixture corpus; 36 fixture rows marked `expected_red_flag` |
 | Current corpus result | 17/36 halt coverage; reported by the harness, not a clinical acceptance result |
@@ -268,6 +270,5 @@ the test suite passes.
 |---|---|---|---|---|---|
 | UNAPPROVED |  |  |  | `redflag-seed-2026-07-05` |  |
 
-**Current governance conclusion:** the source labels the library as a seed and the
-repository contains no documented closure artifact for clinical review or bilingual
-expansion. This packet does not authorize `BRAIN_ENFORCE=true`.
+**Historical conclusion:** this packet does not provide clinical approval. It is
+not the production gate for the current non-medical health-safety architecture.

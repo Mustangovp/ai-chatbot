@@ -1,25 +1,25 @@
 """
-APEX Brain — Constraint Library (S1 data).
+APEX Brain constraint library (S1 data).
 
-Maps stated conditions/medications/injuries → MOVEMENT constraints (never
-diagnoses). The mappings are transcribed from the FROZEN canon (Brain
-Architecture §2/S1 and the Validation Corpus), expressed as movements and
-intensities exactly as those documents specify.
+Maps user-declared conditions, medications, and injuries to conservative
+fitness movement constraints. It does not diagnose, triage, prescribe
+treatment, or name an inferred medical condition. These mappings support the
+current non-medical product safety boundary: APEX limits or stops fitness
+guidance when safety cannot be established.
 
-⚠ SEED — CLINICAL REVIEW REQUIRED BEFORE M4 ENFORCEMENT.
-This is a conservative starter set. Per the Brain Architecture governance and
-the Final Review finding M-5, the library must carry a named clinical
-reviewer's sign-off and a versioned change log before it gates any real
-prescription. It is used SHADOW-ONLY (BRAIN_SHADOW) until then, so it never
-reaches a user in M1. Additions are data changes, hot-fixable without code.
+The library is governed by the Health-Safety Production Gate. The legacy
+clinical M4 sign-off requirement was a historical triage proposal and is not
+the production authority for this non-medical product boundary. Additions are
+versioned data changes and must preserve the generic, non-diagnostic user
+boundary.
 
 Detection is a conservative bilingual (EN/BG) substring matcher over the free
-text profile field `healthNotes` (legacy: `injuries`). Recall/precision tuning
-and bilingual coverage expansion are documented pre-M4 work (Review H-2/H-3).
+text profile field `healthNotes` (legacy: `injuries`). Coverage limitations are
+handled conservatively and never grant medical authority.
 """
 from brain.types import Constraint, ConstraintTier as T
 
-LIBRARY_VERSION = "seed-2026-07-30"
+LIBRARY_VERSION = "fitness-safety-boundary-2026-07-30"
 
 _A, _R, _M = T.ABSOLUTE, T.RELATIVE, T.MONITOR
 

@@ -6,7 +6,7 @@
 > See `docs/architecture/APEX_HEALTH_SAFETY_SCOPE.md`.
 
 **Status:** Operational handbook. Documentation only — no code, no deployment.
-**Audience:** Release Engineer (shadow), later + Clinical reviewer & Product owner (enforce).
+**Audience:** Release Engineer (shadow), later + Product owner (enforce).
 **Goal:** make enabling `BRAIN_SHADOW`, and later `BRAIN_ENFORCE`, a *controlled
 operational decision* — every command, query, threshold, and rollback pre-written.
 
@@ -73,11 +73,12 @@ py -3 -m brain.corpus        # 140-persona acceptance gate → RESULT: PASS, exi
 
 ### 0.5 Known limitation carried into rollout
 
-The red-flag library is a **seed** (`redflag-seed-2026-07-05`). On the corpus it
-routes **17 of 36** marked red flags — it catches *message-stated* symptoms
+The health-safety boundary matcher has 17/36 marked fixture halt coverage. It
+catches *message-stated* symptoms
 (chest pain, stroke-in-text) but not *profile-rooted* ones (amenorrhea/RED-S,
-oncology, cardiac history). **Shadow measures this; enforcement must not be sold as
-"all Critical-Fails closed."** Closing it is the clinical-library (M4-obligation) work.
+oncology, cardiac history). **Shadow measures this; enforcement must not be sold
+as "all safety cases covered."** This is a product-boundary coverage limitation,
+not a clinical-triage claim.
 
 ---
 
@@ -477,10 +478,9 @@ generation) and, if cohort-gated, disable the cohort gate.
 ### 5.4 Manual verification — before promoting to `BRAIN_ENFORCE` (later)
 
 - [ ] § 2.6 shadow acceptance thresholds all signed off.
-- [ ] Clinical sign-off recorded on the red-flag/constraint libraries (the M4
-      build-time obligation) **or** an explicit, written acceptance that enforcement
-      ships covering the message-detectable front only, with the profile-rooted gap
-      documented as outstanding.
+- [ ] The current [Health-Safety Production Gate](../governance/APEX_HEALTH_SAFETY_PRODUCTION_GATE.md)
+      is satisfied and recorded: generic boundary output, structural suppression,
+      metadata isolation, regression evidence, deployment health, and rollback.
 - [ ] Cohort-canary mechanism decided (§ 4.1 A or B) and, if (A), implemented + tested.
 - [ ] Rollback rehearsed: `--unset BRAIN_ENFORCE` returns legacy behaviour within one
       deploy cycle.
@@ -498,7 +498,7 @@ generation) and, if cohort-gated, disable the cohort gate.
 |---|---|---|
 | Shadow enablement (§ 1.1 + 5.2) | Release Engineer | |
 | Shadow acceptance (§ 2.6 + 5.3) | Release Engineer | |
-| Enforce readiness (§ 5.4) | Release Engineer + Clinical reviewer | |
+| Enforce readiness (§ 5.4) | Release Engineer + Product owner | |
 | Enforce go-live (§ 4.3 S5) | Product owner | |
 
 ---
@@ -525,7 +525,8 @@ railway variables --unset BRAIN_ENFORCE       # instant rollback to legacy
    `trace->'flags'->>'BRAIN_ENFORCE'` (Q11).
 3. **No percentage-canary in code** — `BRAIN_ENFORCE` is global; a % canary needs a
    cohort gate (future change).
-4. **Seed red-flag coverage is 17/36** — enforcement closes the message-stated front
-   only until the clinical library lands.
+4. **Boundary matcher coverage is 17/36** — enforcement covers the
+   message-stated boundary-matching front only; this does not create medical
+   authority or a clinical completeness claim.
 5. **Raw text is never stored** — audit FP/FN via injected probes and the debug
    replay endpoint, not the ledger.

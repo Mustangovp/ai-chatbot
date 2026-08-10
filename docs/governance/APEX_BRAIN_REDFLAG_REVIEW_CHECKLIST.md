@@ -1,8 +1,16 @@
-# APEX Brain Red-Flag Clinical Review Checklist
+# APEX Brain Red-Flag Clinical Review Checklist (Historical)
 
-**Library:** `redflag-seed-2026-07-05`
+> **Superseded for production activation.** This checklist records the former
+> clinical-triage review proposal. APEX now uses these records only for internal
+> health-safety boundary matching. The current activation authority is
+> [APEX Health-Safety Production Gate](APEX_HEALTH_SAFETY_PRODUCTION_GATE.md).
+> Nothing in this historical checklist grants diagnostic, treatment, triage, or
+> disease-specific user-facing authority.
+
+**Historical library label:** `redflag-seed-2026-07-05`
 **Baseline:** `7a3ba465394616ad69464ff0795b1dfa4467b70b`
-**Status:** UNAPPROVED. `BRAIN_ENFORCE` remains OFF.
+**Status:** Historical clinical sign-off is unapproved and is not the current
+production gate for non-medical boundary enforcement.
 
 Use with [the full review packet](APEX_BRAIN_REDFLAG_CLINICAL_REVIEW_PACKET.md).
 Checking an item requires evidence and reviewer attribution; automated tests alone
@@ -70,5 +78,5 @@ false-negative handling; and any exception.
 |---|---|---|---|---|---|
 | UNAPPROVED |  |  |  | `redflag-seed-2026-07-05` |  |
 
-**Do not set `BRAIN_ENFORCE=true` until all applicable items have evidence-backed
-approval and the operational gate is separately signed off.**
+**Do not treat this historical checklist as authority to enable or block the
+current non-medical boundary. Use the current product-safety gate instead.**

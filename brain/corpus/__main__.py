@@ -21,7 +21,7 @@ def main() -> int:
     print(f"over-permissive fails:      {len(r['critical_over_permissive_fails'])}  (must be 0)")
     print(f"refusal parity:             {c['refusal_parity']}  (Brain refuses wherever corpus refuses)")
     print(f"verdict exact-match:        {c['verdict_exact_match']}/140  ({c['verdict_match_pct']}%)  [coverage]")
-    print(f"red-flag routing (seed):    {c['red_flag_routing']}  [coverage - M4 clinical expansion]")
+    print(f"health-boundary routing:    {c['red_flag_routing']}  [coverage limitation]")
     for f in r["critical_over_permissive_fails"]:
         print(f"  CRITICAL {f['id']}: {f['reason']}")
     ok = r["safe"] and r["total"] == 140

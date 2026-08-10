@@ -16,10 +16,9 @@ What this gate ASSERTS (green on the current Brain):
     corpus (never GO where the corpus says NO_TRAIN; never generates training
     where the corpus refuses the exertional prescription)
 
-What this gate TRACKS but does NOT assert green (the M4 obligations — they need
-the structured profile/physiology the corpus narrates but does not encode, and
-the clinically-signed-off red-flag library): verdict-exact-match and red-flag
-routing coverage. These are printed for visibility, not gated.
+What this gate TRACKS but does NOT assert green: verdict-exact-match and
+health-boundary routing coverage. The corpus is a non-medical regression input;
+coverage is printed for visibility and does not grant clinical authority.
 """
 import brain.corpus as corpus
 
@@ -53,6 +52,6 @@ def test_print_coverage_report(capsys):
         print(f"  safe (0 over-permissive fails): {_REPORT['safe']}")
         print(f"  verdict exact-match:  {c['verdict_exact_match']}/140  ({c['verdict_match_pct']}%)")
         print(f"  refusal parity:       {c['refusal_parity']}")
-        print(f"  red-flag routing:     {c['red_flag_routing']}  (seed library; M4 clinical expansion pending)")
+        print(f"  health-boundary routing: {c['red_flag_routing']}  (coverage limitation)")
         if c["red_flag_missed_ids"]:
-            print(f"  red-flag gaps (M4):   {', '.join(c['red_flag_missed_ids'])}")
+            print(f"  health-boundary gaps: {', '.join(c['red_flag_missed_ids'])}")

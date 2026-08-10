@@ -1,27 +1,23 @@
-"""
-APEX Brain — Red-Flag Library (S2 data).
+"""APEX Brain health-safety boundary matcher (S2 data).
 
-Maps reported SYMPTOM patterns → an urgency-typed routing RedFlag (never a
-diagnosis). Every entry is a route + tier, per Brain Architecture §2/§6 and the
-verified GAP-α (urgency) / GAP-β (psychological crisis).
+Matches reported health/symptom context only to decide whether APEX must limit
+or stop fitness delivery. It is not a diagnosis, triage, treatment, medication,
+or rehabilitation system. Legacy class, urgency, route, and message keys are
+internal implementation metadata: they never determine disease-specific user
+advice. User-facing health delivery is the single generic MEDICAL_BOUNDARY.
 
-⚠ SEED — CLINICAL REVIEW + BILINGUAL EXPANSION REQUIRED BEFORE M4 ENFORCEMENT
-(build-time obligations register, items 1–2). Conservative, deterministic,
-bilingual (EN/BG) cluster matcher — like the S1 constraint library. Used
-SHADOW-ONLY until then, so it never reaches a user in M2/M3. Detection biases
-toward flagging on ambiguity (§3 asymmetric-loss / audit R4).
-
-Determinism: a `class_key` fires iff any of its patterns matches; a pattern
-matches iff EVERY token-group in it has ≥1 token present in the text (clusters,
-not single classic tokens). No LLM in this path.
+The matcher is conservative, deterministic, and bilingual (EN/BG). A class fires
+iff a configured cluster matches; each cluster requires every token group to hit.
+No LLM interprets health context in this path.
 """
 from brain.types import RedFlag, Urgency
 
-LIBRARY_VERSION = "redflag-seed-2026-07-05"
+LIBRARY_VERSION = "health-safety-boundary-2026-07-05"
 _E, _U, _R = Urgency.EMERGENCY, Urgency.URGENT, Urgency.ROUTINE
 
-# class_key → (urgency, route_target, message_key). class_key + message_key are
-# INTERNAL; only a curated non-diagnostic template is ever rendered (via G1).
+# class_key → (urgency, route_target, message_key). All values are INTERNAL.
+# Urgency only selects conservative abstention; route/message keys never reach
+# user output and all health stops render the same non-diagnostic boundary.
 REDFLAG_SPECS = {
     # ── EMERGENCY ──
     "fast_stroke":            (_E, "emergency_services", "stroke_signs_emergency"),
