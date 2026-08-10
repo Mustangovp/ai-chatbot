@@ -56,7 +56,11 @@ from training_engine import (
 )
 from training_engine import renderer as training_renderer
 from training_engine.advisory import persona_expert_training_signals
-from training_engine.health_restrictions import explicit_restrictions_from_message
+from training_engine.health_restrictions import (
+    UnsupportedHealthRestrictionError,
+    explicit_restrictions_from_message,
+    project_explicit_health_restrictions,
+)
 from brain.runtime_assets import expert_consensus, persona_matcher
 from brain.runtime_assets.expert_rules import load_expert_rule_packs
 from brain.runtime_assets.personas import load_runtime_personas
@@ -92,6 +96,8 @@ DEVICE_COOKIE = "apex_device"
 _WORKOUT_CONVERSATION_ID = re.compile(r"^[A-Za-z0-9_-]{16,128}$")
 _workout_conversation_lock = threading.Lock()
 _workout_conversation_state = {}
+_workout_conversation_health_restrictions = {}
+_workout_conversation_stale = set()
 
 
 def _workout_conversation_scope(payload, user_id, device_id):
@@ -115,6 +121,34 @@ def _remember_workout(scope, plan):
         return
     with _workout_conversation_lock:
         _workout_conversation_state[scope] = state_for(plan)
+        _workout_conversation_stale.discard(scope)
+
+
+def _conversation_health_restrictions(scope):
+    if scope is None:
+        return ()
+    with _workout_conversation_lock:
+        return _workout_conversation_health_restrictions.get(scope, ())
+
+
+def _record_conversation_health_restrictions(scope, restrictions):
+    """Keep explicit restrictions tab-scoped for anonymous follow-up safety."""
+    if scope is None:
+        return
+    normalized = tuple(str(item).strip() for item in restrictions if str(item).strip())
+    if not normalized:
+        return
+    with _workout_conversation_lock:
+        previous = _workout_conversation_health_restrictions.get(scope, ())
+        _workout_conversation_health_restrictions[scope] = tuple(dict.fromkeys((*previous, *normalized)))
+        _workout_conversation_stale.add(scope)
+
+
+def _workout_is_stale(scope):
+    if scope is None:
+        return False
+    with _workout_conversation_lock:
+        return scope in _workout_conversation_stale
 
 
 @app.before_request
@@ -1935,6 +1969,20 @@ def _explicit_health_restriction_reply(lang):
             "специалист, преди да изградя тренировката.")
 
 
+def _explicit_health_restriction_acknowledgement(lang):
+    """Terminal acknowledgement for a supported restriction-only turn."""
+    if str(lang).lower() == "en":
+        return "Got it. I'll keep that movement restriction out of future workouts."
+    return "Разбрах. Ще изключвам това ограничено движение от следващите ти тренировки."
+
+
+def _restriction_turn_requests_workout(message):
+    text = str(message or "").casefold()
+    return any(token in text for token in (
+        "workout", "training", "exercise", "work out", "трениров", "упражнен",
+    ))
+
+
 def _cold_start_workout_reply(lang):
     """Deliver the Brain-approved starter session through the workout-card contract."""
     if str(lang).lower() == "en":
@@ -2330,6 +2378,13 @@ def chat():
         if _workout_followup is not None:
             if _workout_followup.requires_previous and _previous_workout is None:
                 _followup_reply = followup_message("previous workout is required", lang)
+            elif (_workout_followup.operation.value == "repeat_previous" and
+                  _workout_is_stale(_workout_scope)):
+                _followup_reply = (
+                    "A new restriction has been recorded, so I can't repeat the earlier workout. Ask me to build a new one."
+                    if lang == "en" else
+                    "Има ново ограничение, затова не мога да повторя предишната тренировка. Поискай нова."
+                )
             elif _workout_followup.operation.value == "unknown_exercise":
                 _followup_reply = followup_message("unknown requested exercise", lang)
         pers_workouts = []
@@ -2348,6 +2403,22 @@ def chat():
                 pers_workouts = store.list_workouts(chat_uid, limit=40)
             except Exception as _we:
                 print(f"[chat] workout load failed: {_we}")
+
+        # Anonymous tabs have no server profile to reload on the next turn. Keep
+        # only explicit, typed restriction declarations in the same tab scope so
+        # a subsequent workout revision cannot silently lose them.
+        _scoped_health_restrictions = _conversation_health_restrictions(_workout_scope)
+        if _scoped_health_restrictions and isinstance(profile, dict):
+            profile = dict(profile)
+            existing_restrictions = profile.get("healthRestrictions")
+            if isinstance(existing_restrictions, (tuple, list, set, frozenset)):
+                profile["healthRestrictions"] = list(dict.fromkeys(
+                    (*existing_restrictions, *_scoped_health_restrictions)))
+            elif existing_restrictions:
+                profile["healthRestrictions"] = list(dict.fromkeys(
+                    (existing_restrictions, *_scoped_health_restrictions)))
+            else:
+                profile["healthRestrictions"] = list(_scoped_health_restrictions)
 
         if is_elite:
             memory_cap = 60 if is_pro else 10
@@ -2369,7 +2440,9 @@ def chat():
             profile=profile if isinstance(profile, dict) else None,
         )
         _new_explicit_health_restrictions = explicit_restrictions_from_message(user_message)
+        _restriction_controlled_reply = None
         if _new_explicit_health_restrictions and isinstance(profile, dict):
+            profile = dict(profile)
             existing_restrictions = profile.get("healthRestrictions")
             if isinstance(existing_restrictions, (tuple, list, set, frozenset)):
                 profile["healthRestrictions"] = [*existing_restrictions, *_new_explicit_health_restrictions]
@@ -2377,6 +2450,15 @@ def chat():
                 profile["healthRestrictions"] = [existing_restrictions, *_new_explicit_health_restrictions]
             else:
                 profile["healthRestrictions"] = list(_new_explicit_health_restrictions)
+            _record_conversation_health_restrictions(
+                _workout_scope, _new_explicit_health_restrictions)
+            try:
+                project_explicit_health_restrictions(profile)
+            except UnsupportedHealthRestrictionError:
+                _restriction_controlled_reply = _explicit_health_restriction_reply(lang)
+            else:
+                if not _restriction_turn_requests_workout(user_message):
+                    _restriction_controlled_reply = _explicit_health_restriction_acknowledgement(lang)
         _new_medical_hold = _medical_hold_from_message(
             user_message, conversation=history, profile=profile)
         if _new_medical_hold is not None:
@@ -2574,6 +2656,9 @@ def chat():
                     _controlled_reply = _cold_start_workout_reply(lang)
                     if _requests_workout_and_nutrition(user_message):
                         _controlled_reply += _combined_request_follow_up(lang)
+            if (_restriction_controlled_reply is not None and
+                    not (_medical_hold and _medical_hold.get("status") == "ACTIVE_MEDICAL_HOLD")):
+                _controlled_reply = _restriction_controlled_reply
             if _conversation_composer_active_for_request:
                 try:
                     _conversation_policy = conversation_composer.build_policy(

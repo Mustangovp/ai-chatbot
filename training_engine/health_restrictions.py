@@ -37,6 +37,11 @@ _CLINICIAN_DECLARATION_MARKERS = (
     "лекарят ми каза", "лекар ми каза", "клиницистът ми каза", "медицинският ми специалист каза",
 )
 
+_DIRECT_RESTRICTION_MARKERS = (
+    "avoid ", "do not ", "don't ", "dont ", "without ", "no ",
+    "shouldn't ", "should not ", "не искам ", "без ", "избягвам ",
+)
+
 # Every phrase maps to an existing MovementPattern and only removes candidates.
 # The matching is intentionally literal and closed; there is no medical or LLM
 # interpretation of the surrounding text.
@@ -73,11 +78,27 @@ def _values(value: object) -> tuple[str, ...]:
 
 
 def explicit_restrictions_from_message(message: object) -> tuple[str, ...]:
-    """Return only a directly quoted clinician restriction; never infer one."""
+    """Return an explicitly stated, closed-vocabulary training restriction.
+
+    A clinician declaration is retained even when its restriction is not yet
+    representable, so the caller can fail closed. Direct user restrictions are
+    accepted only when both restriction wording and a known movement phrase are
+    present; symptoms and conditions remain outside this projection.
+    """
     text = str(message or "").strip()
     if not text:
         return ()
-    return (text,) if any(marker in text.casefold() for marker in _CLINICIAN_DECLARATION_MARKERS) else ()
+    normalized = text.casefold()
+    if any(marker in normalized for marker in _CLINICIAN_DECLARATION_MARKERS):
+        return (text,)
+    has_known_movement = any(
+        phrase in normalized
+        for _pattern, phrases in _FIXED_PATTERN_MAP
+        for phrase in phrases
+    )
+    if has_known_movement and any(marker in normalized for marker in _DIRECT_RESTRICTION_MARKERS):
+        return (text,)
+    return ()
 
 
 def project_explicit_health_restrictions(profile: Mapping[str, object]) -> HealthRestrictionProjection:

@@ -305,6 +305,89 @@ def test_clinician_restriction_declared_after_a_workout_persists_into_harder_fol
     assert harder[-1] == {"done": True}
 
 
+def test_restriction_only_turn_acknowledges_without_workout_or_llm(client, monkeypatch):
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
+
+    events = _events(_post(
+        client, "My doctor told me not to do overhead pressing.", profile=_profile()))
+
+    assert events == [
+        {"t": appmod._explicit_health_restriction_acknowledgement("en")},
+        {"done": True},
+    ]
+    assert not any("training_completion" in event for event in events)
+
+
+def test_unsupported_restriction_request_cannot_fall_through_to_llm(client, monkeypatch):
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setenv("CONVERSATION_COMPOSER_ACTIVE", "true")
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
+    monkeypatch.setattr(conversation_composer, "compose", lambda *_args, **_kwargs: pytest.fail("Composer ran"))
+
+    events = _events(_post(
+        client,
+        "My clinician told me to avoid rotational loading under fatigue. Give me a workout.",
+        profile=_profile(),
+    ))
+
+    assert events == [{"t": appmod._explicit_health_restriction_reply("en")}, {"done": True}]
+    assert not any("training_completion" in event for event in events)
+
+
+def test_restriction_after_workout_acknowledges_then_rebuilds_anonymous_followup(client, captured, monkeypatch):
+    profile = _profile(equipment="gym", recoveryFeel="fresh")
+    conversation_id = "restriction-stale-anon-0001"
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": ["Stay controlled."]}))
+
+    initial = _events(client.post("/chat", json={
+        "message": "Build a workout.", "lang": "en", "profile": profile,
+        "conversation_id": conversation_id,
+    }))
+    assert any("training_completion" in event for event in initial)
+
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
+    acknowledgement = _events(client.post("/chat", json={
+        "message": "My doctor told me not to do overhead pressing.", "lang": "en",
+        "profile": profile, "conversation_id": conversation_id,
+    }))
+    assert acknowledgement == [
+        {"t": appmod._explicit_health_restriction_acknowledgement("en")},
+        {"done": True},
+    ]
+
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": ["Stay controlled."]}))
+    harder = _events(client.post("/chat", json={
+        "message": "Make it harder.", "lang": "en", "profile": profile,
+        "conversation_id": conversation_id,
+    }))
+    completion = next(event["training_completion"] for event in harder if "training_completion" in event)
+    ids = {
+        exercise["exercise_id"]
+        for session in completion["sessions"] for exercise in session["exercises"]
+    }
+    assert "dumbbell.overhead_press" not in ids
+    assert "dumbbell.seated_press" not in ids
+    assert harder[-1] == {"done": True}
+
+
+def test_shoulder_and_clinician_declaration_is_acknowledged_without_freeform_workout(client, monkeypatch):
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
+
+    events = _events(_post(
+        client,
+        "My shoulder hurts with overhead pressing. My doctor also told me not to press overhead. Avoid overhead pressing.",
+        profile=_profile(),
+    ))
+
+    assert events == [
+        {"t": appmod._explicit_health_restriction_acknowledgement("en")},
+        {"done": True},
+    ]
+
+
 def _set_stream(monkeypatch, captured, reply, *, raw_structured_completion=False):
     def fake_create(**kwargs):
         captured["system"] = kwargs["messages"][0]["content"]
