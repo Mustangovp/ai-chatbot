@@ -220,6 +220,91 @@ def test_therapeutic_nutrition_request_uses_non_medical_boundary(client, capture
     assert captured == {}
 
 
+def test_explicit_clinician_restriction_reaches_training_and_composer_without_readding_exercises(
+        client, captured, monkeypatch):
+    profile = _profile(
+        equipment="gym", recoveryFeel="fresh",
+        clinicianRestrictions="My doctor told me not to do overhead pressing.",
+        lockedExerciseExclusions=["bodyweight.push_up"],
+    )
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setenv("CONVERSATION_COMPOSER_ACTIVE", "true")
+    monkeypatch.setenv("PERSONA_EXPERT_TRAINING_ACTIVE", "true")
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": ["Stay controlled."]}))
+
+    events = _events(_post(client, "Build an upper-body workout.", profile=profile))
+    completion = events[1]["training_completion"]
+    exercise_ids = {
+        exercise["exercise_id"]
+        for session in completion["sessions"] for exercise in session["exercises"]
+    }
+
+    assert events[-1] == {"done": True}
+    assert "dumbbell.overhead_press" not in exercise_ids
+    assert "dumbbell.seated_press" not in exercise_ids
+    assert "bodyweight.push_up" not in exercise_ids
+    assert "Overhead Press" not in events[0]["t"]
+    assert "[FIXED TRAINING PLAN]" in captured["system"]
+
+
+def test_unsupported_clinician_restriction_blocks_training_with_terminal_sse(client, captured, monkeypatch):
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
+
+    events = _events(_post(client, "Build a workout.", profile=_profile(
+        clinicianRestrictions="Avoid strenuous activity until further notice.")))
+
+    assert events == [{"t": appmod._explicit_health_restriction_reply("en")}, {"done": True}]
+    assert not any("training_completion" in event for event in events)
+    assert captured == {}
+
+
+def test_unsupported_clinician_restriction_has_a_non_medical_bulgarian_reply(client, captured, monkeypatch):
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
+
+    events = _events(_post(client, "Направи ми тренировка.", lang="bg", profile=_profile(
+        clinicianRestrictions="Лекарят ми каза да избягвам натоварване до второ нареждане.")))
+
+    assert events == [{"t": appmod._explicit_health_restriction_reply("bg")}, {"done": True}]
+    assert "диагноз" not in events[0]["t"].lower()
+    assert "лечение" not in events[0]["t"].lower()
+    assert captured == {}
+
+
+def test_clinician_restriction_declared_after_a_workout_persists_into_harder_followup(
+        client, captured, monkeypatch):
+    profile = _profile(equipment="gym", recoveryFeel="fresh")
+    uid = _login_for_chat(client, profile)
+    conversation_id = "clinician-restriction-followup-0001"
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": ["Stay controlled."]}))
+
+    initial = _events(client.post("/chat", json={
+        "message": "Build a workout.", "lang": "en", "conversation_id": conversation_id,
+    }))
+    assert any("training_completion" in event for event in initial)
+
+    _events(client.post("/chat", json={
+        "message": "My doctor told me not to do overhead pressing.", "lang": "en",
+        "conversation_id": conversation_id,
+    }))
+    assert store.get_profile(uid)["healthRestrictions"] == [
+        "My doctor told me not to do overhead pressing."]
+
+    harder = _events(client.post("/chat", json={
+        "message": "Make it harder.", "lang": "en", "conversation_id": conversation_id,
+    }))
+    completion = harder[1]["training_completion"]
+    exercise_ids = {
+        exercise["exercise_id"]
+        for session in completion["sessions"] for exercise in session["exercises"]
+    }
+    assert "dumbbell.overhead_press" not in exercise_ids
+    assert "dumbbell.seated_press" not in exercise_ids
+    assert harder[-1] == {"done": True}
+
+
 def _set_stream(monkeypatch, captured, reply, *, raw_structured_completion=False):
     def fake_create(**kwargs):
         captured["system"] = kwargs["messages"][0]["content"]

@@ -17,6 +17,10 @@ from .construction import (
     TrainingStructurePolicy,
 )
 from .models import Difficulty, Equipment, MovementPattern
+from .health_restrictions import (
+    UnsupportedHealthRestrictionError,
+    project_explicit_health_restrictions,
+)
 from .registry import ExerciseLibrary, load_exercise_library
 from .selection import (
     TrainingGoal,
@@ -89,7 +93,7 @@ def build_training_plan(*, recommendation_blueprint_id: str, facts: Mapping[str,
                    else profile.get("training_split") or profile.get("split"))
     equipment = _equipment(locked.get("equipment") or profile.get("equipment"))
     selected_library = library or load_exercise_library()
-    base_safety = _safety(locked, selected_library)
+    base_safety = _safety(profile, locked, selected_library)
     safety = TrainingSafetyConstraints(
         excluded_exercise_ids=base_safety.excluded_exercise_ids | frozenset(excluded_exercise_ids),
         excluded_movement_patterns=base_safety.excluded_movement_patterns | frozenset(excluded_movement_patterns),
@@ -196,7 +200,8 @@ def _reject_unreviewed_safety_constraints(profile: Mapping[str, Any], locked: Ma
         raise TrainingRuntimeError("verified safety constraints require a controlled review")
 
 
-def _safety(locked: Mapping[str, Any], library: ExerciseLibrary) -> TrainingSafetyConstraints:
+def _safety(profile: Mapping[str, Any], locked: Mapping[str, Any],
+            library: ExerciseLibrary) -> TrainingSafetyConstraints:
     exercise_ids = set()
     patterns = set()
     for value in _tokens(locked.get("exercise_exclusions")):
@@ -207,6 +212,11 @@ def _safety(locked: Mapping[str, Any], library: ExerciseLibrary) -> TrainingSafe
             patterns.add(MovementPattern(value))
         except ValueError as error:
             raise TrainingRuntimeError("locked exercise exclusion is unsupported") from error
+    try:
+        restriction_projection = project_explicit_health_restrictions(profile)
+    except UnsupportedHealthRestrictionError as error:
+        raise TrainingRuntimeError("explicit health restriction is unsupported") from error
+    patterns.update(restriction_projection.excluded_movement_patterns)
     return TrainingSafetyConstraints(frozenset(exercise_ids), frozenset(patterns))
 
 

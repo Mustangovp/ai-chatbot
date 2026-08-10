@@ -47,7 +47,8 @@ _INTENTS = {
 _PROFILE_FIELDS = (
     "goal", "equipment", "level", "experience_level", "frequency",
     "training_availability", "training_split", "sleepQuality", "stressLevel", "recoveryFeel",
-    "injuries", "healthNotes", "allergies", "age", "height", "weight", "activityLevel",
+    "injuries", "healthNotes", "clinicianRestrictions", "medicalRestrictions",
+    "healthRestrictions", "trainingRestrictions", "allergies", "age", "height", "weight", "activityLevel",
 )
 
 

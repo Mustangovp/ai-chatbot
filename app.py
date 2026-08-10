@@ -56,6 +56,7 @@ from training_engine import (
 )
 from training_engine import renderer as training_renderer
 from training_engine.advisory import persona_expert_training_signals
+from training_engine.health_restrictions import explicit_restrictions_from_message
 from brain.runtime_assets import expert_consensus, persona_matcher
 from brain.runtime_assets.expert_rules import load_expert_rule_packs
 from brain.runtime_assets.personas import load_runtime_personas
@@ -1921,6 +1922,19 @@ def _safety_constraints_unavailable_reply(lang):
     return "Не мога безопасно да изпратя тази тренировка, защото не успях да потвърдя текущите ограничения за безопасност."
 
 
+def _explicit_health_restriction_reply(lang):
+    """Terminal non-medical reply for an explicit restriction outside the taxonomy."""
+    if str(lang).lower() == "en":
+        return ("I can see the restriction you've provided, but I can't safely translate "
+                "it into a training plan without risking going beyond it. Please follow "
+                "the restriction exactly and confirm the permitted activity with your "
+                "healthcare professional before I build the workout.")
+    return ("Виждам ограничението, което си посочил, но не мога безопасно да го "
+            "преведа в тренировъчен план, без риск да изляза извън него. Спазвай "
+            "ограничението точно и потвърди разрешената активност с медицинския си "
+            "специалист, преди да изградя тренировката.")
+
+
 def _cold_start_workout_reply(lang):
     """Deliver the Brain-approved starter session through the workout-card contract."""
     if str(lang).lower() == "en":
@@ -2354,6 +2368,15 @@ def chat():
             conversation=history if isinstance(history, list) else (),
             profile=profile if isinstance(profile, dict) else None,
         )
+        _new_explicit_health_restrictions = explicit_restrictions_from_message(user_message)
+        if _new_explicit_health_restrictions and isinstance(profile, dict):
+            existing_restrictions = profile.get("healthRestrictions")
+            if isinstance(existing_restrictions, (tuple, list, set, frozenset)):
+                profile["healthRestrictions"] = [*existing_restrictions, *_new_explicit_health_restrictions]
+            elif existing_restrictions:
+                profile["healthRestrictions"] = [existing_restrictions, *_new_explicit_health_restrictions]
+            else:
+                profile["healthRestrictions"] = list(_new_explicit_health_restrictions)
         _new_medical_hold = _medical_hold_from_message(
             user_message, conversation=history, profile=profile)
         if _new_medical_hold is not None:
@@ -2499,6 +2522,8 @@ def chat():
                             _training_engine_failure = "training_engine_shoulder_safety_contract"
                         elif _constraint_state == "unavailable":
                             _training_engine_failure = "training_engine_safety_constraints_unavailable"
+                        elif str(_training_error) == "explicit health restriction is unsupported":
+                            _training_engine_failure = "training_engine_explicit_health_restriction"
                         elif _workout_followup is not None:
                             _followup_failure_reply = followup_message(_training_error, lang)
                         else:
@@ -2543,6 +2568,8 @@ def chat():
                     _controlled_reply = _safety_constraints_unavailable_reply(lang)
                 elif _training_engine_failure == "training_engine_shoulder_safety_contract":
                     _controlled_reply = _shoulder_safety_failure_reply(lang)
+                elif _training_engine_failure == "training_engine_explicit_health_restriction":
+                    _controlled_reply = _explicit_health_restriction_reply(lang)
                 else:
                     _controlled_reply = _cold_start_workout_reply(lang)
                     if _requests_workout_and_nutrition(user_message):
@@ -2652,6 +2679,8 @@ def chat():
                             "active": "training_engine_shoulder_safety_contract",
                             "unavailable": "training_engine_safety_constraints_unavailable",
                         }.get(_constraint_state, "training_engine_profile_contract")
+                        if str(_training_error) == "explicit health restriction is unsupported":
+                            _training_engine_failure = "training_engine_explicit_health_restriction"
                     else:
                         _shoulder_safety_validation = _validate_training_plan_shoulder_safety(
                             _training_plan_blueprint, profile,
@@ -2709,6 +2738,8 @@ def chat():
                     _controlled_reply = _safety_constraints_unavailable_reply(lang)
                 elif _training_engine_failure == "training_engine_shoulder_safety_contract":
                     _controlled_reply = _shoulder_safety_failure_reply(lang)
+                elif _training_engine_failure == "training_engine_explicit_health_restriction":
+                    _controlled_reply = _explicit_health_restriction_reply(lang)
                 else:
                     _controlled_reply = _cold_start_workout_reply(lang)
                     if _requests_workout_and_nutrition(user_message):

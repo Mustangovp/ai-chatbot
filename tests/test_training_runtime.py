@@ -17,6 +17,10 @@ from training_engine import (
     state_for,
 )
 from training_engine.advisory import TrainingAdvisorySignals, persona_expert_training_signals
+from training_engine.health_restrictions import (
+    UnsupportedHealthRestrictionError,
+    project_explicit_health_restrictions,
+)
 from brain.runtime_assets.expert_consensus import ExpertConsensusResult
 from brain.runtime_assets.persona_matcher import PersonaMatchResult
 from training_engine import renderer
@@ -45,6 +49,10 @@ def _exercise_ids(plan):
     return {item.exercise_id for session in plan.sessions for item in session.prescriptions}
 
 
+def _movement_patterns(plan):
+    return {item.movement_pattern for session in plan.sessions for item in session.prescriptions}
+
+
 def test_runtime_adapter_builds_a_deterministic_traceable_training_plan():
     first = build_training_plan(recommendation_blueprint_id="rec-runtime", facts=_PROFILE)
     second = build_training_plan(recommendation_blueprint_id="rec-runtime", facts=_PROFILE)
@@ -63,6 +71,44 @@ def test_runtime_adapter_fails_closed_for_unsupported_or_safety_constrained_prof
         build_training_plan(recommendation_blueprint_id="rec-runtime", facts={**_PROFILE, "equipment": "office"})
     with pytest.raises(TrainingRuntimeError, match="safety constraints"):
         build_training_plan(recommendation_blueprint_id="rec-runtime", facts={**_PROFILE, "injuries": "knee pain"})
+
+
+def test_explicit_clinician_restrictions_are_typed_removal_only_constraints():
+    facts = {**_PROFILE, "equipment": "gym", "clinicianRestrictions": "Do not do overhead pressing."}
+    advised = TrainingAdvisorySignals(("dumbbell.overhead_press",))
+    plan = build_training_plan(
+        recommendation_blueprint_id="rec-clinician", facts=facts,
+        advisory_preferred_exercise_ids=advised.preferred_exercise_ids,
+        locked_preferences={"exercise_exclusions": ("bodyweight.push_up",)},
+    )
+
+    assert MovementPattern.VERTICAL_PUSH not in _movement_patterns(plan)
+    assert "dumbbell.overhead_press" not in _exercise_ids(plan)
+    assert "bodyweight.push_up" not in _exercise_ids(plan)
+
+
+def test_explicit_restriction_survives_harder_followup_and_bulgarian_mapping():
+    facts = {**_PROFILE, "equipment": "gym", "clinicianRestrictions": "Без преса над глава."}
+    previous = state_for(build_training_plan(recommendation_blueprint_id="rec-clinician-prior", facts=facts))
+    harder = apply_followup(
+        followup=WorkoutFollowUp(WorkoutFollowUpOperation.INCREASE_DIFFICULTY),
+        previous=previous, recommendation_blueprint_id="rec-clinician-followup", facts=facts,
+    )
+
+    assert MovementPattern.VERTICAL_PUSH not in _movement_patterns(previous.plan)
+    assert MovementPattern.VERTICAL_PUSH not in _movement_patterns(harder)
+
+
+def test_unknown_explicit_health_restriction_fails_closed_without_diagnosis_inference():
+    with pytest.raises(TrainingRuntimeError, match="explicit health restriction is unsupported"):
+        build_training_plan(
+            recommendation_blueprint_id="rec-clinician-unknown",
+            facts={**_PROFILE, "clinicianRestrictions": "Avoid strenuous activity until further notice."},
+        )
+
+    assert project_explicit_health_restrictions({"healthNotes": "diabetes"}).source_count == 0
+    with pytest.raises(UnsupportedHealthRestrictionError):
+        project_explicit_health_restrictions({"medicalRestrictions": "No strenuous activity."})
 
 
 def test_renderer_accepts_only_explanatory_llm_json_and_never_changes_plan_values():
