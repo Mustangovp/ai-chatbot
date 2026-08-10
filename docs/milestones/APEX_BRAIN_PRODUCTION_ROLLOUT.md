@@ -1,5 +1,10 @@
 # APEX BRAIN — PRODUCTION ROLLOUT HANDBOOK
 
+> **Product boundary:** APEX Brain provides health-aware fitness safety, not
+> medical diagnosis or treatment. Internal red-flag data may limit or stop
+> fitness delivery, but must not surface a clinical conclusion or prescription.
+> See `docs/architecture/APEX_HEALTH_SAFETY_SCOPE.md`.
+
 **Status:** Operational handbook. Documentation only — no code, no deployment.
 **Audience:** Release Engineer (shadow), later + Clinical reviewer & Product owner (enforce).
 **Goal:** make enabling `BRAIN_SHADOW`, and later `BRAIN_ENFORCE`, a *controlled

@@ -1,5 +1,12 @@
 # APEX Brain Red-Flag Clinical Governance Review Packet
 
+> **Historical/development record.** This packet documents the earlier M4
+> enforcement review concept. APEX is now explicitly a health-aware fitness
+> safety product, not a medical diagnosis, triage, treatment, or rehabilitation
+> product. Red-flag data remains internal safety-matching evidence and does not
+> authorize a medical product claim. See
+> `docs/architecture/APEX_HEALTH_SAFETY_SCOPE.md` for the authoritative scope.
+
 **Purpose:** a qualified human reviewer can approve, reject, or request changes to
 the current APEX Brain red-flag library before any production enforcement decision.
 This is an evidence packet, not a clinical approval and not a change to runtime

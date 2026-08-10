@@ -43,6 +43,7 @@ from nutrition_validation import NutritionTargets, validate_daily_nutrition
 from brain.types import (Decision, Verdict, Intervention, S2State, ConstraintSet,
                          Constraint, ConstraintTier, CapacityEnvelope, RedFlag, Urgency)
 from brain.shoulder_validator import ShoulderSafetyProof, ValidationResult
+from brain.health_scope import HealthSafetyScope, assess_health_scope, medical_boundary_message
 from datetime import datetime, timedelta, timezone
 
 
@@ -122,14 +123,14 @@ def test_medical_hold_blocks_workout_delivery_and_persists_for_authenticated_use
     symptom = "My left shoulder hurts and my whole arm is numb"
     first = _events(_post(client, symptom))
     assert first[0] == {"medical_hold": True, "workout_suspended": True}
-    assert "Stop training" in first[1]["t"]
+    assert first[1]["t"] == medical_boundary_message("en")
     assert "workout" not in captured
     stored = store.get_profile(uid)
     assert stored["_medical_hold"]["status"] == "ACTIVE_MEDICAL_HOLD"
 
     blocked = _events(_post(client, "Give me a light workout today"))
     assert blocked[0] == {"medical_hold": True, "workout_suspended": True}
-    assert "Stop training" in blocked[1]["t"]
+    assert blocked[1]["t"] == medical_boundary_message("en")
     assert not any("Workout protocol" in str(event) or "Start session" in str(event) for event in blocked)
 
 
@@ -138,7 +139,7 @@ def test_medical_hold_correction_is_deterministic_and_never_calls_the_model(clie
     _post(client, "My shoulder hurts and my arm is numb").get_data()
     reply = _events(_post(client, "You said my shoulder hurts but gave me exercise again"))
     assert reply[0]["medical_hold"] is True
-    assert "should not have given you a workout" in reply[1]["t"]
+    assert reply[1]["t"] == medical_boundary_message("en")
     assert "system" not in captured
 
 
@@ -147,8 +148,7 @@ def test_medical_hold_bulgarian_reply_is_direct_and_never_contains_workout_deliv
     reply = _events(_post(client, "\u0431\u043e\u043b\u0438 \u043c\u0435 \u043b\u044f\u0432\u043e\u0442\u043e \u0440\u0430\u043c\u043e, \u0446\u044f\u043b\u0430\u0442\u0430 \u043c\u0438 \u0440\u044a\u043a\u0430 \u0438\u0437\u0442\u0440\u044a\u043f\u0432\u0430", lang="bg"))
     text = reply[1]["t"]
     assert reply[0] == {"medical_hold": True, "workout_suspended": True}
-    assert "\u0421\u043f\u0440\u0438 \u0442\u0440\u0435\u043d\u0438\u0440\u043e\u0432\u043a\u0438\u0442\u0435" in text
-    assert "\u043c\u0435\u0434\u0438\u0446\u0438\u043d\u0441\u043a\u0430 \u043e\u0446\u0435\u043d\u043a\u0430" in text
+    assert text == medical_boundary_message("bg")
     assert "ELITE STATUS" not in text
     assert "\u0442\u0440\u0435\u043d\u0438\u0440\u043e\u0432\u044a\u0447\u0435\u043d \u043f\u0440\u043e\u0442\u043e\u043a\u043e\u043b" not in text.lower()
     assert "system" not in captured
@@ -158,6 +158,66 @@ def test_medical_hold_does_not_match_general_questions_or_ordinary_soreness():
     assert appmod._medical_hold_from_message("What can arm numbness mean?") is None
     assert appmod._medical_hold_from_message("I have mild delayed shoulder soreness after lifting") is None
     assert appmod._medical_hold_from_message("I feel tired today") is None
+
+
+def test_health_scope_distinguishes_fitness_limitations_context_and_boundary():
+    assert assess_health_scope(message="Avoid overhead pressing because it hurts", profile={}).scope is (
+        HealthSafetyScope.FITNESS_LIMITATION)
+    assert assess_health_scope(message="Give me a gentle general workout", profile={
+        "clinicianRestrictions": "Do not lift above 5 kg",
+    }).scope is HealthSafetyScope.DECLARED_HEALTH_CONTEXT
+    assert assess_health_scope(message="My chest feels tight. Build a workout", profile={}).scope is (
+        HealthSafetyScope.MEDICAL_BOUNDARY)
+    assert assess_health_scope(message="Build a strength workout", profile={}).scope is (
+        HealthSafetyScope.NORMAL_FITNESS)
+
+
+def test_medical_boundary_blocks_training_nutrition_llm_and_composer(client, captured, monkeypatch):
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setenv("CONVERSATION_COMPOSER_ACTIVE", "true")
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
+    monkeypatch.setattr(conversation_composer, "compose", lambda *_args, **_kwargs: pytest.fail("Composer ran"))
+
+    events = _events(_post(
+        client, "My chest feels tight. Give me a light workout and nutrition plan.", profile=_profile()))
+
+    assert events == [
+        {"medical_hold": True, "workout_suspended": True},
+        {"t": medical_boundary_message("en")},
+        {"done": True},
+    ]
+    assert captured == {}
+
+
+def test_medical_boundary_survives_followup_without_replaying_a_workout(client, captured, monkeypatch):
+    uid = _login_for_chat(client, _profile(recoveryFeel="fresh"))
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
+
+    first = _events(_post(client, "My chest feels tight. Build a workout today."))
+    assert first[-1] == {"done": True}
+    assert store.get_profile(uid)["_medical_hold"]["status"] == "ACTIVE_MEDICAL_HOLD"
+
+    followup = _events(_post(client, "Make it harder."))
+    assert followup == [
+        {"medical_hold": True, "workout_suspended": True},
+        {"t": medical_boundary_message("en")},
+        {"done": True},
+    ]
+    assert captured == {}
+
+
+def test_therapeutic_nutrition_request_uses_non_medical_boundary(client, captured, monkeypatch):
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
+
+    events = _events(_post(client, "Give me a diet to treat diabetes.", profile=_profile()))
+
+    assert events == [
+        {"medical_hold": True, "workout_suspended": True},
+        {"t": medical_boundary_message("en")},
+        {"done": True},
+    ]
+    assert captured == {}
 
 
 def _set_stream(monkeypatch, captured, reply, *, raw_structured_completion=False):
@@ -557,7 +617,11 @@ def test_on_emergency_routes_and_blocks_workout(client, captured, monkeypatch):
     resp = _post(client, "my chest feels tight and heavy going uphill")
     evs = _events(resp)
     assert "messages" not in captured
-    assert evs == [{"t": "I can't assess urgent medical symptoms here. Please contact a qualified medical professional, or local emergency services if this feels urgent."}, {"done": True}]
+    assert evs == [
+        {"medical_hold": True, "workout_suspended": True},
+        {"t": medical_boundary_message("en")},
+        {"done": True},
+    ]
 
 
 # ── ON + GO/MODIFY → continues to constrained generation ─────────────────────
@@ -678,9 +742,12 @@ def test_prior_turn_red_flag_structurally_blocks_the_later_deterministic_workout
         "history": [{"role": "user", "content": "my chest felt tight going upstairs"}],
     }))
 
-    assert seen["conversation"] == [{"role": "user", "content": "my chest felt tight going upstairs"}]
-    assert events[-1] == {"done": True}
-    assert not any("training_completion" in event for event in events)
+    assert seen == {}
+    assert events == [
+        {"medical_hold": True, "workout_suspended": True},
+        {"t": medical_boundary_message("en")},
+        {"done": True},
+    ]
     assert captured == {}
 
 
@@ -1119,6 +1186,8 @@ def _legacy_messages(profile, workouts, history, message, cap):
     profile_block = appmod._build_profile_block(profile, "en")
     base = (profile_block + "\n\n" + appmod.SYSTEM_INSTRUCTIONS) if profile_block else appmod.SYSTEM_INSTRUCTIONS
     system = (personality_block + "\n\n" + base) if personality_block else base
+    if assess_health_scope(message=message, profile=profile).scope is HealthSafetyScope.DECLARED_HEALTH_CONTEXT:
+        system = system + "\n\n" + appmod.declared_context_prompt("en")
     messages = [{"role": "system", "content": system}]
     for turn in history[-cap:]:
         if isinstance(turn, dict) and turn.get("role") in ("user", "assistant"):
@@ -2265,15 +2334,18 @@ def test_shadow_flag_modes_keep_results_local(monkeypatch, matcher_enabled, cons
 # while retaining the normal SSE and delivered-response persistence contract.
 @pytest.mark.parametrize("message,expected", [
     ("???", "What would you like help with today?"),
-    ("I have chest pain", "I can't assess urgent medical symptoms here. Please contact a qualified medical professional, or local emergency services if this feels urgent."),
+    ("I have chest pain", medical_boundary_message("en")),
 ])
 def test_controlled_outcomes_bypass_openai_and_stream_only_safe_reply(client, captured, message, expected):
     response = _post(client, message)
     events = _events(response)
 
     assert "messages" not in captured
-    assert events == [{"t": expected}, {"done": True}]
-    reply = events[0]["t"].lower()
+    expected_events = [{"t": expected}, {"done": True}]
+    if message == "I have chest pain":
+        expected_events.insert(0, {"medical_hold": True, "workout_suspended": True})
+    assert events == expected_events
+    reply = next(event["t"] for event in events if "t" in event).lower()
     assert "sets" not in reply and "reps" not in reply and "calories" not in reply
 
 
@@ -2303,7 +2375,7 @@ def test_controlled_route_persists_only_delivered_response(client, captured):
     assert "messages" not in captured
     saved = store.list_conversation(uid, limit=10)
     assert [(turn["role"], turn["content"]) for turn in saved] == [
-        ("user", "I have chest pain"), ("assistant", events[0]["t"]),
+        ("user", "I have chest pain"), ("assistant", events[1]["t"]),
     ]
 
 
@@ -2328,7 +2400,7 @@ def test_voice_medical_route_projects_the_complete_safety_reply_without_openai(c
     events = _events(response)
 
     assert "messages" not in captured
-    assert events[1] == {"speech_text": events[0]["t"]}
+    assert events[2] == {"speech_text": events[1]["t"]}
     assert events[-1] == {"done": True}
 
 

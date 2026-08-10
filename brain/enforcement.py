@@ -28,18 +28,23 @@ condition (Brain Architecture §6 / audit R7).
 """
 from brain.types import Verdict
 
-# route_target (from the red-flag library) → a non-diagnostic routing instruction.
+# Internal route targets remain useful for conservative matching and audit, but
+# every user-facing halt has one non-diagnostic product boundary. APEX does not
+# triage, prescribe treatment, or infer a condition from the internal class.
+_MEDICAL_BOUNDARY_DIRECTIVE = (
+    "Use the non-diagnostic medical boundary only: say APEX cannot assess or "
+    "diagnose medical symptoms and cannot safely recommend training from the "
+    "description. Ask the user to speak with a qualified healthcare professional "
+    "before continuing, and say they may contact local emergency medical services "
+    "if they believe the situation may be urgent. Do not give a workout, an "
+    "alternative physical session, a diagnosis, medication guidance, or treatment advice."
+)
 _ROUTE_DIRECTIVE = {
-    "emergency_services": "Tell them, warmly and plainly, that what they describe needs "
-                          "emergency medical help NOW (emergency services / A&E). Do not give a workout.",
-    "stop_and_treat":     "Tell them to STOP and treat this immediately (e.g. fast-acting sugar "
-                          "for a low), then get medical help if it does not resolve. Do not give a workout.",
-    "crisis_support":     "Respond with warmth and without alarm; encourage them to reach a crisis "
-                          "line or a trusted person right now, and that support is available. Do not give a workout.",
-    "clinician_prompt":   "Tell them this needs a doctor's assessment promptly, before hard exertion. "
-                          "Do not give a workout.",
-    "gp_soft":            "Gently suggest raising this with their GP when they can. A gentle, optional "
-                          "alternative may be offered.",
+    "emergency_services": _MEDICAL_BOUNDARY_DIRECTIVE,
+    "stop_and_treat": _MEDICAL_BOUNDARY_DIRECTIVE,
+    "crisis_support": _MEDICAL_BOUNDARY_DIRECTIVE,
+    "clinician_prompt": _MEDICAL_BOUNDARY_DIRECTIVE,
+    "gp_soft": _MEDICAL_BOUNDARY_DIRECTIVE,
 }
 
 _INTERVENTION_ALT = {
@@ -121,8 +126,7 @@ def render(decision) -> dict:
     alt = _INTERVENTION_ALT.get(decision.intervention.kind)
 
     if decision.halt:
-        directive = _ROUTE_DIRECTIVE.get(route, "Steer them to appropriate professional support "
-                                                "and do not give a workout.")
+        directive = _ROUTE_DIRECTIVE.get(route, _MEDICAL_BOUNDARY_DIRECTIVE)
         mode, should_generate = "route", False
         addendum = "SAFETY OVERRIDE — do not generate a workout. " + directive + _NO_DIAGNOSIS
 

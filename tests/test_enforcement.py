@@ -39,7 +39,8 @@ def test_crisis_halt_uses_crisis_route():
                   flags=[RedFlag("psych_crisis", Urgency.EMERGENCY, "crisis_support", "k")])
     r = render(d)
     assert r["should_generate_workout"] is False
-    assert "crisis" in r["system_prompt_addendum"].lower()
+    assert "cannot assess or diagnose medical symptoms" in r["system_prompt_addendum"].lower()
+    assert "crisis" not in r["system_prompt_addendum"].lower()
 
 
 # ── Refuse / defer → no workout, with an alternative ─────────────────────────

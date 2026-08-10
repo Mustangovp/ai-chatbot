@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from context_builder import ContextSnapshot
+from brain.health_scope import medical_boundary_message
 
 
 Outcome = Literal["recommend", "recover", "clarify", "converse", "route"]
@@ -82,9 +83,5 @@ def controlled_response(decision: DecisionResult, lang: str) -> str | None:
     if decision.outcome == "clarify":
         return "What would you like help with today?" if english else "С какво да помогна днес?"
     if decision.outcome == "route":
-        if english:
-            return ("I can't assess urgent medical symptoms here. Please contact a qualified medical "
-                    "professional, or local emergency services if this feels urgent.")
-        return ("Не мога да преценявам спешни медицински симптоми тук. Свържи се с квалифициран "
-                "медицински специалист или със спешна помощ, ако това е неотложно.")
+        return medical_boundary_message("en" if english else "bg")
     return None

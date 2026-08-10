@@ -67,6 +67,8 @@ import brain.config as brain_config             # M1: Brain shadow flags (defaul
 import brain.inspector as brain_inspector       # M1/Commit3: Brain Inspector (observability)
 import brain.cascade as brain_cascade           # M3: the one orchestrator (Decision)
 import brain.enforcement as brain_enforcement   # M4: Safety-Front renderer
+from brain.health_scope import (HealthSafetyScope, assess_health_scope,
+                                declared_context_prompt, medical_boundary_message)
 import brain.shoulder_validator as shoulder_validator
 from brain.shoulder_exercise_index import EXERCISE_SHOULDER_LOAD
 import brain_analytics                          # M5: Brain Observatory (analytics only)
@@ -2010,38 +2012,21 @@ def _shadow_feature_enabled(name):
 _MEDICAL_HOLD_KEY = "_medical_hold"
 
 
-def _medical_hold_from_message(message):
-    """Recognize only personally reported arm-neurologic red flags; never diagnose."""
-    text = str(message or "").casefold()
-    shoulder = ("shoulder" in text or "\u0440\u0430\u043c\u043e" in text)
-    arm = ("arm" in text or "\u0440\u044a\u043a" in text)
-    numb = ("numb" in text or "tingl" in text or "loss of sensation" in text or
-            "\u0438\u0437\u0442\u0440\u044a\u043f" in text or "\u043c\u0440\u0430\u0432\u0443\u0447" in text)
-    weak = ("arm weakness" in text or "weakness in" in text or "\u0441\u043b\u0430\u0431\u043e\u0441\u0442" in text)
-    urgent = (("chest" in text or "\u0433\u0440\u044a\u0434" in text or "shortness of breath" in text or
-               "\u0437\u0430\u0434\u0443\u0445" in text or "dizz" in text or "\u0437\u0430\u043c\u0430\u0439" in text or
-               "facial droop" in text or "speech difficulty" in text) and arm)
-    # A general educational question is not a personal symptom report.
-    personal = any(token in text for token in ("\u043c\u0435", "\u043c\u0438", "i have", "my ", "i'm", "i am"))
-    if personal and ((shoulder and arm and numb) or (arm and (numb or weak)) or urgent):
-        return {"status": "ACTIVE_MEDICAL_HOLD", "reason_category": "ARM_NUMBNESS_WITH_SHOULDER_PAIN",
-                "workout_blocked": True, "session_blocked": True,
-                "body_region": ["shoulder", "arm"]}
+def _medical_hold_from_message(message, *, conversation=None, profile=None):
+    """Persist only a generic safety boundary; internal matches never surface."""
+    decision = assess_health_scope(
+        message=message,
+        conversation=conversation if isinstance(conversation, list) else (),
+        profile=profile if isinstance(profile, dict) else None,
+    )
+    if decision.scope is HealthSafetyScope.MEDICAL_BOUNDARY:
+        return {"status": "ACTIVE_MEDICAL_HOLD", "reason_category": "MEDICAL_BOUNDARY",
+                "workout_blocked": True, "session_blocked": True}
     return None
 
 
 def _medical_hold_reply(lang, correction=False):
-    if lang == "en":
-        if correction:
-            return ("You're right - I should not have given you a workout after those symptoms. "
-                    "Your current plan is suspended. Do not train, and seek medical assessment.")
-        return ("Stop training and do not load the affected arm. Shoulder pain with numbness through the arm needs prompt medical assessment. "
-                "If symptoms are sudden or you have chest pressure, shortness of breath, sweating, dizziness, weakness, facial droop, or speech difficulty, seek emergency help now.")
-    if correction:
-        return ("Прав си - не трябваше да ти давам тренировка след тези симптоми. "
-                "Текущият план е временно спрян. Не тренирай и потърси медицинска оценка.")
-    return ("Спри тренировките и не натоварвай ръката. Болка в рамото с изтръпване на цялата ръка изисква своевременна медицинска оценка. "
-            "Ако симптомите са внезапни или имаш гръдна болка/натиск, задух, изпотяване, замайване, слабост, изкривяване на лицето или затруднен говор, потърси спешна помощ веднага.")
+    return medical_boundary_message(lang)
 
 
 def _observe_shadow_trace_for_testing(trace):
@@ -2364,7 +2349,13 @@ def chat():
         # Medical safety is server-authoritative state, not assistant prose.  Persist it
         # before planning so flags, fallbacks, blueprints, and renderers cannot bypass it.
         _medical_hold = profile.get(_MEDICAL_HOLD_KEY) if isinstance(profile, dict) else None
-        _new_medical_hold = _medical_hold_from_message(user_message)
+        _health_scope = assess_health_scope(
+            message=user_message,
+            conversation=history if isinstance(history, list) else (),
+            profile=profile if isinstance(profile, dict) else None,
+        )
+        _new_medical_hold = _medical_hold_from_message(
+            user_message, conversation=history, profile=profile)
         if _new_medical_hold is not None:
             _new_medical_hold["created_at"] = _dt.datetime.now(_dt.timezone.utc).isoformat()
             _new_medical_hold["source_message_id"] = _uuid.uuid4().hex
@@ -2443,6 +2434,7 @@ def chat():
                     _snapshot, _planning_request_intent, history, lang)
             if (_training_engine_active_for_request and _shadow_decision.outcome == "recommend"
                     and _shadow_decision.intent == "workout"
+                    and not (_medical_hold and _medical_hold.get("status") == "ACTIVE_MEDICAL_HOLD")
                     and _recommendation_plan is not None
                     and _recommendation_plan.outcome is recommendation_planning.RecommendationOutcome.RECOMMEND):
                 try:
@@ -2511,7 +2503,8 @@ def chat():
                             _followup_failure_reply = followup_message(_training_error, lang)
                         else:
                             _training_engine_failure = "training_engine_profile_contract"
-            _active_workout = (not _training_engine_active_for_request and _recommendation_active and _shadow_decision.outcome == "recommend" and
+            _active_workout = (not (_medical_hold and _medical_hold.get("status") == "ACTIVE_MEDICAL_HOLD") and
+                               not _training_engine_active_for_request and _recommendation_active and _shadow_decision.outcome == "recommend" and
                                _shadow_decision.intent == "workout"
                                and (_recommendation_plan is None or
                                     _recommendation_plan.outcome is recommendation_planning.RecommendationOutcome.RECOMMEND))
@@ -2627,6 +2620,7 @@ def chat():
                 _snapshot, _first_planning_intent, history, lang)
             if (_training_engine_active_for_request and _shadow_decision.outcome == "recommend"
                     and _shadow_decision.intent == "workout"
+                    and not (_medical_hold and _medical_hold.get("status") == "ACTIVE_MEDICAL_HOLD")
                     and _recommendation_plan is not None
                     and _recommendation_plan.outcome is recommendation_planning.RecommendationOutcome.RECOMMEND):
                 try:
@@ -2813,7 +2807,8 @@ def chat():
         # or the response. All V2 output is discarded (bounded counters only).
         # When the flag is off (default) nothing here runs — the module is not even
         # imported — so canonical behavior is byte-identical.
-        if _nutrition_engine_v2_shadow_active():
+        if (_nutrition_engine_v2_shadow_active()
+                and not (_medical_hold and _medical_hold.get("status") == "ACTIVE_MEDICAL_HOLD")):
             try:
                 from nutrition_engine import shadow_hook as _v2_shadow
                 if not getattr(g, "nutrition_v2_shadow_attempted", False):
@@ -2877,7 +2872,8 @@ def chat():
             getattr(_shadow_decision, "intent", None) == "workout"
             or _training_plan_blueprint is not None
         )
-        if brain_config.brain_enforce() and _brain_training_turn:
+        if (brain_config.brain_enforce() and _brain_training_turn
+                and _controlled_reply is None):
             if _brain_enforcement_failure:
                 _training_plan_blueprint = None
                 _recommendation_blueprint = None
@@ -2923,6 +2919,8 @@ def chat():
                         _brain_enforcement_prompt_addendum = (
                             _brain_enforcement_directive["system_prompt_addendum"])
 
+        if _health_scope.scope is HealthSafetyScope.DECLARED_HEALTH_CONTEXT:
+            system_content = system_content + "\n\n" + declared_context_prompt(lang)
         if nutrition_delivery_targets is not None:
             system_content = system_content + "\n\n" + nutrition_plan.generation_contract(
                 nutrition_delivery_targets, lang)
