@@ -133,7 +133,8 @@ def apply_followup(*, followup: WorkoutFollowUp, previous: WorkoutConversationSt
                    recommendation_blueprint_id: str, facts: Mapping[str, object],
                    locked_preferences: Mapping[str, tuple[str, ...]] | None = None,
                    library: ExerciseLibrary | None = None,
-                   advisory_preferred_exercise_ids: tuple[str, ...] = ()) -> TrainingPlanBlueprintV2:
+                   advisory_preferred_exercise_ids: tuple[str, ...] = (),
+                   external_excluded_movement_patterns: frozenset[MovementPattern] = frozenset()) -> TrainingPlanBlueprintV2:
     """Return a validated revised plan or fail without mutating the prior state."""
     if followup.operation is WorkoutFollowUpOperation.REPEAT_PREVIOUS:
         return previous.plan
@@ -146,7 +147,8 @@ def apply_followup(*, followup: WorkoutFollowUp, previous: WorkoutConversationSt
         "locked_preferences": locked_preferences,
         "library": selected_library,
         "excluded_exercise_ids": followup.excluded_exercise_ids,
-        "excluded_movement_patterns": followup.excluded_patterns,
+        "excluded_movement_patterns": (followup.excluded_patterns |
+                                        frozenset(external_excluded_movement_patterns)),
         "advisory_preferred_exercise_ids": advisory_preferred_exercise_ids,
     }
     if followup.operation is WorkoutFollowUpOperation.ALTERNATIVE:

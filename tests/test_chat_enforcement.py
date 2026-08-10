@@ -41,7 +41,7 @@ from brain.runtime_assets.expert_rules import ExpertRulePack, load_expert_rule_p
 from brain.runtime_assets.personas import load_runtime_personas
 from nutrition_validation import NutritionTargets, validate_daily_nutrition
 from brain.types import (Decision, Verdict, Intervention, S2State, ConstraintSet,
-                         Constraint, ConstraintTier, CapacityEnvelope)
+                         Constraint, ConstraintTier, CapacityEnvelope, RedFlag, Urgency)
 from brain.shoulder_validator import ShoulderSafetyProof, ValidationResult
 from datetime import datetime, timedelta, timezone
 
@@ -592,6 +592,184 @@ def test_on_healthy_request_still_generates(client, captured, monkeypatch):
     evs = _events(resp)
     assert any("decision" in e for e in evs)
     assert any(e.get("t") == "ok" for e in evs) and any(e.get("done") for e in evs)
+
+
+def _brain_training_decision(*, halt=False, urgency=None, constraints=()):
+    constraint_set = ConstraintSet()
+    for movement in constraints:
+        constraint_set.add(Constraint(movement, ConstraintTier.RELATIVE, "brain_test"))
+    flags = ([] if urgency is None else [
+        RedFlag("brain_test_flag", urgency, "clinician_prompt", "brain_test_route")
+    ])
+    return Decision(
+        verdict=Verdict.NOT_YET if halt else (Verdict.MODIFY if constraints else Verdict.GO),
+        intervention=Intervention("medical_followup" if halt else "training", "brain_test"),
+        generate_training=not halt,
+        halt=halt,
+        verdict_confidence=0.8,
+        constraints=constraint_set,
+        envelope=CapacityEnvelope(0.6, 0.6, 0.6, True, 0.8),
+        s2=S2State(readiness=0.6, readiness_conf=0.8, red_flags=flags, halt=halt),
+        need_vector=[("training", 0.9)], decision_id="brain-test", model=None,
+    )
+
+
+@pytest.mark.parametrize("urgency", [Urgency.EMERGENCY, Urgency.URGENT])
+def test_brain_enforcement_structurally_blocks_deterministic_training_halts(
+        client, captured, monkeypatch, urgency):
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setenv("BRAIN_ENFORCE", "true")
+    monkeypatch.setattr(appmod.brain_cascade, "decide",
+                        lambda *_args, **_kwargs: _brain_training_decision(halt=True, urgency=urgency))
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
+
+    events = _events(_post(client, "build a workout", profile=_profile()))
+
+    assert events[-1] == {"done": True}
+    assert not any("training_completion" in event for event in events)
+    assert "workout" not in events[0]["t"].lower()
+    assert captured == {}
+
+
+def test_brain_modify_excludes_typed_pattern_before_deterministic_selection(client, captured, monkeypatch):
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setenv("BRAIN_ENFORCE", "true")
+    monkeypatch.setattr(appmod.brain_cascade, "decide",
+                        lambda *_args, **_kwargs: _brain_training_decision(constraints=("heavy_hinge",)))
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": []}))
+
+    events = _events(_post(client, "build a workout", profile=_profile(recoveryFeel="fresh")))
+    delivery = next(event["t"] for event in events if "t" in event)
+
+    assert events[-1] == {"done": True}
+    assert "Hip Hinge" not in delivery
+    assert "Romanian Deadlift" not in delivery
+    assert "[FIXED TRAINING PLAN]" in captured["system"]
+
+
+def test_unknown_brain_constraint_fails_closed_without_deterministic_delivery(client, captured, monkeypatch):
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setenv("BRAIN_ENFORCE", "true")
+    monkeypatch.setattr(appmod.brain_cascade, "decide",
+                        lambda *_args, **_kwargs: _brain_training_decision(constraints=("unknown_brain_movement",)))
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
+
+    events = _events(_post(client, "build a workout", profile=_profile()))
+
+    assert events == [{"t": appmod._brain_enforcement_failure_reply("en")}, {"done": True}]
+    assert captured == {}
+
+
+def test_prior_turn_red_flag_structurally_blocks_the_later_deterministic_workout(
+        client, captured, monkeypatch):
+    seen = {}
+
+    def prior_turn_halt(*_args, **kwargs):
+        seen["conversation"] = kwargs.get("conversation")
+        return _brain_training_decision(halt=True, urgency=Urgency.URGENT)
+
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setenv("BRAIN_ENFORCE", "true")
+    monkeypatch.setattr(appmod.brain_cascade, "decide", prior_turn_halt)
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
+
+    events = _events(client.post("/chat", json={
+        "message": "build a workout", "lang": "en", "profile": _profile(),
+        "history": [{"role": "user", "content": "my chest felt tight going upstairs"}],
+    }))
+
+    assert seen["conversation"] == [{"role": "user", "content": "my chest felt tight going upstairs"}]
+    assert events[-1] == {"done": True}
+    assert not any("training_completion" in event for event in events)
+    assert captured == {}
+
+
+def test_brain_modify_and_shoulder_constraint_never_deliver_an_unvalidated_plan(
+        client, captured, monkeypatch):
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setenv("BRAIN_ENFORCE", "true")
+    monkeypatch.setattr(appmod.brain_cascade, "decide", lambda *_args, **_kwargs: _brain_training_decision(
+        constraints=("shoulder_direct_load",)))
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
+
+    events = _events(_post(client, "build a workout", profile=_profile(healthNotes="shoulder pain")))
+
+    assert events == [{"t": appmod._brain_enforcement_failure_reply("en")}, {"done": True}]
+    assert captured == {}
+
+
+def test_brain_halt_prevents_composer_and_followup_from_reusing_a_prior_plan(client, captured, monkeypatch):
+    conversation_id = "brain-halt-followup-0001"
+    profile = _profile(recoveryFeel="fresh")
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": []}))
+    first = client.post("/chat", json={
+        "message": "build a workout", "lang": "en", "profile": profile,
+        "conversation_id": conversation_id,
+    })
+    assert any("training_completion" in event for event in _events(first))
+    captured.clear()
+
+    monkeypatch.setenv("BRAIN_ENFORCE", "true")
+    monkeypatch.setenv("CONVERSATION_COMPOSER_ACTIVE", "true")
+    monkeypatch.setattr(appmod.brain_cascade, "decide",
+                        lambda *_args, **_kwargs: _brain_training_decision(halt=True, urgency=Urgency.URGENT))
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
+    monkeypatch.setattr(conversation_composer, "compose", lambda **_kwargs: pytest.fail("composer ran"))
+
+    events = _events(client.post("/chat", json={
+        "message": "make it harder", "lang": "en", "profile": profile,
+        "conversation_id": conversation_id,
+    }))
+
+    assert events[-1] == {"done": True}
+    assert not any("training_completion" in event for event in events)
+    assert "workout" not in events[0]["t"].lower()
+    assert captured == {}
+
+
+def test_brain_modify_keeps_explicit_exclusions_and_persona_advice_below_engine_safety(
+        client, captured, monkeypatch):
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setenv("BRAIN_ENFORCE", "true")
+    monkeypatch.setenv("PERSONA_EXPERT_TRAINING_ACTIVE", "true")
+    monkeypatch.setattr(appmod.brain_cascade, "decide",
+                        lambda *_args, **_kwargs: _brain_training_decision(constraints=("heavy_hinge",)))
+    monkeypatch.setattr(
+        appmod, "_evaluate_training_persona_expert",
+        lambda *_args, **_kwargs: (types.SimpleNamespace(
+            preferred_exercise_ids=("dumbbell.romanian_deadlift",)), (None, None)),
+    )
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": []}))
+
+    events = _events(_post(
+        client, "build a workout",
+        profile=_profile(recoveryFeel="fresh", lockedExerciseExclusions=["bodyweight.push_up"]),
+    ))
+    delivery = next(event["t"] for event in events if "t" in event)
+
+    assert "Romanian Deadlift" not in delivery
+    assert "| Push-Up |" not in delivery
+    assert events[-1] == {"done": True}
+
+
+def test_brain_enforcement_failure_blocks_workout_but_flag_off_preserves_delivery(client, captured, monkeypatch):
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod.brain_cascade, "decide",
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("brain unavailable")))
+    monkeypatch.setattr(
+        appmod, "_validate_training_plan_shoulder_safety",
+        lambda *_args, **_kwargs: ValidationResult(True, ShoulderSafetyProof(True, True, 0)),
+    )
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": []}))
+
+    off_events = _events(_post(client, "build a workout", profile=_profile(recoveryFeel="fresh")))
+    assert any("training_completion" in event for event in off_events)
+
+    monkeypatch.setenv("BRAIN_ENFORCE", "true")
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
+    on_events = _events(_post(client, "build a workout", profile=_profile(recoveryFeel="fresh")))
+    assert on_events == [{"t": appmod._brain_enforcement_failure_reply("en")}, {"done": True}]
 
 
 # ── GOLDEN: the OFF path is byte-identical to the legacy prompt ───────────────

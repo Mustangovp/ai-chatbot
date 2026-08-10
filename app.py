@@ -41,6 +41,7 @@ import nutrition_validation
 from knowledge import KnowledgeResolver, load_default_registry
 from recommend import architect as recommendation_architect, engine as recommendation_planning, renderer as recommendation_renderer
 from training_engine import (
+    MovementPattern,
     TrainingRuntimeError,
     apply_followup,
     advance_training_lifecycle,
@@ -1761,7 +1762,7 @@ def _plan_coaching_request(snapshot, intent, history, lang):
 
 
 def _active_training_plan(snapshot, planning_blueprint, *, followup=None, previous_workout=None,
-                          advisory_signals=None):
+                          advisory_signals=None, brain_excluded_movement_patterns=frozenset()):
     """Build the deterministic workout artifact from verified request facts only."""
     if (snapshot.intent != "workout" or planning_blueprint is None
             or planning_blueprint.outcome is not recommendation_planning.RecommendationOutcome.RECOMMEND):
@@ -1777,14 +1778,86 @@ def _active_training_plan(snapshot, planning_blueprint, *, followup=None, previo
             facts=facts,
             locked_preferences=snapshot.locked_preferences.as_dict(),
             advisory_preferred_exercise_ids=getattr(advisory_signals, "preferred_exercise_ids", ()),
+            external_excluded_movement_patterns=brain_excluded_movement_patterns,
         )
     return build_training_plan(
         recommendation_blueprint_id=planning_blueprint.blueprint_id,
         facts=facts,
         locked_preferences=snapshot.locked_preferences.as_dict(),
         requested_split=planning_blueprint.training_split,
+        excluded_movement_patterns=brain_excluded_movement_patterns,
         advisory_preferred_exercise_ids=getattr(advisory_signals, "preferred_exercise_ids", ()),
     )
+
+
+# Brain constraints use a wider movement vocabulary than the deterministic
+# registry.  This is the only approved projection into selection: it can remove
+# typed movement families, never add exercises or alter prescriptions.
+_BRAIN_CONSTRAINT_PATTERNS = {
+    "heavy_hinge": frozenset({MovementPattern.HINGE}),
+    "deep_loaded_knee_flexion": frozenset({MovementPattern.SQUAT, MovementPattern.LUNGE}),
+    "high_impact": frozenset({MovementPattern.SQUAT, MovementPattern.LUNGE}),
+    "unsupported_balance": frozenset({MovementPattern.LUNGE}),
+    "high_fall_risk": frozenset({MovementPattern.LUNGE}),
+    "contact_collision": frozenset({MovementPattern.LUNGE}),
+    "contact_fall_risk": frozenset({MovementPattern.LUNGE}),
+    "heavy_isometric": frozenset({MovementPattern.CORE_ANTI_EXTENSION}),
+    "push": frozenset({MovementPattern.HORIZONTAL_PUSH, MovementPattern.VERTICAL_PUSH}),
+    "press": frozenset({MovementPattern.HORIZONTAL_PUSH, MovementPattern.VERTICAL_PUSH}),
+    "overhead": frozenset({MovementPattern.VERTICAL_PUSH}),
+    "pull": frozenset({MovementPattern.HORIZONTAL_PULL, MovementPattern.VERTICAL_PULL}),
+    "row": frozenset({MovementPattern.HORIZONTAL_PULL}),
+    "pull_up": frozenset({MovementPattern.VERTICAL_PULL}),
+    "push_up": frozenset({MovementPattern.HORIZONTAL_PUSH}),
+    "plank": frozenset({MovementPattern.CORE_ANTI_EXTENSION}),
+}
+
+
+def _brain_training_exclusions(decision):
+    """Project only explicitly mapped Brain constraints into engine exclusions."""
+    excluded = set()
+    for constraint in getattr(getattr(decision, "constraints", None), "items", ()):
+        mapped = _BRAIN_CONSTRAINT_PATTERNS.get(getattr(constraint, "movement", ""))
+        if mapped is None:
+            raise TrainingRuntimeError("brain safety constraint is not representable by the training engine")
+        excluded.update(mapped)
+    return frozenset(excluded)
+
+
+def _brain_enforcement_failure_reply(lang):
+    if str(lang).lower() == "en":
+        return "I can't safely provide a workout right now because I couldn't verify the required safety checks."
+    return "Не мога безопасно да предоставя тренировка сега, защото не успях да потвърдя необходимите проверки за безопасност."
+
+
+def _brain_enforcement_withheld_reply(directive, lang):
+    """Deterministic terminal delivery for a Brain decision that withholds training."""
+    if directive.get("mode") == "route":
+        return decision_engine.controlled_response(
+            decision_engine.DecisionResult("route", "workout", "brain_safety_route", (), 1.0), lang)
+    if str(lang).lower() == "en":
+        return "I can't safely provide a workout right now. Let's focus on the safer next step first."
+    return "Не мога безопасно да предоставя тренировка в момента. Нека първо се фокусираме върху по-безопасната следваща стъпка."
+
+
+def _resolve_brain_training_enforcement(profile, message, conversation, *, physiology=None, model=None):
+    """Return one authoritative Brain decision and its typed selection exclusions."""
+    decision = brain_cascade.decide(
+        profile if isinstance(profile, dict) else {}, message=message,
+        conversation=conversation if isinstance(conversation, list) else [],
+        physiology=physiology, model=model,
+    )
+    directive = brain_enforcement.render(decision)
+    exclusions = (_brain_training_exclusions(decision)
+                  if directive["should_generate_workout"] else frozenset())
+    return decision, directive, exclusions
+
+
+def _brain_enforcement_physiology(user_id):
+    try:
+        return athlete_store.physiology(user_id) if user_id else None
+    except Exception:
+        return None
 
 
 def _shoulder_validator_id(exercise_id):
@@ -1802,12 +1875,13 @@ def _shoulder_validator_id(exercise_id):
     return value
 
 
-def _validate_training_plan_shoulder_safety(plan, profile):
+def _validate_training_plan_shoulder_safety(plan, profile, *, constraints=None):
     """Validate the final immutable plan before renderer and Composer delivery."""
     try:
-        constraints = brain_cascade.decide(
-            profile if isinstance(profile, dict) else {}
-        ).constraints
+        if constraints is None:
+            constraints = brain_cascade.decide(
+                profile if isinstance(profile, dict) else {}
+            ).constraints
         exercises = [
             {"canonical_id": _shoulder_validator_id(prescription.exercise_id)}
             for session in plan.sessions
@@ -2316,6 +2390,12 @@ def chat():
         _training_plan_blueprint = None
         _training_engine_failure = None
         _shoulder_safety_validation = None
+        _brain_enforcement_decision = None
+        _brain_enforcement_directive = None
+        _brain_enforcement_exclusions = frozenset()
+        _brain_enforcement_failure = False
+        _brain_enforcement_prompt_addendum = ""
+        enforce_event = None
         _training_advisory_signals = None
         _training_persona_expert_evaluation = None
         _persona_expert_communication_active_for_request = _persona_expert_communication_active()
@@ -2366,6 +2446,18 @@ def chat():
                     and _recommendation_plan is not None
                     and _recommendation_plan.outcome is recommendation_planning.RecommendationOutcome.RECOMMEND):
                 try:
+                    if brain_config.brain_enforce() and _training_engine_active_for_request:
+                        try:
+                            (_brain_enforcement_decision, _brain_enforcement_directive,
+                             _brain_enforcement_exclusions) = _resolve_brain_training_enforcement(
+                                 profile, user_message, history,
+                                 physiology=_brain_enforcement_physiology(chat_uid))
+                        except Exception as _brain_error:
+                            print(f"[enforce] training decision unavailable: {type(_brain_error).__name__}")
+                            _brain_enforcement_failure = True
+                            raise TrainingRuntimeError("brain enforcement unavailable")
+                        if not _brain_enforcement_directive["should_generate_workout"]:
+                            raise TrainingRuntimeError("brain enforcement withheld training")
                     (_training_advisory_signals,
                      _training_persona_expert_evaluation) = _evaluate_training_persona_expert(
                          _snapshot, _shadow_decision)
@@ -2375,12 +2467,16 @@ def chat():
                             followup=_workout_followup, previous_workout=_previous_workout,
                             **({"advisory_signals": _training_advisory_signals}
                                if _training_advisory_signals is not None else {}),
+                            **({"brain_excluded_movement_patterns": _brain_enforcement_exclusions}
+                               if _brain_enforcement_exclusions else {}),
                         )
                     else:
                         _training_plan_blueprint = _active_training_plan(
                             _snapshot, _recommendation_plan,
                             **({"advisory_signals": _training_advisory_signals}
-                               if _training_advisory_signals is not None else {}))
+                               if _training_advisory_signals is not None else {}),
+                            **({"brain_excluded_movement_patterns": _brain_enforcement_exclusions}
+                               if _brain_enforcement_exclusions else {}))
                     _training_plan_blueprint = _advance_active_training_plan(_training_plan_blueprint, data)
                     if _training_plan_blueprint is None:
                         _constraint_state = _shoulder_constraint_state(profile)
@@ -2390,7 +2486,9 @@ def chat():
                         }.get(_constraint_state, "training_engine_profile_contract")
                     else:
                         _shoulder_safety_validation = _validate_training_plan_shoulder_safety(
-                            _training_plan_blueprint, profile)
+                            _training_plan_blueprint, profile,
+                            **({"constraints": _brain_enforcement_decision.constraints}
+                               if _brain_enforcement_decision is not None else {}))
                         if _shoulder_safety_validation is None:
                             _training_plan_blueprint = None
                             _training_engine_failure = "training_engine_safety_constraints_unavailable"
@@ -2401,15 +2499,18 @@ def chat():
                             _recommendation_path = "deterministic_training"
                 except TrainingRuntimeError as _training_error:
                     print(f"[training-engine] construction rejected: {type(_training_error).__name__}")
-                    _constraint_state = _shoulder_constraint_state(profile)
-                    if _constraint_state == "active":
-                        _training_engine_failure = "training_engine_shoulder_safety_contract"
-                    elif _constraint_state == "unavailable":
-                        _training_engine_failure = "training_engine_safety_constraints_unavailable"
-                    elif _workout_followup is not None:
-                        _followup_failure_reply = followup_message(_training_error, lang)
-                    else:
-                        _training_engine_failure = "training_engine_profile_contract"
+                    if not (_brain_enforcement_failure or
+                            (_brain_enforcement_directive is not None and
+                             not _brain_enforcement_directive["should_generate_workout"])):
+                        _constraint_state = _shoulder_constraint_state(profile)
+                        if _constraint_state == "active":
+                            _training_engine_failure = "training_engine_shoulder_safety_contract"
+                        elif _constraint_state == "unavailable":
+                            _training_engine_failure = "training_engine_safety_constraints_unavailable"
+                        elif _workout_followup is not None:
+                            _followup_failure_reply = followup_message(_training_error, lang)
+                        else:
+                            _training_engine_failure = "training_engine_profile_contract"
             _active_workout = (not _training_engine_active_for_request and _recommendation_active and _shadow_decision.outcome == "recommend" and
                                _shadow_decision.intent == "workout"
                                and (_recommendation_plan is None or
@@ -2529,13 +2630,27 @@ def chat():
                     and _recommendation_plan is not None
                     and _recommendation_plan.outcome is recommendation_planning.RecommendationOutcome.RECOMMEND):
                 try:
+                    if brain_config.brain_enforce() and _training_engine_active_for_request:
+                        try:
+                            (_brain_enforcement_decision, _brain_enforcement_directive,
+                             _brain_enforcement_exclusions) = _resolve_brain_training_enforcement(
+                                 profile, user_message, history,
+                                 physiology=_brain_enforcement_physiology(chat_uid), model=model_to_use)
+                        except Exception as _brain_error:
+                            print(f"[enforce] training decision unavailable: {type(_brain_error).__name__}")
+                            _brain_enforcement_failure = True
+                            raise TrainingRuntimeError("brain enforcement unavailable")
+                        if not _brain_enforcement_directive["should_generate_workout"]:
+                            raise TrainingRuntimeError("brain enforcement withheld training")
                     (_training_advisory_signals,
                      _training_persona_expert_evaluation) = _evaluate_training_persona_expert(
                          _snapshot, _shadow_decision)
                     _training_plan_blueprint = _active_training_plan(
                         _snapshot, _recommendation_plan,
                         **({"advisory_signals": _training_advisory_signals}
-                           if _training_advisory_signals is not None else {}))
+                           if _training_advisory_signals is not None else {}),
+                        **({"brain_excluded_movement_patterns": _brain_enforcement_exclusions}
+                           if _brain_enforcement_exclusions else {}))
                     _training_plan_blueprint = _advance_active_training_plan(_training_plan_blueprint, data)
                     if _training_plan_blueprint is None:
                         _constraint_state = _shoulder_constraint_state(profile)
@@ -2545,7 +2660,9 @@ def chat():
                         }.get(_constraint_state, "training_engine_profile_contract")
                     else:
                         _shoulder_safety_validation = _validate_training_plan_shoulder_safety(
-                            _training_plan_blueprint, profile)
+                            _training_plan_blueprint, profile,
+                            **({"constraints": _brain_enforcement_decision.constraints}
+                               if _brain_enforcement_decision is not None else {}))
                         if _shoulder_safety_validation is None:
                             _training_plan_blueprint = None
                             _training_engine_failure = "training_engine_safety_constraints_unavailable"
@@ -2556,11 +2673,14 @@ def chat():
                             _recommendation_path = "deterministic_training"
                 except TrainingRuntimeError as _training_error:
                     print(f"[training-engine] construction rejected: {type(_training_error).__name__}")
-                    _constraint_state = _shoulder_constraint_state(profile)
-                    _training_engine_failure = {
-                        "active": "training_engine_shoulder_safety_contract",
-                        "unavailable": "training_engine_safety_constraints_unavailable",
-                    }.get(_constraint_state, "training_engine_profile_contract")
+                    if not (_brain_enforcement_failure or
+                            (_brain_enforcement_directive is not None and
+                             not _brain_enforcement_directive["should_generate_workout"])):
+                        _constraint_state = _shoulder_constraint_state(profile)
+                        _training_engine_failure = {
+                            "active": "training_engine_shoulder_safety_contract",
+                            "unavailable": "training_engine_safety_constraints_unavailable",
+                        }.get(_constraint_state, "training_engine_profile_contract")
             
             # 3. Decision mapping
             if _decision.s2.halt:
@@ -2753,6 +2873,56 @@ def chat():
             _revised_nutrition_plan = None
             _nutrition_revision_failure = None
 
+        _brain_training_turn = (
+            getattr(_shadow_decision, "intent", None) == "workout"
+            or _training_plan_blueprint is not None
+        )
+        if brain_config.brain_enforce() and _brain_training_turn:
+            if _brain_enforcement_failure:
+                _training_plan_blueprint = None
+                _recommendation_blueprint = None
+                _recommendation_plan = None
+                _controlled_reply = _brain_enforcement_failure_reply(lang)
+            else:
+                if _brain_enforcement_directive is None:
+                    try:
+                        if _training_engine_active_for_request:
+                            (_brain_enforcement_decision, _brain_enforcement_directive,
+                             _brain_enforcement_exclusions) = _resolve_brain_training_enforcement(
+                                 profile, user_message, history,
+                                 physiology=_brain_enforcement_physiology(chat_uid), model=model_to_use)
+                        else:
+                            _brain_enforcement_decision = brain_cascade.decide(
+                                profile if isinstance(profile, dict) else {}, message=user_message,
+                                conversation=history if isinstance(history, list) else [],
+                                physiology=_brain_enforcement_physiology(chat_uid), model=model_to_use)
+                            _brain_enforcement_directive = brain_enforcement.render(
+                                _brain_enforcement_decision)
+                    except Exception as _brain_error:
+                        print(f"[enforce] training decision unavailable: {type(_brain_error).__name__}")
+                        _brain_enforcement_failure = True
+                        _training_plan_blueprint = None
+                        _recommendation_blueprint = None
+                        _recommendation_plan = None
+                        _controlled_reply = _brain_enforcement_failure_reply(lang)
+                if _brain_enforcement_directive is not None:
+                    enforce_event = _brain_enforcement_directive["decision_event"]
+                    if not _brain_enforcement_directive["should_generate_workout"]:
+                        # Terminal authority: no pre-built deterministic or legacy
+                        # artifact can reach Composer, renderer, or completion SSE.
+                        _training_plan_blueprint = None
+                        _recommendation_blueprint = None
+                        _recommendation_plan = None
+                        _controlled_reply = _brain_enforcement_withheld_reply(
+                            _brain_enforcement_directive, lang)
+                    elif (_brain_enforcement_directive["mode"] == "cold_start"
+                          and _training_engine_active_for_request
+                          and _training_plan_blueprint is None):
+                        _controlled_reply = _cold_start_workout_reply(lang)
+                    elif not _training_engine_active_for_request:
+                        _brain_enforcement_prompt_addendum = (
+                            _brain_enforcement_directive["system_prompt_addendum"])
+
         if nutrition_delivery_targets is not None:
             system_content = system_content + "\n\n" + nutrition_plan.generation_contract(
                 nutrition_delivery_targets, lang)
@@ -2806,6 +2976,9 @@ def chat():
                     _conversation_frame, lang)
             except Exception as _composer_error:
                 print(f"[conversation-composer] frame failed: {_composer_error}")
+
+        if _brain_enforcement_prompt_addendum:
+            system_content = system_content + "\n\n" + _brain_enforcement_prompt_addendum
 
         messages = [{"role": "system", "content": system_content}]
 
@@ -2890,8 +3063,8 @@ def chat():
         # NO_TRAIN steers the SAME generation call to route/decline instead of a
         # workout (voice preserved), and GO/MODIFY inject S1 constraints. Failure-
         # isolated: any error falls back to legacy generation. No organ/cascade edit.
-        enforce_event = None
-        if _controlled_reply is None and brain_config.brain_enforce():
+        if (_controlled_reply is None and brain_config.brain_enforce()
+                and not _brain_training_turn):
             try:
                 _phys = athlete_store.physiology(persist_uid) if persist_uid else None
             except Exception:
@@ -2906,10 +3079,6 @@ def chat():
                 # Brain enforcement governs training safety. Nutrition's own
                 # deterministic contract controls meal-plan generation, so a
                 # cold-start workout instruction must never enter that prompt.
-                _brain_training_turn = (
-                    getattr(_shadow_decision, "intent", None) == "workout"
-                    or _training_plan_blueprint is not None
-                )
                 if _add and _brain_training_turn:
                     if (_directive["mode"] == "cold_start" and _training_engine_active_for_request
                             and _training_plan_blueprint is None):
