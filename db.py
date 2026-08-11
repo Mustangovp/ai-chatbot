@@ -13,13 +13,13 @@ Design guarantees requested for 1.0:
   • coach_id / source columns are present (nullable) so multiple AI coaches and
     wearable data sources can be added later without a migration redesign.
 """
-import os, uuid, hashlib, secrets, datetime as _dt
+import os, uuid, hashlib, secrets, datetime as _dt, time as _time
 from sqlalchemy import (
     create_engine, MetaData, Table, Column, String, Integer, Boolean, Float,
     DateTime, JSON, ForeignKey, UniqueConstraint, Index, func, select, update, insert, delete, inspect, text
 )
 from sqlalchemy.types import Uuid
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 
 # ── Engine ────────────────────────────────────────────────────────────────────
 def _normalize_url(url: str) -> str:
@@ -937,18 +937,58 @@ def hs_get_all(subject):
     return [dict(r) for r in rows]
 
 
-def hs_upsert(subject, key, value, confidence, source, observed_at, ttl_seconds, note=None):
-    """Persist a bounded state value. ``note`` remains accepted for compatibility
-    but is deliberately never stored: it may contain source-language text."""
+def _hs_insert(connection, values):
+    """Small seam for deterministic insert-race regression testing."""
+    connection.execute(insert(human_state).values(**values))
+
+
+def hs_upsert(subject, key, value, confidence, source, observed_at, ttl_seconds, note=None,
+              resolve=None, max_attempts=4):
+    """Atomically apply one HSE state write.
+
+    ``resolve(stored)`` is run while the existing row is locked on PostgreSQL and
+    again after any insert conflict. It must return either ``action`` or
+    ``(action, metadata)`` where action is ``insert``, ``replace``, or ``keep``.
+    This prevents a losing first insert from replaying a stale lower-confidence
+    decision over the concurrent winner. SQLite uses the same retry/re-read
+    semantics without PostgreSQL-only lock syntax.
+    """
     t = human_state
-    with engine.begin() as c:
-        exists = c.execute(select(t.c.id).where(t.c.subject == subject).where(t.c.key == key)).first()
-        vals = dict(value=value, confidence=float(confidence), source=source,
-                    observed_at=observed_at, ttl_seconds=int(ttl_seconds), note=None)
-        if exists:
-            c.execute(update(t).where(t.c.subject == subject).where(t.c.key == key).values(**vals))
-        else:
-            c.execute(insert(t).values(id=uuid.uuid4(), subject=subject, key=key, **vals))
+    vals = dict(value=value, confidence=float(confidence), source=source,
+                observed_at=observed_at, ttl_seconds=int(ttl_seconds), note=None)
+    last_error = None
+    for attempt in range(max_attempts):
+        try:
+            with engine.begin() as c:
+                query = select(t).where(t.c.subject == subject).where(t.c.key == key)
+                if not IS_SQLITE:
+                    query = query.with_for_update()
+                row = c.execute(query).mappings().first()
+                stored = dict(row) if row else None
+                decision = resolve(stored) if resolve else ("replace" if stored else "insert")
+                action, metadata = decision if isinstance(decision, tuple) else (decision, None)
+                if action == "insert":
+                    _hs_insert(c, dict(id=uuid.uuid4(), subject=subject, key=key, **vals))
+                elif action == "replace":
+                    # The locked/current row is the only row this update may affect.
+                    if stored is None:
+                        _hs_insert(c, dict(id=uuid.uuid4(), subject=subject, key=key, **vals))
+                        action = "insert"
+                    else:
+                        c.execute(update(t).where(t.c.id == stored["id"]).values(**vals))
+                elif action != "keep":
+                    raise ValueError("invalid_hse_write_action")
+                return {"action": action, "stored": stored, "metadata": metadata}
+        except (IntegrityError, OperationalError) as error:
+            # A unique conflict (or SQLite's transient writer lock) is not a
+            # permission to replay the old decision. Retry causes a fresh read and
+            # resolver evaluation against the winner's live state.
+            last_error = error
+            if attempt + 1 < max_attempts:
+                _time.sleep(0.005 * (attempt + 1))
+                continue
+            raise
+    raise last_error  # pragma: no cover - loop always returns or raises
 
 
 # ── BUILD-002 Human State Observatory — audit log + reviews ──────────────────

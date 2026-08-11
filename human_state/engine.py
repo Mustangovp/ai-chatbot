@@ -54,13 +54,17 @@ def apply(subject, readings, now=None):
         try:
             # preferences are multi-valued; key them by their note so likes/dislikes coexist
             skey = f"preference:{r.note}" if r.key == "preference" else r.key
-            stored = store.hs_get(subject, skey)
-            prev_eff = effective_confidence(stored, at) if stored else 0.0
-            action = decide(stored, r, at)
+            def resolve(stored):
+                prev_eff = effective_confidence(stored, at) if stored else 0.0
+                return decide(stored, r, at), prev_eff
+
+            persisted = store.hs_upsert(subject, skey, value=r.value, confidence=r.confidence,
+                                        source=r.source, observed_at=r.observed_at,
+                                        ttl_seconds=r.ttl_seconds, resolve=resolve)
+            stored = persisted["stored"]
+            action = persisted["action"]
+            prev_eff = persisted["metadata"] or 0.0
             if action in ("insert", "replace"):
-                store.hs_upsert(subject, skey, value=r.value, confidence=r.confidence,
-                                source=r.source, observed_at=r.observed_at,
-                                ttl_seconds=r.ttl_seconds)
                 applied.append(skey)
                 final = r.value
             else:
@@ -75,5 +79,5 @@ def apply(subject, readings, now=None):
                 "action": action, "final_value": final,
             })
         except Exception as e:
-            print(f"[hse] apply failed for {getattr(r, 'key', '?')}: {e}")
+            print(f"[hse] apply failed for {getattr(r, 'key', '?')}: {type(e).__name__}")
     return {"applied": applied, "kept": kept, "transitions": transitions}

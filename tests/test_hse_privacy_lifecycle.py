@@ -1,10 +1,12 @@
 """Privacy and lifecycle guarantees for the flag-gated Human State Engine."""
 import datetime as dt
 import json
+import uuid
+from concurrent.futures import ThreadPoolExecutor
 
 import db as store
 from human_state import engine, extractor, observatory
-from human_state.schema import KEY_TTL
+from human_state.schema import KEY_TTL, Reading, CONF_EXPLICIT, CONF_HEDGED, CONF_NUMERIC
 
 
 UTC = dt.timezone.utc
@@ -131,3 +133,85 @@ def test_hse_persistence_failure_does_not_break_chat_or_terminal_sse(monkeypatch
               if line.startswith("data: ")]
     assert response.status_code == 200
     assert events[-1] == {"done": True}
+
+
+def _parallel_apply(subject, readings):
+    """Run HSE writes together against the real SQLite test database."""
+    import threading
+    barrier = threading.Barrier(len(readings))
+
+    def apply(reading):
+        barrier.wait()
+        return engine.apply(subject, [reading], now=NOW)
+
+    with ThreadPoolExecutor(max_workers=len(readings)) as executor:
+        return list(executor.map(apply, readings))
+
+
+def test_concurrent_first_insert_keeps_one_row_without_uncaught_failure():
+    results = _parallel_apply("device:race", [
+        Reading("fatigue", "high", CONF_EXPLICIT, observed_at=NOW),
+        Reading("fatigue", "moderate", CONF_HEDGED, observed_at=NOW),
+    ])
+    rows = store.hs_get_all("device:race")
+    assert len(rows) == 1 and rows[0]["key"] == "fatigue"
+    assert rows[0]["value"] == "high"
+    assert all(isinstance(result, dict) for result in results)
+
+
+def test_concurrent_high_confidence_write_beats_lower_confidence_live_state():
+    _parallel_apply("device:confidence-race", [
+        Reading("sleep", "4", CONF_NUMERIC, observed_at=NOW),
+        Reading("sleep", "low", CONF_HEDGED, observed_at=NOW),
+    ])
+    row = store.hs_get("device:confidence-race", "sleep")
+    assert row["value"] == "4" and row["confidence"] == CONF_NUMERIC
+
+
+def test_concurrent_valid_higher_confidence_replacement_succeeds():
+    store.hs_upsert("device:replacement", "sleep", "low", CONF_HEDGED, "message", NOW,
+                    KEY_TTL["sleep"])
+    _parallel_apply("device:replacement", [
+        Reading("sleep", "8", CONF_NUMERIC, observed_at=NOW + dt.timedelta(seconds=1)),
+        Reading("sleep", "low", CONF_HEDGED, observed_at=NOW + dt.timedelta(seconds=1)),
+    ])
+    row = store.hs_get("device:replacement", "sleep")
+    assert row["value"] == "8" and row["confidence"] == CONF_NUMERIC
+
+
+def test_concurrent_subjects_remain_isolated():
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        list(executor.map(lambda args: engine.apply(*args), [
+            ("device:one", [Reading("fatigue", "high", CONF_EXPLICIT, observed_at=NOW)], NOW),
+            ("device:two", [Reading("stress", "high", CONF_EXPLICIT, observed_at=NOW)], NOW),
+        ]))
+    assert store.hs_get("device:one", "fatigue")["value"] == "high"
+    assert store.hs_get("device:two", "stress")["value"] == "high"
+    assert store.hs_get("device:one", "stress") is None
+
+
+def test_insert_integrity_error_rereads_and_does_not_blindly_overwrite(monkeypatch):
+    original_insert = store._hs_insert
+    calls = []
+    injected = {"done": False}
+
+    def resolver(stored):
+        calls.append(stored["value"] if stored else None)
+        return ("insert" if stored is None else "keep", 0.0)
+
+    def simulate_winner(connection, values):
+        if not injected["done"]:
+            injected["done"] = True
+            winner = dict(values, id=uuid.uuid4(), value="high", confidence=CONF_EXPLICIT)
+            with store.engine.begin() as separate_connection:
+                original_insert(separate_connection, winner)
+            raise store.IntegrityError("insert", {}, Exception())
+        original_insert(connection, values)
+
+    monkeypatch.setattr(store, "_hs_insert", simulate_winner)
+    result = store.hs_upsert("device:simulated-race", "fatigue", "moderate", CONF_HEDGED,
+                             "message", NOW, KEY_TTL["fatigue"], resolve=resolver)
+    row = store.hs_get("device:simulated-race", "fatigue")
+    assert calls == [None, "high"]
+    assert result["action"] == "keep"
+    assert row["value"] == "high" and row["confidence"] == CONF_EXPLICIT
