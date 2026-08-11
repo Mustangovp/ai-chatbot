@@ -186,6 +186,15 @@ def snapshot_for_internal_use() -> dict[str, object]:
 
 
 def reset_for_testing() -> None:
+    """Reset after draining prior test work so metric captures cannot cross tests."""
+    global _EXECUTOR
+    with _EXECUTOR_LOCK:
+        executor = _EXECUTOR
+        _EXECUTOR = None
+    if executor is not None:
+        # Test-only isolation: queued work is cancelled and running work reaches
+        # its terminal callback before a following test monkeypatches metrics.
+        executor.shutdown(wait=True, cancel_futures=True)
     _TELEMETRY.reset()
 
 
