@@ -73,6 +73,7 @@ test_*.py
 !tests/test_hse_observatory.py
 !tests/test_hse_privacy_lifecycle.py
 !tests/test_adaptive_coach.py
+!tests/test_hse_presentation.py
 !tests/test_corpus_shadow.py
 !tests/test_corpus_acceptance.py
 !tests/test_debug_endpoint.py

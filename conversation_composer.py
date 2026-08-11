@@ -11,6 +11,7 @@ from typing import Iterable, Literal, Mapping, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from brain.shoulder_validator import ShoulderSafetyProof
+    from coaching.presentation import PresentationProjectionV1
 
 
 Mode = Literal[
@@ -66,6 +67,7 @@ class ConversationFrame:
     optional_prose_allowed: bool = True
     persona_projection: object | None = None
     expert_communication_constraints: object | None = None
+    encouragement: Literal["none", "gentle", "mastery"] = "none"
     # Grounding proof: the composer must not claim shoulder safety
     # unless this is present and proof.may_claim_safe is True.
     shoulder_safety_proof: object | None = None
@@ -170,7 +172,8 @@ def compose(policy: ConversationPolicy, *, verified_memory: Iterable[Mapping[str
             authority_facts: Mapping[str, object] | None = None,
             persona_projection: object | None = None,
             expert_communication_constraints: object | None = None,
-            shoulder_safety_proof: object | None = None) -> ConversationFrame:
+            shoulder_safety_proof: object | None = None,
+            presentation_projection: "PresentationProjectionV1 | None" = None) -> ConversationFrame:
     """Create a safe communication frame from approved, non-internal inputs only."""
     facts = authority_facts or {}
     reference_fact = next((key for key in ("recoveryFeel", "sleepQuality", "stressLevel", "goal")
@@ -178,14 +181,38 @@ def compose(policy: ConversationPolicy, *, verified_memory: Iterable[Mapping[str
     has_memory = policy.reference_memory and _has_relevant_memory(verified_memory)
     blueprint_present = validated_blueprint is not None
     explain_why = policy.explain_why and not policy.must_not_generate_plan
+    presentation = None
+    if presentation_projection is not None:
+        # Local import keeps the inactive runtime path free of HSE presentation imports.
+        from coaching.presentation import validate_presentation_projection
+        presentation = validate_presentation_projection(presentation_projection)
+    can_apply_presentation = bool(
+        presentation is not None
+        and policy.optional_prose_allowed
+        and not policy.safety_boundary
+        and not policy.must_not_generate_plan
+    )
+    tone = policy.tone
+    acknowledgement = policy.acknowledge_context
+    answer_depth = policy.answer_depth
+    encouragement: Literal["none", "gentle", "mastery"] = "none"
+    if can_apply_presentation:
+        if presentation.tone == "supportive":
+            tone = "supportive"
+        elif presentation.tone == "reassuring":
+            tone = "calm"
+        acknowledgement = acknowledgement or presentation.acknowledgement == "brief"
+        encouragement = presentation.encouragement
+        if presentation.explanation_depth == "concise" and answer_depth == "standard":
+            answer_depth = "brief"
     return ConversationFrame(
         mode=policy.mode,
-        tone=policy.tone,
-        acknowledgement=policy.acknowledge_context,
+        tone=tone,
+        acknowledgement=acknowledgement,
         reference_memory=has_memory,
         reference_fact=reference_fact if has_memory or explain_why else None,
         question=policy.question if policy.ask_question else None,
-        answer_depth=policy.answer_depth,
+        answer_depth=answer_depth,
         reason_style="one_short_reason" if explain_why else "none",
         closing_style="one_question" if policy.ask_question else "no_question" if policy.must_not_generate_plan else "natural_close",
         spoken_summary=policy.verbal_summary_only,
@@ -198,6 +225,7 @@ def compose(policy: ConversationPolicy, *, verified_memory: Iterable[Mapping[str
         persona_projection=persona_projection if policy.optional_prose_allowed else None,
         expert_communication_constraints=(expert_communication_constraints
                                           if policy.optional_prose_allowed else None),
+        encouragement=encouragement,
         shoulder_safety_proof=shoulder_safety_proof,
     )
 
@@ -214,6 +242,10 @@ def render_prompt(frame: ConversationFrame, lang: str) -> str:
     ]
     if frame.acknowledgement:
         lines.append("Begin with one brief acknowledgement of the user's stated experience. Do not invent context or diagnose.")
+    if frame.encouragement == "gentle":
+        lines.append("Use at most one gentle, no-pressure encouragement. Do not state or infer why.")
+    elif frame.encouragement == "mastery":
+        lines.append("Use at most one concise mastery-oriented encouragement. Do not state or infer why.")
     if frame.reference_memory:
         lines.append("You may reference one relevant prior turn naturally; do not claim memory that is not present.")
     if frame.reason_style == "one_short_reason":
