@@ -91,6 +91,7 @@ import brain_analytics                          # M5: Brain Observatory (analyti
 import human_state                              # BUILD-001: Human State ingestion (flag-gated)
 import human_state.observatory as human_state_observatory  # BUILD-002: HSE Observatory (audit)
 import coaching                                 # BUILD-003: Adaptive Coach (HSE consumer, flag-gated)
+import coaching.presentation_shadow as hse_presentation_shadow
 import voice as apex_voice                       # Sprint 10: provider-independent voice (TTS) transport
 import uuid as _uuid
 from flask import g
@@ -3523,6 +3524,14 @@ def chat():
                         locale=lang, authoritative_path=path, authoritative_intent=intent),
                     request_id=_shadow_request_id,
                 )
+            # Detached HSE presentation validation. It receives the canonical
+            # ingestion subject only, discards the projection, and records no
+            # identity or state data. This runs after authoritative delivery is fixed.
+            try:
+                hse_presentation_shadow.observe(":".join(persist_analytics_subject))
+            except Exception as _presentation_shadow_error:
+                print("[hse-presentation-shadow] failed: "
+                      f"{type(_presentation_shadow_error).__name__}")
             if (_snapshot is not None and _shadow_decision is not None
                     and _shadow_decision.outcome == "recommend"
                     and (_shadow_feature_enabled("PERSONA_MATCHER_SHADOW")
