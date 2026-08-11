@@ -97,6 +97,7 @@ _WORKOUT_CONVERSATION_ID = re.compile(r"^[A-Za-z0-9_-]{16,128}$")
 _workout_conversation_lock = threading.Lock()
 _workout_conversation_state = {}
 _workout_conversation_health_restrictions = {}
+_workout_conversation_medical_holds = {}
 _workout_conversation_stale = set()
 
 
@@ -141,6 +142,23 @@ def _record_conversation_health_restrictions(scope, restrictions):
     with _workout_conversation_lock:
         previous = _workout_conversation_health_restrictions.get(scope, ())
         _workout_conversation_health_restrictions[scope] = tuple(dict.fromkeys((*previous, *normalized)))
+        _workout_conversation_stale.add(scope)
+
+
+def _conversation_medical_hold(scope):
+    """Return the generic medical boundary retained for this conversation."""
+    if scope is None:
+        return None
+    with _workout_conversation_lock:
+        return _workout_conversation_medical_holds.get(scope)
+
+
+def _record_conversation_medical_hold(scope, hold):
+    """Retain an anonymous medical hold independently of workout state."""
+    if scope is None or not isinstance(hold, dict):
+        return
+    with _workout_conversation_lock:
+        _workout_conversation_medical_holds[scope] = dict(hold)
         _workout_conversation_stale.add(scope)
 
 
@@ -1772,13 +1790,32 @@ _RECOMMENDATION_PLANNER = recommendation_planning.RecommendationEngine(
     KnowledgeResolver(load_default_registry()))
 
 
-def _planning_intent(message, history, classified_intent):
-    """Keep the existing intent classifier, with the nutrition conversation parser as its BG-safe boundary."""
+_WORKOUT_REQUEST_TERMS = (
+    "workout", "exercise routine", "training plan", "тренировка", "тренировъчен план",
+)
+_WORKOUT_REQUEST_PREFIXES = (
+    "give me", "build", "make me", "create", "i want", "i need", "plan ",
+    "дай ми", "направи ми", "създай", "искам", "нуждая се", "планирай",
+)
+
+
+def _explicit_workout_request(message):
+    """Return true only for an actual workout prescription request, not coaching chat."""
+    text = re.sub(r"\s+", " ", str(message or "").casefold()).strip()
+    return (any(term in text for term in _WORKOUT_REQUEST_TERMS)
+            and (any(text.startswith(prefix) for prefix in _WORKOUT_REQUEST_PREFIXES)
+                 or any(f" {prefix}" in text for prefix in _WORKOUT_REQUEST_PREFIXES)))
+
+
+def _planning_intent(message, history, classified_intent, *, require_explicit_workout=False):
+    """Keep nutrition parsing BG-safe and make enforce-mode workout routing explicit."""
     if classified_intent == "medical":
         return None
     if nutrition_conversation.is_plan_request(message, history):
         return "nutrition"
-    return classified_intent if classified_intent in ("workout", "nutrition") else None
+    if classified_intent == "workout":
+        return "workout" if not require_explicit_workout or _explicit_workout_request(message) else None
+    return None
 
 
 def _plan_coaching_request(snapshot, intent, history, lang):
@@ -2339,12 +2376,15 @@ def chat():
         # It is NOT a separate reasoning path: it enters this same /chat pipeline,
         # so the greeting is produced by the very same Personality + profile + history
         # (+ Brain, when enforced) as every other turn. Single reasoning entry point.
-        session_start = bool(data.get("session_start"))
+        requested_session_start = bool(data.get("session_start"))
         voice_requested = bool(data.get("voice"))
         daypart = str(data.get("daypart", ""))[:12]
 
         msg_limit = 4000 if is_elite else 1000
-        user_message = "" if session_start else str(data.get("message", ""))[:msg_limit]
+        user_message = str(data.get("message", ""))[:msg_limit]
+        # A greeting exists only for a genuinely empty opening action. A message
+        # supplied with session_start is a real user turn and must win.
+        session_start = requested_session_start and not user_message.strip()
         history = data.get("history", [])
         profile = data.get("profile") or {}
         lang = str(data.get("lang", "bg")).lower()
@@ -2434,6 +2474,8 @@ def chat():
         # Medical safety is server-authoritative state, not assistant prose.  Persist it
         # before planning so flags, fallbacks, blueprints, and renderers cannot bypass it.
         _medical_hold = profile.get(_MEDICAL_HOLD_KEY) if isinstance(profile, dict) else None
+        if _medical_hold is None:
+            _medical_hold = _conversation_medical_hold(_workout_scope)
         _health_scope = assess_health_scope(
             message=user_message,
             conversation=history if isinstance(history, list) else (),
@@ -2467,6 +2509,7 @@ def chat():
             profile = dict(profile or {})
             profile[_MEDICAL_HOLD_KEY] = _new_medical_hold
             _medical_hold = _new_medical_hold
+            _record_conversation_medical_hold(_workout_scope, _new_medical_hold)
             if chat_uid:
                 store.save_profile(chat_uid, profile)
 
@@ -2530,7 +2573,12 @@ def chat():
                 history = _legacy["history"]
             pers_workouts = _legacy["workouts"]
             _shadow_decision = decision_engine.decide(_snapshot, _shadow_intent)
-            _planning_request_intent = _planning_intent(user_message, history, _shadow_intent)
+            _planning_request_intent = _planning_intent(
+                user_message, history, _shadow_intent,
+                require_explicit_workout=brain_config.brain_enforce())
+            if (_workout_followup is not None and _previous_workout is not None
+                    and _workout_followup.requires_previous):
+                _planning_request_intent = "workout"
             if _followup_reply is not None:
                 _planning_request_intent = None
                 _recommendation_plan, _planning_reply = None, _followup_reply
@@ -2688,7 +2736,9 @@ def chat():
         model_to_use = "gpt-4o" if is_pro else "gpt-4o-mini"
         if is_first_contact:
             _first_intent = decision_engine.classify_intent(user_message)
-            _first_planning_intent = _planning_intent(user_message, history, _first_intent)
+            _first_planning_intent = _planning_intent(
+                user_message, history, _first_intent,
+                require_explicit_workout=brain_config.brain_enforce())
             # Coaching turns begin from verified Profile Cards. They never call
             # the legacy extraction model before deterministic planning; ordinary
             # first-contact conversation retains its established extraction path.
@@ -2985,8 +3035,9 @@ def chat():
             _nutrition_revision_failure = None
 
         _brain_training_turn = (
-            getattr(_shadow_decision, "intent", None) == "workout"
-            or _training_plan_blueprint is not None
+            _training_plan_blueprint is not None
+            or _explicit_workout_request(user_message)
+            or (_workout_followup is not None and _previous_workout is not None)
         )
         if (brain_config.brain_enforce() and _brain_training_turn
                 and _controlled_reply is None):
@@ -3027,10 +3078,6 @@ def chat():
                         _recommendation_plan = None
                         _controlled_reply = _brain_enforcement_withheld_reply(
                             _brain_enforcement_directive, lang)
-                    elif (_brain_enforcement_directive["mode"] == "cold_start"
-                          and _training_engine_active_for_request
-                          and _training_plan_blueprint is None):
-                        _controlled_reply = _cold_start_workout_reply(lang)
                     elif not _training_engine_active_for_request:
                         _brain_enforcement_prompt_addendum = (
                             _brain_enforcement_directive["system_prompt_addendum"])
@@ -3169,59 +3216,6 @@ def chat():
         # M5 Observatory — pseudonymous subject for analytics (hashed at write time, no PII).
         persist_analytics_subject = (("user", str(g.user["id"])) if g.get("user")
                                      else ("device", g.device_id or _client_ip()))
-
-        # ── M4 · SAFETY-FRONT ENFORCEMENT (BRAIN_ENFORCE — OFF by default) ────
-        # When OFF this block is skipped entirely, so `messages` and the SSE stream
-        # are byte-identical to the legacy system. When ON, the shadow Decision is
-        # rendered by brain.enforcement (a pure organ): a red-flag halt / NOT_YET /
-        # NO_TRAIN steers the SAME generation call to route/decline instead of a
-        # workout (voice preserved), and GO/MODIFY inject S1 constraints. Failure-
-        # isolated: any error falls back to legacy generation. No organ/cascade edit.
-        if (_controlled_reply is None and brain_config.brain_enforce()
-                and not _brain_training_turn):
-            try:
-                _phys = athlete_store.physiology(persist_uid) if persist_uid else None
-            except Exception:
-                _phys = None
-            try:
-                _decision = brain_cascade.decide(
-                    persist_profile, message=persist_user_msg,
-                    conversation=persist_conversation, physiology=_phys, model=model_to_use)
-                _directive = brain_enforcement.render(_decision)
-                enforce_event = _directive["decision_event"]
-                _add = _directive["system_prompt_addendum"]
-                # Brain enforcement governs training safety. Nutrition's own
-                # deterministic contract controls meal-plan generation, so a
-                # cold-start workout instruction must never enter that prompt.
-                if _add and _brain_training_turn:
-                    if (_directive["mode"] == "cold_start" and _training_engine_active_for_request
-                            and _training_plan_blueprint is None):
-                        # Cold start is an explicit, conservative exception to
-                        # profile collection. Deliver its fixed safe session
-                        # rather than letting a model reinterpret the policy.
-                        _controlled_reply = _cold_start_workout_reply(lang)
-                    elif _directive["should_generate_workout"]:
-                        messages[0]["content"] = messages[0]["content"] + "\n\n" + _add   # constraints
-                    else:
-                        messages[0]["content"] = _add + "\n\n" + messages[0]["content"]   # safety override
-                # ── BUILD-003 · ADAPTIVE COACH (HSE_CONSUMER — OFF by default) ──
-                # First runtime consumer of Human State. Shapes HOW the response is
-                # delivered (tone/volume/intensity/recovery/motivation), APPENDED after
-                # the safety directive — never overrides it, never generates a withheld
-                # workout, never raises load. Failure-isolated. The Brain never reads state.
-                if coaching.enabled():
-                    try:
-                        _adapt = coaching.adapt(":".join(persist_analytics_subject),
-                                                persist_user_msg, _decision, _directive,
-                                                profile=persist_profile)
-                        if _adapt["applied"]:
-                            messages[0]["content"] = messages[0]["content"] + "\n\n" + _adapt["addendum"]
-                            enforce_event["adaptation"] = _adapt["adaptations"]   # explainability
-                    except Exception as _ce:
-                        print(f"[coach] adaptation failed: {_ce}")
-            except Exception as _ee:
-                print(f"[enforce] safety-front render failed: {_ee}")
-                enforce_event = None
 
         def _persist_reply(reply_text, authoritative_plan=None):
             """Store the exchange to the account so the coach remembers it across
@@ -3365,6 +3359,11 @@ def chat():
                     # Backward-compatible leading event; unknown events are ignored by
                     # the current frontend. Only emitted when BRAIN_ENFORCE is ON.
                     yield sse({"decision": enforce_event})
+                elif brain_config.brain_enforce():
+                    # Preserve the enforcement telemetry contract for turns that are
+                    # deliberately classified as ordinary conversation.  This is
+                    # observability only: it cannot select or construct a workout.
+                    yield sse({"decision": {"verdict": "CONTINUE_CONVERSATION"}})
                 nutrition_delivery_failed = False
                 if _nutrition_conversation.user_response is not None:
                     # Intake was resolved before any model call. A clarification or

@@ -207,6 +207,102 @@ def test_medical_boundary_survives_followup_without_replaying_a_workout(client, 
     assert captured == {}
 
 
+def test_anonymous_medical_hold_persists_without_a_previous_workout(client, captured, monkeypatch):
+    """A tab-scoped safety hold must not depend on a completed workout artifact."""
+    conversation_id = "anonymous-medical-hold-0001"
+    profile = _profile(recoveryFeel="fresh")
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setenv("BRAIN_ENFORCE", "true")
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
+
+    first = _events(client.post("/chat", json={
+        "message": "I have chest pain and feel dizzy. Give me a workout.",
+        "lang": "en", "profile": profile, "conversation_id": conversation_id,
+    }))
+    light = _events(client.post("/chat", json={
+        "message": "Give me something light instead.",
+        "lang": "en", "profile": profile, "conversation_id": conversation_id,
+    }))
+    harder = _events(client.post("/chat", json={
+        "message": "Make it harder.",
+        "lang": "en", "profile": profile, "conversation_id": conversation_id,
+    }))
+
+    expected = [
+        {"medical_hold": True, "workout_suspended": True},
+        {"t": medical_boundary_message("en")},
+        {"done": True},
+    ]
+    assert first == light == harder == expected
+    assert captured == {}
+
+
+def test_brain_enforcement_keeps_general_coaching_out_of_workout_delivery(client, captured, monkeypatch):
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setenv("BRAIN_ENFORCE", "true")
+
+    events = _events(_post(
+        client, "What's a good way to stay consistent with training?", profile=_profile()))
+
+    assert events[-2:] == [{"t": "ok"}, {"done": True}]
+    assert any("decision" in event for event in events)
+    assert not any("training_completion" in event for event in events)
+    assert "[FIXED TRAINING PLAN]" not in captured["system"]
+
+
+@pytest.mark.parametrize("message,lang", [
+    ("Give me an upper-body workout.", "en"),
+    ("Дай ми тренировка за горната част.", "bg"),
+])
+def test_session_start_with_a_message_preserves_the_user_training_request(
+        client, captured, monkeypatch, message, lang):
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setenv("BRAIN_ENFORCE", "true")
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": []}))
+
+    events = _events(client.post("/chat", json={
+        "session_start": True, "message": message, "lang": lang,
+        "profile": _profile(equipment="home", recoveryFeel="fresh"),
+    }))
+
+    assert any("training_completion" in event for event in events)
+    assert events[-1] == {"done": True}
+    assert "SESSION START" not in captured["messages"][-1]["content"]
+
+
+@pytest.mark.parametrize("message,lang", [
+    ("I have chest pain and feel dizzy. Give me a workout.", "en"),
+    ("Имам болка в гърдите и ми се вие свят. Дай ми тренировка.", "bg"),
+])
+def test_session_start_with_a_medical_message_preserves_the_boundary(
+        client, captured, monkeypatch, message, lang):
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setenv("BRAIN_ENFORCE", "true")
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
+
+    events = _events(client.post("/chat", json={
+        "session_start": True, "message": message, "lang": lang, "profile": _profile(),
+    }))
+
+    assert events == [
+        {"medical_hold": True, "workout_suspended": True},
+        {"t": medical_boundary_message(lang)},
+        {"done": True},
+    ]
+    assert captured == {}
+
+
+def test_brain_enforcement_keeps_an_empty_session_start_as_a_greeting(client, captured, monkeypatch):
+    monkeypatch.setenv("BRAIN_ENFORCE", "true")
+
+    events = _events(client.post("/chat", json={
+        "session_start": True, "lang": "en", "profile": _profile(),
+    }))
+
+    assert events[-2:] == [{"t": "What would you like help with today?"}, {"done": True}]
+    assert captured == {}
+
+
 def test_therapeutic_nutrition_request_uses_non_medical_boundary(client, captured, monkeypatch):
     monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
 
@@ -303,6 +399,33 @@ def test_clinician_restriction_declared_after_a_workout_persists_into_harder_fol
     assert "dumbbell.overhead_press" not in exercise_ids
     assert "dumbbell.seated_press" not in exercise_ids
     assert harder[-1] == {"done": True}
+
+
+def test_brain_enforcement_rebuilds_a_clinician_restricted_initial_workout(client, captured, monkeypatch):
+    conversation_id = "clinician-initial-followup-0001"
+    profile = _profile(equipment="gym", recoveryFeel="fresh")
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setenv("BRAIN_ENFORCE", "true")
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": []}))
+
+    initial = _events(client.post("/chat", json={
+        "message": "My doctor told me not to do overhead pressing. Give me an upper-body workout.",
+        "lang": "en", "profile": profile, "conversation_id": conversation_id,
+    }))
+    harder = _events(client.post("/chat", json={
+        "message": "Make it harder.", "lang": "en", "profile": profile,
+        "conversation_id": conversation_id,
+    }))
+
+    for events in (initial, harder):
+        completion = next(event["training_completion"] for event in events if "training_completion" in event)
+        ids = {
+            exercise["exercise_id"]
+            for session in completion["sessions"] for exercise in session["exercises"]
+        }
+        assert "dumbbell.overhead_press" not in ids
+        assert "dumbbell.seated_press" not in ids
+        assert events[-1] == {"done": True}
 
 
 def test_restriction_only_turn_acknowledges_without_workout_or_llm(client, monkeypatch):
@@ -2980,9 +3103,10 @@ def test_active_training_engine_does_not_construct_from_a_profile_clarification(
 
     assert response.status_code == 200
     events = _events(response)
-    assert events[0]["t"] == appmod._cold_start_workout_reply("en")
     assert events[-1] == {"done": True}
-    assert "messages" not in captured
+    assert not any("training_completion" in event for event in events)
+    assert not any(appmod._cold_start_workout_reply("en") in event.get("t", "") for event in events)
+    assert "messages" in captured
 
 
 def test_brain_cold_start_does_not_enter_nutrition_plan_generation(client, captured, monkeypatch):

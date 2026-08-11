@@ -89,7 +89,14 @@ def parse_workout_followup(message: object) -> WorkoutFollowUp | None:
                                excluded_patterns=frozenset({MovementPattern.SQUAT}))
     if any(phrase in text for phrase in _REPEAT):
         return WorkoutFollowUp(WorkoutFollowUpOperation.REPEAT_PREVIOUS)
-    if any(word in text for word in _WORKOUT_WORDS) and any(marker in text for marker in ("using ", "with ", "include ", "включи ")):
+    explicit_exercise_change = (
+        text.startswith((
+            "include ", "add ", "replace ", "use ", "do not include ", "don't include ",
+            "включи ", "добави ", "замени ", "не включвай ",
+        ))
+        or bool(re.search(r"\b(?:give|build|make|create|plan)\b.*\b(?:workout|exercise)\b.*\b(?:using|with|include)\b", text))
+    )
+    if any(word in text for word in _WORKOUT_WORDS) and explicit_exercise_change:
         return WorkoutFollowUp(WorkoutFollowUpOperation.UNKNOWN_EXERCISE)
     return None
 
