@@ -237,6 +237,49 @@ def test_anonymous_medical_hold_persists_without_a_previous_workout(client, capt
     assert captured == {}
 
 
+@pytest.mark.parametrize("lang, first_message, followups", (
+    ("en", "I have chest pain and feel dizzy. Give me a workout.", (
+        "Give me something light instead.", "Make it harder.", "What about an easy workout?")),
+    ("bg", "Имам болка в гърдите и ми се вие свят. Дай ми тренировка.", (
+        "Дай ми нещо леко вместо това.", "Направи я по-трудна.", "А лека тренировка?")),
+))
+def test_medical_boundary_survives_worker_changes_for_training_followups(
+        client, captured, monkeypatch, lang, first_message, followups):
+    conversation_id = f"durable-medical-boundary-{lang}-0001"
+    profile = _profile(recoveryFeel="fresh")
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setenv("BRAIN_ENFORCE", "true")
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
+
+    expected = [
+        {"medical_hold": True, "workout_suspended": True},
+        {"t": medical_boundary_message(lang)},
+        {"done": True},
+    ]
+    first = _events(client.post("/chat", json={
+        "message": first_message, "lang": lang, "profile": profile,
+        "conversation_id": conversation_id,
+    }))
+    assert first == expected
+
+    # Simulate every subsequent request landing on a different Gunicorn worker.
+    with appmod._workout_conversation_lock:
+        appmod._workout_conversation_state.clear()
+        appmod._workout_conversation_health_restrictions.clear()
+        appmod._workout_conversation_fitness_limitations.clear()
+        appmod._workout_conversation_medical_holds.clear()
+        appmod._workout_conversation_stale.clear()
+
+    for message in followups:
+        events = _events(client.post("/chat", json={
+            "message": message, "lang": lang, "profile": profile,
+            "conversation_id": conversation_id,
+        }))
+        assert events == expected
+        assert not any("training_completion" in event for event in events)
+    assert captured == {}
+
+
 def test_brain_enforcement_keeps_general_coaching_out_of_workout_delivery(client, captured, monkeypatch):
     monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
     monkeypatch.setenv("BRAIN_ENFORCE", "true")
@@ -426,6 +469,74 @@ def test_brain_enforcement_rebuilds_a_clinician_restricted_initial_workout(clien
         assert "dumbbell.overhead_press" not in ids
         assert "dumbbell.seated_press" not in ids
         assert events[-1] == {"done": True}
+
+
+@pytest.mark.parametrize("lang, initial_message, harder_message", (
+    ("en", "My doctor told me not to do overhead pressing. Give me an upper-body workout.",
+     "Make it harder."),
+    ("bg", "Лекарят ми каза да не правя раменна преса. Дай ми тренировка за горната част.",
+     "Направи я по-трудна."),
+))
+def test_clinician_restricted_harder_followup_rebuilds_after_worker_change(
+        client, captured, monkeypatch, lang, initial_message, harder_message):
+    conversation_id = f"durable-clinician-followup-{lang}-0001"
+    profile = _profile(equipment="gym", recoveryFeel="fresh")
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setenv("BRAIN_ENFORCE", "true")
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": []}))
+
+    initial = _events(client.post("/chat", json={
+        "message": initial_message, "lang": lang, "profile": profile,
+        "conversation_id": conversation_id,
+    }))
+    initial_completion = next(
+        event["training_completion"] for event in initial if "training_completion" in event)
+
+    with appmod._workout_conversation_lock:
+        appmod._workout_conversation_state.clear()
+        appmod._workout_conversation_health_restrictions.clear()
+        appmod._workout_conversation_fitness_limitations.clear()
+        appmod._workout_conversation_medical_holds.clear()
+        appmod._workout_conversation_stale.clear()
+
+    harder = _events(client.post("/chat", json={
+        "message": harder_message, "lang": lang, "profile": profile,
+        "conversation_id": conversation_id,
+    }))
+    harder_completion = next(
+        event["training_completion"] for event in harder if "training_completion" in event)
+    library_ids = {exercise.exercise_id for exercise in load_exercise_library().exercises}
+    for completion in (initial_completion, harder_completion):
+        ids = {
+            exercise["exercise_id"]
+            for session in completion["sessions"] for exercise in session["exercises"]
+        }
+        assert ids <= library_ids
+        assert "dumbbell.overhead_press" not in ids
+        assert "dumbbell.seated_press" not in ids
+    assert initial_completion != harder_completion
+    assert harder[-1] == {"done": True}
+
+
+def test_restricted_missing_worker_followup_keeps_flag_off_behavior(client, captured, monkeypatch):
+    conversation_id = "restricted-followup-flag-off-0001"
+    profile = _profile(equipment="gym", recoveryFeel="fresh")
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": []}))
+    _events(client.post("/chat", json={
+        "message": "My doctor told me not to do overhead pressing. Give me an upper-body workout.",
+        "lang": "en", "profile": profile, "conversation_id": conversation_id,
+    }))
+    with appmod._workout_conversation_lock:
+        appmod._workout_conversation_state.clear()
+    events = _events(client.post("/chat", json={
+        "message": "Make it harder.", "lang": "en", "profile": profile,
+        "conversation_id": conversation_id,
+    }))
+    assert events == [
+        {"t": appmod.followup_message("previous workout is required", "en")},
+        {"done": True},
+    ]
 
 
 def test_restriction_only_turn_acknowledges_without_workout_or_llm(client, monkeypatch):

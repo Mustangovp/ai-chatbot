@@ -189,6 +189,21 @@ conversations = Table("conversations", metadata,
     Index("ix_conv_user_created", "user_id", "created_at"),
 )
 
+# Request workers must share safety-critical conversation state. Browser state
+# remains a cache; this record carries only bounded workout safety markers.
+conversation_runtime_state = Table("conversation_runtime_state", metadata,
+    _uuid_col(),
+    Column("subject", String(96), nullable=False),
+    Column("conversation_id", String(128), nullable=False),
+    Column("medical_hold", JSON),
+    Column("health_restrictions", JSON),
+    Column("workout_delivered", Boolean, nullable=False, default=False),
+    Column("workout_stale", Boolean, nullable=False, default=False),
+    Column("created_at", DateTime(timezone=True), server_default=func.now()),
+    Column("updated_at", DateTime(timezone=True), server_default=func.now(), onupdate=func.now()),
+    UniqueConstraint("subject", "conversation_id", name="uq_conversation_runtime_scope"),
+)
+
 # ── Brain substrate (M0) ──────────────────────────────────────────────────────
 # The Athlete Model state, one row per account. The browser is only a cache;
 # this row is the source of truth the Brain reads. Additive — nothing else moves.
@@ -311,6 +326,7 @@ _MIGRATIONS = [
     (8, lambda c: None),  # BUILD-002: human_state_events table (created by create_all)
     (9, lambda c: None),  # BUILD-002: human_state_reviews table (created by create_all)
     (10, lambda c: None), # NutritionPlan v1 table (created by create_all)
+    (11, lambda c: None), # shared safety-critical conversation runtime state
 ]
 
 def run_migrations():
@@ -656,6 +672,41 @@ def list_conversation(user_id, limit=40):
     out = [{"role": r["role"], "content": r["content"]} for r in rows]
     out.reverse()
     return out
+
+def get_conversation_runtime_state(subject, conversation_id):
+    """Return bounded cross-worker workout safety state for one conversation."""
+    with engine.begin() as c:
+        row = c.execute(select(conversation_runtime_state).where(
+            conversation_runtime_state.c.subject == str(subject),
+            conversation_runtime_state.c.conversation_id == str(conversation_id),
+        )).mappings().first()
+    return dict(row) if row else {}
+
+def update_conversation_runtime_state(subject, conversation_id, **values):
+    """Update only supplied safety fields, preserving concurrent field ownership."""
+    allowed = {"medical_hold", "health_restrictions", "workout_delivered", "workout_stale"}
+    changes = {key: value for key, value in values.items() if key in allowed}
+    if not changes:
+        return
+    subject = str(subject)
+    conversation_id = str(conversation_id)
+    with engine.begin() as c:
+        result = c.execute(update(conversation_runtime_state).where(
+            conversation_runtime_state.c.subject == subject,
+            conversation_runtime_state.c.conversation_id == conversation_id,
+        ).values(**changes))
+        if result.rowcount:
+            return
+    try:
+        with engine.begin() as c:
+            c.execute(insert(conversation_runtime_state).values(
+                id=uuid.uuid4(), subject=subject, conversation_id=conversation_id, **changes))
+    except IntegrityError:
+        with engine.begin() as c:
+            c.execute(update(conversation_runtime_state).where(
+                conversation_runtime_state.c.subject == subject,
+                conversation_runtime_state.c.conversation_id == conversation_id,
+            ).values(**changes))
 
 def list_workouts(user_id, limit=60):
     with engine.begin() as c:

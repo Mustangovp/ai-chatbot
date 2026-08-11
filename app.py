@@ -127,19 +127,42 @@ def _last_workout_for(scope):
         return _workout_conversation_state.get(scope)
 
 
+def _durable_workout_state(scope):
+    if scope is None:
+        return {}
+    try:
+        return store.get_conversation_runtime_state(*scope)
+    except Exception as error:
+        print(f"[chat] conversation runtime state unavailable: {type(error).__name__}")
+        return {}
+
+
 def _remember_workout(scope, plan):
     if scope is None or plan is None:
         return
     with _workout_conversation_lock:
         _workout_conversation_state[scope] = state_for(plan)
         _workout_conversation_stale.discard(scope)
+    try:
+        store.update_conversation_runtime_state(
+            *scope, workout_delivered=True, workout_stale=False)
+    except Exception as error:
+        print(f"[chat] conversation workout marker unavailable: {type(error).__name__}")
+
+
+def _conversation_has_delivered_workout(scope):
+    if _last_workout_for(scope) is not None:
+        return True
+    return bool(_durable_workout_state(scope).get("workout_delivered"))
 
 
 def _conversation_health_restrictions(scope):
     if scope is None:
         return ()
     with _workout_conversation_lock:
-        return _workout_conversation_health_restrictions.get(scope, ())
+        local = _workout_conversation_health_restrictions.get(scope, ())
+    durable = _durable_workout_state(scope).get("health_restrictions") or ()
+    return tuple(dict.fromkeys((*durable, *local)))
 
 
 def _record_conversation_health_restrictions(scope, restrictions):
@@ -153,6 +176,14 @@ def _record_conversation_health_restrictions(scope, restrictions):
         previous = _workout_conversation_health_restrictions.get(scope, ())
         _workout_conversation_health_restrictions[scope] = tuple(dict.fromkeys((*previous, *normalized)))
         _workout_conversation_stale.add(scope)
+        current = _workout_conversation_health_restrictions[scope]
+    try:
+        durable = _durable_workout_state(scope).get("health_restrictions") or ()
+        store.update_conversation_runtime_state(
+            *scope, health_restrictions=list(dict.fromkeys((*durable, *current))),
+            workout_stale=True)
+    except Exception as error:
+        print(f"[chat] conversation restriction state unavailable: {type(error).__name__}")
 
 
 def _replace_conversation_health_restrictions(scope, restrictions):
@@ -165,6 +196,11 @@ def _replace_conversation_health_restrictions(scope, restrictions):
         else:
             _workout_conversation_health_restrictions.pop(scope, None)
         _workout_conversation_stale.add(scope)
+    try:
+        store.update_conversation_runtime_state(
+            *scope, health_restrictions=list(normalized), workout_stale=True)
+    except Exception as error:
+        print(f"[chat] conversation restriction state unavailable: {type(error).__name__}")
 
 
 def _conversation_fitness_limitation(scope):
@@ -211,7 +247,8 @@ def _conversation_medical_hold(scope):
     if scope is None:
         return None
     with _workout_conversation_lock:
-        return _workout_conversation_medical_holds.get(scope)
+        local = _workout_conversation_medical_holds.get(scope)
+    return local or _durable_workout_state(scope).get("medical_hold")
 
 
 def _record_conversation_medical_hold(scope, hold):
@@ -221,13 +258,19 @@ def _record_conversation_medical_hold(scope, hold):
     with _workout_conversation_lock:
         _workout_conversation_medical_holds[scope] = dict(hold)
         _workout_conversation_stale.add(scope)
+    try:
+        store.update_conversation_runtime_state(
+            *scope, medical_hold=dict(hold), workout_stale=True)
+    except Exception as error:
+        print(f"[chat] conversation medical hold unavailable: {type(error).__name__}")
 
 
 def _workout_is_stale(scope):
     if scope is None:
         return False
     with _workout_conversation_lock:
-        return scope in _workout_conversation_stale
+        local = scope in _workout_conversation_stale
+    return local or bool(_durable_workout_state(scope).get("workout_stale"))
 
 
 @app.before_request
@@ -1899,7 +1942,8 @@ def _plan_coaching_request(snapshot, intent, history, lang):
 
 def _active_training_plan(snapshot, planning_blueprint, *, followup=None, previous_workout=None,
                           advisory_signals=None, brain_excluded_movement_patterns=frozenset(),
-                          fitness_excluded_movement_patterns=frozenset(), recovering=False):
+                          fitness_excluded_movement_patterns=frozenset(), recovering=False,
+                          rebuild_missing_followup=False):
     """Build the deterministic workout artifact from verified request facts only."""
     if (snapshot.intent != "workout" or planning_blueprint is None
             or planning_blueprint.outcome is not recommendation_planning.RecommendationOutcome.RECOMMEND):
@@ -1913,7 +1957,18 @@ def _active_training_plan(snapshot, planning_blueprint, *, followup=None, previo
     )
     if followup is not None:
         if previous_workout is None:
-            raise TrainingRuntimeError("previous workout is required for this change")
+            if not rebuild_missing_followup:
+                raise TrainingRuntimeError("previous workout is required for this change")
+            baseline = build_training_plan(
+                recommendation_blueprint_id=planning_blueprint.blueprint_id,
+                facts=facts,
+                locked_preferences=snapshot.locked_preferences.as_dict(),
+                requested_split=planning_blueprint.training_split,
+                excluded_movement_patterns=all_excluded_patterns,
+                advisory_preferred_exercise_ids=getattr(
+                    advisory_signals, "preferred_exercise_ids", ()),
+            )
+            previous_workout = state_for(baseline)
         return apply_followup(
             followup=followup,
             previous=previous_workout,
@@ -2681,6 +2736,23 @@ def chat():
             if chat_uid:
                 store.save_profile(chat_uid, profile)
 
+        # A restricted workout follow-up may land on a different production
+        # worker than the original plan. Rebuild the same safe deterministic
+        # baseline only when shared state proves a workout was delivered and a
+        # typed hard restriction remains active.
+        _restricted_followup_rebuild = False
+        if (brain_config.brain_enforce() and _workout_followup is not None
+                and _workout_followup.operation.value == "increase_difficulty"
+                and _previous_workout is None
+                and _conversation_has_delivered_workout(_workout_scope)):
+            try:
+                _restricted_followup_rebuild = (
+                    project_explicit_health_restrictions(profile).source_count > 0)
+            except UnsupportedHealthRestrictionError:
+                _restricted_followup_rebuild = False
+            if _restricted_followup_rebuild:
+                _followup_reply = None
+
         # Phase A2 compatibility bridge: ContextSnapshot now owns the normal-chat
         # context boundary, then its legacy adapter restores the exact variables
         # consumed by the unchanged prompt assembly below. First-contact keeps its
@@ -2717,7 +2789,8 @@ def chat():
             _shadow_intent = decision_engine.classify_intent(user_message)
             if _recovering_light_session_requested:
                 _shadow_intent = "workout"
-            if (_workout_followup is not None and _previous_workout is not None
+            if (_workout_followup is not None
+                    and (_previous_workout is not None or _restricted_followup_rebuild)
                     and _workout_followup.requires_previous):
                 _shadow_intent = "workout"
             _snapshot = context_builder.build_context(
@@ -2746,7 +2819,8 @@ def chat():
             _planning_request_intent = _planning_intent(
                 user_message, history, _shadow_intent,
                 require_explicit_workout=brain_config.brain_enforce())
-            if (_workout_followup is not None and _previous_workout is not None
+            if (_workout_followup is not None
+                    and (_previous_workout is not None or _restricted_followup_rebuild)
                     and _workout_followup.requires_previous):
                 _planning_request_intent = "workout"
             if _followup_reply is not None:
@@ -2780,6 +2854,7 @@ def chat():
                         _training_plan_blueprint = _active_training_plan(
                             _snapshot, _recommendation_plan,
                             followup=_workout_followup, previous_workout=_previous_workout,
+                            rebuild_missing_followup=_restricted_followup_rebuild,
                             **({"advisory_signals": _training_advisory_signals}
                                if _training_advisory_signals is not None else {}),
                             **({"brain_excluded_movement_patterns": _brain_enforcement_exclusions}
