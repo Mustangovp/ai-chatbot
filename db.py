@@ -14,6 +14,7 @@ Design guarantees requested for 1.0:
     wearable data sources can be added later without a migration redesign.
 """
 import os, uuid, hashlib, secrets, datetime as _dt, time as _time
+from contextlib import contextmanager
 from sqlalchemy import (
     create_engine, MetaData, Table, Column, String, Integer, Boolean, Float,
     DateTime, JSON, ForeignKey, UniqueConstraint, Index, func, select, update, insert, delete, inspect, text
@@ -942,6 +943,30 @@ def _hs_insert(connection, values):
     connection.execute(insert(human_state).values(**values))
 
 
+@contextmanager
+def _hs_write_transaction():
+    """Lock before HSE read/resolve/write on SQLite; lock the row on Postgres.
+
+    SQLite has no row-level ``FOR UPDATE``.  A deferred transaction can let two
+    writers read the same live row and make stale replace decisions before either
+    acquires its write lock.  ``BEGIN IMMEDIATE`` serializes only this short HSE
+    write critical section before its read.  PostgreSQL retains row-level locking.
+    """
+    if not IS_SQLITE:
+        with engine.begin() as connection:
+            yield connection
+        return
+    with engine.connect() as connection:
+        connection.exec_driver_sql("BEGIN IMMEDIATE")
+        try:
+            yield connection
+        except Exception:
+            connection.rollback()
+            raise
+        else:
+            connection.commit()
+
+
 def hs_upsert(subject, key, value, confidence, source, observed_at, ttl_seconds, note=None,
               resolve=None, max_attempts=4):
     """Atomically apply one HSE state write.
@@ -959,7 +984,7 @@ def hs_upsert(subject, key, value, confidence, source, observed_at, ttl_seconds,
     last_error = None
     for attempt in range(max_attempts):
         try:
-            with engine.begin() as c:
+            with _hs_write_transaction() as c:
                 query = select(t).where(t.c.subject == subject).where(t.c.key == key)
                 if not IS_SQLITE:
                     query = query.with_for_update()

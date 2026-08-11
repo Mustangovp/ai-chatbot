@@ -179,6 +179,22 @@ def test_concurrent_valid_higher_confidence_replacement_succeeds():
     assert row["value"] == "8" and row["confidence"] == CONF_NUMERIC
 
 
+def test_concurrent_replacement_keeps_high_confidence_state_under_repeated_contention():
+    """SQLite must lock before both writers make a replacement decision."""
+    for index in range(12):
+        subject = f"device:replacement-stress:{index}"
+        store.hs_upsert(subject, "sleep", "low", CONF_HEDGED, "message", NOW,
+                        KEY_TTL["sleep"])
+        results = _parallel_apply(subject, [
+            Reading("sleep", "8", CONF_NUMERIC, observed_at=NOW + dt.timedelta(seconds=1)),
+            Reading("sleep", "low", CONF_HEDGED, observed_at=NOW + dt.timedelta(seconds=1)),
+        ])
+        rows = store.hs_get_all(subject)
+        assert len(rows) == 1
+        assert rows[0]["value"] == "8" and rows[0]["confidence"] == CONF_NUMERIC
+        assert all(isinstance(result, dict) for result in results)
+
+
 def test_concurrent_subjects_remain_isolated():
     with ThreadPoolExecutor(max_workers=2) as executor:
         list(executor.map(lambda args: engine.apply(*args), [
@@ -193,7 +209,7 @@ def test_concurrent_subjects_remain_isolated():
 def test_insert_integrity_error_rereads_and_does_not_blindly_overwrite(monkeypatch):
     original_insert = store._hs_insert
     calls = []
-    injected = {"done": False}
+    injected = {"done": False, "winner_written": False}
 
     def resolver(stored):
         calls.append(stored["value"] if stored else None)
@@ -202,13 +218,25 @@ def test_insert_integrity_error_rereads_and_does_not_blindly_overwrite(monkeypat
     def simulate_winner(connection, values):
         if not injected["done"]:
             injected["done"] = True
-            winner = dict(values, id=uuid.uuid4(), value="high", confidence=CONF_EXPLICIT)
-            with store.engine.begin() as separate_connection:
-                original_insert(separate_connection, winner)
             raise store.IntegrityError("insert", {}, Exception())
         original_insert(connection, values)
 
+    def write_winner_after_rollback(_delay):
+        # The SQLite pre-read writer lock intentionally prevents a second writer
+        # inside the losing transaction.  Insert the simulated winner after the
+        # rollback and before hs_upsert performs its retry read.
+        if not injected["winner_written"]:
+            injected["winner_written"] = True
+            winner = {
+                "id": uuid.uuid4(), "subject": "device:simulated-race", "key": "fatigue",
+                "value": "high", "confidence": CONF_EXPLICIT, "source": "message",
+                "observed_at": NOW, "ttl_seconds": KEY_TTL["fatigue"], "note": None,
+            }
+            with store.engine.begin() as separate_connection:
+                original_insert(separate_connection, winner)
+
     monkeypatch.setattr(store, "_hs_insert", simulate_winner)
+    monkeypatch.setattr(store._time, "sleep", write_winner_after_rollback)
     result = store.hs_upsert("device:simulated-race", "fatigue", "moderate", CONF_HEDGED,
                              "message", NOW, KEY_TTL["fatigue"], resolve=resolver)
     row = store.hs_get("device:simulated-race", "fatigue")
