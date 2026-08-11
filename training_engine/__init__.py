@@ -41,7 +41,8 @@ from .construction import (
 from .runtime import TrainingRuntimeError, build_training_plan
 from .followups import (
     WorkoutFollowUp, WorkoutFollowUpOperation, WorkoutConversationState,
-    apply_followup, blueprint_hash, followup_message, parse_workout_followup, state_for,
+    apply_followup, blueprint_hash, conversation_plan_from_record, followup_message,
+    parse_workout_followup, serialize_conversation_plan, state_for,
 )
 from .progression import (
     DEFAULT_PROGRESSION_POLICY,
@@ -100,7 +101,8 @@ __all__ = [
     "TrainingSessionBlueprint", "TrainingStructurePolicy",
     "TrainingRuntimeError", "build_training_plan",
     "WorkoutFollowUp", "WorkoutFollowUpOperation", "WorkoutConversationState",
-    "apply_followup", "blueprint_hash", "followup_message", "parse_workout_followup", "state_for",
+    "apply_followup", "blueprint_hash", "conversation_plan_from_record", "followup_message",
+    "parse_workout_followup", "serialize_conversation_plan", "state_for",
     "DEFAULT_PROGRESSION_POLICY", "ExercisePerformance", "ProgressionBlueprint",
     "ProgressionDecision", "ProgressionDecisionType", "ProgressionEngine", "ProgressionPolicy",
     "RecoverySnapshot", "RecoveryState", "WorkoutResult",

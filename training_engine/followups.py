@@ -7,8 +7,12 @@ from hashlib import sha256
 import re
 from typing import Mapping
 
-from .construction import TrainingPlanBlueprintV2
+from decimal import Decimal
+
+from .construction import (ExercisePrescription, MuscleGroupVolume,
+                           TrainingPlanBlueprintV2, TrainingSessionBlueprint)
 from .models import Difficulty, MovementPattern
+from .selection import TrainingSplit
 from .registry import ExerciseLibrary, load_exercise_library
 from .runtime import TrainingRuntimeError, build_training_plan
 
@@ -111,6 +115,80 @@ def blueprint_hash(plan: TrainingPlanBlueprintV2) -> str:
 
 def state_for(plan: TrainingPlanBlueprintV2) -> WorkoutConversationState:
     return WorkoutConversationState(plan=plan, blueprint_hash=blueprint_hash(plan))
+
+
+def serialize_conversation_plan(plan: TrainingPlanBlueprintV2) -> dict[str, object]:
+    """Return the complete immutable plan in JSON-safe, cross-worker form."""
+    return {
+        "plan_id": plan.plan_id, "version": plan.version,
+        "selection_blueprint_id": plan.selection_blueprint_id,
+        "exercise_library_version": plan.exercise_library_version,
+        "selection_policy_version": plan.selection_policy_version,
+        "construction_policy_version": plan.construction_policy_version,
+        "training_split": plan.training_split.value,
+        "parent_plan_id": plan.parent_plan_id, "parent_plan_version": plan.parent_plan_version,
+        "revision_id": plan.revision_id, "revision_reasons": list(plan.revision_reasons),
+        "progression_decision_ids": list(plan.progression_decision_ids),
+        "lifecycle_policy_version": plan.lifecycle_policy_version,
+        "weekly_volume": [{"muscle_group": item.muscle_group, "weekly_sets": item.weekly_sets}
+                          for item in plan.weekly_volume],
+        "sessions": [{
+            "session_id": session.session_id, "session_index": session.session_index,
+            "selection_blueprint_id": session.selection_blueprint_id,
+            "estimated_duration_minutes": session.estimated_duration_minutes,
+            "prescriptions": [{
+                "exercise_id": item.exercise_id, "exercise_version": item.exercise_version,
+                "movement_pattern": item.movement_pattern.value, "sets": item.sets,
+                "rep_min": item.rep_min, "rep_max": item.rep_max,
+                "target_rpe": str(item.target_rpe), "target_rir": item.target_rir,
+                "rest_seconds": item.rest_seconds, "tempo": item.tempo,
+                "selection_policy_version": item.selection_policy_version,
+                "prescription_policy_version": item.prescription_policy_version,
+                "construction_policy_version": item.construction_policy_version,
+                "target_load_kg": (str(item.target_load_kg) if item.target_load_kg is not None else None),
+            } for item in session.prescriptions],
+        } for session in plan.sessions],
+    }
+
+
+def conversation_plan_from_record(record: object) -> WorkoutConversationState | None:
+    """Fail closed when durable JSON is missing, malformed, or no longer valid."""
+    if not isinstance(record, Mapping):
+        return None
+    try:
+        sessions = tuple(TrainingSessionBlueprint(
+            session_id=str(session["session_id"]), session_index=int(session["session_index"]),
+            selection_blueprint_id=str(session["selection_blueprint_id"]),
+            estimated_duration_minutes=int(session["estimated_duration_minutes"]),
+            prescriptions=tuple(ExercisePrescription(
+                exercise_id=str(item["exercise_id"]), exercise_version=str(item["exercise_version"]),
+                movement_pattern=MovementPattern(str(item["movement_pattern"])), sets=int(item["sets"]),
+                rep_min=int(item["rep_min"]), rep_max=int(item["rep_max"]),
+                target_rpe=Decimal(str(item["target_rpe"])), target_rir=int(item["target_rir"]),
+                rest_seconds=int(item["rest_seconds"]), tempo=str(item["tempo"]),
+                selection_policy_version=str(item["selection_policy_version"]),
+                prescription_policy_version=str(item["prescription_policy_version"]),
+                construction_policy_version=str(item["construction_policy_version"]),
+                target_load_kg=(Decimal(str(item["target_load_kg"])) if item.get("target_load_kg") is not None else None),
+            ) for item in session["prescriptions"]),
+        ) for session in record["sessions"])
+        plan = TrainingPlanBlueprintV2(
+            plan_id=str(record["plan_id"]), version=str(record["version"]),
+            selection_blueprint_id=str(record["selection_blueprint_id"]),
+            exercise_library_version=str(record["exercise_library_version"]),
+            selection_policy_version=str(record["selection_policy_version"]),
+            construction_policy_version=str(record["construction_policy_version"]), sessions=sessions,
+            weekly_volume=tuple(MuscleGroupVolume(str(item["muscle_group"]), int(item["weekly_sets"]))
+                                for item in record["weekly_volume"]),
+            training_split=TrainingSplit(str(record["training_split"])),
+            parent_plan_id=record.get("parent_plan_id"), parent_plan_version=record.get("parent_plan_version"),
+            revision_id=record.get("revision_id"), revision_reasons=tuple(record.get("revision_reasons") or ()),
+            progression_decision_ids=tuple(record.get("progression_decision_ids") or ()),
+            lifecycle_policy_version=record.get("lifecycle_policy_version"),
+        )
+        return state_for(plan)
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 def _difficulty(value: object) -> Difficulty:

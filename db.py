@@ -16,7 +16,7 @@ Design guarantees requested for 1.0:
 import os, uuid, hashlib, secrets, datetime as _dt
 from sqlalchemy import (
     create_engine, MetaData, Table, Column, String, Integer, Boolean, Float,
-    DateTime, JSON, ForeignKey, UniqueConstraint, Index, func, select, update, insert
+    DateTime, JSON, ForeignKey, UniqueConstraint, Index, func, select, update, insert, inspect, text
 )
 from sqlalchemy.types import Uuid
 from sqlalchemy.exc import IntegrityError
@@ -197,6 +197,7 @@ conversation_runtime_state = Table("conversation_runtime_state", metadata,
     Column("conversation_id", String(128), nullable=False),
     Column("medical_hold", JSON),
     Column("health_restrictions", JSON),
+    Column("workout_blueprint", JSON),
     Column("workout_delivered", Boolean, nullable=False, default=False),
     Column("workout_stale", Boolean, nullable=False, default=False),
     Column("created_at", DateTime(timezone=True), server_default=func.now()),
@@ -327,7 +328,17 @@ _MIGRATIONS = [
     (9, lambda c: None),  # BUILD-002: human_state_reviews table (created by create_all)
     (10, lambda c: None), # NutritionPlan v1 table (created by create_all)
     (11, lambda c: None), # shared safety-critical conversation runtime state
+    (12, lambda c: _add_runtime_workout_blueprint(c)),
 ]
+
+
+def _add_runtime_workout_blueprint(connection):
+    """Persist the immutable plan so follow-ups survive a worker boundary."""
+    columns = {column["name"] for column in inspect(connection).get_columns(
+        "conversation_runtime_state")}
+    if "workout_blueprint" not in columns:
+        connection.execute(text(
+            "ALTER TABLE conversation_runtime_state ADD COLUMN workout_blueprint JSON"))
 
 def run_migrations():
     """Create the base schema, then apply any pending versioned migrations.
@@ -684,7 +695,7 @@ def get_conversation_runtime_state(subject, conversation_id):
 
 def update_conversation_runtime_state(subject, conversation_id, **values):
     """Update only supplied safety fields, preserving concurrent field ownership."""
-    allowed = {"medical_hold", "health_restrictions", "workout_delivered", "workout_stale"}
+    allowed = {"medical_hold", "health_restrictions", "workout_blueprint", "workout_delivered", "workout_stale"}
     changes = {key: value for key, value in values.items() if key in allowed}
     if not changes:
         return

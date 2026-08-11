@@ -518,6 +518,50 @@ def test_clinician_restricted_harder_followup_rebuilds_after_worker_change(
     assert harder[-1] == {"done": True}
 
 
+def test_clinician_followup_loads_the_persisted_blueprint_after_worker_change(
+        client, captured, monkeypatch):
+    """A request on another worker must revise the immutable DB plan, not a local cache."""
+    profile = _profile(equipment="gym", recoveryFeel="fresh")
+    uid = _login_for_chat(client, profile)
+    conversation_id = "persisted-clinician-blueprint-0001"
+    scope = (f"account:{uid}", conversation_id)
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setenv("BRAIN_ENFORCE", "true")
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": []}))
+
+    first = _events(client.post("/chat", json={
+        "message": "My doctor told me not to do overhead pressing. Give me an upper-body workout.",
+        "lang": "en", "conversation_id": conversation_id,
+    }))
+    first_completion = next(event["training_completion"] for event in first if "training_completion" in event)
+    durable = store.get_conversation_runtime_state(*scope)
+    assert durable["workout_delivered"] is True
+    assert "overhead pressing" in durable["health_restrictions"][0]
+    assert durable["workout_blueprint"]
+
+    with appmod._workout_conversation_lock:
+        appmod._workout_conversation_state.clear()
+        appmod._workout_conversation_health_restrictions.clear()
+        appmod._workout_conversation_fitness_limitations.clear()
+        appmod._workout_conversation_medical_holds.clear()
+        appmod._workout_conversation_stale.clear()
+
+    restored = appmod._last_workout_for(scope)
+    assert restored is not None
+    assert restored.blueprint_hash == appmod.state_for(
+        appmod.conversation_plan_from_record(durable["workout_blueprint"]).plan).blueprint_hash
+
+    harder = _events(client.post("/chat", json={
+        "message": "Make it harder.", "lang": "en", "conversation_id": conversation_id,
+    }))
+    revised = next(event["training_completion"] for event in harder if "training_completion" in event)
+    ids = {exercise["exercise_id"] for session in revised["sessions"] for exercise in session["exercises"]}
+    assert revised != first_completion
+    assert "dumbbell.overhead_press" not in ids
+    assert "dumbbell.seated_press" not in ids
+    assert harder[-1] == {"done": True}
+
+
 def test_restricted_missing_worker_followup_keeps_flag_off_behavior(client, captured, monkeypatch):
     conversation_id = "restricted-followup-flag-off-0001"
     profile = _profile(equipment="gym", recoveryFeel="fresh")

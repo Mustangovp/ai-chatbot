@@ -49,8 +49,10 @@ from training_engine import (
     followup_message,
     load_exercise_library,
     parse_workout_followup,
+    conversation_plan_from_record,
     recovery_from_payload,
     state_for,
+    serialize_conversation_plan,
     validate_workout_completion_payload,
     workout_result_from_payload,
 )
@@ -124,7 +126,18 @@ def _last_workout_for(scope):
     if scope is None:
         return None
     with _workout_conversation_lock:
-        return _workout_conversation_state.get(scope)
+        local = _workout_conversation_state.get(scope)
+    if local is not None:
+        return local
+    # Cross-worker blueprint replay is part of the enforced safety runtime.
+    # Keep the legacy flag-off follow-up contract unchanged.
+    if not brain_config.brain_enforce():
+        return None
+    durable = conversation_plan_from_record(_durable_workout_state(scope).get("workout_blueprint"))
+    if durable is not None:
+        with _workout_conversation_lock:
+            _workout_conversation_state[scope] = durable
+    return durable
 
 
 def _durable_workout_state(scope):
@@ -145,7 +158,8 @@ def _remember_workout(scope, plan):
         _workout_conversation_stale.discard(scope)
     try:
         store.update_conversation_runtime_state(
-            *scope, workout_delivered=True, workout_stale=False)
+            *scope, workout_blueprint=serialize_conversation_plan(plan),
+            workout_delivered=True, workout_stale=False)
     except Exception as error:
         print(f"[chat] conversation workout marker unavailable: {type(error).__name__}")
 
