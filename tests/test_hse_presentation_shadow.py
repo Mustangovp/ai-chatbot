@@ -170,3 +170,73 @@ def test_shadow_has_no_delivery_or_persistence_dependencies():
     source = inspect.getsource(shadow)
     for forbidden in ("import db", "flask", "openai", "render", "composer", "sse"):
         assert forbidden not in source.lower()
+
+
+def test_hse_shadow_telemetry_endpoint_requires_admin_bearer(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "operations-token")
+
+    for headers in (
+        {},
+        {"Authorization": "Bearer wrong-token"},
+        {"Authorization": "operations-token"},
+    ):
+        response = client.get("/admin/hse-presentation-shadow/telemetry", headers=headers)
+        assert response.status_code == 404
+        assert response.get_json() == {"error": "not_found"}
+
+    response = client.get("/admin/hse-presentation-shadow/telemetry?token=operations-token")
+    assert response.status_code == 404
+    assert response.get_json() == {"error": "not_found"}
+
+
+def test_hse_shadow_telemetry_endpoint_is_aggregate_only_and_read_only(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "operations-token")
+    monkeypatch.delenv(shadow.FLAG, raising=False)
+    monkeypatch.delenv("HSE_CONSUMER", raising=False)
+    telemetry = {
+        "eligible": 7,
+        "none": 2,
+        "failed": 1,
+        "tone_supportive": 3,
+        "tone_reassuring": 4,
+        "ack_brief": 5,
+        "encouragement_gentle": 6,
+        "encouragement_mastery": 7,
+        "latency_max_ms": 81,
+        "subject": "device:not-exposed",
+        "message": "not-exposed",
+        "state_value": "not-exposed",
+    }
+    calls = {"snapshot": 0}
+
+    def snapshot():
+        calls["snapshot"] += 1
+        return dict(telemetry)
+
+    monkeypatch.setattr(shadow, "snapshot_telemetry", snapshot)
+    headers = {"Authorization": "Bearer operations-token"}
+    first = client.get("/admin/hse-presentation-shadow/telemetry", headers=headers)
+    second = client.get("/admin/hse-presentation-shadow/telemetry", headers=headers)
+    expected = {
+        "eligible": 7,
+        "none": 2,
+        "failed": 1,
+        "tone_supportive": 3,
+        "tone_reassuring": 4,
+        "ack_brief": 5,
+        "encouragement_gentle": 6,
+        "encouragement_mastery": 7,
+        "latency_max_ms": 81,
+    }
+
+    assert not shadow.shadow_enabled()
+    assert first.status_code == 200
+    assert first.headers["Cache-Control"] == "no-store"
+    assert first.headers["X-Robots-Tag"] == "noindex, nofollow"
+    assert first.get_json() == expected
+    assert second.get_json() == expected
+    assert calls["snapshot"] == 2
+    assert set(first.get_json()) == set(expected)
+    assert all(forbidden not in first.get_data(as_text=True).lower() for forbidden in (
+        "subject", "message", "state", "device", "profile", "email", "request",
+    ))

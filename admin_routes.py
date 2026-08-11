@@ -163,3 +163,31 @@ def admin_nutrition_v2_shadow_telemetry():
     response.headers["Cache-Control"] = "no-store"
     response.headers["X-Robots-Tag"] = "noindex, nofollow"
     return response
+
+
+# HSE presentation shadow is intentionally process-local and aggregate-only.
+# This endpoint projects only its approved counters; it never exposes subjects,
+# source state, request content, or a reset/mutation operation.
+@bp.route("/admin/hse-presentation-shadow/telemetry")
+def admin_hse_presentation_shadow_telemetry():
+    if not _admin_bearer_authorized():
+        return jsonify({"error": "not_found"}), 404
+
+    from coaching import presentation_shadow
+
+    telemetry = presentation_shadow.snapshot_telemetry()
+    allowed_fields = (
+        "eligible",
+        "none",
+        "failed",
+        "tone_supportive",
+        "tone_reassuring",
+        "ack_brief",
+        "encouragement_gentle",
+        "encouragement_mastery",
+        "latency_max_ms",
+    )
+    response = jsonify({field: int(telemetry.get(field, 0)) for field in allowed_fields})
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return response
