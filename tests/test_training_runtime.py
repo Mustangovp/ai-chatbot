@@ -18,8 +18,14 @@ from training_engine import (
 )
 from training_engine.advisory import TrainingAdvisorySignals, persona_expert_training_signals
 from training_engine.health_restrictions import (
+    FitnessLimitationState,
     UnsupportedHealthRestrictionError,
+    clinician_clearance_patterns,
+    limitation_excluded_patterns,
+    migrate_temporary_fitness_restrictions,
     project_explicit_health_restrictions,
+    remove_cleared_clinician_restrictions,
+    transition_fitness_limitation,
 )
 from brain.runtime_assets.expert_consensus import ExpertConsensusResult
 from brain.runtime_assets.persona_matcher import PersonaMatchResult
@@ -109,6 +115,54 @@ def test_unknown_explicit_health_restriction_fails_closed_without_diagnosis_infe
     assert project_explicit_health_restrictions({"healthNotes": "diabetes"}).source_count == 0
     with pytest.raises(UnsupportedHealthRestrictionError):
         project_explicit_health_restrictions({"medicalRestrictions": "No strenuous activity."})
+
+
+def test_self_reported_fitness_limitation_has_deterministic_recovery_lifecycle_en_and_bg():
+    active = transition_fitness_limitation(None, "My shoulder hurts with overhead pressing.")
+    recovering = transition_fitness_limitation(active, "My shoulder feels much better today.")
+    cleared = transition_fitness_limitation(recovering, "My shoulder doesn't hurt anymore.")
+    returned = transition_fitness_limitation(cleared, "My shoulder hurts again.")
+
+    assert active.state is FitnessLimitationState.ACTIVE
+    assert recovering.state is FitnessLimitationState.RECOVERING
+    assert limitation_excluded_patterns(recovering) == frozenset({MovementPattern.VERTICAL_PUSH})
+    assert cleared.state is FitnessLimitationState.CLEARED
+    assert limitation_excluded_patterns(cleared) == frozenset()
+    assert returned.state is FitnessLimitationState.ACTIVE
+
+    bg_active = transition_fitness_limitation(None, "Рамото ме боли при преса над глава.")
+    bg_recovering = transition_fitness_limitation(bg_active, "Рамото ми е по-добре.")
+    bg_cleared = transition_fitness_limitation(bg_recovering, "Рамото вече не ме боли.")
+    assert bg_active.state is FitnessLimitationState.ACTIVE
+    assert bg_recovering.state is FitnessLimitationState.RECOVERING
+    assert bg_cleared.state is FitnessLimitationState.CLEARED
+
+
+def test_generic_improvement_cannot_clear_clinician_restriction_but_explicit_clearance_can():
+    restriction = "My doctor told me not to do overhead pressing."
+    generic = clinician_clearance_patterns("I'm feeling better.")
+    assert generic == frozenset()
+    assert remove_cleared_clinician_restrictions(
+        restriction, generic, clinician_field=True,
+    ) == (restriction,)
+    explicit = clinician_clearance_patterns(
+        "My doctor cleared me to press overhead again.")
+    assert explicit == frozenset({MovementPattern.VERTICAL_PUSH})
+    assert remove_cleared_clinician_restrictions(
+        restriction, explicit, clinician_field=True,
+    ) == ()
+    bg_explicit = clinician_clearance_patterns(
+        "Лекарят ми каза, че мога отново да правя преса над глава.")
+    assert bg_explicit == frozenset({MovementPattern.VERTICAL_PUSH})
+
+
+def test_legacy_self_reported_pain_restriction_migrates_without_touching_hard_exclusion():
+    temporary = "Avoid overhead pressing because my shoulder hurts."
+    hard = "Do not include push-ups."
+    remaining, limitation = migrate_temporary_fitness_restrictions([temporary, hard])
+
+    assert remaining == (hard,)
+    assert limitation.state is FitnessLimitationState.ACTIVE
 
 
 def test_renderer_accepts_only_explanatory_llm_json_and_never_changes_plan_values():

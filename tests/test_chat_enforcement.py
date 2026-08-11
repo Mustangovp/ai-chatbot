@@ -511,6 +511,168 @@ def test_shoulder_and_clinician_declaration_is_acknowledged_without_freeform_wor
     ]
 
 
+def _completion_exercises(events):
+    completion = next(event["training_completion"] for event in events
+                      if "training_completion" in event)
+    return [exercise for session in completion["sessions"] for exercise in session["exercises"]]
+
+
+def test_temporary_shoulder_limitation_recovers_clears_and_reactivates_across_followups(
+        client, captured, monkeypatch):
+    uid = store.get_or_create_user("fitness-lifecycle-en@example.com")
+    store.save_profile(uid, _profile(equipment="gym", recoveryFeel="fresh"))
+    client.set_cookie(appmod.SESSION_COOKIE, store.create_session(uid))
+    conversation_id = "fitness-limitation-lifecycle-en-0001"
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setenv("PERSONA_EXPERT_TRAINING_ACTIVE", "true")
+    monkeypatch.setenv("PERSONA_EXPERT_COMMUNICATION_ACTIVE", "true")
+    monkeypatch.setenv("CONVERSATION_COMPOSER_ACTIVE", "true")
+
+    active = _events(client.post("/chat", json={
+        "message": "My shoulder hurts with overhead pressing.", "lang": "en",
+        "conversation_id": conversation_id,
+    }))
+    assert active == [{"t": appmod._fitness_limitation_reply(
+        appmod.FitnessLimitationState.ACTIVE, "en")}, {"done": True}]
+    assert store.get_profile(uid)["_fitness_limitation_state"]["state"] == "active"
+    assert "healthRestrictions" not in store.get_profile(uid)
+
+    recovering = _events(client.post("/chat", json={
+        "message": "My shoulder feels much better today.", "lang": "en",
+        "conversation_id": conversation_id,
+    }))
+    assert recovering == [{"t": appmod._fitness_limitation_reply(
+        appmod.FitnessLimitationState.RECOVERING, "en")}, {"done": True}]
+    assert store.get_profile(uid)["_fitness_limitation_state"]["state"] == "recovering"
+
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": ["Keep the effort easy."]}))
+    warmup = _events(client.post("/chat", json={
+        "message": "My shoulder is better. I want a light warm-up.", "lang": "en",
+        "conversation_id": conversation_id,
+    }))
+    exercises = _completion_exercises(warmup)
+    ids = {exercise["exercise_id"] for exercise in exercises}
+    assert "dumbbell.overhead_press" not in ids
+    assert "dumbbell.seated_press" not in ids
+    assert all(exercise["prescribed_sets"] <= 2 for exercise in exercises)
+    assert warmup[-1] == {"done": True}
+    visible = " ".join(str(event.get("t", "")) for event in warmup).casefold()
+    assert not any(term in visible for term in ("rehabilitation", "therapy", "treatment"))
+
+    harder = _events(client.post("/chat", json={
+        "message": "Make it harder.", "lang": "en", "conversation_id": conversation_id,
+    }))
+    harder_ids = {exercise["exercise_id"] for exercise in _completion_exercises(harder)}
+    assert "dumbbell.overhead_press" not in harder_ids
+    assert "dumbbell.seated_press" not in harder_ids
+
+    cleared = _events(client.post("/chat", json={
+        "message": "My shoulder doesn't hurt anymore.", "lang": "en",
+        "conversation_id": conversation_id,
+    }))
+    assert cleared == [{"t": appmod._fitness_limitation_reply(
+        appmod.FitnessLimitationState.CLEARED, "en")}, {"done": True}]
+    assert store.get_profile(uid)["_fitness_limitation_state"]["state"] == "cleared"
+
+    returned = _events(client.post("/chat", json={
+        "message": "My shoulder hurts again.", "lang": "en",
+        "conversation_id": conversation_id,
+    }))
+    assert returned == [{"t": appmod._fitness_limitation_reply(
+        appmod.FitnessLimitationState.ACTIVE, "en")}, {"done": True}]
+    assert store.get_profile(uid)["_fitness_limitation_state"]["state"] == "active"
+
+
+def test_bulgarian_temporary_limitation_recovery_allows_restricted_light_session(
+        client, captured, monkeypatch):
+    profile = _profile(equipment="gym", recoveryFeel="fresh")
+    conversation_id = "fitness-limitation-lifecycle-bg-0001"
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+
+    active = _events(client.post("/chat", json={
+        "message": "Рамото ме боли при преса над глава.", "lang": "bg", "profile": profile,
+        "conversation_id": conversation_id,
+    }))
+    assert active[0]["t"] == appmod._fitness_limitation_reply(
+        appmod.FitnessLimitationState.ACTIVE, "bg")
+
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": ["Запази леко усилие."]}))
+    warmup = _events(client.post("/chat", json={
+        "message": "Рамото ми е по-добре. Искам лека загрявка.", "lang": "bg", "profile": profile,
+        "conversation_id": conversation_id,
+    }))
+    ids = {exercise["exercise_id"] for exercise in _completion_exercises(warmup)}
+    assert "dumbbell.overhead_press" not in ids
+    assert "dumbbell.seated_press" not in ids
+    assert warmup[-1] == {"done": True}
+    visible = " ".join(str(event.get("t", "")) for event in warmup).casefold()
+    assert not any(term in visible for term in ("рехабилитация", "терапия", "лечение"))
+
+
+def test_clinician_restriction_requires_explicit_clinician_clearance(client, captured, monkeypatch):
+    uid = store.get_or_create_user("clinician-clearance-lifecycle@example.com")
+    store.save_profile(uid, _profile(
+        equipment="gym", clinicianRestrictions="My doctor told me not to press overhead."))
+    client.set_cookie(appmod.SESSION_COOKIE, store.create_session(uid))
+    conversation_id = "clinician-clearance-lifecycle-0001"
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+
+    _set_stream(monkeypatch, captured, "I understand.")
+    _events(client.post("/chat", json={
+        "message": "My shoulder doesn't hurt anymore.", "lang": "en",
+        "conversation_id": conversation_id,
+    }))
+    assert store.get_profile(uid)["clinicianRestrictions"] == (
+        "My doctor told me not to press overhead.")
+
+    _events(client.post("/chat", json={
+        "message": "I'm feeling better.", "lang": "en", "conversation_id": conversation_id,
+    }))
+    assert store.get_profile(uid)["clinicianRestrictions"] == (
+        "My doctor told me not to press overhead.")
+
+    clearance = _events(client.post("/chat", json={
+        "message": "My doctor cleared me to press overhead again.", "lang": "en",
+        "conversation_id": conversation_id,
+    }))
+    assert clearance == [{"t": appmod._clinician_clearance_reply("en")}, {"done": True}]
+    assert "clinicianRestrictions" not in store.get_profile(uid)
+
+
+def test_legacy_self_reported_restriction_is_migrated_and_can_be_cleared(client, monkeypatch):
+    uid = store.get_or_create_user("legacy-fitness-limitation@example.com")
+    store.save_profile(uid, _profile(
+        equipment="gym",
+        healthRestrictions="Avoid overhead pressing because my shoulder hurts.",
+    ))
+    client.set_cookie(appmod.SESSION_COOKIE, store.create_session(uid))
+
+    events = _events(_post(client, "My shoulder doesn't hurt anymore."))
+    stored = store.get_profile(uid)
+
+    assert events == [{"t": appmod._fitness_limitation_reply(
+        appmod.FitnessLimitationState.CLEARED, "en")}, {"done": True}]
+    assert "healthRestrictions" not in stored
+    assert stored["_fitness_limitation_state"]["state"] == "cleared"
+
+
+def test_fitness_improvement_cannot_clear_active_medical_boundary(client, monkeypatch):
+    uid = store.get_or_create_user("fitness-medical-boundary@example.com")
+    store.save_profile(uid, _profile())
+    client.set_cookie(appmod.SESSION_COOKIE, store.create_session(uid))
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+
+    _events(_post(client, "My chest feels tight and I feel dizzy."))
+    reply = _events(_post(client, "My shoulder feels much better today."))
+
+    assert reply == [
+        {"medical_hold": True, "workout_suspended": True},
+        {"t": medical_boundary_message("en")},
+        {"done": True},
+    ]
+    assert store.get_profile(uid)["_medical_hold"]["status"] == "ACTIVE_MEDICAL_HOLD"
+
+
 def _set_stream(monkeypatch, captured, reply, *, raw_structured_completion=False):
     def fake_create(**kwargs):
         captured["system"] = kwargs["messages"][0]["content"]

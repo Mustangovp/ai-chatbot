@@ -57,9 +57,18 @@ from training_engine import (
 from training_engine import renderer as training_renderer
 from training_engine.advisory import persona_expert_training_signals
 from training_engine.health_restrictions import (
+    FitnessLimitationState,
     UnsupportedHealthRestrictionError,
+    clinician_clearance_patterns,
     explicit_restrictions_from_message,
+    fitness_limitation_from_history,
+    fitness_limitation_from_profile,
+    is_recovering_light_session_request,
+    limitation_excluded_patterns,
+    migrate_temporary_fitness_restrictions,
     project_explicit_health_restrictions,
+    remove_cleared_clinician_restrictions,
+    transition_fitness_limitation,
 )
 from brain.runtime_assets import expert_consensus, persona_matcher
 from brain.runtime_assets.expert_rules import load_expert_rule_packs
@@ -97,6 +106,7 @@ _WORKOUT_CONVERSATION_ID = re.compile(r"^[A-Za-z0-9_-]{16,128}$")
 _workout_conversation_lock = threading.Lock()
 _workout_conversation_state = {}
 _workout_conversation_health_restrictions = {}
+_workout_conversation_fitness_limitations = {}
 _workout_conversation_medical_holds = {}
 _workout_conversation_stale = set()
 
@@ -143,6 +153,57 @@ def _record_conversation_health_restrictions(scope, restrictions):
         previous = _workout_conversation_health_restrictions.get(scope, ())
         _workout_conversation_health_restrictions[scope] = tuple(dict.fromkeys((*previous, *normalized)))
         _workout_conversation_stale.add(scope)
+
+
+def _replace_conversation_health_restrictions(scope, restrictions):
+    if scope is None:
+        return
+    normalized = tuple(str(item).strip() for item in restrictions if str(item).strip())
+    with _workout_conversation_lock:
+        if normalized:
+            _workout_conversation_health_restrictions[scope] = normalized
+        else:
+            _workout_conversation_health_restrictions.pop(scope, None)
+        _workout_conversation_stale.add(scope)
+
+
+def _conversation_fitness_limitation(scope):
+    if scope is None:
+        return None
+    with _workout_conversation_lock:
+        return _workout_conversation_fitness_limitations.get(scope)
+
+
+def _record_conversation_fitness_limitation(scope, limitation):
+    if scope is None or limitation is None:
+        return
+    with _workout_conversation_lock:
+        _workout_conversation_fitness_limitations[scope] = limitation
+        _workout_conversation_stale.add(scope)
+
+
+def _apply_clinician_clearance(profile, cleared_patterns):
+    """Remove only clinician-origin restrictions covered by explicit clearance."""
+    updated = dict(profile or {})
+    changed = False
+    for field in ("clinicianRestrictions", "medicalRestrictions",
+                  "healthRestrictions", "trainingRestrictions"):
+        if field not in updated:
+            continue
+        remaining = remove_cleared_clinician_restrictions(
+            updated.get(field), cleared_patterns,
+            clinician_field=field in ("clinicianRestrictions", "medicalRestrictions"),
+        )
+        current = updated.get(field)
+        current_values = ((current,) if isinstance(current, str) else
+                          tuple(current) if isinstance(current, (list, tuple, set, frozenset)) else ())
+        if remaining != current_values:
+            changed = True
+            if remaining:
+                updated[field] = list(remaining)
+            else:
+                updated.pop(field, None)
+    return updated, changed
 
 
 def _conversation_medical_hold(scope):
@@ -1791,7 +1852,8 @@ _RECOMMENDATION_PLANNER = recommendation_planning.RecommendationEngine(
 
 
 _WORKOUT_REQUEST_TERMS = (
-    "workout", "exercise routine", "training plan", "тренировка", "тренировъчен план",
+    "workout", "exercise routine", "training plan", "warm-up", "warmup",
+    "тренировка", "тренировъчен план", "загрявка", "раздвижване",
 )
 _WORKOUT_REQUEST_PREFIXES = (
     "give me", "build", "make me", "create", "i want", "i need", "plan ",
@@ -1836,12 +1898,19 @@ def _plan_coaching_request(snapshot, intent, history, lang):
 
 
 def _active_training_plan(snapshot, planning_blueprint, *, followup=None, previous_workout=None,
-                          advisory_signals=None, brain_excluded_movement_patterns=frozenset()):
+                          advisory_signals=None, brain_excluded_movement_patterns=frozenset(),
+                          fitness_excluded_movement_patterns=frozenset(), recovering=False):
     """Build the deterministic workout artifact from verified request facts only."""
     if (snapshot.intent != "workout" or planning_blueprint is None
             or planning_blueprint.outcome is not recommendation_planning.RecommendationOutcome.RECOMMEND):
         return None
     facts = {key: fact.value for key, fact in snapshot.profile.items()}
+    if recovering:
+        facts["recoveryFeel"] = "limited"
+    all_excluded_patterns = (
+        frozenset(brain_excluded_movement_patterns)
+        | frozenset(fitness_excluded_movement_patterns)
+    )
     if followup is not None:
         if previous_workout is None:
             raise TrainingRuntimeError("previous workout is required for this change")
@@ -1852,14 +1921,14 @@ def _active_training_plan(snapshot, planning_blueprint, *, followup=None, previo
             facts=facts,
             locked_preferences=snapshot.locked_preferences.as_dict(),
             advisory_preferred_exercise_ids=getattr(advisory_signals, "preferred_exercise_ids", ()),
-            external_excluded_movement_patterns=brain_excluded_movement_patterns,
+            external_excluded_movement_patterns=all_excluded_patterns,
         )
     return build_training_plan(
         recommendation_blueprint_id=planning_blueprint.blueprint_id,
         facts=facts,
         locked_preferences=snapshot.locked_preferences.as_dict(),
         requested_split=planning_blueprint.training_split,
-        excluded_movement_patterns=brain_excluded_movement_patterns,
+        excluded_movement_patterns=all_excluded_patterns,
         advisory_preferred_exercise_ids=getattr(advisory_signals, "preferred_exercise_ids", ()),
     )
 
@@ -2013,10 +2082,33 @@ def _explicit_health_restriction_acknowledgement(lang):
     return "Разбрах. Ще изключвам това ограничено движение от следващите ти тренировки."
 
 
+def _fitness_limitation_reply(state, lang):
+    english = str(lang).lower() == "en"
+    if state is FitnessLimitationState.ACTIVE:
+        return ("Got it. I'll keep overhead pressing out while this temporary fitness limitation is active."
+                if english else
+                "\u0420\u0430\u0437\u0431\u0440\u0430\u0445. \u0429\u0435 \u0438\u0437\u043a\u043b\u044e\u0447\u0430 \u043f\u0440\u0435\u0441\u0438\u0442\u0435 \u043d\u0430\u0434 \u0433\u043b\u0430\u0432\u0430, \u0434\u043e\u043a\u0430\u0442\u043e \u0442\u043e\u0432\u0430 \u0432\u0440\u0435\u043c\u0435\u043d\u043d\u043e \u0444\u0438\u0442\u043d\u0435\u0441 \u043e\u0433\u0440\u0430\u043d\u0438\u0447\u0435\u043d\u0438\u0435 \u0435 \u0430\u043a\u0442\u0438\u0432\u043d\u043e.")
+    if state is FitnessLimitationState.RECOVERING:
+        return ("Understood. I'll keep the overhead restriction while you ease back into training."
+                if english else
+                "\u0420\u0430\u0437\u0431\u0440\u0430\u0445. \u0429\u0435 \u0437\u0430\u043f\u0430\u0437\u044f \u043e\u0433\u0440\u0430\u043d\u0438\u0447\u0435\u043d\u0438\u0435\u0442\u043e \u0437\u0430 \u043f\u0440\u0435\u0441\u0438 \u043d\u0430\u0434 \u0433\u043b\u0430\u0432\u0430, \u0434\u043e\u043a\u0430\u0442\u043e \u0441\u0435 \u0432\u0440\u044a\u0449\u0430\u0448 \u043f\u043e\u0441\u0442\u0435\u043f\u0435\u043d\u043d\u043e \u043a\u044a\u043c \u0442\u0440\u0435\u043d\u0438\u0440\u043e\u0432\u043a\u0438\u0442\u0435.")
+    return ("Got it. I've cleared the temporary shoulder limitation. Other saved restrictions still apply."
+            if english else
+            "\u0420\u0430\u0437\u0431\u0440\u0430\u0445. \u041f\u0440\u0435\u043c\u0430\u0445\u043d\u0430\u0445 \u0432\u0440\u0435\u043c\u0435\u043d\u043d\u043e\u0442\u043e \u043e\u0433\u0440\u0430\u043d\u0438\u0447\u0435\u043d\u0438\u0435 \u0437\u0430 \u0440\u0430\u043c\u043e\u0442\u043e. \u0414\u0440\u0443\u0433\u0438\u0442\u0435 \u0437\u0430\u043f\u0430\u0437\u0435\u043d\u0438 \u043e\u0433\u0440\u0430\u043d\u0438\u0447\u0435\u043d\u0438\u044f \u043e\u0441\u0442\u0430\u0432\u0430\u0442.")
+
+
+def _clinician_clearance_reply(lang):
+    if str(lang).lower() == "en":
+        return "Got it. I've updated the clinician restriction from the explicit clearance you reported."
+    return ("\u0420\u0430\u0437\u0431\u0440\u0430\u0445. \u0410\u043a\u0442\u0443\u0430\u043b\u0438\u0437\u0438\u0440\u0430\u0445 \u043e\u0433\u0440\u0430\u043d\u0438\u0447\u0435\u043d\u0438\u0435\u0442\u043e \u0441\u043f\u043e\u0440\u0435\u0434 \u0438\u0437\u0440\u0438\u0447\u043d\u043e\u0442\u043e \u0440\u0430\u0437\u0440\u0435\u0448\u0435\u043d\u0438\u0435 \u043e\u0442 "
+            "\u043c\u0435\u0434\u0438\u0446\u0438\u043d\u0441\u043a\u0438\u044f \u0441\u043f\u0435\u0446\u0438\u0430\u043b\u0438\u0441\u0442, \u043a\u043e\u0435\u0442\u043e \u0441\u044a\u043e\u0431\u0449\u0438.")
+
+
 def _restriction_turn_requests_workout(message):
     text = str(message or "").casefold()
     return any(token in text for token in (
-        "workout", "training", "exercise", "work out", "трениров", "упражнен",
+        "workout", "training", "exercise", "work out", "warm-up", "warmup",
+        "трениров", "упражнен", "загряв", "раздвиж",
     ))
 
 
@@ -2471,6 +2563,70 @@ def chat():
             except Exception as _ce:
                 print(f"[chat] conversation load failed: {_ce}")
 
+        # Temporary self-reported limitations have their own lifecycle. They are
+        # never promoted into permanent clinician/medical restrictions.
+        _legacy_fitness_limitation = None
+        if isinstance(profile, dict):
+            profile = dict(profile)
+            for _field in ("healthRestrictions", "trainingRestrictions"):
+                if _field not in profile:
+                    continue
+                _remaining, _migrated = migrate_temporary_fitness_restrictions(
+                    profile.get(_field))
+                if _migrated is not None:
+                    _legacy_fitness_limitation = _migrated
+                    if _remaining:
+                        profile[_field] = list(_remaining)
+                    else:
+                        profile.pop(_field, None)
+        _scoped_remaining, _scoped_migrated = migrate_temporary_fitness_restrictions(
+            _scoped_health_restrictions)
+        if _scoped_migrated is not None:
+            _legacy_fitness_limitation = _scoped_migrated
+            _replace_conversation_health_restrictions(
+                _workout_scope, _scoped_remaining)
+            _scoped_health_restrictions = _scoped_remaining
+        _legacy_fitness_migrated = _legacy_fitness_limitation is not None
+
+        _fitness_limitation = (
+            fitness_limitation_from_profile(profile)
+            if isinstance(profile, dict) else None
+        ) or _conversation_fitness_limitation(_workout_scope) or _legacy_fitness_limitation
+        if _fitness_limitation is None and isinstance(history, list):
+            _fitness_limitation = fitness_limitation_from_history(history)
+        _previous_fitness_limitation = _fitness_limitation
+        _fitness_limitation = transition_fitness_limitation(
+            _fitness_limitation, user_message)
+        _fitness_limitation_changed = _fitness_limitation != _previous_fitness_limitation
+        _self_reported_limitation_message = (
+            transition_fitness_limitation(None, user_message) is not None)
+        if _fitness_limitation is not None:
+            profile = dict(profile or {})
+            profile["_fitness_limitation_state"] = _fitness_limitation.to_record()
+            _record_conversation_fitness_limitation(_workout_scope, _fitness_limitation)
+        _fitness_excluded_movement_patterns = limitation_excluded_patterns(
+            _fitness_limitation)
+        _recovering_light_session_requested = is_recovering_light_session_request(
+            user_message, _fitness_limitation)
+        _fitness_training_kwargs = ({
+            "fitness_excluded_movement_patterns": _fitness_excluded_movement_patterns,
+            "recovering": (_fitness_limitation is not None and
+                           _fitness_limitation.state is FitnessLimitationState.RECOVERING),
+        } if _fitness_excluded_movement_patterns else {})
+
+        # A clinician restriction changes only after an explicit clinician
+        # clearance for the same typed movement family.
+        _clinician_clearance = clinician_clearance_patterns(user_message)
+        _clinician_clearance_changed = False
+        if _clinician_clearance:
+            profile, _clinician_clearance_changed = _apply_clinician_clearance(
+                profile, _clinician_clearance)
+            scoped_remaining = remove_cleared_clinician_restrictions(
+                _scoped_health_restrictions, _clinician_clearance)
+            if scoped_remaining != tuple(_scoped_health_restrictions):
+                _replace_conversation_health_restrictions(
+                    _workout_scope, scoped_remaining)
+
         # Medical safety is server-authoritative state, not assistant prose.  Persist it
         # before planning so flags, fallbacks, blueprints, and renderers cannot bypass it.
         _medical_hold = profile.get(_MEDICAL_HOLD_KEY) if isinstance(profile, dict) else None
@@ -2483,7 +2639,8 @@ def chat():
         )
         _new_explicit_health_restrictions = explicit_restrictions_from_message(user_message)
         _restriction_controlled_reply = None
-        if _new_explicit_health_restrictions and isinstance(profile, dict):
+        if (_new_explicit_health_restrictions and isinstance(profile, dict)
+                and not _self_reported_limitation_message):
             profile = dict(profile)
             existing_restrictions = profile.get("healthRestrictions")
             if isinstance(existing_restrictions, (tuple, list, set, frozenset)):
@@ -2501,6 +2658,17 @@ def chat():
             else:
                 if not _restriction_turn_requests_workout(user_message):
                     _restriction_controlled_reply = _explicit_health_restriction_acknowledgement(lang)
+        if (_fitness_limitation_changed and _fitness_limitation is not None
+                and not _restriction_turn_requests_workout(user_message)):
+            _restriction_controlled_reply = _fitness_limitation_reply(
+                _fitness_limitation.state, lang)
+        if (_clinician_clearance_changed
+                and not _restriction_turn_requests_workout(user_message)):
+            _restriction_controlled_reply = _clinician_clearance_reply(lang)
+        if (chat_uid and (_fitness_limitation_changed or _legacy_fitness_migrated
+                          or _clinician_clearance_changed
+                          or bool(_new_explicit_health_restrictions))):
+            store.save_profile(chat_uid, profile)
         _new_medical_hold = _medical_hold_from_message(
             user_message, conversation=history, profile=profile)
         if _new_medical_hold is not None:
@@ -2547,6 +2715,8 @@ def chat():
             _legacy_profile = profile if isinstance(profile, dict) else {}
             _legacy_history = history if isinstance(history, list) else []
             _shadow_intent = decision_engine.classify_intent(user_message)
+            if _recovering_light_session_requested:
+                _shadow_intent = "workout"
             if (_workout_followup is not None and _previous_workout is not None
                     and _workout_followup.requires_previous):
                 _shadow_intent = "workout"
@@ -2614,6 +2784,7 @@ def chat():
                                if _training_advisory_signals is not None else {}),
                             **({"brain_excluded_movement_patterns": _brain_enforcement_exclusions}
                                if _brain_enforcement_exclusions else {}),
+                            **_fitness_training_kwargs,
                         )
                     else:
                         _training_plan_blueprint = _active_training_plan(
@@ -2621,7 +2792,8 @@ def chat():
                             **({"advisory_signals": _training_advisory_signals}
                                if _training_advisory_signals is not None else {}),
                             **({"brain_excluded_movement_patterns": _brain_enforcement_exclusions}
-                               if _brain_enforcement_exclusions else {}))
+                               if _brain_enforcement_exclusions else {}),
+                            **_fitness_training_kwargs)
                     _training_plan_blueprint = _advance_active_training_plan(_training_plan_blueprint, data)
                     if _training_plan_blueprint is None:
                         _constraint_state = _shoulder_constraint_state(profile)
@@ -2736,6 +2908,8 @@ def chat():
         model_to_use = "gpt-4o" if is_pro else "gpt-4o-mini"
         if is_first_contact:
             _first_intent = decision_engine.classify_intent(user_message)
+            if _recovering_light_session_requested:
+                _first_intent = "workout"
             _first_planning_intent = _planning_intent(
                 user_message, history, _first_intent,
                 require_explicit_workout=brain_config.brain_enforce())
@@ -2806,7 +2980,8 @@ def chat():
                         **({"advisory_signals": _training_advisory_signals}
                            if _training_advisory_signals is not None else {}),
                         **({"brain_excluded_movement_patterns": _brain_enforcement_exclusions}
-                           if _brain_enforcement_exclusions else {}))
+                           if _brain_enforcement_exclusions else {}),
+                        **_fitness_training_kwargs)
                     _training_plan_blueprint = _advance_active_training_plan(_training_plan_blueprint, data)
                     if _training_plan_blueprint is None:
                         _constraint_state = _shoulder_constraint_state(profile)
