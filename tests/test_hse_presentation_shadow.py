@@ -8,6 +8,7 @@ import app as appmod
 import pytest
 import db as store
 from coaching import presentation_shadow as shadow
+from coaching import presentation
 from coaching.presentation import PresentationProjectionV1
 
 
@@ -100,6 +101,86 @@ def test_shadow_on_discards_projection_and_preserves_delivery(client, monkeypatc
         "tone_reassuring": 0, "ack_brief": 1, "encouragement_gentle": 1,
         "encouragement_mastery": 0, "latency_max_ms": shadow.snapshot_telemetry()["latency_max_ms"],
     }
+
+
+def test_live_consumer_flag_off_is_a_complete_runtime_noop(client, monkeypatch):
+    monkeypatch.delenv(shadow.FLAG, raising=False)
+    monkeypatch.delenv("HSE_CONSUMER", raising=False)
+    monkeypatch.setenv("CONVERSATION_COMPOSER_ACTIVE", "true")
+    llm_calls = _mock_stream(monkeypatch)
+    calls = {"builder": 0}
+    monkeypatch.setattr(
+        presentation, "build_presentation_projection",
+        lambda *_: calls.__setitem__("builder", calls["builder"] + 1),
+    )
+
+    events = _events(_post(client))
+    assert events[-1] == {"done": True}
+    assert calls["builder"] == 0
+    assert "no-pressure encouragement" not in str(llm_calls[-1]["messages"])
+
+
+def test_live_consumer_passes_only_validated_projection_to_composer(client, monkeypatch):
+    monkeypatch.delenv(shadow.FLAG, raising=False)
+    monkeypatch.setenv("HSE_CONSUMER", "true")
+    monkeypatch.setenv("CONVERSATION_COMPOSER_ACTIVE", "true")
+    llm_calls = _mock_stream(monkeypatch)
+    calls = {"subject": None}
+    projection = PresentationProjectionV1(
+        tone="supportive", acknowledgement="brief", encouragement="gentle",
+        explanation_depth="concise",
+    )
+    monkeypatch.setattr(
+        presentation, "build_presentation_projection",
+        lambda subject: calls.__setitem__("subject", subject) or projection,
+    )
+    captured = {}
+    original_compose = appmod.conversation_composer.compose
+
+    def compose(*args, **kwargs):
+        captured["projection"] = kwargs.get("presentation_projection")
+        return original_compose(*args, **kwargs)
+
+    monkeypatch.setattr(appmod.conversation_composer, "compose", compose)
+    events = _events(_post(client))
+
+    assert events[-1] == {"done": True}
+    assert calls["subject"].startswith("device:")
+    assert captured["projection"] == projection
+    assert set(captured["projection"].__dict__) == {
+        "schema_version", "tone", "acknowledgement", "encouragement", "explanation_depth",
+    }
+    prompt = str(llm_calls[-1]["messages"])
+    assert "no-pressure encouragement" in prompt
+    # The static APEX personality prompt may use ordinary words such as
+    # "motivation"; assert that no identity or HSE-record metadata reaches it.
+    for forbidden in ("device:", "hse_presentation", "ttl_seconds", "observed_at", "source_message"):
+        assert forbidden not in prompt.lower()
+
+
+def test_live_consumer_malformed_or_failed_projection_is_inert_and_keeps_sse(client, monkeypatch):
+    monkeypatch.delenv(shadow.FLAG, raising=False)
+    monkeypatch.setenv("HSE_CONSUMER", "true")
+    monkeypatch.setenv("CONVERSATION_COMPOSER_ACTIVE", "true")
+    _mock_stream(monkeypatch)
+    captured = []
+    original_compose = appmod.conversation_composer.compose
+
+    def compose(*args, **kwargs):
+        captured.append(kwargs.get("presentation_projection"))
+        return original_compose(*args, **kwargs)
+
+    monkeypatch.setattr(appmod.conversation_composer, "compose", compose)
+    monkeypatch.setattr(presentation, "build_presentation_projection", lambda *_: {"tone": "unsafe"})
+    malformed = _events(_post(client))
+
+    def fail(*_):
+        raise RuntimeError("sensitive-state-detail")
+
+    monkeypatch.setattr(presentation, "build_presentation_projection", fail)
+    failed = _events(_post(client))
+    assert malformed[-1] == failed[-1] == {"done": True}
+    assert captured == [None, None]
 
 
 def test_aggregate_counters_only_for_approved_projection_values(monkeypatch):

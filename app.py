@@ -2572,6 +2572,10 @@ def chat():
                 return jsonify({"limit_reached": True, "hours_left": q["hours_left"], "remaining": 0}), 200
 
         chat_uid = str(g.user["id"]) if g.get("user") else None
+        # Canonical HSE/analytics subject. It is also used after streaming for
+        # ingestion, so presentation reads the same isolated state namespace.
+        persist_analytics_subject = (("user", str(g.user["id"])) if g.get("user")
+                                     else ("device", g.device_id or _client_ip()))
         _workout_scope = _workout_conversation_scope(data, chat_uid, g.device_id)
         _workout_followup = parse_workout_followup(user_message)
         _previous_workout = _last_workout_for(_workout_scope)
@@ -2795,6 +2799,7 @@ def chat():
         _persona_expert_communication_active_for_request = _persona_expert_communication_active()
         _persona_projection = None
         _expert_communication_constraints = None
+        _hse_presentation_projection = None
         _conversation_composer_active_for_request = _conversation_composer_active()
         _conversation_policy = None
         _conversation_frame = None
@@ -3382,6 +3387,20 @@ def chat():
         elif _recommendation_blueprint is not None:
             system_content = recommendation_renderer.render_prompt(_recommendation_blueprint)
         if _conversation_policy is not None and _controlled_reply is None:
+            if coaching.enabled():
+                # HSE may shape only the Composer's closed presentation controls.
+                # The authoritative safety and plan contracts above are already fixed.
+                try:
+                    from coaching.presentation import (
+                        build_presentation_projection,
+                        validate_presentation_projection,
+                    )
+                    _hse_presentation_projection = validate_presentation_projection(
+                        build_presentation_projection(":".join(persist_analytics_subject)))
+                except Exception as _hse_presentation_error:
+                    print("[hse-presentation] consumer failed: "
+                          f"{type(_hse_presentation_error).__name__}")
+                    _hse_presentation_projection = None
             try:
                 _conversation_frame = conversation_composer.compose(
                     _conversation_policy,
@@ -3397,6 +3416,7 @@ def chat():
                         _shoulder_safety_validation.proof
                         if _shoulder_safety_validation is not None else None
                     ),
+                    presentation_projection=_hse_presentation_projection,
                 )
                 system_content = system_content + "\n\n" + conversation_composer.render_prompt(
                     _conversation_frame, lang)
@@ -3478,9 +3498,6 @@ def chat():
         persist_lang = lang
         persist_profile = profile if isinstance(profile, dict) else {}
         persist_conversation = history if isinstance(history, list) else []  # recent window (Addendum 02 A2-1)
-        # M5 Observatory — pseudonymous subject for analytics (hashed at write time, no PII).
-        persist_analytics_subject = (("user", str(g.user["id"])) if g.get("user")
-                                     else ("device", g.device_id or _client_ip()))
 
         def _persist_reply(reply_text, authoritative_plan=None):
             """Store the exchange to the account so the coach remembers it across
