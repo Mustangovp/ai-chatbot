@@ -134,7 +134,7 @@ def admin_hse_review():
                              request.values.get("verdict", ""), request.values.get("note"),
                              reviewer="admin")
     except Exception as e:
-        print(f"[hse-obs] review failed: {e}")
+        print(f"[hse-obs] review failed: {type(e).__name__}")
     return redirect(f"/admin/hse?key={token}")
 
 

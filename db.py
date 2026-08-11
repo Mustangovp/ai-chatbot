@@ -16,7 +16,7 @@ Design guarantees requested for 1.0:
 import os, uuid, hashlib, secrets, datetime as _dt
 from sqlalchemy import (
     create_engine, MetaData, Table, Column, String, Integer, Boolean, Float,
-    DateTime, JSON, ForeignKey, UniqueConstraint, Index, func, select, update, insert, inspect, text
+    DateTime, JSON, ForeignKey, UniqueConstraint, Index, func, select, update, insert, delete, inspect, text
 )
 from sqlalchemy.types import Uuid
 from sqlalchemy.exc import IntegrityError
@@ -278,6 +278,7 @@ human_state = Table("human_state", metadata,
     Column("source", String(24)),                      # message|checkin|coach_obs
     Column("observed_at", DateTime(timezone=True)),
     Column("ttl_seconds", Integer),
+    # Compatibility column only. HSE stores bounded values, never source-language notes.
     Column("note", String(120)),
     Column("updated_at", DateTime(timezone=True), server_default=func.now(), onupdate=func.now()),
     UniqueConstraint("subject", "key", name="uq_human_state_subject_key"),
@@ -289,7 +290,8 @@ human_state = Table("human_state", metadata,
 human_state_events = Table("human_state_events", metadata,
     _uuid_col(),
     Column("subject", String(64), nullable=False),
-    Column("message", String(4000)),                    # raw message, for reviewer inspection (admin-only)
+    # Compatibility column only. Raw conversation content is never persisted here.
+    Column("message", String(4000)),
     Column("transitions", JSON),                        # [{key, extracted_value, confidence, ttl, prev_*, action, final_value}]
     Column("latency_ms", Float),
     Column("created_at", DateTime(timezone=True), server_default=func.now()),
@@ -329,6 +331,7 @@ _MIGRATIONS = [
     (10, lambda c: None), # NutritionPlan v1 table (created by create_all)
     (11, lambda c: None), # shared safety-critical conversation runtime state
     (12, lambda c: _add_runtime_workout_blueprint(c)),
+    (13, lambda c: _remove_legacy_hse_free_text(c)),
 ]
 
 
@@ -339,6 +342,13 @@ def _add_runtime_workout_blueprint(connection):
     if "workout_blueprint" not in columns:
         connection.execute(text(
             "ALTER TABLE conversation_runtime_state ADD COLUMN workout_blueprint JSON"))
+
+
+def _remove_legacy_hse_free_text(connection):
+    """Erase legacy raw HSE text. New writes never populate these compatibility fields."""
+    connection.execute(text("UPDATE human_state_events SET message = NULL"))
+    connection.execute(text("UPDATE human_state SET note = NULL"))
+    connection.execute(text("UPDATE human_state_reviews SET note = NULL"))
 
 def run_migrations():
     """Create the base schema, then apply any pending versioned migrations.
@@ -928,11 +938,13 @@ def hs_get_all(subject):
 
 
 def hs_upsert(subject, key, value, confidence, source, observed_at, ttl_seconds, note=None):
+    """Persist a bounded state value. ``note`` remains accepted for compatibility
+    but is deliberately never stored: it may contain source-language text."""
     t = human_state
     with engine.begin() as c:
         exists = c.execute(select(t.c.id).where(t.c.subject == subject).where(t.c.key == key)).first()
         vals = dict(value=value, confidence=float(confidence), source=source,
-                    observed_at=observed_at, ttl_seconds=int(ttl_seconds), note=note)
+                    observed_at=observed_at, ttl_seconds=int(ttl_seconds), note=None)
         if exists:
             c.execute(update(t).where(t.c.subject == subject).where(t.c.key == key).values(**vals))
         else:
@@ -940,20 +952,84 @@ def hs_upsert(subject, key, value, confidence, source, observed_at, ttl_seconds,
 
 
 # ── BUILD-002 Human State Observatory — audit log + reviews ──────────────────
-def hse_log_event(subject, message, transitions, latency_ms):
+_HSE_TRANSITION_FIELDS = (
+    "key", "extracted_value", "confidence", "ttl_seconds", "source",
+    "prev_value", "prev_confidence", "prev_effective", "action", "final_value",
+)
+
+
+def _bounded_hse_value(value):
+    """Keep event history structured and bounded; never retain transcript fragments."""
+    if value is None or isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return value if -1000000 <= value <= 1000000 else None
+    if isinstance(value, float):
+        return round(value, 4) if -1000000 <= value <= 1000000 else None
+    if isinstance(value, str):
+        return value[:64] if len(value) <= 64 else None
+    if isinstance(value, dict):
+        # Existing preference values are the sole multi-value contract. Keep them
+        # bounded without admitting arbitrary nested conversation content.
+        bounded = {}
+        for key in ("avoid", "prefer"):
+            item = value.get(key)
+            if isinstance(item, str) and item and len(item) <= 32:
+                bounded[key] = item
+        return bounded or None
+    return None
+
+
+def _bounded_hse_transitions(transitions):
+    out = []
+    for transition in transitions or []:
+        if not isinstance(transition, dict):
+            continue
+        key = transition.get("key")
+        if not isinstance(key, str) or not key or len(key) > 48:
+            continue
+        item = {"key": key}
+        for field in _HSE_TRANSITION_FIELDS:
+            if field == "key" or field not in transition:
+                continue
+            value = transition[field]
+            if field in {"extracted_value", "prev_value", "final_value"}:
+                value = _bounded_hse_value(value)
+            elif field == "confidence" or field == "prev_confidence" or field == "prev_effective":
+                try:
+                    value = round(float(value), 4) if value is not None else None
+                except (TypeError, ValueError):
+                    value = None
+            elif field == "ttl_seconds":
+                try:
+                    value = max(1, min(int(value), 180 * 24 * 60 * 60))
+                except (TypeError, ValueError):
+                    value = None
+            elif field in {"source", "action"}:
+                value = str(value)[:24] if value is not None else None
+            item[field] = value
+        out.append(item)
+    return out
+
+
+def hse_log_event(subject, transitions, latency_ms):
+    """Persist only bounded derived transitions, never the source message."""
     eid = uuid.uuid4()
     with engine.begin() as c:
         c.execute(insert(human_state_events).values(
-            id=eid, subject=subject, message=(message or "")[:4000],
-            transitions=transitions, latency_ms=float(latency_ms) if latency_ms is not None else None))
+            id=eid, subject=subject, message=None,
+            transitions=_bounded_hse_transitions(transitions),
+            latency_ms=float(latency_ms) if latency_ms is not None else None))
     return str(eid)
 
 
 def hse_recent_events(limit=50, subject=None):
+    """Return a single subject's event history only. Unscoped individual-event
+    retrieval is intentionally unavailable; use aggregate observability instead."""
+    if not subject:
+        return []
     t = human_state_events
-    q = select(t).order_by(t.c.created_at.desc()).limit(limit)
-    if subject:
-        q = select(t).where(t.c.subject == subject).order_by(t.c.created_at.asc()).limit(limit)
+    q = select(t).where(t.c.subject == subject).order_by(t.c.created_at.asc()).limit(limit)
     with engine.begin() as c:
         return [_serial(dict(r)) for r in c.execute(q).mappings().all()]
 
@@ -962,16 +1038,97 @@ def hse_add_review(event_id, key, verdict, note=None, reviewer=None):
     with engine.begin() as c:
         c.execute(insert(human_state_reviews).values(
             id=uuid.uuid4(), event_id=_as_uuid(event_id) if event_id else None,
-            key=key, verdict=verdict, note=(note or "")[:240], reviewer=(reviewer or "admin")[:48]))
+            key=key, verdict=verdict, note=None, reviewer=(reviewer or "admin")[:48]))
 
 
-def hse_all_reviews(limit=5000):
+def hse_reviews_for_events(event_ids, limit=5000):
+    """Return reviews only for explicitly scoped event ids."""
+    event_ids = [_as_uuid(event_id) for event_id in event_ids or [] if event_id]
+    if not event_ids:
+        return []
     t = human_state_reviews
     with engine.begin() as c:
         return [_serial(dict(r)) for r in
-                c.execute(select(t).order_by(t.c.created_at.desc()).limit(limit)).mappings().all()]
+                c.execute(select(t).where(t.c.event_id.in_(event_ids)).order_by(t.c.created_at.desc()).limit(limit)).mappings().all()]
+
+
+def _hse_events_for_aggregate(limit=5000):
+    """Private helper for aggregate-only observability; never returned directly."""
+    t = human_state_events
+    with engine.begin() as c:
+        return [_serial(dict(r)) for r in c.execute(
+            select(t).order_by(t.c.created_at.desc()).limit(limit)).mappings().all()]
+
+
+def _hse_reviews_for_aggregate(limit=5000):
+    """Private helper for aggregate-only observability; never returned directly."""
+    t = human_state_reviews
+    with engine.begin() as c:
+        return [_serial(dict(r)) for r in c.execute(
+            select(t).order_by(t.c.created_at.desc()).limit(limit)).mappings().all()]
 
 
 def hse_event_count():
     with engine.begin() as c:
         return c.execute(select(func.count()).select_from(human_state_events)).scalar() or 0
+
+
+HSE_EVENT_RETENTION_DAYS = 30
+
+
+def _aware_hse_time(value):
+    if value is not None and value.tzinfo is None:
+        return value.replace(tzinfo=_dt.timezone.utc)
+    return value
+
+
+def hse_cleanup_expired(now=None, subject=None):
+    """Physically remove expired HSE rows.
+
+    Current state follows its per-key TTL. Derived event history is retained for
+    the trajectory engine's 30-day analysis window, then purged with its reviews.
+    ``subject`` scopes cleanup for an anonymous device or one account; no subject
+    performs the same bounded lifecycle cleanup across HSE records.
+    """
+    at = _aware_hse_time(now) if now is not None else _dt.datetime.now(_dt.timezone.utc)
+    state_q = select(human_state.c.id, human_state.c.observed_at, human_state.c.ttl_seconds)
+    event_q = select(human_state_events.c.id, human_state_events.c.created_at)
+    if subject:
+        state_q = state_q.where(human_state.c.subject == subject)
+        event_q = event_q.where(human_state_events.c.subject == subject)
+    with engine.begin() as c:
+        stale_state_ids = [row.id for row in c.execute(state_q).all()
+                           if row.observed_at is None or
+                           _aware_hse_time(row.observed_at) + _dt.timedelta(seconds=max(1, row.ttl_seconds or 0)) <= at]
+        cutoff = at - _dt.timedelta(days=HSE_EVENT_RETENTION_DAYS)
+        stale_event_ids = [row.id for row in c.execute(event_q).all()
+                           if row.created_at is not None and _aware_hse_time(row.created_at) <= cutoff]
+        if stale_state_ids:
+            c.execute(delete(human_state).where(human_state.c.id.in_(stale_state_ids)))
+        if stale_event_ids:
+            c.execute(delete(human_state_reviews).where(human_state_reviews.c.event_id.in_(stale_event_ids)))
+            c.execute(delete(human_state_events).where(human_state_events.c.id.in_(stale_event_ids)))
+    return {"states_deleted": len(stale_state_ids), "events_deleted": len(stale_event_ids)}
+
+
+def hse_purge_subject(subject):
+    """Authoritatively erase all HSE-owned state, audit events, and reviews for one subject."""
+    with engine.begin() as c:
+        event_ids = [row.id for row in c.execute(
+            select(human_state_events.c.id).where(human_state_events.c.subject == subject)).all()]
+        reviews_deleted = 0
+        if event_ids:
+            reviews_deleted = c.execute(delete(human_state_reviews).where(
+                human_state_reviews.c.event_id.in_(event_ids))).rowcount or 0
+            events_deleted = c.execute(delete(human_state_events).where(
+                human_state_events.c.id.in_(event_ids))).rowcount or 0
+        else:
+            events_deleted = 0
+        states_deleted = c.execute(delete(human_state).where(human_state.c.subject == subject)).rowcount or 0
+    return {"states_deleted": states_deleted, "events_deleted": events_deleted,
+            "reviews_deleted": reviews_deleted}
+
+
+def hse_purge_user(user_id):
+    """Account-deletion primitive. No account-deletion runtime currently exists to wire."""
+    return hse_purge_subject(f"user:{user_id}")

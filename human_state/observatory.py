@@ -23,16 +23,16 @@ def enabled() -> bool:
 
 
 def capture(subject, message, now=None):
-    """Extract + ingest + record the full transition. Failure-isolated; returns the
+    """Extract + ingest + record bounded transitions. Failure-isolated; returns the
     apply result (also writes human_state, since audit implies ingestion)."""
     t0 = time.perf_counter()
     readings = extractor.extract(message, now=now)
     res = engine.apply(subject, readings, now=now)
     latency_ms = (time.perf_counter() - t0) * 1000.0
     try:
-        store.hse_log_event(subject, message, res.get("transitions", []), latency_ms)
+        store.hse_log_event(subject, res.get("transitions", []), latency_ms)
     except Exception as e:
-        print(f"[hse-obs] log failed: {e}")
+        print(f"[hse-obs] log failed: {type(e).__name__}")
     return res
 
 
@@ -104,20 +104,30 @@ def analytics(events, reviews):
 
 
 def report(subject=None, limit=60):
-    """Full dashboard payload. Read-only."""
+    """Scoped timeline or aggregate-only dashboard payload.
+
+    An unscoped report deliberately contains no individual events or reviews.
+    """
     try:
-        events = store.hse_recent_events(limit=limit)          # recent, all subjects
-        reviews = store.hse_all_reviews()
-        timeline = store.hse_recent_events(limit=200, subject=subject) if subject else []
+        if subject:
+            events = store.hse_recent_events(limit=limit, subject=subject)
+            reviews = store.hse_reviews_for_events([event["id"] for event in events])
+            timeline = store.hse_recent_events(limit=200, subject=subject)
+        else:
+            # Aggregation needs transitions/reviews internally, but individual
+            # user or device records never leave this function unscoped.
+            events = store._hse_events_for_aggregate(limit=limit)
+            reviews = store._hse_reviews_for_aggregate()
+            timeline = []
         return {
             "ok": True,
             "total_events": store.hse_event_count(),
-            "events": events,
+            "events": events if subject else [],
             "timeline": timeline,
             "timeline_subject": subject,
             "metrics": metrics(events, reviews),
             "analytics": analytics(events, reviews),
         }
     except Exception as e:
-        print(f"[hse-obs] report failed: {e}")
-        return {"ok": False, "error": str(e)}
+        print(f"[hse-obs] report failed: {type(e).__name__}")
+        return {"ok": False, "error": "report_unavailable"}

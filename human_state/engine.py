@@ -60,7 +60,7 @@ def apply(subject, readings, now=None):
             if action in ("insert", "replace"):
                 store.hs_upsert(subject, skey, value=r.value, confidence=r.confidence,
                                 source=r.source, observed_at=r.observed_at,
-                                ttl_seconds=r.ttl_seconds, note=r.note)
+                                ttl_seconds=r.ttl_seconds)
                 applied.append(skey)
                 final = r.value
             else:

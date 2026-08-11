@@ -3558,7 +3558,7 @@ def chat():
                 elif human_state.enabled():
                     human_state.ingest(_hs_subj, persist_user_msg, source="message")
             except Exception as _he:
-                print(f"[hse] ingest failed: {_he}")
+                print(f"[hse] ingest failed: {type(_he).__name__}")
 
         def generate():
             full = []

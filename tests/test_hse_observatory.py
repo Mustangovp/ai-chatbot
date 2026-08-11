@@ -17,8 +17,9 @@ def _t(**kw):
 # ── capture writes a full, traceable transition ──────────────────────────────
 def test_capture_records_traceable_transition():
     obs.capture("device:o1", "I'm exhausted", now=_t())
-    ev = store.hse_recent_events(limit=5)
+    ev = store.hse_recent_events(limit=5, subject="device:o1")
     assert ev and ev[0]["subject"] == "device:o1"
+    assert ev[0]["message"] is None
     tr = ev[0]["transitions"][0]
     # every field needed to explain the update is present (no hidden inference)
     for f in ("key", "extracted_value", "confidence", "ttl_seconds", "prev_value",
@@ -33,9 +34,10 @@ def test_transition_shows_conflict_resolution():
     now = _t()
     obs.capture("device:o2", "I'm exhausted", now=now)                     # high conf insert
     obs.capture("device:o2", "kind of tired", now=now + _dt.timedelta(minutes=5))  # hedged -> keep
-    ev = store.hse_recent_events(limit=1, subject=None)
+    # Scoped history remains available; unscoped individual event retrieval is blocked.
+    assert store.hse_recent_events(limit=1, subject=None) == []
     # most recent event's transition should show action=keep (never-downgrade)
-    last = store.hse_recent_events(limit=5)[0]
+    last = store.hse_recent_events(limit=5, subject="device:o2")[-1]
     assert last["transitions"][0]["action"] == "keep"
     assert last["transitions"][0]["prev_value"] == "high"
 
@@ -48,7 +50,7 @@ def test_apply_return_is_backward_compatible():
 
 # ── metrics from reviewer marks ──────────────────────────────────────────────
 def test_metrics_precision_recall_from_reviews():
-    eid = store.hse_log_event("device:o4", "msg",
+    eid = store.hse_log_event("device:o4",
                               [{"key": "sleep", "extracted_value": "4", "confidence": 0.9,
                                 "ttl_seconds": 3600, "prev_value": None, "prev_effective": 0.0,
                                 "action": "insert", "final_value": "4"}], 3.2)
@@ -63,7 +65,7 @@ def test_metrics_precision_recall_from_reviews():
 
 
 def test_calibration_buckets_by_extractor_confidence():
-    eid = store.hse_log_event("device:o5", "m",
+    eid = store.hse_log_event("device:o5",
                               [{"key": "sleep", "extracted_value": "5", "confidence": 0.9,
                                 "ttl_seconds": 3600, "prev_value": None, "prev_effective": 0.0,
                                 "action": "insert", "final_value": "5"}], 2.0)
@@ -74,7 +76,7 @@ def test_calibration_buckets_by_extractor_confidence():
 
 # ── analytics ────────────────────────────────────────────────────────────────
 def test_analytics_missed_and_uncertain():
-    eid = store.hse_log_event("device:o6", "m",
+    eid = store.hse_log_event("device:o6",
                               [{"key": "motivation", "extracted_value": "low", "confidence": 0.55,
                                 "ttl_seconds": 3600, "prev_value": None, "prev_effective": 0.0,
                                 "action": "insert", "final_value": "low"}], 1.0)
@@ -90,13 +92,14 @@ def test_timeline_is_chronological_for_subject():
     obs.capture("device:o7", "I'm sick", now=now)
     obs.capture("device:o7", "I'm travelling", now=now + _dt.timedelta(minutes=1))
     r = obs.report(subject="device:o7")
-    msgs = [e["message"] for e in r["timeline"]]
-    assert msgs == ["I'm sick", "I'm travelling"]           # ascending order
+    assert [e["message"] for e in r["timeline"]] == [None, None]
+    assert [e["transitions"][0]["key"] for e in r["timeline"]] == ["illness", "travel"]
 
 
 # ── reviewer mode persists ───────────────────────────────────────────────────
 def test_review_persists():
-    eid = store.hse_log_event("device:o8", "m", [], 0.0)
+    eid = store.hse_log_event("device:o8", [], 0.0)
     store.hse_add_review(eid, "sleep", "partial", note="close")
-    revs = store.hse_all_reviews()
+    revs = store.hse_reviews_for_events([eid])
     assert any(rv["verdict"] == "partial" and rv["key"] == "sleep" for rv in revs)
+    assert revs[0]["note"] is None

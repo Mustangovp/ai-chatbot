@@ -156,5 +156,5 @@ def compute(subject, window_days=30, now=None):
                 "recovery_direction": rec_dir, "adherence_direction": adh_dir,
                 "confidence_direction": conf_dir, "risk": {"level": level, "reasons": reasons}}
     except Exception as e:
-        print(f"[trajectory] compute failed: {e}")
-        return {"ok": False, "error": str(e)}
+        print(f"[trajectory] compute failed: {type(e).__name__}")
+        return {"ok": False, "error": "trajectory_unavailable"}
