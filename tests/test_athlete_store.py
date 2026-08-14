@@ -42,3 +42,12 @@ def test_observe_malformed_does_not_raise():
     # athlete_store must isolate it and return None, never propagate.
     res = athlete_store.observe(uid, "workout_completed", {"exercises": "not-a-list"})
     assert res is None
+
+
+def test_core_presence_projection_reads_persisted_state_without_writing():
+    uid = _uid("core-projection@example.com")
+    state = am.fresh_state()
+    state["vars"]["stress"].update(value=0.80, confidence=0.60)
+    store.save_athlete_state(uid, state)
+
+    assert athlete_store.core_presence_projection(uid) == {"recovery_bias": "protective"}

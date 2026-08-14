@@ -195,6 +195,7 @@ class ProgressionPolicy:
     deload_after_progression_cycles: int = 4
     rotate_after_weeks: int = 8
     maximum_set_progression_stage: int = 2
+    allow_single_effort_signal: bool = False
 
     def __post_init__(self) -> None:
         if not self.version or self.repetition_increment < 1 or self.maximum_sets < 1:
@@ -210,6 +211,8 @@ class ProgressionPolicy:
             object.__setattr__(self, field, value)
         if not 0 <= self.minimum_progress_rir <= 10:
             raise ValueError("minimum progression RIR is invalid")
+        if not isinstance(self.allow_single_effort_signal, bool):
+            raise ValueError("single-effort policy setting must be boolean")
 
 
 DEFAULT_PROGRESSION_POLICY = ProgressionPolicy()
@@ -326,10 +329,14 @@ class ProgressionEngine:
             return cls._build(ProgressionDecisionType.MAINTAIN, "recovery_fatigued", prescription, plan, policy)
         if not latest_result.completed or not latest.completed:
             return cls._build(ProgressionDecisionType.MAINTAIN, "workout_incomplete", prescription, plan, policy)
-        if latest.achieved_rir is None or latest.achieved_rpe is None:
+        if latest.achieved_rir is None and latest.achieved_rpe is None:
             return cls._build(ProgressionDecisionType.MAINTAIN, "effort_not_recorded", prescription, plan, policy)
-        if latest.achieved_rir < policy.minimum_progress_rir or latest.achieved_rpe > policy.maximum_progress_rpe:
+        if (latest.achieved_rir is not None and latest.achieved_rir < policy.minimum_progress_rir) or (
+                latest.achieved_rpe is not None and latest.achieved_rpe > policy.maximum_progress_rpe):
             return cls._build(ProgressionDecisionType.MAINTAIN, "effort_not_ready_for_progression", prescription, plan, policy)
+        if (not policy.allow_single_effort_signal
+                and (latest.achieved_rir is None or latest.achieved_rpe is None)):
+            return cls._build(ProgressionDecisionType.MAINTAIN, "effort_not_recorded", prescription, plan, policy)
         if latest.completed_repetitions < prescription.rep_max:
             return cls._build(ProgressionDecisionType.INCREASE_REPETITIONS, "repetition_range_not_reached",
                               prescription, plan, policy, repetitions=policy.repetition_increment)

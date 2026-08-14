@@ -291,6 +291,31 @@ def project_physiology(state):
             "stress": round(stress, 3), "confidence": round(conf, 3)}
 
 
+def core_presence_projection(state):
+    """Return the small, confidence-gated server bias allowed into the Core.
+
+    This is deliberately not ``public_view``: no raw values, confidence,
+    provenance, health labels, or readiness score cross the browser boundary.
+    An absent projection means the existing Core behavior remains authoritative.
+    """
+    V = state.get("vars", {}) if isinstance(state, dict) else {}
+
+    def qualified(name, predicate):
+        value = V.get(name)
+        return (isinstance(value, dict) and value.get("confidence", 0) >= 0.40
+                and predicate(value.get("value", 0)))
+
+    projection = {}
+    if (qualified("physical_fatigue", lambda value: value >= 0.65)
+            or qualified("sleep_quality", lambda value: value <= 0.35)
+            or qualified("stress", lambda value: value >= 0.70)):
+        projection["recovery_bias"] = "protective"
+    if (qualified("motivation", lambda value: value >= 0.65)
+            or qualified("consistency", lambda value: value >= 0.65)):
+        projection["attention_bias"] = "focused"
+    return projection or None
+
+
 def public_view(state):
     """The API shape: every variable with value, confidence and dominant provenance."""
     out = {}

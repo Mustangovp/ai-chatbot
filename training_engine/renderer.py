@@ -6,6 +6,7 @@ import json
 from .construction import TrainingPlanBlueprintV2
 from .completion import completion_projection
 from .registry import ExerciseLibrary
+from .rationale import validate_recommendation_rationale
 
 
 _BULGARIAN_EXERCISE_NAMES = {
@@ -91,7 +92,8 @@ def _render_text_delivery(plan: TrainingPlanBlueprintV2, library: ExerciseLibrar
 
 
 def render_completion_projection(plan: TrainingPlanBlueprintV2, library: ExerciseLibrary,
-                                 language: str = "en") -> dict:
+                                 language: str = "en",
+                                 recommendation_rationale: object = None) -> dict:
     """Internal browser metadata; it is emitted outside visible workout text."""
     projection = completion_projection(plan, library)
     sessions = []
@@ -104,7 +106,11 @@ def render_completion_projection(plan: TrainingPlanBlueprintV2, library: Exercis
                 "display_name": _display_name(exercise.exercise_id, exercise.display_name, language),
             })
         sessions.append({**session, "exercises": exercises})
-    return {**projection, "sessions": sessions}
+    rendered = {**projection, "sessions": sessions}
+    rationale = validate_recommendation_rationale(recommendation_rationale)
+    if rationale is not None:
+        rendered["recommendation_rationale"] = rationale
+    return rendered
 
 
 def render_delivery(plan: TrainingPlanBlueprintV2, library: ExerciseLibrary,

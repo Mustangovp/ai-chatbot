@@ -29,6 +29,7 @@ import decision_engine
 import conversation_composer
 import nutrition_conversation
 import nutrition_plan
+import athlete_model as athlete_model
 from training_engine import build_training_plan, load_exercise_library
 from recommend import diversity as recommendation_diversity
 from recommend.blueprint import NutritionBlueprint, WorkoutBlueprint, to_dict
@@ -386,6 +387,34 @@ def test_explicit_clinician_restriction_reaches_training_and_composer_without_re
     assert "[FIXED TRAINING PLAN]" in captured["system"]
 
 
+def test_training_completion_carries_only_validated_deterministic_rationale(client, captured, monkeypatch):
+    profile = _profile(equipment="gym", recoveryFeel="fresh",
+                       clinicianRestrictions="My doctor told me not to do overhead pressing.")
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": []}))
+
+    initial = _events(_post(client, "Build an upper-body workout.", profile=profile))
+    initial_rationale = initial[1]["training_completion"]["recommendation_rationale"]
+    assert initial_rationale["used"][0] == {"kind": "active_constraint", "value": "vertical_push"}
+    assert initial_rationale["changed"][0] == {"kind": "excluded_movement", "value": "vertical_push"}
+
+    scope = "rationale-followup-0001"
+    first = _events(client.post("/chat", json={
+        "message": "Build an upper-body workout.", "lang": "en", "profile": profile,
+        "conversation_id": scope,
+    }))
+    assert "training_completion" in first[1]
+    harder = _events(client.post("/chat", json={
+        "message": "Make it harder.", "lang": "en", "profile": profile,
+        "conversation_id": scope,
+    }))
+    rationale = harder[1]["training_completion"]["recommendation_rationale"]
+    assert rationale["reason_code"] == "progressed_within_constraints"
+    assert {item["kind"] for item in rationale["changed"]} == {
+        "excluded_movement", "difficulty_adjustment"}
+    assert "score" not in json.dumps(rationale).lower()
+
+
 def test_unsupported_clinician_restriction_blocks_training_with_terminal_sse(client, captured, monkeypatch):
     monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
     monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
@@ -442,6 +471,201 @@ def test_clinician_restriction_declared_after_a_workout_persists_into_harder_fol
     assert "dumbbell.overhead_press" not in exercise_ids
     assert "dumbbell.seated_press" not in exercise_ids
     assert harder[-1] == {"done": True}
+
+
+def test_authenticated_explicit_constraint_survives_a_new_conversation_and_reaches_training(
+        client, captured, monkeypatch):
+    uid = _login_for_chat(client, _profile(equipment="gym", recoveryFeel="fresh"))
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": []}))
+
+    declared = _events(client.post("/chat", json={
+        "message": "Avoid overhead pressing.", "lang": "en",
+        "conversation_id": "account-constraint-declare-0001",
+    }))
+    assert declared == [
+        {"t": appmod._explicit_health_restriction_acknowledgement("en")}, {"done": True},
+    ]
+    assert store.list_account_training_constraints(uid) == ("vertical_push",)
+
+    fresh = _events(client.post("/chat", json={
+        "message": "Give me a harder upper-body workout.", "lang": "en",
+        "conversation_id": "account-constraint-fresh-0002",
+    }))
+    completion = next(event["training_completion"] for event in fresh if "training_completion" in event)
+    exercise_ids = {
+        exercise["exercise_id"]
+        for session in completion["sessions"] for exercise in session["exercises"]
+    }
+    assert "dumbbell.overhead_press" not in exercise_ids
+    assert "dumbbell.seated_press" not in exercise_ids
+    assert fresh[-1] == {"done": True}
+
+
+def test_account_constraint_api_is_empty_by_default_and_client_payload_cannot_forge_it(client):
+    uid = _login_for_chat(client, _profile())
+    empty = client.get("/api/profile")
+    assert empty.status_code == 200
+    assert empty.get_json()["training_constraints"] == []
+
+    updated = client.put("/api/profile", json={
+        "profile": {**_profile(), "training_constraints": ["vertical_push"]},
+    })
+    assert updated.status_code == 200
+    assert store.list_account_training_constraints(uid) == ()
+    assert client.get("/api/profile").get_json()["training_constraints"] == []
+
+
+def test_authenticated_user_can_retire_an_explicit_constraint_and_plan_again_in_a_new_conversation(
+        client, captured, monkeypatch):
+    uid = _login_for_chat(client, _profile(equipment="gym", recoveryFeel="fresh"))
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": []}))
+    store.add_account_training_constraints(uid, ("vertical_push",))
+
+    records = client.get("/api/profile").get_json()["training_constraint_records"]
+    assert records == [{"id": records[0]["id"], "pattern": "vertical_push", "removable": True}]
+    retired = client.delete(f"/api/training-constraints/{records[0]['id']}")
+    assert retired.status_code == 200
+    assert retired.get_json()["retired"] is True
+    assert store.list_account_training_constraints(uid) == ()
+
+    fresh = _events(client.post("/chat", json={
+        "message": "Give me an upper-body workout.", "lang": "en",
+        "conversation_id": "retired-account-constraint-fresh-0001",
+    }))
+    completion = next(event["training_completion"] for event in fresh if "training_completion" in event)
+    assert completion["sessions"]
+    # Retirement restores eligibility; selection remains the deterministic
+    # planner's decision and is not required to include a vertical push.
+    assert "vertical_push" not in store.list_account_training_constraints(uid)
+
+
+def test_chat_retires_only_unambiguous_user_owned_constraint_intent(client, captured, monkeypatch):
+    uid = _login_for_chat(client, _profile())
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": []}))
+    store.add_account_training_constraints(uid, ("vertical_push",))
+
+    vague = _events(client.post("/chat", json={
+        "message": "I feel better with overhead pressing.", "lang": "en",
+        "conversation_id": "retired-account-constraint-vague-0001",
+    }))
+    assert store.list_account_training_constraints(uid) == ("vertical_push",)
+    assert vague[-1] == {"done": True}
+
+    cleared = _events(client.post("/chat", json={
+        "message": "Remove my overhead press restriction.", "lang": "en",
+        "conversation_id": "retired-account-constraint-clear-0002",
+    }))
+    assert store.list_account_training_constraints(uid) == ()
+    assert cleared == [{"t": appmod._account_training_constraint_retirement_reply("en")}, {"done": True}]
+
+    fresh = _events(client.post("/chat", json={
+        "message": "Give me an upper-body workout.", "lang": "en",
+        "conversation_id": "retired-account-constraint-after-chat-0003",
+    }))
+    completion = next(event["training_completion"] for event in fresh if "training_completion" in event)
+    assert completion["sessions"]
+    assert "vertical_push" not in store.list_account_training_constraints(uid)
+
+
+def test_constraint_retirement_is_idempotent_and_cannot_target_another_account(client):
+    owner = _login_for_chat(client, _profile())
+    store.add_account_training_constraints(owner, ("vertical_push",))
+    record = store.list_account_training_constraint_records(owner)[0]
+    first = client.delete(f"/api/training-constraints/{record['id']}")
+    second = client.delete(f"/api/training-constraints/{record['id']}")
+
+    assert first.status_code == 200 and first.get_json()["retired"] is True
+    assert second.status_code == 200 and second.get_json()["retired"] is False
+    assert client.delete("/api/training-constraints/not-a-uuid").status_code == 404
+    other = store.get_or_create_user("constraint-other@example.test")
+    store.add_account_training_constraints(other, ("vertical_push",), source="system")
+    other_record = store.list_account_training_constraint_records(other)[0]
+    blocked = client.delete(f"/api/training-constraints/{other_record['id']}")
+
+    assert blocked.status_code == 404
+    assert store.list_account_training_constraints(other) == ("vertical_push",)
+
+
+def test_non_user_owned_constraint_is_not_removable_through_the_api(client):
+    uid = _login_for_chat(client, _profile())
+    store.add_account_training_constraints(uid, ("vertical_push",), source="system")
+    record = store.list_account_training_constraint_records(uid)[0]
+
+    assert record["removable"] is False
+    assert client.delete(f"/api/training-constraints/{record['id']}").status_code == 404
+    assert store.list_account_training_constraints(uid) == ("vertical_push",)
+
+
+def test_profile_api_exposes_only_the_bounded_athlete_core_projection(client):
+    uid = _login_for_chat(client, _profile())
+    state = athlete_model.fresh_state()
+    state["vars"]["physical_fatigue"].update(value=0.80, confidence=0.60)
+    state["vars"]["motivation"].update(value=0.75, confidence=0.50)
+    store.save_athlete_state(uid, state)
+
+    payload = client.get("/api/profile").get_json()
+
+    assert payload["athlete_core"] == {
+        "recovery_bias": "protective", "attention_bias": "focused",
+    }
+    assert not {"value", "confidence", "source", "fatigue", "stress"} & set(payload["athlete_core"])
+
+
+def test_duplicate_and_malformed_account_constraints_are_safe_and_not_planned(client, captured, monkeypatch):
+    uid = _login_for_chat(client, _profile(equipment="gym", recoveryFeel="fresh"))
+    assert store.add_account_training_constraints(uid, ("vertical_push", "vertical_push")) == ("vertical_push",)
+    store.add_account_training_constraints(uid, ("malformed-pattern",))
+    assert appmod._account_training_constraint_patterns(uid) == ("vertical_push",)
+
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": []}))
+    events = _events(client.post("/chat", json={
+        "message": "Give me an upper-body workout.", "lang": "en",
+        "conversation_id": "account-constraint-malformed-0001",
+    }))
+    ids = {
+        exercise["exercise_id"]
+        for session in next(event["training_completion"] for event in events if "training_completion" in event)["sessions"]
+        for exercise in session["exercises"]
+    }
+    assert "dumbbell.overhead_press" not in ids
+    assert "dumbbell.seated_press" not in ids
+
+
+def test_ordinary_preference_is_not_promoted_to_an_account_hard_constraint(client, captured, monkeypatch):
+    uid = _login_for_chat(client, _profile())
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": []}))
+
+    _events(client.post("/chat", json={
+        "message": "I prefer dumbbells.", "lang": "en",
+        "conversation_id": "account-constraint-preference-0001",
+    }))
+    assert store.list_account_training_constraints(uid) == ()
+
+
+def test_anonymous_explicit_constraint_remains_conversation_scoped(client, captured, monkeypatch):
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": []}))
+
+    _events(client.post("/chat", json={
+        "message": "Avoid overhead pressing. Give me an upper-body workout.", "lang": "en", "profile": _profile(),
+        "conversation_id": "anonymous-constraint-0001",
+    }))
+    events = _events(client.post("/chat", json={
+        "message": "Make it harder.", "lang": "en", "profile": _profile(),
+        "conversation_id": "anonymous-constraint-0001",
+    }))
+    completion = next(event["training_completion"] for event in events if "training_completion" in event)
+    ids = {
+        exercise["exercise_id"]
+        for session in completion["sessions"] for exercise in session["exercises"]
+    }
+    assert "dumbbell.overhead_press" not in ids
+    assert "dumbbell.seated_press" not in ids
 
 
 def test_brain_enforcement_rebuilds_a_clinician_restricted_initial_workout(client, captured, monkeypatch):
@@ -896,6 +1120,47 @@ def test_chat_applies_traceable_completed_workout_to_next_training_revision(clie
     assert events[-1] == {"done": True}
 
 
+def test_authenticated_chat_applies_only_comparable_persisted_completion_to_new_plan(
+        client, captured, monkeypatch):
+    profile = _profile(recoveryFeel="fresh")
+    uid = _login_for_chat(client, profile)
+    parent = build_training_plan(recommendation_blueprint_id="chat-cross-session", facts=profile)
+    projection = appmod.training_renderer.render_completion_projection(parent, load_exercise_library())
+    session = projection["sessions"][0]
+    persisted_completion = {
+        "workout_id": "chat-cross-session-1", "plan_id": parent.plan_id,
+        "plan_version": parent.version, "session_id": session["session_id"],
+        "completion_timestamp": datetime.now(timezone.utc).isoformat(),
+        "exercises": [{
+            "prescription_id": item["prescription_id"], "exercise_id": item["exercise_id"],
+            "exercise_version": item["exercise_version"],
+            "completed_sets": item["prescribed_sets"], "completed_repetitions": item["rep_max"],
+            "completed_load": None, "completed_rpe": "6", "completed_rir": 4,
+        } for item in session["exercises"]],
+    }
+    store.log_workout(uid, {
+        "type": "deterministic", "completion": 100,
+        "exercises": {"workout_completion": persisted_completion},
+    })
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod, "_active_training_plan", lambda *_args, **_kwargs: parent)
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": []}))
+
+    response = _post(client, "Build an upper-body workout.", profile=profile)
+    events = _events(response)
+    completion = events[1]["training_completion"]
+    rendered_first = completion["sessions"][0]["exercises"]
+    parent_first = projection["sessions"][0]["exercises"]
+
+    assert response.status_code == 200
+    assert events[-1] == {"done": True}
+    assert all(after["prescribed_sets"] == before["prescribed_sets"] + 1
+               for after, before in zip(rendered_first, parent_first))
+    assert completion["recommendation_rationale"]["reason_code"] == "cross_session_progressed"
+    assert completion["recommendation_rationale"]["changed"] == [
+        {"kind": "cross_session_progression", "value": "sets"}]
+
+
 def test_api_workout_accepts_and_preserves_the_immutable_completion_contract(client, monkeypatch):
     profile = _profile(recoveryFeel="fresh")
     _login_for_chat(client, profile)
@@ -909,7 +1174,7 @@ def test_api_workout_accepts_and_preserves_the_immutable_completion_contract(cli
             "prescription_id": item["prescription_id"], "exercise_id": item["exercise_id"],
             "exercise_version": item["exercise_version"], "completed_sets": item["prescribed_sets"],
             "completed_repetitions": item["rep_max"], "completed_load": None,
-            "completed_rpe": None, "completed_rir": None,
+            "completed_rpe": "6", "completed_rir": 4,
         } for item in session["exercises"]],
     }
     captured = {}
@@ -920,6 +1185,33 @@ def test_api_workout_accepts_and_preserves_the_immutable_completion_contract(cli
 
     assert response.status_code == 200
     assert captured["session"]["workout_completion"] == completion
+
+
+def test_api_workout_rejects_malformed_explicit_effort_without_persisting(client, monkeypatch):
+    profile = _profile(recoveryFeel="fresh")
+    _login_for_chat(client, profile)
+    plan = build_training_plan(recommendation_blueprint_id="api-invalid-effort", facts=profile)
+    projection = appmod.training_renderer.render_completion_projection(plan, load_exercise_library())
+    session = projection["sessions"][0]
+    completion = {
+        "workout_id": "api-invalid-effort-1", "plan_id": plan.plan_id,
+        "plan_version": plan.version, "session_id": session["session_id"],
+        "completion_timestamp": "2026-07-20T10:00:00Z",
+        "exercises": [{
+            "prescription_id": item["prescription_id"], "exercise_id": item["exercise_id"],
+            "exercise_version": item["exercise_version"], "completed_sets": item["prescribed_sets"],
+            "completed_repetitions": item["rep_max"], "completed_load": None,
+            "completed_rpe": "not-a-number", "completed_rir": 4,
+        } for item in session["exercises"]],
+    }
+    monkeypatch.setattr(appmod.store, "log_workout", lambda *_args: pytest.fail("invalid payload persisted"))
+
+    response = client.post("/api/workout", json={
+        "session": {"type": "full body", "exercises": []}, "workout_completion": completion,
+    })
+
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "invalid_workout_completion"}
 
 
 def test_api_history_post_uses_the_authenticated_workout_persistence_contract(client, monkeypatch):
@@ -1841,11 +2133,16 @@ def test_chat_context_builder_preserves_anonymous_legacy_messages(client, captur
     response = client.post("/chat", json={"message": message, "lang": "en",
                                            "profile": profile, "history": history})
     assert response.status_code == 200, label
+    response.get_data()
     assert captured["messages"] == expected
 
 
-@pytest.mark.parametrize("plan,cap", [("free", 12), ("core", 10), ("pro", 60)])
-def test_chat_context_builder_preserves_authenticated_prompt_and_history_limit(client, captured, plan, cap):
+@pytest.mark.parametrize("plan", ["free", "core", "pro"])
+def test_chat_context_builder_preserves_authenticated_prompt_and_history_limit(client, captured, plan):
+    # The active chat contract uses the standard 12-turn window unless the
+    # separate elite entitlement is present. A subscription record alone does
+    # not grant that internal entitlement.
+    cap = 12
     db_profile = {**_profile(), "name": "DB User"}
     uid = _login_for_chat(client, db_profile, plan)
     for i in range(65):
@@ -1867,6 +2164,7 @@ def test_chat_context_builder_preserves_authenticated_prompt_and_history_limit(c
                                            "profile": _profile(goal="fat_loss"),
                                            "history": [{"role": "user", "content": "browser"}]})
     assert response.status_code == 200
+    response.get_data()
     assert captured["messages"] == expected
     assert [m["content"] for m in captured["messages"][1:-1]] == [m["content"] for m in legacy_history]
 

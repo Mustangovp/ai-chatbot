@@ -43,6 +43,11 @@ def physiology(user_id):
     return am.project_physiology(load(user_id))
 
 
+def core_presence_projection(user_id):
+    """READ-ONLY, bounded browser projection; no raw AthleteModel state leaves here."""
+    return am.core_presence_projection(load(user_id))
+
+
 def signals(user_id):
     """READ-ONLY: confidence-gated coach signals."""
     return am.coach_signals(load(user_id))

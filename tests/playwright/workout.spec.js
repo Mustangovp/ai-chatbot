@@ -71,6 +71,97 @@ test.describe('APEX approved app shell — UX regression', () => {
     await expect(page.locator('.start-wo')).toBeVisible();
   });
 
+  test('account training constraints stay hidden when empty and expose removal only for user-owned records', async ({ page }) => {
+    await page.evaluate(() => renderTrainingConstraints([]));
+    await expect(page.locator('#training-constraints')).toBeHidden();
+
+    await page.evaluate(() => { renderTrainingConstraints([
+      { id: 'user-constraint-1', pattern: 'vertical_push', removable: true },
+      { id: 'safety-constraint-1', pattern: 'horizontal_push', removable: false },
+      { id: 'unknown-constraint-1', pattern: 'unknown-pattern', removable: true }
+    ]); openProfile(0); });
+    await expect(page.locator('#training-constraints')).toBeVisible();
+    await expect(page.locator('#training-constraints')).toContainText(/Active training constraints|Активни тренировъчни ограничения/);
+    await expect(page.locator('#training-constraints-list li')).toHaveCount(2);
+    await expect(page.locator('#training-constraints-list')).toContainText(/overhead pressing|преси над глава/i);
+    await expect(page.locator('.training-constraint-remove')).toHaveCount(1);
+    await expect(page.locator('.training-constraint-remove')).toHaveAttribute('aria-label', /Remove restriction:.*overhead pressing|Премахни ограничението:.*преси над глава/i);
+  });
+
+  test('workout rationale is an accessible compact reveal and rejects malformed metadata', async ({ page }) => {
+    await page.evaluate(() => {
+      pendingTrainingCompletion = { sessions: [], recommendation_rationale: {
+        version: 'training-rationale-v1',
+        used: [{ kind: 'active_constraint', value: 'vertical_push' }, { kind: 'recent_workout', value: 'previous_session' }],
+        changed: [{ kind: 'excluded_movement', value: 'vertical_push' }, { kind: 'difficulty_adjustment', value: 'increased' }],
+        reason_code: 'progressed_within_constraints'
+      }};
+      const el = appendCoach();
+      el.innerHTML = renderWorkout(
+        ['Exercise', 'Sets', 'Reps', 'Rest', 'Note'],
+        [['Wall Push-Up', '3', '12', '60', 'RPE 6, RIR 4; tempo 3-1-1-0']]
+      );
+    });
+    const rationale = page.locator('.workout-rationale');
+    await expect(rationale).toBeVisible();
+    await expect(rationale.locator('summary')).toContainText(/Why this plan|Защо този план/);
+    await expect(rationale).not.toHaveAttribute('open', '');
+    await rationale.locator('summary').click();
+    await expect(rationale).toHaveAttribute('open', '');
+    await expect(rationale).toContainText(/overhead pressing|преса над глава/i);
+    const crossSession = await page.evaluate(() => workoutRationale({
+      version: 'training-rationale-v1',
+      used: [{ kind: 'comparable_session', value: 'comfortable_completed' }],
+      changed: [{ kind: 'cross_session_progression', value: 'sets' }],
+      reason_code: 'cross_session_progressed'
+    }));
+    expect(crossSession).toHaveLength(2);
+    expect(crossSession.join(' ')).toMatch(/comparable session|сравнима тренировка/i);
+    const malformed = await page.evaluate(() => workoutRationale({ version: 'training-rationale-v1', used: [], changed: [], reason_code: 'unsafe' }));
+    expect(malformed).toBeNull();
+  });
+
+  test('bounded AthleteModel projection biases Core expression without changing Core states', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      const originalFetch = window.fetch;
+      window.fetch = async (url, options) => {
+        if (String(url) === '/api/profile') return new Response(JSON.stringify({
+          profile: {}, training_constraints: [],
+          athlete_core: { recovery_bias: 'protective', attention_bias: 'focused' }
+        }), { status: 200 });
+        if (String(url) === '/api/history') return new Response(JSON.stringify({ workouts: [] }), { status: 200 });
+        if (String(url).startsWith('/api/conversations')) return new Response(JSON.stringify({ messages: [] }), { status: 200 });
+        return originalFetch(url, options);
+      };
+      SESSION = { authenticated: true, plan: 'free', status: 'free', email: 'core@example.test' };
+      await syncFromAccount();
+      const p = core.presence;
+      p.base = 'waiting'; p.pending = null; p.reduced = false; p.update(.016);
+      const biased = { projection: p.serverProjection, state: p.base, rate: p.breath._rateT,
+        depth: p.breath._depthT, idle: p.attention._idleAmplitude };
+      const unchangedAccepted = core.setServerProjection({ recovery_bias: 'protective', attention_bias: 'focused' });
+      const invalidAccepted = core.setServerProjection({ recovery_bias: 'unknown', core_state: 'recovering' });
+      p.reduced = true; p.base = 'waiting'; p.update(.016);
+      const reduced = { state: p.base, rate: p.breath._rateT, depth: p.breath._depthT,
+        idle: p.attention._idleAmplitude };
+      window.fetch = originalFetch;
+      return { biased, unchangedAccepted, invalidAccepted, reduced, states: Object.keys(p.S) };
+    });
+
+    expect(result.biased.projection).toEqual({ recovery_bias: 'protective', attention_bias: 'focused' });
+    expect(result.biased.state).toBe('waiting');
+    expect(result.biased.rate).toBeLessThan(1);
+    expect(result.biased.depth).toBeLessThan(1);
+    expect(result.biased.idle).toBeLessThan(1);
+    expect(result.unchangedAccepted).toBe(false);
+    expect(result.invalidAccepted).toBe(false);
+    expect(result.reduced.state).toBe('waiting');
+    expect(result.reduced.rate).toBe(1);
+    expect(result.reduced.depth).toBe(1);
+    expect(result.reduced.idle).toBe(1);
+    expect(result.states).toEqual(['waiting', 'listening', 'thinking', 'answering', 'resting', 'recovering', 'goodbye']);
+  });
+
   test('WO-1B: classic muscle-group glyphs contain no exercise SVG and never request camera access', async ({ page }) => {
     await page.evaluate(() => {
       window.__cameraCalls = 0;
@@ -307,6 +398,86 @@ test.describe('APEX approved app shell — UX regression', () => {
       exercises: [{ prescription_id: 'prescription-test', exercise_id: 'exercise.push_up', exercise_version: '1.0.0' }]
     });
     expect(posted.workout_completion.exercises[0]).not.toHaveProperty('name');
+    expect(posted.workout_completion.exercises[0]).toMatchObject({ completed_rpe: null, completed_rir: null });
+  });
+
+  test('WO-2A: RPE-only effort reaches the immutable completion payload', async ({ page }) => {
+    const posted = await page.evaluate(async () => {
+      const projection = { plan_id: 'plan-effort', plan_version: 'v2', sessions: [{
+        session_id: 'session-effort', session_index: 1, exercises: [{
+          prescription_id: 'prescription-effort', exercise_id: 'exercise.push_up',
+          exercise_version: '1.0.0', display_name: 'Push-up', prescribed_sets: 1,
+          rep_min: 8, rep_max: 12, rest_seconds: 60
+        }]
+      }]};
+      pendingTrainingCompletion = projection;
+      pendingCompletionSessions = projection.sessions.slice();
+      const el = appendCoach();
+      el.innerHTML = renderMarkdown('| Exercise | Sets | Reps | Rest |\n| --- | --- | --- | --- |\n| Push-up | 1 | 8-12 | 60 |');
+      let sent = null;
+      const originalFetch = window.fetch;
+      window.fetch = async (url, options) => {
+        if (url === '/api/workout') { sent = JSON.parse(options.body); return new Response('{}', { status: 200 }); }
+        return originalFetch(url, options);
+      };
+      SESSION.authenticated = true;
+      startWorkout('session-effort');
+      document.getElementById('wo-rpe-in').value = '6';
+      completeSet();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      window.fetch = originalFetch;
+      return sent;
+    });
+
+    expect(posted.workout_completion.exercises[0]).toMatchObject({ completed_rpe: 6, completed_rir: null });
+  });
+
+  test('WO-2B: RIR-only effort reaches the immutable completion payload', async ({ page }) => {
+    const posted = await page.evaluate(async () => {
+      const projection = { plan_id: 'plan-rir-effort', plan_version: 'v2', sessions: [{
+        session_id: 'session-rir-effort', session_index: 1, exercises: [{
+          prescription_id: 'prescription-rir-effort', exercise_id: 'exercise.push_up',
+          exercise_version: '1.0.0', display_name: 'Push-up', prescribed_sets: 1,
+          rep_min: 8, rep_max: 12, rest_seconds: 60
+        }]
+      }]};
+      pendingTrainingCompletion = projection;
+      pendingCompletionSessions = projection.sessions.slice();
+      const el = appendCoach();
+      el.innerHTML = renderMarkdown('| Exercise | Sets | Reps | Rest |\n| --- | --- | --- | --- |\n| Push-up | 1 | 8-12 | 60 |');
+      let sent = null;
+      const originalFetch = window.fetch;
+      window.fetch = async (url, options) => {
+        if (url === '/api/workout') { sent = JSON.parse(options.body); return new Response('{}', { status: 200 }); }
+        return originalFetch(url, options);
+      };
+      SESSION.authenticated = true;
+      startWorkout('session-rir-effort');
+      document.getElementById('wo-rir-in').value = '4';
+      completeSet();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      window.fetch = originalFetch;
+      return sent;
+    });
+
+    expect(posted.workout_completion.exercises[0]).toMatchObject({ completed_rpe: null, completed_rir: 4 });
+  });
+
+  test('WO-2C: malformed local effort is discarded without blocking completion', async ({ page }) => {
+    const completion = await page.evaluate(() => {
+      let submitted = null;
+      const originalLogWorkout = window.logWorkout;
+      window.logWorkout = (_session, payload) => { submitted = payload; };
+      WO = { ex: [{ name: 'Push-up', sets: '1', completion: { prescription_id: 'p', exercise_id: 'e', exercise_version: 'v' },
+        completedSets: 1, reps: '10', weight: '', completedRpe: 'invalid', completedRir: '11' }],
+        contract: { plan_id: 'plan', plan_version: 'v', session_id: 'session' }, i: 0, set: 0, phase: 'work' };
+      sessionStart = Date.now();
+      finishWorkout();
+      window.logWorkout = originalLogWorkout;
+      return submitted.exercises[0];
+    });
+
+    expect(completion).toMatchObject({ completed_rpe: null, completed_rir: null });
   });
 
   test('WO-3: a traceable completion asks /chat for the next deterministic workout revision', async ({ page }) => {
@@ -1435,6 +1606,108 @@ test.describe('APEX approved app shell — UX regression', () => {
         session: expect.objectContaining({ type: 'strength', completion: 100 })
       })
     }));
+  });
+
+  test('ATH-CORE-REFRESH: successful profile and workout persistence refresh the bounded Core projection once', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      SESSION.authenticated = true;
+      core.presence.serverProjection = null;
+      const originalFetch = window.fetch;
+      const calls = [];
+      let reads = 0;
+      window.fetch = async (url, options = {}) => {
+        const method = options.method || 'GET';
+        calls.push([method, String(url)]);
+        if (method === 'PUT' && url === '/api/profile') {
+          return new Response(JSON.stringify({ ok: true }), { status: 200 });
+        }
+        if (method === 'POST' && url === '/api/workout') {
+          return new Response(JSON.stringify({ ok: true, id: 'workout-1' }), { status: 200 });
+        }
+        if (method === 'GET' && url === '/api/profile') {
+          reads += 1;
+          if (reads === 1) return new Response(JSON.stringify({ athlete_core: { recovery_bias: 'protective' } }), { status: 200 });
+          if (reads === 2) return new Response(JSON.stringify({ athlete_core: { attention_bias: 'focused' } }), { status: 200 });
+          if (reads === 3) return new Response(JSON.stringify({ athlete_core: { attention_bias: 'focused' } }), { status: 200 });
+          if (reads === 4) return new Response(JSON.stringify({ athlete_core: { core_state: 'recovering' } }), { status: 200 });
+          return new Response('{}', { status: 500 });
+        }
+        return originalFetch(url, options);
+      };
+
+      const profileRefreshed = await accountSaveProfile({ sleepQuality: 'poor' });
+      const afterProfile = core.presence.serverProjection;
+      const workoutRefreshed = await accountLogWorkout({ type: 'strength', exercises: [], completion: 100 });
+      const afterWorkout = core.presence.serverProjection;
+      const unchanged = await refreshAthleteCoreProjection();
+      const malformed = await refreshAthleteCoreProjection();
+      const failed = await refreshAthleteCoreProjection();
+      SESSION.authenticated = false;
+      const anonymous = await refreshAthleteCoreProjection();
+      window.fetch = originalFetch;
+      return { calls, profileRefreshed, afterProfile, workoutRefreshed, afterWorkout, unchanged, malformed, failed, anonymous };
+    });
+
+    expect(result.profileRefreshed).toBe(true);
+    expect(result.afterProfile).toEqual({ recovery_bias: 'protective' });
+    expect(result.workoutRefreshed).toBe(true);
+    expect(result.afterWorkout).toEqual({ attention_bias: 'focused' });
+    expect(result.unchanged).toBe(false);
+    expect(result.malformed).toBe(false);
+    expect(result.failed).toBe(false);
+    expect(result.anonymous).toBe(false);
+    expect(result.calls).toEqual([
+      ['PUT', '/api/profile'], ['GET', '/api/profile'],
+      ['POST', '/api/workout'], ['GET', '/api/profile'],
+      ['GET', '/api/profile'], ['GET', '/api/profile'], ['GET', '/api/profile']
+    ]);
+  });
+
+  test('ATH-CORE-REFRESH: terminal persisted chat turn refreshes the Core without refreshing a session greeting', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      SESSION.authenticated = true;
+      core.presence.serverProjection = null;
+      const originalFetch = window.fetch;
+      const originalLifecycle = {
+        waiting: ChatLifecycle.waiting,
+        content: ChatLifecycle.content,
+        complete: ChatLifecycle.complete,
+        fail: ChatLifecycle.fail
+      };
+      const calls = [];
+      ChatLifecycle.waiting = () => {};
+      ChatLifecycle.content = () => {};
+      ChatLifecycle.complete = () => {};
+      ChatLifecycle.fail = () => {};
+      window.fetch = async (url) => {
+        calls.push(String(url));
+        if (url === '/chat') {
+          return new Response('data: {"t":"Normal reply"}\n\ndata: {"done":true}\n\n', {
+            status: 200,
+            headers: { 'Content-Type': 'text/event-stream' }
+          });
+        }
+        if (url === '/api/profile') {
+          return new Response(JSON.stringify({ athlete_core: { attention_bias: 'focused' } }), { status: 200 });
+        }
+        throw new Error('unexpected fetch ' + url);
+      };
+      const turn = () => ({
+        controller: new AbortController(), watchdog: null, full: '',
+        state: CHAT_STATES.STREAMING, done: false
+      });
+      await runChatExchange(turn(), { message: 'Normal fitness turn' });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const afterTurn = core.presence.serverProjection;
+      await runChatExchange(turn(), { message: '', session_start: true });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      window.fetch = originalFetch;
+      Object.assign(ChatLifecycle, originalLifecycle);
+      return { calls, afterTurn };
+    });
+
+    expect(result.afterTurn).toEqual({ attention_bias: 'focused' });
+    expect(result.calls).toEqual(['/chat', '/api/profile', '/chat']);
   });
 
   test('AUTH-5: account profile language overrides an incognito browser default after login', async ({ page }) => {

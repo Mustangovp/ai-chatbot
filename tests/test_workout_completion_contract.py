@@ -74,3 +74,14 @@ def test_completion_without_optional_effort_replays_deterministically_without_cl
     assert first == second
     assert {item.reason for item in first.progression.decisions} == {"effort_not_recorded"}
     assert first.revision.revised_plan.parent_plan_id == plan.plan_id
+
+
+@pytest.mark.parametrize(("rpe", "rir"), (("6", None), (None, 4)))
+def test_standard_lifecycle_keeps_single_effort_signal_conservative(rpe, rir):
+    plan = _plan()
+    workout = workout_completion_from_payload(_payload(plan, rpe=rpe, rir=rir), plan=plan).to_workout_result()
+    recovery = RecoverySnapshot(RecoveryState.NORMALLY_RECOVERED, Decimal("30"), "recovery-policy-v1")
+
+    result = advance_training_lifecycle(plan=plan, workouts=(workout,), recovery=recovery)
+
+    assert {item.reason for item in result.progression.decisions} == {"effort_not_recorded"}

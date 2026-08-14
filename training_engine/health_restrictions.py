@@ -85,6 +85,12 @@ _DIRECT_RESTRICTION_MARKERS = (
     "shouldn't ", "should not ", "не искам ", "без ", "избягвам ",
 )
 
+_USER_CONSTRAINT_CLEARANCE_MARKERS = (
+    "remove my", "remove the", "remove this", "no longer want to avoid",
+    "okay again", "ok again", "can do it again",
+    "премахни", "махни", "вече е окей", "вече е добре",
+)
+
 # Every phrase maps to an existing MovementPattern and only removes candidates.
 # The matching is intentionally literal and closed; there is no medical or LLM
 # interpretation of the surrounding text.
@@ -207,6 +213,17 @@ def clinician_clearance_patterns(message: object) -> frozenset[MovementPattern]:
         if any(phrase in text for phrase in phrases))
 
 
+def explicit_user_constraint_clearance_patterns(message: object) -> frozenset[MovementPattern]:
+    """Recognize only unambiguous user-owned movement-exclusion retirement intent."""
+    text = str(message or "").casefold().strip()
+    if (not text or is_clinician_statement(text)
+            or not any(marker in text for marker in _USER_CONSTRAINT_CLEARANCE_MARKERS)):
+        return frozenset()
+    return frozenset(
+        pattern for pattern, phrases in _FIXED_PATTERN_MAP
+        if any(phrase in text for phrase in phrases))
+
+
 def remove_cleared_clinician_restrictions(
         restrictions: object, cleared_patterns: frozenset[MovementPattern], *, clinician_field: bool = False
 ) -> tuple[str, ...]:
@@ -268,6 +285,8 @@ def explicit_restrictions_from_message(message: object) -> tuple[str, ...]:
         return ()
     normalized = text.casefold()
     if clinician_clearance_patterns(text):
+        return ()
+    if explicit_user_constraint_clearance_patterns(text):
         return ()
     if any(marker in normalized for marker in _CLINICIAN_DECLARATION_MARKERS):
         return (text,)

@@ -79,7 +79,8 @@ def test_cascade_has_single_non_test_consumer():
     consumers = set()
     for py in _ROOT.rglob("*.py"):
         rel = py.relative_to(_ROOT).as_posix()
-        if rel.startswith("brain/") or rel.startswith("tests/") or "test_" in py.name:
+        if (rel.startswith("brain/") or rel.startswith("tests/") or "test_" in py.name
+                or any(part.startswith(".") for part in pathlib.PurePosixPath(rel).parts)):
             continue
         tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
         for node in ast.walk(tree):

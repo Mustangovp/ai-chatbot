@@ -206,6 +206,26 @@ conversation_runtime_state = Table("conversation_runtime_state", metadata,
     UniqueConstraint("subject", "conversation_id", name="uq_conversation_runtime_scope"),
 )
 
+# Account-owned, closed-vocabulary training exclusions.  The stored pattern is
+# always a deterministic training taxonomy key; free-form chat text never enters
+# this table.
+account_training_constraints = Table("account_training_constraints", metadata,
+    _uuid_col(),
+    Column("user_id", Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+    Column("pattern", String(48), nullable=False),
+    Column("source", String(32), nullable=False, default="explicit_user"),
+    Column("state", String(16), nullable=False, default="active"),
+    Column("retired_at", DateTime(timezone=True)),
+    Column("created_at", DateTime(timezone=True), server_default=func.now()),
+    Column("updated_at", DateTime(timezone=True), server_default=func.now(), onupdate=func.now()),
+    UniqueConstraint("user_id", "pattern", name="uq_account_training_constraint_pattern"),
+    Index("ix_account_training_constraints_user", "user_id"),
+)
+
+_ACCOUNT_TRAINING_CONSTRAINT_PATTERNS = frozenset({
+    "vertical_push", "horizontal_push", "vertical_pull", "squat", "lunge", "hinge",
+})
+
 # ── Brain substrate (M0) ──────────────────────────────────────────────────────
 # The Athlete Model state, one row per account. The browser is only a cache;
 # this row is the source of truth the Brain reads. Additive — nothing else moves.
@@ -333,6 +353,8 @@ _MIGRATIONS = [
     (11, lambda c: None), # shared safety-critical conversation runtime state
     (12, lambda c: _add_runtime_workout_blueprint(c)),
     (13, lambda c: _remove_legacy_hse_free_text(c)),
+    (14, lambda c: None), # account-owned canonical training constraints
+    (15, lambda c: _add_account_training_constraint_lifecycle(c)),
 ]
 
 
@@ -350,6 +372,21 @@ def _remove_legacy_hse_free_text(connection):
     connection.execute(text("UPDATE human_state_events SET message = NULL"))
     connection.execute(text("UPDATE human_state SET note = NULL"))
     connection.execute(text("UPDATE human_state_reviews SET note = NULL"))
+
+
+def _add_account_training_constraint_lifecycle(connection):
+    """Keep account exclusions auditable after a user explicitly retires one."""
+    columns = {column["name"] for column in inspect(connection).get_columns(
+        "account_training_constraints")}
+    if "state" not in columns:
+        connection.execute(text(
+            "ALTER TABLE account_training_constraints ADD COLUMN state VARCHAR(16) DEFAULT 'active'"))
+        connection.execute(text(
+            "UPDATE account_training_constraints SET state = 'active' WHERE state IS NULL"))
+    if "retired_at" not in columns:
+        retired_type = "TIMESTAMP WITH TIME ZONE" if connection.dialect.name == "postgresql" else "DATETIME"
+        connection.execute(text(
+            f"ALTER TABLE account_training_constraints ADD COLUMN retired_at {retired_type}"))
 
 def run_migrations():
     """Create the base schema, then apply any pending versioned migrations.
@@ -629,6 +666,95 @@ def save_profile(user_id, data: dict):
             c.execute(update(profiles).where(profiles.c.user_id == _as_uuid(user_id)).values(data=data))
         else:
             c.execute(insert(profiles).values(id=uuid.uuid4(), user_id=_as_uuid(user_id), data=data))
+
+
+def list_account_training_constraint_records(user_id, *, active_only=True):
+    """Return bounded account-owned constraint records without free-form chat text."""
+    with engine.begin() as c:
+        statement = select(
+            account_training_constraints.c.id,
+            account_training_constraints.c.pattern,
+            account_training_constraints.c.source,
+            account_training_constraints.c.state,
+        ).where(account_training_constraints.c.user_id == _as_uuid(user_id))
+        if active_only:
+            statement = statement.where(account_training_constraints.c.state == "active")
+        rows = c.execute(statement.order_by(account_training_constraints.c.created_at.asc())).mappings().all()
+    return tuple({
+        "id": str(row["id"]),
+        "pattern": str(row["pattern"]),
+        "source": str(row["source"]),
+        "state": str(row["state"]),
+        "removable": row["source"] == "explicit_user" and row["state"] == "active",
+    } for row in rows if row["pattern"] in _ACCOUNT_TRAINING_CONSTRAINT_PATTERNS)
+
+
+def list_account_training_constraints(user_id):
+    """Return only active canonical account-owned movement exclusions."""
+    return tuple(record["pattern"] for record in list_account_training_constraint_records(user_id))
+
+
+def add_account_training_constraints(user_id, patterns, source="explicit_user"):
+    """Insert closed-vocabulary patterns idempotently; no chat text is stored."""
+    normalized = tuple(dict.fromkeys(
+        str(pattern).strip() for pattern in (patterns or ())
+        if isinstance(pattern, str) and str(pattern).strip() in _ACCOUNT_TRAINING_CONSTRAINT_PATTERNS
+    ))
+    if not normalized:
+        return ()
+    user_uuid = _as_uuid(user_id)
+    for pattern in normalized:
+        try:
+            with engine.begin() as c:
+                c.execute(insert(account_training_constraints).values(
+                    id=uuid.uuid4(), user_id=user_uuid, pattern=pattern, source=source,
+                    state="active", retired_at=None))
+        except IntegrityError:
+            # A repeated declaration is benign. A prior user-owned retirement is
+            # explicitly reactivated by a fresh, explicit declaration.
+            with engine.begin() as c:
+                existing = c.execute(select(
+                    account_training_constraints.c.source,
+                    account_training_constraints.c.state,
+                ).where(
+                    account_training_constraints.c.user_id == user_uuid,
+                    account_training_constraints.c.pattern == pattern,
+                )).mappings().first()
+                if (existing and existing["source"] == "explicit_user"
+                        and existing["state"] == "retired" and source == "explicit_user"):
+                    c.execute(update(account_training_constraints).where(
+                        account_training_constraints.c.user_id == user_uuid,
+                        account_training_constraints.c.pattern == pattern,
+                    ).values(state="active", retired_at=None))
+    return list_account_training_constraints(user_id)
+
+
+def retire_account_training_constraint(user_id, constraint_id):
+    """Retire one active user-owned constraint; unknown/cross-account rows stay hidden."""
+    try:
+        constraint_uuid = _as_uuid(constraint_id)
+    except (TypeError, ValueError, AttributeError):
+        return None
+    with engine.begin() as c:
+        row = c.execute(select(
+            account_training_constraints.c.id,
+            account_training_constraints.c.pattern,
+            account_training_constraints.c.source,
+            account_training_constraints.c.state,
+        ).where(
+            account_training_constraints.c.id == constraint_uuid,
+            account_training_constraints.c.user_id == _as_uuid(user_id),
+        )).mappings().first()
+        if (not row or row["pattern"] not in _ACCOUNT_TRAINING_CONSTRAINT_PATTERNS
+                or row["source"] != "explicit_user"):
+            return None
+        retired = row["state"] == "active"
+        if retired:
+            c.execute(update(account_training_constraints).where(
+                account_training_constraints.c.id == constraint_uuid,
+                account_training_constraints.c.user_id == _as_uuid(user_id),
+            ).values(state="retired", retired_at=_now()))
+    return {"id": str(constraint_uuid), "pattern": str(row["pattern"]), "retired": retired}
 
 # ── Workout / nutrition / conversation / memory (the account timeline) ────────
 def log_workout(user_id, session: dict):

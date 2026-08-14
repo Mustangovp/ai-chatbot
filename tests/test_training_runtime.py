@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 
 import pytest
 
@@ -17,6 +18,9 @@ from training_engine import (
     state_for,
 )
 from training_engine.advisory import TrainingAdvisorySignals, persona_expert_training_signals
+from training_engine.completion import completion_projection
+from training_engine.cross_session import adapt_from_persisted_history
+from training_engine.rationale import build_recommendation_rationale, validate_recommendation_rationale
 from training_engine.health_restrictions import (
     FitnessLimitationState,
     UnsupportedHealthRestrictionError,
@@ -57,6 +61,38 @@ def _exercise_ids(plan):
 
 def _movement_patterns(plan):
     return {item.movement_pattern for session in plan.sessions for item in session.prescriptions}
+
+
+def _persisted_completion_record(plan, *, workout_id="cross-session-1", rpe=None, rir=None,
+                                 complete=True, occurred_at="2026-08-14T12:00:00+00:00"):
+    """Build the immutable shape saved by ``/api/workout`` without mutating history."""
+    projection = completion_projection(plan, load_exercise_library())
+    session = projection["sessions"][0]
+    exercises = []
+    for item in session["exercises"]:
+        exercises.append({
+            "prescription_id": item["prescription_id"],
+            "exercise_id": item["exercise_id"],
+            "exercise_version": item["exercise_version"],
+            "completed_sets": item["prescribed_sets"] if complete else item["prescribed_sets"] - 1,
+            "completed_repetitions": item["rep_max"],
+            "completed_load": None,
+            "completed_rpe": rpe,
+            "completed_rir": rir,
+        })
+    return {
+        "id": workout_id,
+        "completion": 100,
+        "occurred_at": occurred_at,
+        "exercises": {"workout_completion": {
+            "workout_id": workout_id,
+            "plan_id": plan.plan_id,
+            "plan_version": plan.version,
+            "session_id": session["session_id"],
+            "completion_timestamp": occurred_at,
+            "exercises": exercises,
+        }},
+    }
 
 
 def test_runtime_adapter_builds_a_deterministic_traceable_training_plan():
@@ -196,6 +232,148 @@ def test_renderer_localizes_bulgarian_delivery_and_completion_projection_togethe
     assert "Wall Push-Up" not in delivery
     assert completion["sessions"][0]["exercises"][1]["display_name"] in delivery
     assert completion["sessions"][0]["exercises"][1]["exercise_id"] == "bodyweight.wall_push_up"
+
+
+def test_recommendation_rationale_uses_only_real_constraint_and_followup_factors():
+    facts = {**_PROFILE, "equipment": "gym"}
+    excluded = frozenset({MovementPattern.VERTICAL_PUSH})
+    previous = state_for(build_training_plan(
+        recommendation_blueprint_id="rec-rationale-prior", facts=facts,
+        excluded_movement_patterns=excluded,
+    ))
+    harder = apply_followup(
+        followup=WorkoutFollowUp(WorkoutFollowUpOperation.INCREASE_DIFFICULTY),
+        previous=previous, recommendation_blueprint_id="rec-rationale-harder", facts=facts,
+        external_excluded_movement_patterns=excluded,
+    )
+    before = harder
+    rationale = build_recommendation_rationale(
+        harder, facts=facts, active_constraint_patterns=excluded,
+        followup_direction="increased", has_previous_workout=True,
+    )
+
+    assert harder == before
+    assert rationale == {
+        "version": "training-rationale-v1",
+        "used": [
+            {"kind": "active_constraint", "value": "vertical_push"},
+            {"kind": "recent_workout", "value": "previous_session"},
+        ],
+        "changed": [
+            {"kind": "excluded_movement", "value": "vertical_push"},
+            {"kind": "difficulty_adjustment", "value": "increased"},
+        ],
+        "reason_code": "progressed_within_constraints",
+    }
+    assert MovementPattern.VERTICAL_PUSH not in _movement_patterns(harder)
+
+
+def test_recommendation_rationale_omits_unused_factors_and_malformed_values_fail_closed():
+    plan = build_training_plan(recommendation_blueprint_id="rec-rationale-normal", facts=_PROFILE)
+    rationale = build_recommendation_rationale(plan, facts=_PROFILE)
+
+    assert [item["kind"] for item in rationale["used"]] == ["training_goal", "experience_capacity"]
+    assert all(item["kind"] != "active_constraint" for item in rationale["used"])
+    assert all(item["kind"] != "difficulty_adjustment" for item in rationale["changed"])
+    assert validate_recommendation_rationale({
+        **rationale,
+        "used": [{"kind": "active_constraint", "value": "not-a-pattern"}],
+    }) is None
+    completion = renderer.render_completion_projection(
+        plan, load_exercise_library(), recommendation_rationale={"unsafe": "ignored"})
+    assert "recommendation_rationale" not in completion
+
+
+def test_cross_session_easy_comparable_completion_progresses_with_native_bounds():
+    plan = build_training_plan(recommendation_blueprint_id="rec-cross-easy", facts=_PROFILE)
+    for workout_id, rpe, rir in (
+            ("cross-session-rpe-only", "6", None),
+            ("cross-session-rir-only", None, 4),
+            ("cross-session-consistent", "6", 4)):
+        result = adapt_from_persisted_history(
+            plan, [_persisted_completion_record(plan, workout_id=workout_id, rpe=rpe, rir=rir)],
+            now=datetime(2026, 8, 14, 13, tzinfo=timezone.utc),
+        )
+
+        assert result.applied is True
+        assert result.comparable_session is True
+        assert result.change == "sets"
+        assert result.plan != plan
+        assert all(after.sets == before.sets + 1
+                   for after, before in zip(result.plan.sessions[0].prescriptions,
+                                            plan.sessions[0].prescriptions))
+
+
+def test_cross_session_hard_or_incomplete_evidence_preserves_baseline_plan():
+    plan = build_training_plan(recommendation_blueprint_id="rec-cross-hard", facts=_PROFILE)
+    for workout_id, rpe, rir in (
+            ("cross-session-rpe-hard", "9", None),
+            ("cross-session-rir-hard", None, 0),
+            ("cross-session-contradictory", "6", 0),
+            ("cross-session-no-effort", None, None)):
+        result = adapt_from_persisted_history(
+            plan, [_persisted_completion_record(plan, workout_id=workout_id, rpe=rpe, rir=rir)],
+            now=datetime(2026, 8, 14, 13, tzinfo=timezone.utc),
+        )
+        assert result.plan == plan and result.applied is False
+    incomplete = adapt_from_persisted_history(
+        plan, [_persisted_completion_record(plan, rpe="6", rir=4, complete=False)],
+        now=datetime(2026, 8, 14, 13, tzinfo=timezone.utc),
+    )
+
+    assert incomplete.plan == plan and incomplete.applied is False
+    assert incomplete.comparable_session is False
+
+
+def test_cross_session_requires_comparable_history_and_preserves_constraints():
+    excluded = frozenset({MovementPattern.VERTICAL_PUSH})
+    plan = build_training_plan(
+        recommendation_blueprint_id="rec-cross-restricted", facts={**_PROFILE, "equipment": "gym"},
+        excluded_movement_patterns=excluded,
+    )
+    unrelated = _persisted_completion_record(plan, rpe="6", rir=4)
+    unrelated["exercises"]["workout_completion"]["exercises"] = [{
+        "prescription_id": "legacy-lower-1", "exercise_id": "legacy.lower_squat",
+        "exercise_version": "v1", "completed_sets": 3, "completed_repetitions": 10,
+        "completed_load": None, "completed_rpe": "6", "completed_rir": 4,
+    }, {
+        "prescription_id": "legacy-lower-2", "exercise_id": "legacy.lower_hinge",
+        "exercise_version": "v1", "completed_sets": 3, "completed_repetitions": 10,
+        "completed_load": None, "completed_rpe": "6", "completed_rir": 4,
+    }]
+    unmatched = adapt_from_persisted_history(
+        plan, [unrelated], now=datetime(2026, 8, 14, 13, tzinfo=timezone.utc))
+    adapted = adapt_from_persisted_history(
+        plan, [_persisted_completion_record(plan, workout_id="cross-session-restricted", rpe="6", rir=4)],
+        now=datetime(2026, 8, 14, 13, tzinfo=timezone.utc),
+    )
+    rationale = build_recommendation_rationale(
+        adapted.plan, facts={**_PROFILE, "equipment": "gym"},
+        active_constraint_patterns=excluded, cross_session_change=adapted.change,
+    )
+
+    assert unmatched.plan == plan and unmatched.applied is False
+    assert adapted.applied is True
+    assert MovementPattern.VERTICAL_PUSH not in _movement_patterns(adapted.plan)
+    assert rationale["used"] == [
+        {"kind": "active_constraint", "value": "vertical_push"},
+        {"kind": "comparable_session", "value": "comfortable_completed"},
+    ]
+    assert rationale["changed"][1]["kind"] == "cross_session_progression"
+
+
+def test_cross_session_malformed_or_duplicate_history_fails_closed_deterministically():
+    plan = build_training_plan(recommendation_blueprint_id="rec-cross-malformed", facts=_PROFILE)
+    valid = _persisted_completion_record(plan, workout_id="duplicate-session", rpe="6", rir=4)
+    malformed = {"completion": 100, "occurred_at": "not-a-time", "exercises": {}}
+
+    first = adapt_from_persisted_history(
+        plan, [malformed, valid, dict(valid)], now=datetime(2026, 8, 14, 13, tzinfo=timezone.utc))
+    second = adapt_from_persisted_history(
+        plan, [dict(valid), malformed, valid], now=datetime(2026, 8, 14, 13, tzinfo=timezone.utc))
+
+    assert first.plan == plan and first.applied is False
+    assert second == first
 
 
 @pytest.mark.parametrize(("requested_split", "expected_sessions"), (

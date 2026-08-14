@@ -57,11 +57,14 @@ from training_engine import (
     workout_result_from_payload,
 )
 from training_engine import renderer as training_renderer
+from training_engine.rationale import build_recommendation_rationale
+from training_engine.cross_session import adapt_from_persisted_history
 from training_engine.advisory import persona_expert_training_signals
 from training_engine.health_restrictions import (
     FitnessLimitationState,
     UnsupportedHealthRestrictionError,
     clinician_clearance_patterns,
+    explicit_user_constraint_clearance_patterns,
     explicit_restrictions_from_message,
     fitness_limitation_from_history,
     fitness_limitation_from_profile,
@@ -255,6 +258,108 @@ def _apply_clinician_clearance(profile, cleared_patterns):
             else:
                 updated.pop(field, None)
     return updated, changed
+
+
+_ACCOUNT_TRAINING_CONSTRAINT_TEXT = {
+    "vertical_push": "Avoid overhead pressing.",
+    "horizontal_push": "Avoid push-ups.",
+    "vertical_pull": "Avoid pull-ups.",
+    "squat": "Avoid squats.",
+    "lunge": "Avoid lunges.",
+    "hinge": "Avoid deadlifts.",
+}
+
+
+def _account_training_constraint_patterns(user_id):
+    """Read only known canonical account constraints; malformed records fail closed to ignored."""
+    if not user_id:
+        return ()
+    try:
+        stored = store.list_account_training_constraints(user_id)
+    except Exception as error:
+        print(f"[chat] account training constraint read unavailable: {type(error).__name__}")
+        return ()
+    return tuple(pattern for pattern in stored if pattern in _ACCOUNT_TRAINING_CONSTRAINT_TEXT)
+
+
+def _account_training_constraint_records(user_id):
+    """Expose only active, canonical account constraints and their removal eligibility."""
+    if not user_id:
+        return ()
+    try:
+        records = store.list_account_training_constraint_records(user_id)
+    except Exception as error:
+        print(f"[api] account training constraint read unavailable: {type(error).__name__}")
+        return ()
+    return tuple({
+        "id": record["id"],
+        "pattern": record["pattern"],
+        "removable": bool(record["removable"]),
+    } for record in records if record["pattern"] in _ACCOUNT_TRAINING_CONSTRAINT_TEXT)
+
+
+def _retire_account_training_constraints(user_id, patterns):
+    """Retire only active user-owned canonical constraints matched by explicit chat intent."""
+    wanted = {getattr(pattern, "value", pattern) for pattern in (patterns or ())}
+    if not user_id or not wanted:
+        return ()
+    retired = []
+    for record in _account_training_constraint_records(user_id):
+        if not record["removable"] or record["pattern"] not in wanted:
+            continue
+        try:
+            result = store.retire_account_training_constraint(user_id, record["id"])
+        except Exception as error:
+            print(f"[chat] account training constraint retirement unavailable: {type(error).__name__}")
+            continue
+        if result and result.get("retired"):
+            retired.append(record["pattern"])
+    return tuple(retired)
+
+
+def _account_training_constraint_retirement_reply(lang):
+    return (
+        "Your active training exclusion has been removed. Future workouts will still follow all current safety checks."
+        if lang == "en" else
+        "Активното тренировъчно ограничение е премахнато. Бъдещите тренировки ще следват всички текущи проверки за безопасност."
+    )
+
+
+def _merge_account_training_constraints(profile, patterns):
+    """Project canonical account exclusions into the established restriction pipeline."""
+    projected = tuple(_ACCOUNT_TRAINING_CONSTRAINT_TEXT[pattern] for pattern in patterns
+                      if pattern in _ACCOUNT_TRAINING_CONSTRAINT_TEXT)
+    if not projected:
+        return dict(profile or {})
+    updated = dict(profile or {})
+    existing = updated.get("healthRestrictions")
+    existing_values = (
+        tuple(existing) if isinstance(existing, (tuple, list, set, frozenset)) else
+        (existing,) if existing else ()
+    )
+    updated["healthRestrictions"] = list(dict.fromkeys((*existing_values, *projected)))
+    return updated
+
+
+def _persist_account_training_constraints(user_id, restrictions):
+    """Persist only parser-validated, representable movement exclusions."""
+    if not user_id:
+        return ()
+    try:
+        projection = project_explicit_health_restrictions({"healthRestrictions": restrictions})
+    except UnsupportedHealthRestrictionError:
+        return ()
+    patterns = tuple(sorted(
+        pattern.value for pattern in projection.excluded_movement_patterns
+        if pattern.value in _ACCOUNT_TRAINING_CONSTRAINT_TEXT
+    ))
+    if not patterns:
+        return ()
+    try:
+        return store.add_account_training_constraints(user_id, patterns)
+    except Exception as error:
+        print(f"[chat] account training constraint write unavailable: {type(error).__name__}")
+        return ()
 
 
 def _conversation_medical_hold(scope):
@@ -1515,17 +1620,47 @@ def api_profile():
     if not u:
         return jsonify({"error": "unauthenticated"}), 401
     if request.method == "GET":
-        return jsonify({"profile": store.get_profile(u["id"])})
+        try:
+            athlete_core = athlete_store.core_presence_projection(u["id"])
+        except Exception as error:
+            print(f"[api] athlete core projection unavailable: {type(error).__name__}")
+            athlete_core = None
+        return jsonify({
+            "profile": store.get_profile(u["id"]),
+            "training_constraints": list(_account_training_constraint_patterns(u["id"])),
+            "training_constraint_records": list(_account_training_constraint_records(u["id"])),
+            "athlete_core": athlete_core,
+        })
     data = request.get_json(silent=True) or {}
     prof = data.get("profile")
     if not isinstance(prof, dict):
         return jsonify({"error": "invalid"}), 400
+    # Account constraints are written only from validated explicit chat turns.
+    prof = dict(prof)
+    prof.pop("training_constraints", None)
     store.save_profile(u["id"], prof)
     # M0: self-report evidence for the Athlete Model (only the consumed fields).
     _sr = {k: prof[k] for k in ("sleepQuality", "stressLevel", "recoveryFeel", "frequency") if k in prof}
     if _sr:
         athlete_store.observe(u["id"], "self_report", _sr)
     return jsonify({"ok": True})
+
+
+@app.route("/api/training-constraints/<constraint_id>", methods=["DELETE"])
+def api_retire_training_constraint(constraint_id):
+    u = _require_user()
+    if not u:
+        return jsonify({"error": "unauthenticated"}), 401
+    result = store.retire_account_training_constraint(u["id"], constraint_id)
+    if result is None:
+        # Keep cross-account and malformed identifiers indistinguishable.
+        return jsonify({"error": "not_found"}), 404
+    return jsonify({
+        "ok": True,
+        "retired": bool(result["retired"]),
+        "training_constraints": list(_account_training_constraint_patterns(u["id"])),
+        "training_constraint_records": list(_account_training_constraint_records(u["id"])),
+    })
 
 
 @app.route("/api/workout", methods=["POST"])
@@ -2001,6 +2136,40 @@ def _active_training_plan(snapshot, planning_blueprint, *, followup=None, previo
         excluded_movement_patterns=all_excluded_patterns,
         advisory_preferred_exercise_ids=getattr(advisory_signals, "preferred_exercise_ids", ()),
     )
+
+
+def _training_recommendation_rationale(plan, profile, *, followup=None,
+                                       previous_workout=None, recovering=False,
+                                       cross_session_change=None):
+    """Project only verified planning inputs into the public rationale contract."""
+    try:
+        restrictions = project_explicit_health_restrictions(
+            profile if isinstance(profile, dict) else {})
+        direction = {
+            "increase_difficulty": "increased",
+            "decrease_difficulty": "decreased",
+        }.get(followup.operation.value) if followup is not None else None
+        return build_recommendation_rationale(
+            plan,
+            facts=profile if isinstance(profile, dict) else {},
+            active_constraint_patterns=restrictions.excluded_movement_patterns,
+            followup_direction=direction,
+            has_previous_workout=previous_workout is not None,
+            protective_recovery=bool(recovering),
+            cross_session_change=cross_session_change,
+        )
+    except Exception as rationale_error:
+        print(f"[training-engine] rationale omitted: {type(rationale_error).__name__}")
+        return None
+
+
+def _apply_persisted_training_adaptation(plan, workouts):
+    """Optional history projection; invalid or insufficient evidence preserves the plan."""
+    try:
+        return adapt_from_persisted_history(plan, workouts)
+    except Exception as adaptation_error:
+        print(f"[training-engine] cross-session adaptation omitted: {type(adaptation_error).__name__}")
+        return None
 
 
 # Brain constraints use a wider movement vocabulary than the deterministic
@@ -2594,10 +2763,16 @@ def chat():
             elif _workout_followup.operation.value == "unknown_exercise":
                 _followup_reply = followup_message("unknown requested exercise", lang)
         pers_workouts = []
+        _account_constraint_retirement_intent = explicit_user_constraint_clearance_patterns(user_message)
+        _retired_account_constraints = ()
         if chat_uid:
             db_profile = store.get_profile(chat_uid)
             if db_profile:
                 profile = db_profile
+            _retired_account_constraints = _retire_account_training_constraints(
+                chat_uid, _account_constraint_retirement_intent)
+            profile = _merge_account_training_constraints(
+                profile, _account_training_constraint_patterns(chat_uid))
             try:
                 mem = store.build_memory_context(chat_uid, en=(lang == "en"))
                 if mem:
@@ -2711,7 +2886,8 @@ def chat():
             conversation=history if isinstance(history, list) else (),
             profile=profile if isinstance(profile, dict) else None,
         )
-        _new_explicit_health_restrictions = explicit_restrictions_from_message(user_message)
+        _new_explicit_health_restrictions = (
+            () if _account_constraint_retirement_intent else explicit_restrictions_from_message(user_message))
         _restriction_controlled_reply = None
         if (_new_explicit_health_restrictions and isinstance(profile, dict)
                 and not _self_reported_limitation_message):
@@ -2730,8 +2906,13 @@ def chat():
             except UnsupportedHealthRestrictionError:
                 _restriction_controlled_reply = _explicit_health_restriction_reply(lang)
             else:
+                if chat_uid:
+                    _persist_account_training_constraints(
+                        chat_uid, _new_explicit_health_restrictions)
                 if not _restriction_turn_requests_workout(user_message):
                     _restriction_controlled_reply = _explicit_health_restriction_acknowledgement(lang)
+        if (_retired_account_constraints and not _restriction_turn_requests_workout(user_message)):
+            _restriction_controlled_reply = _account_training_constraint_retirement_reply(lang)
         if (_fitness_limitation_changed and _fitness_limitation is not None
                 and not _restriction_turn_requests_workout(user_message)):
             _restriction_controlled_reply = _fitness_limitation_reply(
@@ -2740,8 +2921,7 @@ def chat():
                 and not _restriction_turn_requests_workout(user_message)):
             _restriction_controlled_reply = _clinician_clearance_reply(lang)
         if (chat_uid and (_fitness_limitation_changed or _legacy_fitness_migrated
-                          or _clinician_clearance_changed
-                          or bool(_new_explicit_health_restrictions))):
+                          or _clinician_clearance_changed)):
             store.save_profile(chat_uid, profile)
         _new_medical_hold = _medical_hold_from_message(
             user_message, conversation=history, profile=profile)
@@ -3352,6 +3532,27 @@ def chat():
                         _brain_enforcement_prompt_addendum = (
                             _brain_enforcement_directive["system_prompt_addendum"])
 
+        # Persisted completion evidence may revise this already-authoritative
+        # deterministic plan through the same bounded lifecycle policy used for
+        # explicit workout completion. It never runs on a follow-up or alongside
+        # same-request completion evidence, so there is one revision authority.
+        _cross_session_adaptation = None
+        if (chat_uid and _training_plan_blueprint is not None
+                and _workout_followup is None
+                and not data.get("completed_workout")
+                and not data.get("completed_workouts")):
+            _candidate_adaptation = _apply_persisted_training_adaptation(
+                _training_plan_blueprint, pers_workouts)
+            if _candidate_adaptation is not None and _candidate_adaptation.applied:
+                _candidate_shoulder_validation = _validate_training_plan_shoulder_safety(
+                    _candidate_adaptation.plan, profile,
+                    **({"constraints": _brain_enforcement_decision.constraints}
+                       if _brain_enforcement_decision is not None else {}))
+                if _candidate_shoulder_validation is not None and _candidate_shoulder_validation.passed:
+                    _training_plan_blueprint = _candidate_adaptation.plan
+                    _shoulder_safety_validation = _candidate_shoulder_validation
+                    _cross_session_adaptation = _candidate_adaptation
+
         if _health_scope.scope is HealthSafetyScope.DECLARED_HEALTH_CONTEXT:
             system_content = system_content + "\n\n" + declared_context_prompt(lang)
         if nutrition_delivery_targets is not None:
@@ -3784,6 +3985,15 @@ def chat():
                     # an already validated deterministic training plan.
                     training_completion = None
                     try:
+                        recommendation_rationale = _training_recommendation_rationale(
+                            _training_plan_blueprint, profile,
+                            followup=_workout_followup,
+                            previous_workout=_previous_workout,
+                            recovering=bool(_fitness_training_kwargs.get("recovering")),
+                            cross_session_change=(
+                                _cross_session_adaptation.change
+                                if _cross_session_adaptation is not None else None),
+                        )
                         try:
                             completion = client.chat.completions.create(
                                 model=model_to_use,
@@ -3805,7 +4015,8 @@ def chat():
                         if _combined_coaching_request:
                             reply_text += _combined_request_follow_up(lang)
                         training_completion = training_renderer.render_completion_projection(
-                            _training_plan_blueprint, load_exercise_library(), lang)
+                            _training_plan_blueprint, load_exercise_library(), lang,
+                            recommendation_rationale=recommendation_rationale)
                     except Exception as training_error:
                         print(f"[training-engine] delivery rejected: {type(training_error).__name__}")
                         reply_text = decision_engine.controlled_response(

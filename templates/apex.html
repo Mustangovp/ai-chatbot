@@ -120,6 +120,13 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 .hist-ico{width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:19px;background:rgba(255,255,255,.04);border:1px solid var(--border);flex-shrink:0;}
 .hist-b{flex:1;min-width:0;} .hist-t{font-weight:700;font-size:13.5px;} .hist-s{font-size:11.5px;color:var(--muted);margin-top:2px;}
 .hist-empty{text-align:center;color:var(--faint);font-size:13px;padding:24px 0;}
+.training-constraints{margin:16px 0 4px;padding:12px 13px;border:1px solid rgba(255,177,60,.26);border-radius:10px;background:rgba(255,177,60,.05);}
+.training-constraints h3{font-family:'Unbounded';font-size:11px;letter-spacing:.5px;color:var(--gold);margin:0 0 7px;}
+.training-constraints ul{list-style:none;margin:0;padding:0;}
+.training-constraints li{position:relative;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:3px 0 3px 14px;color:var(--text);font-size:12.5px;font-weight:600;}
+.training-constraints li::before{content:'';position:absolute;left:0;top:11px;width:5px;height:5px;border-radius:50%;background:var(--gold);}
+.training-constraint-remove{flex:0 0 28px;width:28px;height:28px;border:1px solid rgba(255,255,255,.16);border-radius:8px;background:rgba(18,23,36,.6);color:var(--muted);font-size:19px;line-height:1;}
+.training-constraint-remove:hover,.training-constraint-remove:focus-visible{border-color:rgba(245,33,45,.65);color:#ff898f;}
 .pill{display:inline-flex;align-items:center;gap:7px;font-family:'Unbounded';font-weight:700;
   font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:var(--muted);
   background:rgba(18,23,36,.55);border:1px solid var(--border);
@@ -282,7 +289,7 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 .ei-card{background:linear-gradient(135deg,rgba(26,33,51,.78),rgba(18,23,36,.76));border:1px solid var(--border);border-radius:16px;padding:15px 16px;margin:0 0 10px;}
 .ei-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:12px;}.ei-name{font-family:'Unbounded';font-size:14px;font-weight:600;color:#fff;}.ei-prescription{white-space:nowrap;font-size:11.5px;font-weight:700;color:var(--gold);}
 .ei-section{border-top:1px solid rgba(255,255,255,.09);padding:10px 0 0;margin-top:10px;}.ei-section summary{cursor:pointer;list-style:none;font-size:12.5px;font-weight:700;color:var(--text);}.ei-section summary::-webkit-details-marker{display:none;}.ei-section summary::before{content:'›';display:inline-block;color:var(--cyan);font-size:17px;line-height:10px;margin-right:7px;transform:rotate(0deg);transition:transform .18s ease;}.ei-section[open] summary::before{transform:rotate(90deg);}.ei-static-label{font-size:12.5px;font-weight:700;color:var(--text);}.ei-section ol,.ei-section ul{margin:9px 0 2px;padding-left:19px;color:var(--muted);font-size:12.5px;line-height:1.55;}.ei-section li+li{margin-top:4px;}.ei-copy{margin:9px 0 2px;color:var(--muted);font-size:12.5px;line-height:1.55;}
-.workout-exercise-card{display:block;padding:15px 16px;}.workout-card-hero{display:flex;gap:12px;align-items:center;}.workout-card-hero .ex-glyph{width:58px;height:58px;font-size:26px;}.workout-card-title{min-width:0;flex:1;}.workout-card-title .ex-top{margin:0 0 5px;}.workout-card-title .ex-name{font-family:'Unbounded';font-size:14px;}.workout-card-title .ex-muscles{margin:0;}.workout-card-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px 8px;margin-top:13px;}.workout-card-stat{min-width:0;border:1px solid rgba(255,255,255,.08);border-radius:9px;padding:7px 8px;background:rgba(7,9,16,.22);color:var(--faint);font-size:10px;line-height:1.25;}.workout-card-stat b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font-size:12px;margin-bottom:2px;}.workout-card-stat.meta b{font-size:11px;color:var(--cyan);}.workout-card-note{margin:10px 0 0;color:var(--faint);font-size:11.5px;line-height:1.45;}
+.workout-exercise-card{display:block;padding:15px 16px;}.workout-card-hero{display:flex;gap:12px;align-items:center;}.workout-card-hero .ex-glyph{width:58px;height:58px;font-size:26px;}.workout-card-title{min-width:0;flex:1;}.workout-card-title .ex-top{margin:0 0 5px;}.workout-card-title .ex-name{font-family:'Unbounded';font-size:14px;}.workout-card-title .ex-muscles{margin:0;}.workout-card-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px 8px;margin-top:13px;}.workout-card-stat{min-width:0;border:1px solid rgba(255,255,255,.08);border-radius:9px;padding:7px 8px;background:rgba(7,9,16,.22);color:var(--faint);font-size:10px;line-height:1.25;}.workout-card-stat b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font-size:12px;margin-bottom:2px;}.workout-card-stat.meta b{font-size:11px;color:var(--cyan);}.workout-card-note{margin:10px 0 0;color:var(--faint);font-size:11.5px;line-height:1.45;}.workout-rationale{margin:12px 0 4px;border:1px solid rgba(56,224,255,.22);border-radius:8px;background:rgba(7,9,16,.24);}.workout-rationale summary{padding:10px 12px;color:var(--text);font-size:12px;font-weight:700;cursor:pointer;}.workout-rationale ul{margin:0;padding:0 16px 12px 30px;color:var(--faint);font-size:11.5px;line-height:1.45;}.workout-rationale li+li{margin-top:5px;}
 @media(max-width:560px){.ei-card{padding:14px;}.ei-top{align-items:flex-start;flex-direction:column;gap:4px;}.ei-prescription{white-space:normal;}}
 
 /* ── WORKOUT MODE (full-screen protocol) ─────────────────────────── */
@@ -312,6 +319,11 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 .wo-weight input{width:110px;text-align:center;background:var(--surface2);border:1.5px solid var(--border);border-radius:12px;padding:10px 12px;color:var(--text);font-size:15px;font-weight:600;outline:none;}
 .wo-weight input:focus{border-color:rgba(56,224,255,.5);}
 .wo-weight span{font-size:11.5px;color:var(--faint);font-weight:600;}
+.wo-effort{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin:-6px 0 20px;}
+.wo-effort>span{font-size:11.5px;color:var(--faint);font-weight:600;}
+.wo-effort label{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);font-weight:700;}
+.wo-effort select{min-width:54px;background:var(--surface2);border:1.5px solid var(--border);border-radius:9px;padding:7px 8px;color:var(--text);font:inherit;outline:none;}
+.wo-effort select:focus{border-color:rgba(56,224,255,.5);}
 .wo-controls{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;}
 .wo-btn{font-weight:800;font-size:15px;padding:15px 32px;border-radius:40px;transition:transform .15s;height:52px;display:inline-flex;align-items:center;gap:8px;}
 .wo-btn.primary{background:var(--pulse);color:#fff;box-shadow:0 10px 30px rgba(245,33,45,.42);}
@@ -575,6 +587,10 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
       </div>
       <div class="field"><label id="l-equip" for="pf-equip">Available equipment</label>
         <select id="pf-equip"><option value="gym">Full gym</option><option value="home">Home (dumbbells / bar)</option><option value="none">Bodyweight only</option></select></div>
+      <section class="training-constraints" id="training-constraints" hidden aria-labelledby="training-constraints-title">
+        <h3 id="training-constraints-title">Active training constraints</h3>
+        <ul id="training-constraints-list"></ul>
+      </section>
       <div class="wiz-nav"><button class="next" onclick="wizGo(1)" id="w1-next">Continue →</button></div>
     </div>
 
@@ -779,15 +795,16 @@ class AttentionEngine{
   constructor(){
     this.x=0;this.y=0;this.strength=0.25;
     this._tx=0;this._ty=0;this._sT=0;
-    this._wander=Math.random()*100;
+    this._wander=Math.random()*100;this._idleAmplitude=1;
   }
   point(nx,ny,strength){this._tx=Math.max(-1,Math.min(1,nx));this._ty=Math.max(-1,Math.min(1,ny));this._sT=strength;}
   release(){this._sT=0;}
+  setIdleAmplitude(value){this._idleAmplitude=Math.max(.7,Math.min(1,value));}
   update(dt){
     // idle wander: where the gaze rests when nothing calls it (Waiting)
     this._wander+=dt*0.045;
-    const gx=this._sT>0.01?this._tx:fbm(this._wander,0.7,0)*0.5;
-    const gy=this._sT>0.01?this._ty:fbm(0.3,this._wander,0)*0.35;
+    const gx=this._sT>0.01?this._tx:fbm(this._wander,0.7,0)*0.5*this._idleAmplitude;
+    const gy=this._sT>0.01?this._ty:fbm(0.3,this._wander,0)*0.35*this._idleAmplitude;
     const k=Math.min(dt*1.4,1);
     this.x+=(gx-this.x)*k; this.y+=(gy-this.y)*k;
     this.strength+=((this._sT>0.01?this._sT:0.25)-this.strength)*k;
@@ -869,6 +886,7 @@ class PresenceEngine{
     this.athlete=athlete;   // the body reads the nervous system — nothing else
     this.breath=new BreathEngine();
     this.attention=new AttentionEngine();
+    this.serverProjection=null;
     this.reduced=(typeof matchMedia!=='undefined')&&matchMedia('(prefers-reduced-motion: reduce)').matches;
     // ── Base states: the 6-dimension configurations (Behavioral Language §III).
     // waiting is calibrated to reproduce the approved organism exactly.
@@ -905,6 +923,18 @@ class PresenceEngine{
     this._rearrangeCb=null;
   }
   onRearrange(cb){this._rearrangeCb=cb;}     // Learning's permanent imprint
+  setServerProjection(projection){
+    if(!projection||typeof projection!=='object')return false;
+    const next={};
+    if(projection.recovery_bias==='protective')next.recovery_bias='protective';
+    if(projection.attention_bias==='focused')next.attention_bias='focused';
+    if(!Object.keys(next).length)return false;
+    const current=this.serverProjection||{};
+    if(current.recovery_bias===next.recovery_bias&&current.attention_bias===next.attention_bias&&
+      Object.keys(current).length===Object.keys(next).length)return false;
+    this.serverProjection=next;
+    return true;
+  }
 
   // ── DERIVATION — the body perceives the nervous system. No events arrive
   // here, ever: every behavior below is a reading of real internal state.
@@ -998,6 +1028,14 @@ class PresenceEngine{
         if(m.coherence)tgt.coherence=Math.min(1,tgt.coherence+m.coherence*env);
       }
     }
+    // The server may only bias continuous expression. It cannot select a base
+    // state, bypass the exhale gate, or create a gesture.
+    if(!this.reduced&&this.serverProjection){
+      if(this.serverProjection.recovery_bias==='protective'){
+        tgt.rate*=.94;tgt.depth*=.92;tgt.tempo*=.90;
+      }
+      this.attention.setIdleAmplitude(this.serverProjection.attention_bias==='focused'?.82:1);
+    }else this.attention.setIdleAmplitude(1);
     if(this.reduced){tgt.tempo*=0.5;}
     // warmth floor — it never goes dark (Law 5 / §V)
     tgt.warmth=Math.max(0.34,tgt.warmth);
@@ -1072,6 +1110,7 @@ class LivingCore{
     this.cx=this.ow/2; this.cy=this.oh*.46; this.R=Math.min(this.ow,this.oh)*.34;
   }
   setPhysiology(p){this.athlete.setPhysiology(p);}   // somatic state lives in the model
+  setServerProjection(p){return this.presence.setServerProjection(p);}
   palette(){
     const{recovery:r,fatigue:f,stress:st}=this.cur;
     const mix=(a,b,t)=>a.map((v,i)=>v+(b[i]-v)*t);
@@ -1424,13 +1463,54 @@ function applyLang(){
 function toggleLang(){
   lang=lang==='en'?'bg':'en';localStorage.setItem('apexLang',lang);
   const profile=pfLoad();profile.language=lang;ownedStorageSet('apexProfile',JSON.stringify(profile));accountSaveProfile(profile);
-  applyLang();if(consultOn)resetGreeting();
+  applyLang();renderTrainingConstraints(ACTIVE_TRAINING_CONSTRAINTS);if(consultOn)resetGreeting();
 }
 
 /* ═══════════════════════════════════════════════════════════════════
    PROFILE WIZARD
    ═══════════════════════════════════════════════════════════════════ */
 let wizStep=0;
+let ACTIVE_TRAINING_CONSTRAINTS=[];
+const TRAINING_CONSTRAINT_LABELS={
+  vertical_push:{en:'Avoid overhead pressing',bg:'Избягвай преси над глава'},
+  horizontal_push:{en:'Avoid push-ups',bg:'Избягвай лицеви опори'},
+  vertical_pull:{en:'Avoid pull-ups',bg:'Избягвай набирания'},
+  squat:{en:'Avoid squats',bg:'Избягвай клекове'},
+  lunge:{en:'Avoid lunges',bg:'Избягвай напади'},
+  hinge:{en:'Avoid deadlifts',bg:'Избягвай мъртва тяга'}
+};
+function renderTrainingConstraints(records){
+  ACTIVE_TRAINING_CONSTRAINTS=Array.isArray(records)?records.map(record=>{
+    if(typeof record==='string')return {pattern:record,removable:false};
+    if(!record||typeof record!=='object'||typeof record.pattern!=='string')return null;
+    return {id:typeof record.id==='string'?record.id:'',pattern:record.pattern,removable:record.removable===true};
+  }).filter(record=>record&&TRAINING_CONSTRAINT_LABELS[record.pattern]):[];
+  const section=document.getElementById('training-constraints');
+  const title=document.getElementById('training-constraints-title');
+  const list=document.getElementById('training-constraints-list');
+  if(!section||!title||!list)return;
+  title.textContent=lang==='bg'?'Активни тренировъчни ограничения':'Active training constraints';
+  section.hidden=!ACTIVE_TRAINING_CONSTRAINTS.length;
+  list.innerHTML=ACTIVE_TRAINING_CONSTRAINTS.map(record=>{
+    const label=TRAINING_CONSTRAINT_LABELS[record.pattern][lang];
+    const action=record.removable&&record.id?'<button type="button" class="training-constraint-remove" aria-label="'+esc((lang==='bg'?'Премахни ограничението: ':'Remove restriction: ')+label)+'" title="'+esc(lang==='bg'?'Премахни':'Remove')+'" onclick="removeTrainingConstraint(\''+esc(record.id)+'\')">×</button>':'';
+    return '<li><span>'+esc(label)+'</span>'+action+'</li>';
+  }).join('');
+}
+async function removeTrainingConstraint(id){
+  if(!SESSION.authenticated||typeof id!=='string'||!id)return;
+  const record=ACTIVE_TRAINING_CONSTRAINTS.find(item=>item.id===id&&item.removable);
+  if(!record)return;
+  const label=TRAINING_CONSTRAINT_LABELS[record.pattern][lang];
+  const question=lang==='bg'?'Премахваш ограничението: '+label+'?':'Remove restriction: '+label+'?';
+  if(!window.confirm(question))return;
+  try{
+    const response=await fetch('/api/training-constraints/'+encodeURIComponent(id),{method:'DELETE',credentials:'same-origin'});
+    if(!response.ok)return;
+    const data=await response.json();
+    renderTrainingConstraints(Array.isArray(data.training_constraint_records)?data.training_constraint_records:[]);
+  }catch(e){}
+}
 function pfLoad(){try{return JSON.parse(ownedStorageGet('apexProfile')||'{}');}catch(e){return{};}}
 function wizGo(n){
   wizStep=n;
@@ -1447,6 +1527,7 @@ function openProfile(jump){
   set('pf-smoking',p.smoking);set('pf-alcohol',p.alcohol);set('pf-nicotine',p.nicotine);set('pf-caffeine',p.caffeine);
   set('pf-meds',p.medications);set('pf-supps',p.supplements);set('pf-injuries',p.injuries);
   set('pf-surgeries',p.surgeries);set('pf-limits',p.limitations);set('pf-notes',p.notes);
+  renderTrainingConstraints(ACTIVE_TRAINING_CONSTRAINTS);
   document.getElementById('cancel-sub').style.display=localStorage.getItem('apexToken')?'block':'none';
   wizGo(jump||0);
   document.getElementById('profile-modal').classList.add('on');
@@ -1687,6 +1768,8 @@ async function syncFromAccount(){
     ]);
     if(profileResponse.ok){
       const d=await profileResponse.json();
+      renderTrainingConstraints(d&&Array.isArray(d.training_constraint_records)?d.training_constraint_records:(d&&Array.isArray(d.training_constraints)?d.training_constraints:[]));
+      applyAthleteCoreProjection(d&&d.athlete_core);
       let local={};try{local=JSON.parse(ownedStorageGet('apexProfile')||'{}');}catch(e){}
       if(d&&d.profile&&typeof d.profile==='object'){
         const merged=Object.assign({},local,d.profile);
@@ -1726,9 +1809,31 @@ async function syncFromAccount(){
     applyReadout();
   }catch(e){ console.debug('sync failed',e); }
 }
-// Persist to the account whenever logged in (fire-and-forget; cache stays as fallback).
-function accountSaveProfile(p){ if(SESSION.authenticated){ fetch('/api/profile',{method:'PUT',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({profile:p})}).catch(()=>{}); } }
-function accountLogWorkout(s,workoutCompletion=null){ if(SESSION.authenticated){ const body={session:s};if(workoutCompletion)body.workout_completion=workoutCompletion;fetch('/api/workout',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body)}).catch(()=>{}); } }
+function applyAthleteCoreProjection(projection){
+  try{return !!(core&&core.setServerProjection(projection));}catch(e){return false;}
+}
+async function refreshAthleteCoreProjection(){
+  if(!SESSION.authenticated)return false;
+  try{
+    const response=await fetch('/api/profile',{credentials:'same-origin'});
+    if(!response.ok)return false;
+    const payload=await response.json();
+    return applyAthleteCoreProjection(payload&&payload.athlete_core);
+  }catch(e){return false;}
+}
+// Persist to the account whenever logged in. A successful AthleteModel-producing
+// write refreshes the bounded Core projection once; there is no polling loop.
+function accountSaveProfile(p){
+  if(!SESSION.authenticated)return Promise.resolve(false);
+  return fetch('/api/profile',{method:'PUT',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({profile:p})})
+    .then(response=>response.ok?refreshAthleteCoreProjection():false).catch(()=>false);
+}
+function accountLogWorkout(s,workoutCompletion=null){
+  if(!SESSION.authenticated)return Promise.resolve(false);
+  const body={session:s};if(workoutCompletion)body.workout_completion=workoutCompletion;
+  return fetch('/api/workout',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body)})
+    .then(response=>response.ok?refreshAthleteCoreProjection():false).catch(()=>false);
+}
 
 /* ── Passwordless login (magic link) ── */
 function showLogin(){
@@ -2355,6 +2460,28 @@ function completionSessionFor(exercises){
   exercises.forEach((exercise,index)=>{exercise.completion=Object.assign({},session.exercises[index]);});
   return session;
 }
+function workoutRationale(raw){
+  if(!raw||raw.version!=='training-rationale-v1'||!Array.isArray(raw.used)||!Array.isArray(raw.changed)||
+    !raw.used.length||!raw.changed.length||raw.used.length>2||raw.changed.length>2||
+    !['goal_and_capacity','progressed_from_previous_workout','progressed_within_constraints','protective_recovery','cross_session_progressed','cross_session_progressed_with_constraints'].includes(raw.reason_code))return null;
+  const patterns={vertical_push:lang==='bg'?'преса над глава':'overhead pressing',horizontal_push:lang==='bg'?'лицеви опори и хоризонтални преси':'push-ups and horizontal pressing',vertical_pull:lang==='bg'?'набирания и вертикално дърпане':'pull-ups and vertical pulling',squat:lang==='bg'?'клекове':'squats',lunge:lang==='bg'?'напади':'lunges',hinge:lang==='bg'?'хиндж движения и тяги':'hinge movements and deadlifts',core_anti_extension:lang==='bg'?'планк и анти-екстензия за корем':'planks and anti-extension core work'};
+  const goals={strength:lang==='bg'?'сила':'strength',muscle_gain:lang==='bg'?'мускулен растеж':'muscle gain',fat_loss:lang==='bg'?'намаляване на мазнини':'fat loss',maintenance:lang==='bg'?'поддържане':'maintenance',general_fitness:lang==='bg'?'обща физическа форма':'general fitness'};
+  const levels={beginner:lang==='bg'?'начално':'beginner',intermediate:lang==='bg'?'средно':'intermediate',advanced:lang==='bg'?'напреднало':'advanced'};
+  const valid=(item,used)=>item&&typeof item.kind==='string'&&typeof item.value==='string'&&Object.keys(item).length===2&&
+    (used?{active_constraint:patterns,recent_workout:{previous_session:1},protective_recovery:{protective:1},training_goal:goals,experience_capacity:levels,comparable_session:{comfortable_completed:1}}:{excluded_movement:patterns,difficulty_adjustment:{increased:1,decreased:1},protective_volume:{conservative:1},goal_structure:goals,capacity_prescription:levels,cross_session_progression:{load:1,repetitions:1,sets:1,eligible_alternative:1,conservative:1,mixed:1}})[item.kind]&&
+    (used?{active_constraint:patterns,recent_workout:{previous_session:1},protective_recovery:{protective:1},training_goal:goals,experience_capacity:levels,comparable_session:{comfortable_completed:1}}:{excluded_movement:patterns,difficulty_adjustment:{increased:1,decreased:1},protective_volume:{conservative:1},goal_structure:goals,capacity_prescription:levels,cross_session_progression:{load:1,repetitions:1,sets:1,eligible_alternative:1,conservative:1,mixed:1}})[item.kind][item.value];
+  if(!raw.used.every(item=>valid(item,true))||!raw.changed.every(item=>valid(item,false)))return null;
+  const usedLine=item=>({active_constraint:lang==='bg'?'Използвано: активно ограничение за '+patterns[item.value]+'.':'Used: your active restriction for '+patterns[item.value]+'.',recent_workout:lang==='bg'?'Използвана е предишната ти тренировка.':'Used: your previous workout.',protective_recovery:lang==='bg'?'Използван е защитен контекст за възстановяване.':'Used: a protective recovery context.',training_goal:lang==='bg'?'Използвана цел: '+goals[item.value]+'.':'Used: your '+goals[item.value]+' goal.',experience_capacity:lang==='bg'?'Използвано ниво: '+levels[item.value]+'.':'Used: your '+levels[item.value]+' training level.'})[item.kind];
+  const changedLine=item=>({excluded_movement:lang==='bg'?'Промяна: '+patterns[item.value]+' остава изключено.':'Changed: '+patterns[item.value]+' remains excluded.',difficulty_adjustment:item.value==='increased'?(lang==='bg'?'Промяна: трудността е увеличена с допустими алтернативи.':'Changed: difficulty increased through eligible alternatives.'):(lang==='bg'?'Промяна: трудността е намалена в безопасни граници.':'Changed: difficulty reduced within safe limits.'),protective_volume:lang==='bg'?'Промяна: обемът е запазен по-консервативен.':'Changed: volume remains conservative.',goal_structure:lang==='bg'?'Промяна: структурата следва целта ти за '+goals[item.value]+'.':'Changed: the structure follows your '+goals[item.value]+' goal.',capacity_prescription:lang==='bg'?'Промяна: предписанието е съобразено с '+levels[item.value]+' ниво.':'Changed: the prescription matches your '+levels[item.value]+' level.'})[item.kind];
+  const crossSessionUsed=lang==='bg'?'Използвана е последната ти сравнима тренировка, завършена комфортно.':'Used: your last comparable session, completed comfortably.';
+  const crossSessionChanged=lang==='bg'?'Промяна: допустими упражнения са прогресирани от тази тренировка.':'Changed: eligible prescriptions progressed from that session.';
+  const lines=[...raw.used.map(item=>item.kind==='comparable_session'?crossSessionUsed:usedLine(item)),...raw.changed.map(item=>item.kind==='cross_session_progression'?crossSessionChanged:changedLine(item))];
+  return lines.every(Boolean)&&lines.length<=4?lines:null;
+}
+function renderWorkoutRationale(raw){
+  const lines=workoutRationale(raw);if(!lines)return '';
+  return '<details class="workout-rationale"><summary>'+(lang==='bg'?'Защо този план?':'Why this plan?')+'</summary><ul>'+lines.map(line=>'<li>'+esc(line)+'</li>').join('')+'</ul></details>';
+}
 function renderWorkout(header,body){
   const ex=parseExercises(header,body); if(ex.unsupported.length)return '<p>'+(lang==='bg'?'Тренировката не можа да бъде потвърдена безопасно. Опитай отново.':'The workout could not be safely verified. Please try again.')+'</p>';
   if(!ex.length)return renderGenericTable(header,body);
@@ -2370,7 +2497,7 @@ function renderWorkout(header,body){
   const diffLbl={easy:lang==='bg'?'Лесно':'Easy',med:lang==='bg'?'Средно':'Medium',hard:lang==='bg'?'Трудно':'Hard'};
   let html='<section class="workout-protocol" data-workout-key="'+encodeURIComponent(workoutKey)+'"><div class="wo-intro"><span class="wt">'+(lang==='bg'?'Тренировъчен протокол':'Training protocol')+'</span>'+
     '<button class="start-wo" data-workout-key="'+encodeURIComponent(workoutKey)+
-    '" onclick="startWorkout(decodeURIComponent(this.dataset.workoutKey))">▶ '+tr().woStart+'</button></div>';
+    '" onclick="startWorkout(decodeURIComponent(this.dataset.workoutKey))">▶ '+tr().woStart+'</button></div>'+renderWorkoutRationale(pendingTrainingCompletion&&pendingTrainingCompletion.recommendation_rationale);
   ex.forEach(e=>{
     html+=renderWorkoutExerciseCard(e,diffLbl);
   });
@@ -2402,6 +2529,23 @@ function woProgress(){
   let total=0,done=0; WO.ex.forEach((e,k)=>{const s=parseInt(e.sets)||3;total+=s;done+=k<WO.i?s:(k===WO.i?WO.set:0);});
   return total?Math.round(done/total*100):0;
 }
+function boundedWorkoutEffort(value,min,max,integerOnly){
+  if(value===''||value==null)return null;
+  const number=Number(value);
+  if(!Number.isFinite(number)||number<min||number>max||(integerOnly&&!Number.isInteger(number)))return null;
+  return number;
+}
+function workoutEffortOptions(min,max,selected){
+  let out='<option value="">—</option>';
+  for(let value=min;value<=max;value++)out+='<option value="'+value+'"'+(selected===value?' selected':'')+'>'+value+'</option>';
+  return out;
+}
+function captureExerciseEffort(){
+  if(!WO||!WO.ex||!WO.ex[WO.i])return;
+  const exercise=WO.ex[WO.i],rpe=document.getElementById('wo-rpe-in'),rir=document.getElementById('wo-rir-in');
+  exercise.completedRpe=boundedWorkoutEffort(rpe&&rpe.value,1,10,false);
+  exercise.completedRir=boundedWorkoutEffort(rir&&rir.value,0,10,true);
+}
 function renderWO(){
   const t=tr(),e=WO.ex[WO.i],mu=inferMuscle(e.name),sets=parseInt(e.sets)||3,prescription=workoutPrescription(e);
   document.getElementById('wo-ptop-l').textContent=t.woEx+' '+(WO.i+1)+'/'+WO.ex.length;
@@ -2418,6 +2562,7 @@ function renderWO(){
       '<div class="wo-ex-target">'+esc(prescription.value)+' '+(prescription.type==='duration'?(lang==='bg'?'секунди':'seconds'):(lang==='bg'?'повторения':'reps'))+'</div>'+
       '<div class="wo-ex-meta">'+mu.m+' · '+(lang==='bg'?'темп':'tempo')+' 2-0-2'+(e.note?(' · '+esc(e.note)):'')+'</div>'+
       '<div class="wo-weight"><input type="number" id="wo-weight-in" inputmode="decimal" placeholder="'+(lang==='bg'?'кг (по избор)':'kg (optional)')+'" value="'+(e.weight||'')+'" oninput="WO.ex[WO.i].weight=this.value"><span>'+(lang==='bg'?'кг × серия':'kg / set')+'</span></div>'+
+      '<div class="wo-effort"><span>'+(lang==='bg'?'Усилие — избери RPE или RIR':'Effort — choose RPE or RIR')+'</span><label>RPE <select id="wo-rpe-in" onchange="captureExerciseEffort()">'+workoutEffortOptions(1,10,boundedWorkoutEffort(e.completedRpe,1,10,false))+'</select></label><label>RIR <select id="wo-rir-in" onchange="captureExerciseEffort()">'+workoutEffortOptions(0,10,boundedWorkoutEffort(e.completedRir,0,10,true))+'</select></label></div>'+
       '<div class="set-dots">'+dots+'</div>'+
       '<div class="wo-controls"><button class="wo-btn primary" onclick="completeSet()">'+t.woDone+' →</button>'+
       (WO.i>0||WO.set>0?'<button class="wo-btn ghost" onclick="skipExercise()">'+(lang==='bg'?'Следващо':'Next')+' »</button>':'')+'</div>'+
@@ -2433,6 +2578,7 @@ function renderWO(){
   }
 }
 function completeSet(){
+  captureExerciseEffort();
   witness('setCompleted');   // fact: effort happened (model accrues load + salience)
   const exercise=WO.ex[WO.i],sets=parseInt(exercise.sets)||3; exercise.completedSets=(exercise.completedSets||0)+1; WO.set++;
   if(WO.set>=sets){ // exercise done → advance or finish
@@ -2476,7 +2622,8 @@ function finishWorkout(){
       exercise_version:e.completion.exercise_version,completed_sets:e.completedSets||0,
       completed_repetitions:(e.completedSets||0)?(parseInt(e.reps)||0):0,
       completed_load:e.weight===''||e.weight==null?null:Number(e.weight),
-      completed_rir:null,completed_rpe:null
+      completed_rir:boundedWorkoutEffort(e.completedRir,0,10,true),
+      completed_rpe:boundedWorkoutEffort(e.completedRpe,1,10,false)
     }))
   }:null;
   if(workoutCompletion&& !workoutCompletion.workout_id)workoutCompletion=null;
@@ -2731,6 +2878,11 @@ async function runChatExchange(x,body){
   // M-1: watchdog aborts a stalled request after 75s of inactivity so the UI is
   // never stuck. Each token resets it, so a long but active stream is never cut.
   const kick=()=>{if(x.watchdog)clearTimeout(x.watchdog);x.watchdog=setTimeout(()=>x.controller.abort(),75000);};
+  // Account persistence and AthleteModel observation finish before the terminal
+  // response. Refresh once after a meaningful content turn, never by polling.
+  const refreshCoreAfterPersistedTurn=()=>{
+    if(body.session_start!==true)void refreshAthleteCoreProjection();
+  };
   ChatLifecycle.waiting(x);kick();
   try{
     const res=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',signal:x.controller.signal,body:JSON.stringify(body)});
@@ -2756,12 +2908,12 @@ async function runChatExchange(x,body){
         if(streamFailure||x.done){try{await reader.cancel();}catch(_){}break;}
       }
       if(streamFailure)ChatLifecycle.fail(x,streamFailure,x.full?CHAT_STATES.INTERRUPTED:CHAT_STATES.FAILED);
-      else if(x.done)ChatLifecycle.complete(x);
+      else if(x.done){ChatLifecycle.complete(x);refreshCoreAfterPersistedTurn();}
       else ChatLifecycle.fail(x,null,x.full?CHAT_STATES.INTERRUPTED:CHAT_STATES.FAILED);
     } else {
       const data=await res.json();
       if(data.limit_reached){showLimit(data.hours_left||24);ChatLifecycle.fail(x,tr().limitTitle,CHAT_STATES.FAILED);}
-      else if(data.reply){ChatLifecycle.content(x,data.reply);ChatLifecycle.complete(x);}
+      else if(data.reply){ChatLifecycle.content(x,data.reply);ChatLifecycle.complete(x);refreshCoreAfterPersistedTurn();}
       else throw new Error('malformed_chat_response');
     }
   }catch(e){
