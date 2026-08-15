@@ -42,6 +42,7 @@ from knowledge import KnowledgeResolver, load_default_registry
 from recommend import architect as recommendation_architect, engine as recommendation_planning, renderer as recommendation_renderer
 from training_engine import (
     MovementPattern,
+    TrainingSplit,
     TrainingRuntimeError,
     apply_followup,
     advance_training_lifecycle,
@@ -59,6 +60,7 @@ from training_engine import (
 from training_engine import renderer as training_renderer
 from training_engine.rationale import build_recommendation_rationale
 from training_engine.cross_session import adapt_from_persisted_history
+from training_engine.longitudinal import context_from_persisted_history
 from training_engine.advisory import persona_expert_training_signals
 from training_engine.health_restrictions import (
     FitnessLimitationState,
@@ -2093,7 +2095,7 @@ def _plan_coaching_request(snapshot, intent, history, lang):
 def _active_training_plan(snapshot, planning_blueprint, *, followup=None, previous_workout=None,
                           advisory_signals=None, brain_excluded_movement_patterns=frozenset(),
                           fitness_excluded_movement_patterns=frozenset(), recovering=False,
-                          rebuild_missing_followup=False):
+                          rebuild_missing_followup=False, longitudinal_records=()):
     """Build the deterministic workout artifact from verified request facts only."""
     if (snapshot.intent != "workout" or planning_blueprint is None
             or planning_blueprint.outcome is not recommendation_planning.RecommendationOutcome.RECOMMEND):
@@ -2105,6 +2107,16 @@ def _active_training_plan(snapshot, planning_blueprint, *, followup=None, previo
         frozenset(brain_excluded_movement_patterns)
         | frozenset(fitness_excluded_movement_patterns)
     )
+    # Account history is only a bounded preference among already eligible
+    # registry exercises. It is deliberately absent from follow-up revisions,
+    # whose immutable prior plan remains the single revision authority.
+    try:
+        longitudinal_split = TrainingSplit(planning_blueprint.training_split or "full_body")
+        longitudinal_context = context_from_persisted_history(
+            longitudinal_records, library=load_exercise_library(), split=longitudinal_split,
+        ) if followup is None else None
+    except (TypeError, ValueError):
+        longitudinal_context = None
     if followup is not None:
         if previous_workout is None:
             if not rebuild_missing_followup:
@@ -2134,13 +2146,17 @@ def _active_training_plan(snapshot, planning_blueprint, *, followup=None, previo
         locked_preferences=snapshot.locked_preferences.as_dict(),
         requested_split=planning_blueprint.training_split,
         excluded_movement_patterns=all_excluded_patterns,
+        deprioritized_exercise_ids=(longitudinal_context.recent_exercise_ids
+                                    if longitudinal_context is not None else frozenset()),
+        session_sequence_index=(longitudinal_context.next_session_index
+                                if longitudinal_context is not None else 0),
         advisory_preferred_exercise_ids=getattr(advisory_signals, "preferred_exercise_ids", ()),
     )
 
 
 def _training_recommendation_rationale(plan, profile, *, followup=None,
                                        previous_workout=None, recovering=False,
-                                       cross_session_change=None):
+                                       cross_session_change=None, longitudinal_context=None):
     """Project only verified planning inputs into the public rationale contract."""
     try:
         restrictions = project_explicit_health_restrictions(
@@ -2157,6 +2173,7 @@ def _training_recommendation_rationale(plan, profile, *, followup=None,
             has_previous_workout=previous_workout is not None,
             protective_recovery=bool(recovering),
             cross_session_change=cross_session_change,
+            longitudinal_context=longitudinal_context,
         )
     except Exception as rationale_error:
         print(f"[training-engine] rationale omitted: {type(rationale_error).__name__}")
@@ -2763,6 +2780,7 @@ def chat():
             elif _workout_followup.operation.value == "unknown_exercise":
                 _followup_reply = followup_message("unknown requested exercise", lang)
         pers_workouts = []
+        pers_nutrition_plans = []
         _account_constraint_retirement_intent = explicit_user_constraint_clearance_patterns(user_message)
         _retired_account_constraints = ()
         if chat_uid:
@@ -2784,6 +2802,10 @@ def chat():
                 pers_workouts = store.list_workouts(chat_uid, limit=40)
             except Exception as _we:
                 print(f"[chat] workout load failed: {_we}")
+            try:
+                pers_nutrition_plans = store.list_nutrition_plans(chat_uid, limit=14)
+            except Exception as _ne:
+                print(f"[chat] nutrition plan load failed: {_ne}")
 
         # Anonymous tabs have no server profile to reload on the next turn. Keep
         # only explicit, typed restriction declarations in the same tab scope so
@@ -3064,6 +3086,7 @@ def chat():
                     else:
                         _training_plan_blueprint = _active_training_plan(
                             _snapshot, _recommendation_plan,
+                            longitudinal_records=pers_workouts,
                             **({"advisory_signals": _training_advisory_signals}
                                if _training_advisory_signals is not None else {}),
                             **({"brain_excluded_movement_patterns": _brain_enforcement_exclusions}
@@ -3252,6 +3275,7 @@ def chat():
                          _snapshot, _shadow_decision)
                     _training_plan_blueprint = _active_training_plan(
                         _snapshot, _recommendation_plan,
+                        longitudinal_records=pers_workouts,
                         **({"advisory_signals": _training_advisory_signals}
                            if _training_advisory_signals is not None else {}),
                         **({"brain_excluded_movement_patterns": _brain_enforcement_exclusions}
@@ -3411,6 +3435,7 @@ def chat():
                     targets=nutrition_delivery_targets,
                     restrictions=_nutrition_restrictions(profile),
                     medical_route=(getattr(_shadow_decision, "outcome", None) == "route"),
+                    recent_plan_records=pers_nutrition_plans,
                 )
                 _nutrition_v2_authoritative_plan = _nutrition_v2_evaluation.plan
             except Exception as _v2_active_error:
@@ -3993,6 +4018,11 @@ def chat():
                             cross_session_change=(
                                 _cross_session_adaptation.change
                                 if _cross_session_adaptation is not None else None),
+                            longitudinal_context=(
+                                context_from_persisted_history(
+                                    pers_workouts, library=load_exercise_library(),
+                                    split=_training_plan_blueprint.training_split)
+                                if chat_uid and _workout_followup is None else None),
                         )
                         try:
                             completion = client.chat.completions.create(

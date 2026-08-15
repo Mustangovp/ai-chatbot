@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
+from typing import Mapping, Sequence
 
 import nutrition_plan
 from nutrition_validation import NutritionTargets as DeliveryTargets
@@ -26,6 +27,7 @@ from .models import (
     NutritionTargets,
 )
 from .service import SERVICE_VERSION, NutritionPlanResult, build_nutrition_plan
+from .history import rotation_context_from_plan_records
 
 
 _CATALOG_PATH = Path(__file__).parent / "data" / "food_catalog_v1.json"
@@ -66,7 +68,8 @@ def _failure(code: NutritionPlanCode, *, catalog_version: str = "unavailable") -
 
 
 def _request(*, language: str, targets: DeliveryTargets, catalog: Catalog,
-             restrictions: tuple[str, ...], medical_route: bool) -> NutritionPlanRequest:
+             restrictions: tuple[str, ...], medical_route: bool,
+             recent_plan_records: Sequence[Mapping[str, object]] | object = ()) -> NutritionPlanRequest:
     route = CallerRouteStatus.ELIGIBLE
     if medical_route:
         route = CallerRouteStatus.MEDICAL_ROUTING_REQUIRED
@@ -100,6 +103,7 @@ def _request(*, language: str, targets: DeliveryTargets, catalog: Catalog,
             fat_min_g=lower(targets.fat),
             fat_max_g=upper(targets.fat),
         ),
+        rotation_context=rotation_context_from_plan_records(recent_plan_records),
     )
 
 
@@ -140,7 +144,8 @@ def _payload_from_result(result: NutritionPlanResult, catalog: Catalog, language
 
 
 def evaluate_canonical_v2(*, language: str, targets: DeliveryTargets,
-                          restrictions: tuple[str, ...], medical_route: bool = False) -> CanonicalV2Evaluation:
+                          restrictions: tuple[str, ...], medical_route: bool = False,
+                          recent_plan_records: Sequence[Mapping[str, object]] | object = ()) -> CanonicalV2Evaluation:
     """Evaluate V2 and return a plan only after every production boundary passes."""
     try:
         catalog = load_production_food_catalog()
@@ -153,6 +158,7 @@ def evaluate_canonical_v2(*, language: str, targets: DeliveryTargets,
         catalog=catalog,
         restrictions=restrictions,
         medical_route=medical_route,
+        recent_plan_records=recent_plan_records,
     )
     result = build_nutrition_plan(request, catalog=catalog)
     if result.outcome is not NutritionPlanOutcome.SUCCESS:

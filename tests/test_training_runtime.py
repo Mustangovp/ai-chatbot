@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import pytest
 
 from training_engine import (
+    Equipment,
     MovementPattern,
     TrainingRuntimeError,
     TrainingSplit,
@@ -20,6 +21,7 @@ from training_engine import (
 from training_engine.advisory import TrainingAdvisorySignals, persona_expert_training_signals
 from training_engine.completion import completion_projection
 from training_engine.cross_session import adapt_from_persisted_history
+from training_engine.longitudinal import context_from_persisted_history
 from training_engine.rationale import build_recommendation_rationale, validate_recommendation_rationale
 from training_engine.health_restrictions import (
     FitnessLimitationState,
@@ -33,6 +35,7 @@ from training_engine.health_restrictions import (
 )
 from brain.runtime_assets.expert_consensus import ExpertConsensusResult
 from brain.runtime_assets.persona_matcher import PersonaMatchResult
+from brain.shoulder_exercise_index import shoulder_load_movements_for
 from training_engine import renderer
 
 
@@ -304,6 +307,9 @@ def test_cross_session_easy_comparable_completion_progresses_with_native_bounds(
         assert all(after.sets == before.sets + 1
                    for after, before in zip(result.plan.sessions[0].prescriptions,
                                             plan.sessions[0].prescriptions))
+        assert [item.exercise_id for item in result.plan.sessions[0].prescriptions] == [
+            item.exercise_id for item in plan.sessions[0].prescriptions
+        ]
 
 
 def test_cross_session_hard_or_incomplete_evidence_preserves_baseline_plan():
@@ -378,6 +384,114 @@ def test_cross_session_malformed_or_duplicate_history_fails_closed_deterministic
 
     assert first.plan == plan and first.applied is False
     assert second == first
+
+
+def test_longitudinal_context_advances_upper_lower_from_completed_registry_history():
+    facts = {**_PROFILE, "equipment": "gym", "training_split": "upper_lower"}
+    initial = build_training_plan(recommendation_blueprint_id="rec-longitudinal-upper", facts=facts)
+    record = _persisted_completion_record(initial, workout_id="upper-completed")
+    context = context_from_persisted_history(
+        [record], library=load_exercise_library(), split=TrainingSplit.UPPER_LOWER)
+    next_plan = build_training_plan(
+        recommendation_blueprint_id="rec-longitudinal-next", facts=facts,
+        deprioritized_exercise_ids=context.recent_exercise_ids,
+        session_sequence_index=context.next_session_index,
+    )
+
+    assert context.source_completion_count == 1
+    assert context.next_session_index == 1
+    assert {item.movement_pattern for item in initial.sessions[0].prescriptions} == {
+        MovementPattern.HORIZONTAL_PUSH, MovementPattern.HORIZONTAL_PULL, MovementPattern.VERTICAL_PUSH,
+    }
+    assert {item.movement_pattern for item in next_plan.sessions[0].prescriptions} == {
+        MovementPattern.SQUAT, MovementPattern.LUNGE, MovementPattern.HINGE,
+        MovementPattern.CORE_ANTI_EXTENSION,
+    }
+
+
+def test_longitudinal_context_advances_push_pull_legs_from_completed_registry_history():
+    facts = {**_PROFILE, "equipment": "gym", "training_split": "push_pull_legs"}
+    initial = build_training_plan(recommendation_blueprint_id="rec-longitudinal-push", facts=facts)
+    context = context_from_persisted_history(
+        [_persisted_completion_record(initial, workout_id="push-completed")],
+        library=load_exercise_library(), split=TrainingSplit.PUSH_PULL_LEGS)
+    next_plan = build_training_plan(
+        recommendation_blueprint_id="rec-longitudinal-pull", facts=facts,
+        deprioritized_exercise_ids=context.recent_exercise_ids,
+        session_sequence_index=context.next_session_index,
+    )
+
+    assert context.next_session_index == 1
+    assert {item.movement_pattern for item in initial.sessions[0].prescriptions} == {
+        MovementPattern.HORIZONTAL_PUSH, MovementPattern.VERTICAL_PUSH,
+    }
+    assert {item.movement_pattern for item in next_plan.sessions[0].prescriptions} == {
+        MovementPattern.HORIZONTAL_PULL,
+    }
+
+
+def test_longitudinal_rotation_prefers_safe_alternative_and_never_weakens_constraints():
+    facts = {**_PROFILE, "equipment": "gym"}
+    initial = build_training_plan(recommendation_blueprint_id="rec-longitudinal-repeat", facts=facts)
+    record = _persisted_completion_record(initial, workout_id="full-completed")
+    context = context_from_persisted_history(
+        [record], library=load_exercise_library(), split=TrainingSplit.FULL_BODY)
+    rotated = build_training_plan(
+        recommendation_blueprint_id="rec-longitudinal-rotated", facts=facts,
+        deprioritized_exercise_ids=context.recent_exercise_ids,
+    )
+    initial_push = next(item.exercise_id for item in initial.sessions[0].prescriptions
+                        if item.movement_pattern is MovementPattern.HORIZONTAL_PUSH)
+    rotated_push = next(item.exercise_id for item in rotated.sessions[0].prescriptions
+                        if item.movement_pattern is MovementPattern.HORIZONTAL_PUSH)
+    restricted = build_training_plan(
+        recommendation_blueprint_id="rec-longitudinal-restricted", facts=facts,
+        excluded_movement_patterns=frozenset({MovementPattern.VERTICAL_PUSH}),
+        deprioritized_exercise_ids=context.recent_exercise_ids,
+    )
+    home_rotated = build_training_plan(
+        recommendation_blueprint_id="rec-longitudinal-home", facts={**_PROFILE, "equipment": "bodyweight, dumbbells, bench"},
+        deprioritized_exercise_ids=context.recent_exercise_ids,
+    )
+    library = load_exercise_library()
+
+    assert initial_push != rotated_push
+    assert MovementPattern.VERTICAL_PUSH not in _movement_patterns(restricted)
+    assert all(not (library.get(item.exercise_id, item.exercise_version).equipment
+                    & frozenset({Equipment.CABLE, Equipment.BARBELL}))
+               for item in home_rotated.sessions[0].prescriptions)
+
+
+def test_longitudinal_rationale_is_bounded_and_invalid_history_is_ignored():
+    facts = {**_PROFILE, "equipment": "gym", "training_split": "upper_lower"}
+    plan = build_training_plan(recommendation_blueprint_id="rec-longitudinal-rationale", facts=facts)
+    context = context_from_persisted_history(
+        [_persisted_completion_record(plan, workout_id="rationale-completed")],
+        library=load_exercise_library(), split=TrainingSplit.UPPER_LOWER)
+    rationale = build_recommendation_rationale(plan, facts=facts, longitudinal_context=context)
+    invalid = context_from_persisted_history(
+        [{"completion": 100, "occurred_at": "bad", "exercises": {}}],
+        library=load_exercise_library(), split=TrainingSplit.UPPER_LOWER)
+
+    assert rationale["reason_code"] == "longitudinal_split_sequence"
+    assert rationale["used"] == [{"kind": "recent_training_exposure", "value": "completed_session"}]
+    assert rationale["changed"] == [{"kind": "split_sequence", "value": "upper_lower"}]
+    assert invalid.has_recent_exposure is False
+
+
+def test_expanded_exercise_library_has_unique_ids_and_final_shoulder_index_coverage():
+    library = load_exercise_library()
+    assert len(library.exercises) == 30
+    assert len({(item.exercise_id, item.version) for item in library.exercises}) == len(library.exercises)
+    for exercise in library.exercises:
+        candidates = (exercise.exercise_id, exercise.exercise_id.replace(".", "_"),
+                      exercise.exercise_id.rsplit(".", 1)[-1])
+        assert any(shoulder_load_movements_for(candidate) != frozenset({"unknown_shoulder_load"})
+                   for candidate in candidates), exercise.exercise_id
+        for reference in (exercise.progression.next_exercise_ids
+                          + exercise.regression.prior_exercise_ids
+                          + exercise.prerequisite_exercise_ids):
+            assert library.get(reference) is not None
 
 
 @pytest.mark.parametrize(("requested_split", "expected_sessions"), (

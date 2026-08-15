@@ -31,6 +31,7 @@ import nutrition_conversation
 import nutrition_plan
 import athlete_model as athlete_model
 from training_engine import build_training_plan, load_exercise_library
+from training_engine.completion import completion_projection
 from recommend import diversity as recommendation_diversity
 from recommend.blueprint import NutritionBlueprint, WorkoutBlueprint, to_dict
 from context_builder import LockedPreferences, Subject, build_context
@@ -1085,7 +1086,7 @@ def test_chat_applies_traceable_completed_workout_to_next_training_revision(clie
     profile = _profile(recoveryFeel="fresh")
     parent = build_training_plan(recommendation_blueprint_id="chat-lifecycle", facts=profile)
     monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
-    monkeypatch.setattr(appmod, "_active_training_plan", lambda *_args: parent)
+    monkeypatch.setattr(appmod, "_active_training_plan", lambda *_args, **_kwargs: parent)
     _set_stream(monkeypatch, captured, json.dumps({"explanations": ["Stay controlled today."]}))
     completion = appmod.training_renderer.render_completion_projection(parent, load_exercise_library())
     session = completion["sessions"][0]
@@ -2628,6 +2629,50 @@ def test_exact_bulgarian_workout_prompt_generates_on_its_first_turn(client, capt
     assert captured == {}
 
 
+@pytest.mark.parametrize("first_contact", (False, True))
+def test_authenticated_bulgarian_light_workout_uses_persisted_state_on_the_first_turn(
+        client, captured, monkeypatch, first_contact):
+    """A substantive first request must not need a separate \"check\" turn."""
+    profile = _profile(recoveryFeel="fresh", sleepQuality="good", stressLevel="low")
+    uid = _login_for_chat(client, profile)
+    prior_plan = build_training_plan(recommendation_blueprint_id="bg-first-turn-history", facts=profile)
+    prior_session = completion_projection(prior_plan, load_exercise_library())["sessions"][0]
+    store.log_workout(uid, {
+        "type": "full_body", "completion": 100,
+        "exercises": {"workout_completion": {
+            "workout_id": "bg-first-turn-history", "plan_id": prior_plan.plan_id,
+            "plan_version": prior_plan.version, "session_id": prior_session["session_id"],
+            "completion_timestamp": "2026-08-15T09:00:00+00:00",
+            "exercises": [{
+                "prescription_id": item["prescription_id"], "exercise_id": item["exercise_id"],
+                "exercise_version": item["exercise_version"], "completed_sets": item["prescribed_sets"],
+                "completed_repetitions": item["rep_max"], "completed_load": None,
+                "completed_rpe": "6", "completed_rir": 4, "completed_effort": None,
+            } for item in prior_session["exercises"]],
+        }},
+    })
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setenv("BRAIN_ENFORCE", "true")
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": []}))
+
+    response = client.post("/chat", json={
+        "message": "искам една лека тренировка за днес",
+        "lang": "bg",
+        # The account profile is authoritative; a client cannot make the
+        # available verified state disappear on its first request.
+        "profile": {"goal": "fat_loss"},
+        "first_contact": first_contact,
+    })
+    events = _events(response)
+
+    assert response.status_code == 200
+    assert events[-1] == {"done": True}
+    assert sum("training_completion" in event for event in events) == 1
+    assert not any("не успях да потвърдя необходимите проверки" in event.get("t", "").lower()
+                   for event in events)
+    assert "messages" in captured
+
+
 def test_combined_request_with_training_profile_failure_keeps_nutrition_follow_up_visible(
         client, captured, monkeypatch):
     profile = _profile(equipment="office")
@@ -3712,7 +3757,7 @@ def test_nutrition_plan_intake_asks_one_precise_question_without_generation(clie
 def test_active_training_engine_does_not_construct_from_a_profile_clarification(client, captured, monkeypatch):
     monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
     monkeypatch.setenv("BRAIN_ENFORCE", "1")
-    monkeypatch.setattr(appmod, "_active_training_plan", lambda *_args: pytest.fail("unexpected training construction"))
+    monkeypatch.setattr(appmod, "_active_training_plan", lambda *_args, **_kwargs: pytest.fail("unexpected training construction"))
 
     response = _post(client, "build a workout", profile={"goal": "strength"})
 

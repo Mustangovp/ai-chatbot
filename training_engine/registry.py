@@ -20,7 +20,7 @@ from .models import (
 )
 
 
-EXERCISE_LIBRARY_VERSION = "1.1.0"
+EXERCISE_LIBRARY_VERSION = "1.2.0"
 
 
 @dataclass(frozen=True)
@@ -158,6 +158,49 @@ _EXERCISES = (
               MovementPattern.SQUAT, frozenset({Equipment.BARBELL}), Difficulty.ADVANCED,
               ("lower_body", "squat", "barbell"), ("Use safety supports and controlled depth.",),
               regression=("dumbbell.goblet_squat",)),
+    _exercise("dumbbell.floor_press", "Dumbbell Floor Press", ("chest",), ("triceps", "anterior_deltoid"),
+              MovementPattern.HORIZONTAL_PUSH, frozenset({Equipment.DUMBBELL}), Difficulty.INTERMEDIATE,
+              ("upper_body", "push", "home"), ("Keep the upper arm controlled against the floor range.",)),
+    _exercise("band.chest_press", "Resistance-Band Chest Press", ("chest",), ("triceps", "anterior_deltoid"),
+              MovementPattern.HORIZONTAL_PUSH, frozenset({Equipment.RESISTANCE_BAND}), Difficulty.BEGINNER,
+              ("upper_body", "push", "home"), ("Secure the anchor before each set.",)),
+    _exercise("cable.chest_press", "Cable Chest Press", ("chest",), ("triceps", "anterior_deltoid"),
+              MovementPattern.HORIZONTAL_PUSH, frozenset({Equipment.CABLE}), Difficulty.INTERMEDIATE,
+              ("upper_body", "push", "gym"), ("Set both handles evenly and keep the torso stable.",)),
+    _exercise("dumbbell.chest_supported_row", "Chest-Supported Dumbbell Row", ("lats",), ("biceps", "mid_back"),
+              MovementPattern.HORIZONTAL_PULL, frozenset({Equipment.DUMBBELL, Equipment.BENCH}), Difficulty.ADVANCED,
+              ("upper_body", "pull"), ("Keep the chest supported and avoid shrugging.",)),
+    _exercise("cable.seated_row", "Cable Seated Row", ("lats",), ("biceps", "mid_back"),
+              MovementPattern.HORIZONTAL_PULL, frozenset({Equipment.CABLE}), Difficulty.ADVANCED,
+              ("upper_body", "pull", "gym"), ("Keep the torso still as the handle travels to the ribs.",)),
+    _exercise("band.lat_pulldown", "Resistance-Band Lat Pulldown", ("lats",), ("biceps", "mid_back"),
+              MovementPattern.VERTICAL_PULL, frozenset({Equipment.RESISTANCE_BAND}), Difficulty.BEGINNER,
+              ("upper_body", "pull", "home"), ("Use a secure high anchor and a controlled path.",)),
+    _exercise("cable.lat_pulldown", "Cable Lat Pulldown", ("lats",), ("biceps", "mid_back"),
+              MovementPattern.VERTICAL_PULL, frozenset({Equipment.CABLE}), Difficulty.INTERMEDIATE,
+              ("upper_body", "pull", "gym"), ("Pull to a comfortable upper-chest position without leaning back.",)),
+    _exercise("dumbbell.split_squat", "Dumbbell Split Squat", ("quadriceps", "glutes"), ("hamstrings", "core"),
+              MovementPattern.LUNGE, frozenset({Equipment.DUMBBELL}), Difficulty.INTERMEDIATE,
+              ("lower_body", "unilateral"), ("Use a stable stance and a controlled range.",)),
+    _exercise("dumbbell.step_up", "Dumbbell Step-Up", ("quadriceps", "glutes"), ("calves", "core"),
+              MovementPattern.LUNGE, frozenset({Equipment.DUMBBELL, Equipment.BENCH}), Difficulty.BEGINNER,
+              ("lower_body", "unilateral"), ("Use a stable step and control the descent.",)),
+    _exercise("bodyweight.glute_bridge", "Glute Bridge", ("glutes",), ("hamstrings", "core"),
+              MovementPattern.HINGE, frozenset({Equipment.BODYWEIGHT}), Difficulty.BEGINNER,
+              ("lower_body", "hinge", "home"), ("Keep ribs down and drive through the feet.",)),
+    _exercise("cable.pull_through", "Cable Pull-Through", ("glutes", "hamstrings"), ("erectors",),
+              MovementPattern.HINGE, frozenset({Equipment.CABLE}), Difficulty.INTERMEDIATE,
+              ("lower_body", "hinge", "gym"), ("Keep the cable close and finish with the hips, not the back.",)),
+    _exercise("barbell.romanian_deadlift", "Barbell Romanian Deadlift", ("hamstrings", "glutes"), ("erectors", "forearms"),
+              MovementPattern.HINGE, frozenset({Equipment.BARBELL}), Difficulty.ADVANCED,
+              ("lower_body", "hinge", "barbell"), ("Keep the bar close and stop before spinal position changes.",),
+              regression=("dumbbell.romanian_deadlift",)),
+    _exercise("bodyweight.dead_bug", "Dead Bug", ("core",), ("hip_flexors",),
+              MovementPattern.CORE_ANTI_EXTENSION, frozenset({Equipment.BODYWEIGHT}), Difficulty.ADVANCED,
+              ("core", "home"), ("Keep the lower back gently controlled against the floor.",)),
+    _exercise("band.pallof_press", "Resistance-Band Pallof Press", ("core",), ("obliques", "shoulders"),
+              MovementPattern.CORE_ANTI_EXTENSION, frozenset({Equipment.RESISTANCE_BAND}), Difficulty.BEGINNER,
+              ("core", "home"), ("Use a secure anchor and resist rotation without holding your breath.",)),
 )
 
 

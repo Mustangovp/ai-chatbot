@@ -265,9 +265,12 @@ class TrainingSelectionEngine:
             chosen = min(candidates, key=lambda exercise: cls._rank(exercise, request, policy))
             priority = "priority" if set(chosen.primary_muscles).intersection(request.muscle_priorities) else "balance"
             advisory = ";advisory_preference" if chosen.exercise_id in request.advisory_preferred_exercise_ids else ""
+            exposure = (";rotated_after_recent_exposure"
+                        if request.deprioritized_exercise_ids and chosen.exercise_id not in request.deprioritized_exercise_ids
+                        else "")
             selections.append(ExerciseSelection(
                 chosen.exercise_id, chosen.version, pattern,
-                f"goal:{request.goal.value};{priority}:{pattern.value};equipment_compatible{advisory}",
+                f"goal:{request.goal.value};{priority}:{pattern.value};equipment_compatible{exposure}{advisory}",
             ))
         if rejected:
             return TrainingSelectionResult(SelectionOutcome.REJECTED, None, tuple(rejected))

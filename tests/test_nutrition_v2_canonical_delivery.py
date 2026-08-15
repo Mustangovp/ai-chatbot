@@ -8,6 +8,7 @@ from nutrition_engine.catalog import Catalog
 from nutrition_engine.models import NutritionPlanCode, NutritionPlanOutcome
 from nutrition_engine.service import build_nutrition_plan
 from nutrition_engine import canonical_delivery as delivery
+from nutrition_engine.history import rotation_context_from_plan_records
 from nutrition_validation import NutritionTargets
 from tests.test_nutrition_engine_phase5 import CATALOG
 
@@ -53,6 +54,21 @@ def test_production_ready_v2_result_becomes_validated_authoritative_plan(monkeyp
     assert all(food.catalog_id == food.food_id for meal in evaluated.plan.meals for food in meal.foods)
     assert all(ready_catalog.by_id(food.catalog_id) is not None
                for meal in evaluated.plan.meals for food in meal.foods)
+
+
+def test_rotation_context_reads_only_authoritative_structured_plan_records(monkeypatch, ready_catalog):
+    monkeypatch.setattr(delivery, "load_production_food_catalog", lambda: ready_catalog)
+    evaluated = delivery.evaluate_canonical_v2(language="en", targets=TARGETS, restrictions=())
+    assert evaluated.plan is not None
+    context = rotation_context_from_plan_records([
+        {"plan": nutrition_plan.to_record(evaluated.plan)},
+        {"content": "rice salmon from a rendered chat response"},
+    ])
+
+    assert context.recent_breakfast_signatures
+    assert context.recent_lunch_signatures
+    assert context.recent_dinner_signatures
+    assert "rice salmon from a rendered chat response" not in context.recent_lunch_signatures
 
 
 def test_restrictions_and_medical_routes_are_rejected_before_delivery(monkeypatch, ready_catalog):

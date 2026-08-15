@@ -79,6 +79,7 @@ def build_training_plan(*, recommendation_blueprint_id: str, facts: Mapping[str,
                         excluded_exercise_ids: frozenset[str] = frozenset(),
                         excluded_movement_patterns: frozenset[MovementPattern] = frozenset(),
                         deprioritized_exercise_ids: frozenset[str] = frozenset(),
+                        session_sequence_index: int = 0,
                         advisory_preferred_exercise_ids: tuple[str, ...] = (),
                         level_override: Difficulty | None = None) -> TrainingPlanBlueprintV2:
     """Build one deterministic weekly plan or fail without producing a partial plan."""
@@ -99,7 +100,7 @@ def build_training_plan(*, recommendation_blueprint_id: str, facts: Mapping[str,
         excluded_movement_patterns=base_safety.excluded_movement_patterns | frozenset(excluded_movement_patterns),
         excluded_training_tags=base_safety.excluded_training_tags,
     )
-    policy = _policy_for_constraints(goal, split, safety)
+    policy = _policy_for_constraints(goal, split, safety, session_sequence_index)
     selection = TrainingSelectionEngine.select(
         selected_library,
         TrainingSelectionRequest(
@@ -221,19 +222,27 @@ def _safety(profile: Mapping[str, Any], locked: Mapping[str, Any],
 
 
 def _policy_for_constraints(goal: TrainingGoal, split: TrainingSplit,
-                            safety: TrainingSafetyConstraints) -> TrainingGoalPolicy:
+                            safety: TrainingSafetyConstraints,
+                            session_sequence_index: int = 0) -> TrainingGoalPolicy:
     base = training_goal_policy(goal, split)
     sessions = tuple(
         tuple(pattern for pattern in session if pattern not in safety.excluded_movement_patterns)
         for session in base.session_patterns
     )
     sessions = tuple(session for session in sessions if session)
+    if not isinstance(session_sequence_index, int) or session_sequence_index < 0:
+        raise TrainingRuntimeError("training session sequence is invalid")
+    offset = 0
+    if sessions:
+        offset = session_sequence_index % len(sessions)
+        sessions = sessions[offset:] + sessions[:offset]
     patterns = tuple(pattern for session in sessions for pattern in session)
     if not patterns:
         raise TrainingRuntimeError("all required movement patterns are excluded")
     return TrainingGoalPolicy(
-        version=base.version + ":constraints:" + ",".join(
-            sorted(pattern.value for pattern in safety.excluded_movement_patterns)),
+        version=(base.version + ":constraints:" + ",".join(
+            sorted(pattern.value for pattern in safety.excluded_movement_patterns))
+            + (f":sequence:{offset}" if offset else "")),
         goal=goal,
         required_patterns=patterns,
         prefer_highest_compatible_difficulty=base.prefer_highest_compatible_difficulty,

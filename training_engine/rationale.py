@@ -19,16 +19,20 @@ _REASONS = frozenset({
     "protective_recovery",
     "cross_session_progressed",
     "cross_session_progressed_with_constraints",
+    "longitudinal_split_sequence",
+    "longitudinal_exercise_rotation",
 })
 _USED_KINDS = frozenset({
     "active_constraint", "recent_workout", "protective_recovery",
     "training_goal", "experience_capacity",
     "comparable_session",
+    "recent_training_exposure",
 })
 _CHANGED_KINDS = frozenset({
     "excluded_movement", "difficulty_adjustment", "protective_volume",
     "goal_structure", "capacity_prescription",
     "cross_session_progression",
+    "split_sequence", "exercise_rotation",
 })
 _CROSS_SESSION_CHANGES = frozenset({
     "load", "repetitions", "sets", "eligible_alternative", "conservative", "mixed",
@@ -67,8 +71,14 @@ def _valid_item(item: object, *, used: bool) -> bool:
         return value == "conservative"
     if kind == "comparable_session":
         return value == "comfortable_completed"
+    if kind == "recent_training_exposure":
+        return value == "completed_session"
     if kind == "cross_session_progression":
         return value in _CROSS_SESSION_CHANGES
+    if kind == "split_sequence":
+        return value in {"full_body", "upper_lower", "push_pull_legs"}
+    if kind == "exercise_rotation":
+        return value == "safe_alternative"
     return False
 
 
@@ -97,7 +107,8 @@ def build_recommendation_rationale(
         active_constraint_patterns: frozenset[MovementPattern] = frozenset(),
         followup_direction: str | None = None, has_previous_workout: bool = False,
         protective_recovery: bool = False,
-        cross_session_change: str | None = None) -> dict[str, object]:
+        cross_session_change: str | None = None,
+        longitudinal_context: object | None = None) -> dict[str, object]:
     """Describe inputs that already affected ``plan`` without changing it."""
     if not isinstance(plan, TrainingPlanBlueprintV2):
         raise ValueError("rationale requires a validated deterministic training plan")
@@ -124,6 +135,19 @@ def build_recommendation_rationale(
         changed.append(_item("cross_session_progression", cross_change))
         reason = ("cross_session_progressed_with_constraints" if constraints
                   else "cross_session_progressed")
+    elif (getattr(longitudinal_context, "has_recent_exposure", False)
+          and not has_previous_workout
+          and (getattr(longitudinal_context, "next_session_index", 0)
+               or any(prescription.exercise_id not in getattr(longitudinal_context, "recent_exercise_ids", frozenset())
+                      for session in plan.sessions for prescription in session.prescriptions))):
+        used.append(_item("recent_training_exposure", "completed_session"))
+        if getattr(longitudinal_context, "next_session_index", 0):
+            used_split = getattr(plan.training_split, "value", "")
+            changed.append(_item("split_sequence", used_split))
+            reason = "longitudinal_split_sequence"
+        else:
+            changed.append(_item("exercise_rotation", "safe_alternative"))
+            reason = "longitudinal_exercise_rotation"
     elif has_previous_workout and direction in _DIRECTIONS:
         used.append(_item("recent_workout", "previous_session"))
         changed.append(_item("difficulty_adjustment", direction))

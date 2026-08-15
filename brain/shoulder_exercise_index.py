@@ -67,6 +67,7 @@ _SAFE_LOWER_BODY = frozenset()
 EXERCISE_SHOULDER_LOAD: dict[str, frozenset] = {
     # ── Push-up family ─────────────────────────────────────────────────────────
     "push_up":               _PUSH_UP_CONSTRAINTS,
+    "wall_push_up":          _PUSH_UP_CONSTRAINTS,
     "incline_push_up":       _PUSH_UP_CONSTRAINTS,
     "decline_push_up":       _PUSH_UP_CONSTRAINTS,
     "knee_push_up":          _PUSH_UP_CONSTRAINTS,
@@ -93,6 +94,8 @@ EXERCISE_SHOULDER_LOAD: dict[str, frozenset] = {
     "dumbbell_row":          _ROW_CONSTRAINTS,
     "barbell_row":           _ROW_CONSTRAINTS,
     "cable_row":             _ROW_CONSTRAINTS,
+    "band_row":              _ROW_CONSTRAINTS,
+    "cable_seated_row":      _ROW_CONSTRAINTS,
     "t_bar_row":             _ROW_CONSTRAINTS,
     "chest_supported_row":   _ROW_CONSTRAINTS,
     "face_pull":             _ROW_CONSTRAINTS | frozenset({"shoulder_direct_load"}),
@@ -108,6 +111,10 @@ EXERCISE_SHOULDER_LOAD: dict[str, frozenset] = {
     # ── Press / overhead ───────────────────────────────────────────────────────
     "overhead_press":        _PRESS_CONSTRAINTS | frozenset({"overhead"}),
     "dumbbell_overhead_press": _PRESS_CONSTRAINTS | frozenset({"overhead"}),
+    "dumbbell_seated_press": _PRESS_CONSTRAINTS | frozenset({"overhead"}),
+    "dumbbell_floor_press":  _PRESS_CONSTRAINTS,
+    "band_chest_press":      _PRESS_CONSTRAINTS,
+    "cable_chest_press":     _PRESS_CONSTRAINTS,
     "shoulder_press":        _PRESS_CONSTRAINTS | frozenset({"overhead"}),
     "push_press":            _PRESS_CONSTRAINTS | frozenset({"overhead"}),
     "arnold_press":          _PRESS_CONSTRAINTS | frozenset({"overhead"}),
@@ -125,6 +132,8 @@ EXERCISE_SHOULDER_LOAD: dict[str, frozenset] = {
 
     # ── Dumbbell hinge / deadlift ──────────────────────────────────────────────
     "dumbbell_romanian_deadlift": _DUMBBELL_HINGE_CONSTRAINTS,
+    "barbell_romanian_deadlift": _DUMBBELL_HINGE_CONSTRAINTS,
+    "cable_pull_through":    _DUMBBELL_HELD_CONSTRAINTS,
     "romanian_deadlift":     _DUMBBELL_HINGE_CONSTRAINTS,
     "dumbbell_deadlift":     _DUMBBELL_HINGE_CONSTRAINTS,
     "barbell_deadlift":      _DUMBBELL_HINGE_CONSTRAINTS,
@@ -165,6 +174,9 @@ EXERCISE_SHOULDER_LOAD: dict[str, frozenset] = {
     "dumbbell_squat":        _DUMBBELL_HELD_CONSTRAINTS,
     "dumbbell_lunge":        _DUMBBELL_HELD_CONSTRAINTS,
     "dumbbell_step_up":      _DUMBBELL_HELD_CONSTRAINTS,
+    "dumbbell_split_squat":  _DUMBBELL_HELD_CONSTRAINTS,
+    "barbell_back_squat":    _DUMBBELL_HELD_CONSTRAINTS,
+    "band_pallof_press":     _DUMBBELL_HELD_CONSTRAINTS | frozenset({"shoulder_stabilisation"}),
 
     # ── Safe lower body (no upper-limb load) ───────────────────────────────────
     # Only valid when performed with arms relaxed and absolutely no external load.
@@ -179,6 +191,7 @@ EXERCISE_SHOULDER_LOAD: dict[str, frozenset] = {
     "step_up":               _SAFE_LOWER_BODY,
     "box_step_up":           _SAFE_LOWER_BODY,
     "glute_bridge":          _SAFE_LOWER_BODY,
+    "dead_bug":              _SAFE_LOWER_BODY,
     "hip_thrust":            _SAFE_LOWER_BODY,
     "single_leg_glute_bridge": _SAFE_LOWER_BODY,
     "donkey_kick":           _SAFE_LOWER_BODY,
