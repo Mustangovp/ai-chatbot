@@ -2397,20 +2397,33 @@ def test_training_engine_active_delivers_only_deterministic_training_plan(client
 
 def test_training_engine_blocks_an_initial_plan_that_violates_a_shoulder_constraint(
         client, captured, monkeypatch):
+    limitation = appmod.transition_fitness_limitation(
+        None, "My shoulder hurts with overhead pressing.")
+    unsafe_plan = build_training_plan(
+        recommendation_blueprint_id="shoulder-initial",
+        facts=_profile(training_split="upper_lower"),
+    )
     monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod, "_active_training_plan", lambda *_args, **_kwargs: unsafe_plan)
     monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
 
-    events = _events(_post(client, "build a workout", profile=_profile(healthNotes="shoulder pain")))
+    events = _events(_post(client, "build a workout", profile=_profile(
+        _fitness_limitation_state=limitation.to_record())))
 
     assert events == [{"t": appmod._shoulder_safety_failure_reply("en")}, {"done": True}]
     assert captured == {}
 
 
 def test_training_engine_revalidates_a_harder_followup_before_delivery(client, captured, monkeypatch):
-    profile = _profile(healthNotes="shoulder pain")
+    limitation = appmod.transition_fitness_limitation(
+        None, "My shoulder hurts with overhead pressing.")
+    profile = _profile(_fitness_limitation_state=limitation.to_record())
     uid = _login_for_chat(client, profile)
     conversation_id = "shoulder-followup-0001"
-    unsafe_plan = build_training_plan(recommendation_blueprint_id="shoulder-followup", facts=_profile())
+    unsafe_plan = build_training_plan(
+        recommendation_blueprint_id="shoulder-followup",
+        facts=_profile(training_split="upper_lower"),
+    )
     appmod._remember_workout((f"account:{uid}", conversation_id), unsafe_plan)
     monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
     monkeypatch.setattr(appmod, "_active_training_plan", lambda *_args, **_kwargs: unsafe_plan)
@@ -2456,8 +2469,10 @@ def test_runtime_shoulder_validation_fails_closed_for_an_unknown_exercise_id():
         ),),
     )
 
+    limitation = appmod.transition_fitness_limitation(
+        None, "My shoulder hurts with overhead pressing.")
     result = appmod._validate_training_plan_shoulder_safety(
-        unknown_plan, _profile(healthNotes="shoulder pain"))
+        unknown_plan, _profile(_fitness_limitation_state=limitation.to_record()))
 
     assert result is not None
     assert result.passed is False
@@ -2671,6 +2686,31 @@ def test_authenticated_bulgarian_light_workout_uses_persisted_state_on_the_first
     assert not any("не успях да потвърдя необходимите проверки" in event.get("t", "").lower()
                    for event in events)
     assert "messages" in captured
+
+
+def test_authenticated_bulgarian_health_context_does_not_become_an_unsupported_training_restriction(
+        client, captured, monkeypatch):
+    """Profile symptoms are context, not typed movement exclusions."""
+    profile = _profile(
+        recoveryFeel="fresh", sleepQuality="good", stressLevel="low",
+        healthRestrictions=["Рамото ме боли", "Имам болка в кръста"],
+        healthNotes="Рамото ме боли. Имам болка в кръста.",
+        injuries="Рамо и кръст",
+    )
+    _login_for_chat(client, profile)
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setenv("BRAIN_ENFORCE", "true")
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": []}))
+
+    response = _post(
+        client, "искам примерна тренировка, какво би ми дал за днес?", lang="bg")
+    events = _events(response)
+
+    assert response.status_code == 200
+    assert events[-1] == {"done": True}
+    assert sum("training_completion" in event for event in events) == 1
+    assert not any("не успях да потвърдя необходимите проверки" in event.get("t", "").lower()
+                   for event in events)
 
 
 def test_combined_request_with_training_profile_failure_keeps_nutrition_follow_up_visible(
@@ -4464,12 +4504,17 @@ def test_deterministic_training_communication_does_not_bypass_shoulder_or_follow
                         lambda *_args, **_kwargs: (None, (types.SimpleNamespace(primary_persona_id="beginner"),
                                                          types.SimpleNamespace(applicable_rule_ids=("WNK-003",)))))
     monkeypatch.setattr(appmod, "_persona_adaptation", lambda *_args: {"beginner": True})
-    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": []}))
 
-    shoulder = _events(_post(client, "build a workout", profile=_profile(healthNotes="shoulder pain")))
+    limitation = appmod.transition_fitness_limitation(
+        None, "My shoulder hurts with overhead pressing.")
+    shoulder = _events(_post(client, "build a workout", profile=_profile(
+        _fitness_limitation_state=limitation.to_record())))
     exclusion = _events(_post(client, "Do not include push-ups. Give me a workout", profile=_profile()))
 
-    assert shoulder == [{"t": appmod._shoulder_safety_failure_reply("en")}, {"done": True}]
+    assert shoulder[-1] == {"done": True}
+    assert all(exercise["exercise_id"] != "dumbbell.overhead_press"
+               for exercise in _completion_exercises(shoulder))
     assert exclusion[-1] == {"done": True}
     assert "Push-Up" not in exclusion[0]["t"]
 

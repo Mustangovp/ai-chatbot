@@ -126,6 +126,11 @@ _PAIN_TERMS = (
     "hurts", "hurt again", "pain", "painful",
     "\u0431\u043e\u043b\u0438", "\u0431\u043e\u043b\u043a\u0430", "\u0431\u043e\u043b\u043a\u0438", "\u0437\u0430\u0431\u043e\u043b\u044f",
 )
+_OVERHEAD_LIMITATION_TERMS = (
+    "overhead pressing", "overhead press", "press overhead", "press above head",
+    "shoulder press", "military press", "преса над глава", "раменна преса",
+    "военна преса", "над глава",
+)
 _RECOVERING_PHRASES = (
     "shoulder is better", "shoulder feels better", "shoulder feels much better",
     "\u0440\u0430\u043c\u043e\u0442\u043e \u043c\u0438 \u0435 \u043f\u043e-\u0434\u043e\u0431\u0440\u0435",
@@ -196,8 +201,12 @@ def transition_fitness_limitation(
         if current is not None and current.state is not FitnessLimitationState.CLEARED:
             return FitnessLimitation(FitnessLimitationState.RECOVERING)
         return current
+    # A new symptom alone is health context, not a movement restriction. The
+    # existing lifecycle may reactivate an already-known temporary limitation,
+    # but a first activation must name the overhead movement it affects.
     if (any(term in text for term in _SHOULDER_TERMS)
-            and any(term in text for term in _PAIN_TERMS)):
+            and any(term in text for term in _PAIN_TERMS)
+            and (current is not None or any(term in text for term in _OVERHEAD_LIMITATION_TERMS))):
         return FitnessLimitation(FitnessLimitationState.ACTIVE)
     return current
 
@@ -301,12 +310,20 @@ def explicit_restrictions_from_message(message: object) -> tuple[str, ...]:
 
 
 def project_explicit_health_restrictions(profile: Mapping[str, object]) -> HealthRestrictionProjection:
-    """Project only explicit user/clinician boundaries, or reject the plan safely."""
-    restrictions = tuple(
-        restriction
-        for field in _RESTRICTION_FIELDS
-        for restriction in _values(profile.get(field))
-    )
+    """Project only explicit user/clinician boundaries, or reject them safely.
+
+    Legacy profile fields can contain symptom context from earlier onboarding.
+    Those values are not movement restrictions unless their own wording is
+    explicit; clinician and medical fields remain authoritative declarations.
+    """
+    restrictions = []
+    for field in _RESTRICTION_FIELDS:
+        for restriction in _values(profile.get(field)):
+            text = restriction.casefold()
+            declared_by_authority = field in {"clinicianRestrictions", "medicalRestrictions"}
+            explicitly_limited = any(marker in text for marker in _DIRECT_RESTRICTION_MARKERS)
+            if declared_by_authority or is_clinician_statement(text) or explicitly_limited:
+                restrictions.append(restriction)
     excluded: set[MovementPattern] = set()
     for restriction in restrictions:
         text = restriction.casefold()

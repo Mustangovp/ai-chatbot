@@ -195,8 +195,11 @@ def _recovery(profile: Mapping[str, Any]) -> RecoveryAssumption:
 
 
 def _reject_unreviewed_safety_constraints(profile: Mapping[str, Any], locked: Mapping[str, Any]) -> None:
-    values = _tokens(profile.get("injuries")) + _tokens(profile.get("healthNotes"))
-    values += _tokens(locked.get("permanent_injuries")) + _tokens(locked.get("accessibility"))
+    # Onboarding symptoms and health notes are declared context, not typed
+    # training exclusions. Only locked accessibility/injury boundaries still
+    # require a controlled review here; explicit restrictions are projected by
+    # _safety() below.
+    values = _tokens(locked.get("permanent_injuries")) + _tokens(locked.get("accessibility"))
     if values:
         raise TrainingRuntimeError("verified safety constraints require a controlled review")
 

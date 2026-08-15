@@ -88,8 +88,10 @@ import brain.config as brain_config             # M1: Brain shadow flags (defaul
 import brain.inspector as brain_inspector       # M1/Commit3: Brain Inspector (observability)
 import brain.cascade as brain_cascade           # M3: the one orchestrator (Decision)
 import brain.enforcement as brain_enforcement   # M4: Safety-Front renderer
+from brain.constraint_library import detect_conditions as _brain_detect_conditions
 from brain.health_scope import (HealthSafetyScope, assess_health_scope,
                                 declared_context_prompt, medical_boundary_message)
+from brain.types import Constraint, ConstraintSet, ConstraintTier
 import brain.shoulder_validator as shoulder_validator
 from brain.shoulder_exercise_index import EXERCISE_SHOULDER_LOAD
 import brain_analytics                          # M5: Brain Observatory (analytics only)
@@ -2242,7 +2244,7 @@ def _brain_enforcement_withheld_reply(directive, lang):
 def _resolve_brain_training_enforcement(profile, message, conversation, *, physiology=None, model=None):
     """Return one authoritative Brain decision and its typed selection exclusions."""
     decision = brain_cascade.decide(
-        profile if isinstance(profile, dict) else {}, message=message,
+        _training_health_profile(profile), message=message,
         conversation=conversation if isinstance(conversation, list) else [],
         physiology=physiology, model=model,
     )
@@ -2274,13 +2276,39 @@ def _shoulder_validator_id(exercise_id):
     return value
 
 
+_SYMPTOM_CONTEXT_CONDITIONS = frozenset({"shoulder_pain", "left_shoulder_pain", "right_shoulder_pain", "back_pain", "knee_pain", "joint_pain"})
+
+
+def _training_health_profile(profile):
+    """Keep symptom-only onboarding context out of training constraint inference."""
+    candidate = dict(profile) if isinstance(profile, dict) else {}
+    health_text = str(candidate.get("healthNotes") or candidate.get("injuries") or "")
+    detected = _brain_detect_conditions(health_text)
+    if detected and detected <= _SYMPTOM_CONTEXT_CONDITIONS:
+        candidate.pop("healthNotes", None)
+        candidate.pop("injuries", None)
+    return candidate
+
+
+def _shoulder_validation_constraints(profile, constraints=None):
+    """Use only typed Brain or temporary-limitation shoulder boundaries."""
+    if constraints is None:
+        constraints = brain_cascade.decide(
+            _training_health_profile(profile)
+        ).constraints
+    merged = ConstraintSet(list(getattr(constraints, "items", ())))
+    limitation = fitness_limitation_from_profile(profile) if isinstance(profile, dict) else None
+    if MovementPattern.VERTICAL_PUSH in limitation_excluded_patterns(limitation):
+        merged.add(Constraint("overhead", ConstraintTier.ABSOLUTE, "shoulder_load_forbidden"))
+        merged.add(Constraint("unknown_shoulder_load", ConstraintTier.ABSOLUTE,
+                              "shoulder_load_forbidden"))
+    return merged
+
+
 def _validate_training_plan_shoulder_safety(plan, profile, *, constraints=None):
     """Validate the final immutable plan before renderer and Composer delivery."""
     try:
-        if constraints is None:
-            constraints = brain_cascade.decide(
-                profile if isinstance(profile, dict) else {}
-            ).constraints
+        constraints = _shoulder_validation_constraints(profile, constraints)
         exercises = [
             {"canonical_id": _shoulder_validator_id(prescription.exercise_id)}
             for session in plan.sessions
@@ -2295,9 +2323,7 @@ def _validate_training_plan_shoulder_safety(plan, profile, *, constraints=None):
 def _shoulder_constraint_state(profile):
     """Return ``active``, ``none``, or ``unavailable`` for delivery decisions."""
     try:
-        constraints = brain_cascade.decide(
-            profile if isinstance(profile, dict) else {}
-        ).constraints
+        constraints = _shoulder_validation_constraints(profile)
         if shoulder_validator.is_shoulder_constraint_active(constraints):
             return "active"
         return "none"
@@ -3034,6 +3060,9 @@ def chat():
             _legacy = _snapshot.legacy_prompt_projection(conversation_limit=len(_legacy_history)).prompt_variables()
             if isinstance(profile, dict):
                 profile = _legacy["profile"]
+                if _fitness_limitation is not None:
+                    profile = dict(profile)
+                    profile["_fitness_limitation_state"] = _fitness_limitation.to_record()
             if isinstance(history, list):
                 history = _legacy["history"]
             pers_workouts = _legacy["workouts"]

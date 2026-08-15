@@ -112,11 +112,14 @@ def test_runtime_adapter_builds_a_deterministic_traceable_training_plan():
     assert "RPE" in rendered and "tempo" in rendered
 
 
-def test_runtime_adapter_fails_closed_for_unsupported_or_safety_constrained_profile():
+def test_runtime_adapter_rejects_unsupported_equipment_but_not_non_specific_health_context():
     with pytest.raises(TrainingRuntimeError, match="unsupported equipment"):
         build_training_plan(recommendation_blueprint_id="rec-runtime", facts={**_PROFILE, "equipment": "office"})
-    with pytest.raises(TrainingRuntimeError, match="safety constraints"):
-        build_training_plan(recommendation_blueprint_id="rec-runtime", facts={**_PROFILE, "injuries": "knee pain"})
+    plan = build_training_plan(
+        recommendation_blueprint_id="rec-runtime-health-context",
+        facts={**_PROFILE, "injuries": "lower back discomfort", "healthNotes": "shoulder soreness"},
+    )
+    assert plan.sessions
 
 
 def test_explicit_clinician_restrictions_are_typed_removal_only_constraints():
@@ -155,6 +158,16 @@ def test_unknown_explicit_health_restriction_fails_closed_without_diagnosis_infe
     assert project_explicit_health_restrictions({"healthNotes": "diabetes"}).source_count == 0
     with pytest.raises(UnsupportedHealthRestrictionError):
         project_explicit_health_restrictions({"medicalRestrictions": "No strenuous activity."})
+
+
+def test_generic_symptoms_are_not_projected_as_movement_restrictions():
+    projection = project_explicit_health_restrictions({
+        "healthRestrictions": ["lower back discomfort", "рамото ме боли"],
+        "trainingRestrictions": "болка в кръста",
+    })
+
+    assert projection.source_count == 0
+    assert projection.excluded_movement_patterns == frozenset()
 
 
 def test_self_reported_fitness_limitation_has_deterministic_recovery_lifecycle_en_and_bg():
@@ -591,13 +604,13 @@ def test_hard_exclusions_beat_persona_and_expert_preferences():
     assert "bodyweight.incline_push_up" in _exercise_ids(expert_plan)
 
 
-def test_shoulder_review_and_followup_exclusions_beat_advisory_preferences():
+def test_explicit_shoulder_restrictions_and_followup_exclusions_beat_advisory_preferences():
     signals = TrainingAdvisorySignals(("dumbbell.overhead_press",))
-    with pytest.raises(TrainingRuntimeError, match="safety constraints"):
-        build_training_plan(
-            recommendation_blueprint_id="rec-shoulder", facts={**_PROFILE, "healthNotes": "shoulder pain"},
-            advisory_preferred_exercise_ids=signals.preferred_exercise_ids,
-        )
+    restricted = build_training_plan(
+        recommendation_blueprint_id="rec-shoulder",
+        facts={**_PROFILE, "clinicianRestrictions": "Do not do overhead pressing."},
+        advisory_preferred_exercise_ids=signals.preferred_exercise_ids,
+    )
 
     facts = {**_PROFILE, "equipment": "gym", "training_split": "upper_lower"}
     previous = state_for(build_training_plan(recommendation_blueprint_id="rec-prior", facts=facts))
@@ -610,6 +623,7 @@ def test_shoulder_review_and_followup_exclusions_beat_advisory_preferences():
         advisory_preferred_exercise_ids=signals.preferred_exercise_ids,
     )
 
+    assert MovementPattern.VERTICAL_PUSH not in _movement_patterns(restricted)
     assert MovementPattern.VERTICAL_PUSH not in {
         item.movement_pattern for session in revised.sessions for item in session.prescriptions
     }
