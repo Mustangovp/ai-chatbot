@@ -2542,9 +2542,11 @@ function workoutEffortOptions(min,max,selected){
 }
 function captureExerciseEffort(){
   if(!WO||!WO.ex||!WO.ex[WO.i])return;
-  const exercise=WO.ex[WO.i],rpe=document.getElementById('wo-rpe-in'),rir=document.getElementById('wo-rir-in');
+  const exercise=WO.ex[WO.i],rpe=document.getElementById('wo-rpe-in'),rir=document.getElementById('wo-rir-in'),effort=document.getElementById('wo-effort-in'),reps=document.getElementById('wo-reps-in');
   exercise.completedRpe=boundedWorkoutEffort(rpe&&rpe.value,1,10,false);
   exercise.completedRir=boundedWorkoutEffort(rir&&rir.value,0,10,true);
+  exercise.completedEffort=['easy','productive','hard','incomplete'].includes(effort&&effort.value)?effort.value:null;
+  exercise.completedRepetitions=boundedWorkoutEffort(reps&&reps.value,0,999,true);
 }
 function renderWO(){
   const t=tr(),e=WO.ex[WO.i],mu=inferMuscle(e.name),sets=parseInt(e.sets)||3,prescription=workoutPrescription(e);
@@ -2561,8 +2563,8 @@ function renderWO(){
       '<div class="wo-ex-name">'+esc(e.name)+'</div>'+
       '<div class="wo-ex-target">'+esc(prescription.value)+' '+(prescription.type==='duration'?(lang==='bg'?'секунди':'seconds'):(lang==='bg'?'повторения':'reps'))+'</div>'+
       '<div class="wo-ex-meta">'+mu.m+' · '+(lang==='bg'?'темп':'tempo')+' 2-0-2'+(e.note?(' · '+esc(e.note)):'')+'</div>'+
-      '<div class="wo-weight"><input type="number" id="wo-weight-in" inputmode="decimal" placeholder="'+(lang==='bg'?'кг (по избор)':'kg (optional)')+'" value="'+(e.weight||'')+'" oninput="WO.ex[WO.i].weight=this.value"><span>'+(lang==='bg'?'кг × серия':'kg / set')+'</span></div>'+
-      '<div class="wo-effort"><span>'+(lang==='bg'?'Усилие — избери RPE или RIR':'Effort — choose RPE or RIR')+'</span><label>RPE <select id="wo-rpe-in" onchange="captureExerciseEffort()">'+workoutEffortOptions(1,10,boundedWorkoutEffort(e.completedRpe,1,10,false))+'</select></label><label>RIR <select id="wo-rir-in" onchange="captureExerciseEffort()">'+workoutEffortOptions(0,10,boundedWorkoutEffort(e.completedRir,0,10,true))+'</select></label></div>'+
+      '<div class="wo-weight"><input type="number" id="wo-reps-in" inputmode="numeric" min="0" placeholder="'+(lang==='bg'?'повторения':'reps')+'" value="'+(e.completedRepetitions==null?(parseInt(e.reps)||''):e.completedRepetitions)+'"><span>'+(lang==='bg'?'реално изпълнени':'completed reps')+'</span><input type="number" id="wo-weight-in" inputmode="decimal" placeholder="'+(lang==='bg'?'кг (по избор)':'kg (optional)')+'" value="'+(e.weight||'')+'" oninput="WO.ex[WO.i].weight=this.value"></div>'+
+      '<div class="wo-effort"><span>'+(lang==='bg'?'Как се почувства упражнението?':'How did that exercise feel?')+'</span><select id="wo-effort-in" onchange="captureExerciseEffort()"><option value="">'+(lang==='bg'?'Избери':'Choose')+'</option><option value="easy"'+(e.completedEffort==='easy'?' selected':'')+'>'+(lang==='bg'?'Лесно':'Easy')+'</option><option value="productive"'+(e.completedEffort==='productive'?' selected':'')+'>'+(lang==='bg'?'Точно както трябва':'About right')+'</option><option value="hard"'+(e.completedEffort==='hard'?' selected':'')+'>'+(lang==='bg'?'Трудно':'Hard')+'</option><option value="incomplete"'+(e.completedEffort==='incomplete'?' selected':'')+'>'+(lang==='bg'?'Не успях да завърша':'Couldn’t finish')+'</option></select><details><summary>'+(lang==='bg'?'Разширено: RPE / RIR':'Advanced: RPE / RIR')+'</summary><small>'+(lang==='bg'?'RPE = колко трудно се усещаше. RIR = колко чисти повторения оставаха.':'RPE = how hard it felt. RIR = clean reps left.')+'</small><label>RPE <select id="wo-rpe-in" onchange="captureExerciseEffort()">'+workoutEffortOptions(1,10,boundedWorkoutEffort(e.completedRpe,1,10,false))+'</select></label><label>RIR <select id="wo-rir-in" onchange="captureExerciseEffort()">'+workoutEffortOptions(0,10,boundedWorkoutEffort(e.completedRir,0,10,true))+'</select></label></details></div>'+
       '<div class="set-dots">'+dots+'</div>'+
       '<div class="wo-controls"><button class="wo-btn primary" onclick="completeSet()">'+t.woDone+' →</button>'+
       (WO.i>0||WO.set>0?'<button class="wo-btn ghost" onclick="skipExercise()">'+(lang==='bg'?'Следващо':'Next')+' »</button>':'')+'</div>'+
@@ -2610,7 +2612,7 @@ function finishWorkout(){
   const workoutSummary={
     completed_at:new Date().toISOString(),type:session.type,completion:100,
     exercises:WO.ex.map(e=>({name:e.name,completed_sets:e.completedSets||0,
-      completed_repetitions:(e.completedSets||0)?(parseInt(e.reps)||0):0,
+      completed_repetitions:(e.completedSets||0)?(e.completedRepetitions==null?(parseInt(e.reps)||0):e.completedRepetitions):0,
       completed_load:e.weight===''||e.weight==null?null:Number(e.weight)}))
   };
   const workoutCompletion=WO.contract&&WO.ex.every(e=>e.completion)?{
@@ -2620,10 +2622,11 @@ function finishWorkout(){
     exercises:WO.ex.map(e=>({
       prescription_id:e.completion.prescription_id,exercise_id:e.completion.exercise_id,
       exercise_version:e.completion.exercise_version,completed_sets:e.completedSets||0,
-      completed_repetitions:(e.completedSets||0)?(parseInt(e.reps)||0):0,
+      completed_repetitions:(e.completedSets||0)?(e.completedRepetitions==null?(parseInt(e.reps)||0):e.completedRepetitions):0,
       completed_load:e.weight===''||e.weight==null?null:Number(e.weight),
       completed_rir:boundedWorkoutEffort(e.completedRir,0,10,true),
-      completed_rpe:boundedWorkoutEffort(e.completedRpe,1,10,false)
+      completed_rpe:boundedWorkoutEffort(e.completedRpe,1,10,false),
+      completed_effort:['easy','productive','hard','incomplete'].includes(e.completedEffort)?e.completedEffort:null
     }))
   }:null;
   if(workoutCompletion&& !workoutCompletion.workout_id)workoutCompletion=null;

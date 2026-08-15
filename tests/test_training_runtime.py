@@ -63,7 +63,7 @@ def _movement_patterns(plan):
     return {item.movement_pattern for session in plan.sessions for item in session.prescriptions}
 
 
-def _persisted_completion_record(plan, *, workout_id="cross-session-1", rpe=None, rir=None,
+def _persisted_completion_record(plan, *, workout_id="cross-session-1", rpe=None, rir=None, effort=None,
                                  complete=True, occurred_at="2026-08-14T12:00:00+00:00"):
     """Build the immutable shape saved by ``/api/workout`` without mutating history."""
     projection = completion_projection(plan, load_exercise_library())
@@ -79,6 +79,7 @@ def _persisted_completion_record(plan, *, workout_id="cross-session-1", rpe=None
             "completed_load": None,
             "completed_rpe": rpe,
             "completed_rir": rir,
+            "completed_effort": effort,
         })
     return {
         "id": workout_id,
@@ -286,12 +287,13 @@ def test_recommendation_rationale_omits_unused_factors_and_malformed_values_fail
 
 def test_cross_session_easy_comparable_completion_progresses_with_native_bounds():
     plan = build_training_plan(recommendation_blueprint_id="rec-cross-easy", facts=_PROFILE)
-    for workout_id, rpe, rir in (
-            ("cross-session-rpe-only", "6", None),
-            ("cross-session-rir-only", None, 4),
-            ("cross-session-consistent", "6", 4)):
+    for workout_id, rpe, rir, effort in (
+            ("cross-session-rpe-only", "6", None, None),
+            ("cross-session-rir-only", None, 4, None),
+            ("cross-session-consistent", "6", 4, None),
+            ("cross-session-qualitative-easy", None, None, "easy")):
         result = adapt_from_persisted_history(
-            plan, [_persisted_completion_record(plan, workout_id=workout_id, rpe=rpe, rir=rir)],
+            plan, [_persisted_completion_record(plan, workout_id=workout_id, rpe=rpe, rir=rir, effort=effort)],
             now=datetime(2026, 8, 14, 13, tzinfo=timezone.utc),
         )
 
@@ -306,13 +308,15 @@ def test_cross_session_easy_comparable_completion_progresses_with_native_bounds(
 
 def test_cross_session_hard_or_incomplete_evidence_preserves_baseline_plan():
     plan = build_training_plan(recommendation_blueprint_id="rec-cross-hard", facts=_PROFILE)
-    for workout_id, rpe, rir in (
-            ("cross-session-rpe-hard", "9", None),
-            ("cross-session-rir-hard", None, 0),
-            ("cross-session-contradictory", "6", 0),
-            ("cross-session-no-effort", None, None)):
+    for workout_id, rpe, rir, effort in (
+            ("cross-session-rpe-hard", "9", None, None),
+            ("cross-session-rir-hard", None, 0, None),
+            ("cross-session-contradictory", "6", 0, None),
+            ("cross-session-productive", None, None, "productive"),
+            ("cross-session-qualitative-hard", None, None, "hard"),
+            ("cross-session-no-effort", None, None, None)):
         result = adapt_from_persisted_history(
-            plan, [_persisted_completion_record(plan, workout_id=workout_id, rpe=rpe, rir=rir)],
+            plan, [_persisted_completion_record(plan, workout_id=workout_id, rpe=rpe, rir=rir, effort=effort)],
             now=datetime(2026, 8, 14, 13, tzinfo=timezone.utc),
         )
         assert result.plan == plan and result.applied is False

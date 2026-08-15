@@ -47,6 +47,7 @@ class ExercisePerformance:
     load_kg: Decimal | None
     completed: bool
     pain_reported: bool = False
+    qualitative_effort: str | None = None
 
     def __post_init__(self) -> None:
         if not self.exercise_id or not self.exercise_version:
@@ -70,6 +71,8 @@ class ExercisePerformance:
             object.__setattr__(self, "load_kg", load)
         if not isinstance(self.completed, bool) or not isinstance(self.pain_reported, bool):
             raise ValueError("completion and pain flags must be boolean")
+        if self.qualitative_effort not in (None, "easy", "productive", "hard", "incomplete"):
+            raise ValueError("qualitative effort is invalid")
         if self.completed and (self.completed_sets < 1 or self.completed_repetitions < 1):
             raise ValueError("completed performance requires completed work")
 
@@ -329,7 +332,12 @@ class ProgressionEngine:
             return cls._build(ProgressionDecisionType.MAINTAIN, "recovery_fatigued", prescription, plan, policy)
         if not latest_result.completed or not latest.completed:
             return cls._build(ProgressionDecisionType.MAINTAIN, "workout_incomplete", prescription, plan, policy)
-        if latest.achieved_rir is None and latest.achieved_rpe is None:
+        if latest.qualitative_effort in ("hard", "incomplete"):
+            return cls._build(ProgressionDecisionType.MAINTAIN, "effort_not_ready_for_progression", prescription, plan, policy)
+        if latest.qualitative_effort == "productive":
+            return cls._build(ProgressionDecisionType.MAINTAIN, "effort_productive", prescription, plan, policy)
+        if (latest.achieved_rir is None and latest.achieved_rpe is None
+                and latest.qualitative_effort != "easy"):
             return cls._build(ProgressionDecisionType.MAINTAIN, "effort_not_recorded", prescription, plan, policy)
         if (latest.achieved_rir is not None and latest.achieved_rir < policy.minimum_progress_rir) or (
                 latest.achieved_rpe is not None and latest.achieved_rpe > policy.maximum_progress_rpe):

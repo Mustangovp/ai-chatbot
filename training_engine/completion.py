@@ -12,6 +12,8 @@ from .construction import ExercisePrescription, TrainingPlanBlueprintV2, Trainin
 from .progression import ExercisePerformance, WorkoutResult
 from .registry import ExerciseLibrary
 
+QUALITATIVE_EFFORTS = frozenset({"easy", "productive", "hard", "incomplete"})
+
 
 def prescription_id(plan: TrainingPlanBlueprintV2, session: TrainingSessionBlueprint,
                     prescription: ExercisePrescription) -> str:
@@ -65,6 +67,7 @@ class CompletedPrescription:
     completed_load: Decimal | None
     completed_rir: int | None
     completed_rpe: Decimal | None
+    completed_effort: str | None
 
 
 @dataclass(frozen=True)
@@ -92,6 +95,7 @@ class WorkoutCompletion:
                 completed_repetitions=item.completed_repetitions,
                 achieved_rpe=item.completed_rpe,
                 achieved_rir=item.completed_rir,
+                qualitative_effort=item.completed_effort,
                 load_kg=item.completed_load,
                 completed=item.completed_sets > 0,
             ) for item in self.exercises),
@@ -144,6 +148,7 @@ def validate_workout_completion_payload(payload: Any) -> None:
         _optional_decimal(item.get("completed_load"), "completed_load")
         _optional_int(item.get("completed_rir"), "completed_rir", 0, 10)
         _optional_decimal(item.get("completed_rpe"), "completed_rpe", Decimal("1"), Decimal("10"))
+        _optional_effort(item.get("completed_effort"))
 
 
 def _session(plan: TrainingPlanBlueprintV2, session_id: str) -> TrainingSessionBlueprint:
@@ -177,6 +182,7 @@ def _completed_exercise(payload: Any, expected: Mapping[str, ExercisePrescriptio
         completed_load=_optional_decimal(payload.get("completed_load"), "completed_load"),
         completed_rir=_optional_int(payload.get("completed_rir"), "completed_rir", 0, 10),
         completed_rpe=_optional_decimal(payload.get("completed_rpe"), "completed_rpe", Decimal("1"), Decimal("10")),
+        completed_effort=_optional_effort(payload.get("completed_effort")),
     )
 
 
@@ -209,6 +215,14 @@ def _optional_int(value: Any, field: str, minimum: int, maximum: int) -> int | N
         return None
     if not isinstance(value, int) or isinstance(value, bool) or not minimum <= value <= maximum:
         raise ValueError(f"{field} is invalid")
+    return value
+
+
+def _optional_effort(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or value not in QUALITATIVE_EFFORTS:
+        raise ValueError("completed_effort is invalid")
     return value
 
 

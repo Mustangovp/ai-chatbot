@@ -60,7 +60,7 @@ def adapt_from_persisted_history(
 
     Completion rows are accepted only when their immutable exercise identities
     overlap substantially with the newly selected plan and contain explicit,
-    directionally consistent RPE and/or RIR feedback. Everything else is
+    directionally consistent qualitative effort and/or RPE/RIR feedback. Everything else is
     intentionally ignored.
     """
     if (not isinstance(plan, TrainingPlanBlueprintV2)
@@ -147,10 +147,12 @@ def _candidate(plan: TrainingPlanBlueprintV2, record: object,
 
 def _performance(item: Mapping[str, object]) -> ExercisePerformance | None:
     try:
-        rpe, rir = item.get("completed_rpe"), item.get("completed_rir")
+        rpe, rir, effort = item.get("completed_rpe"), item.get("completed_rir"), item.get("completed_effort")
         parsed_rpe = Decimal(str(rpe)) if rpe is not None else None
         parsed_rir = int(rir) if rir is not None else None
-        if parsed_rpe is None and parsed_rir is None:
+        if effort not in (None, "easy", "productive", "hard", "incomplete"):
+            return None
+        if parsed_rpe is None and parsed_rir is None and effort is None:
             return None
         if parsed_rpe is not None and not Decimal("1") <= parsed_rpe <= Decimal("10"):
             return None
@@ -160,11 +162,16 @@ def _performance(item: Mapping[str, object]) -> ExercisePerformance | None:
                 and ((parsed_rpe <= _CROSS_SESSION_PROGRESSION_POLICY.maximum_progress_rpe)
                      != (parsed_rir >= _CROSS_SESSION_PROGRESSION_POLICY.minimum_progress_rir))):
             return None
+        numeric_hard = ((parsed_rpe is not None and parsed_rpe > _CROSS_SESSION_PROGRESSION_POLICY.maximum_progress_rpe)
+                        or (parsed_rir is not None and parsed_rir < _CROSS_SESSION_PROGRESSION_POLICY.minimum_progress_rir))
+        if effort == "easy" and numeric_hard:
+            effort = "hard"
         return ExercisePerformance(
             exercise_id=str(item["exercise_id"]), exercise_version=str(item["exercise_version"]),
             completed_sets=int(item["completed_sets"]),
             completed_repetitions=int(item["completed_repetitions"]),
             achieved_rpe=parsed_rpe, achieved_rir=parsed_rir,
+            qualitative_effort=effort,
             load_kg=(Decimal(str(item["completed_load"]))
                      if item.get("completed_load") is not None else None),
             completed=int(item["completed_sets"]) > 0,
