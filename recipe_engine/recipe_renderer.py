@@ -12,6 +12,7 @@ def recipe_token(match: RecipeMatch, meal_id: str) -> str:
     recipe = match.recipe
     payload = {
         "id": recipe.id, "meal_id": meal_id, "food_ids": list(recipe.food_ids),
+        "preparation_type": "recipe",
         "title": recipe.title, "difficulty": recipe.difficulty,
         "minutes": recipe.cook_time_minutes, "steps": list(recipe.steps),
         "tips": list(recipe.healthy_cooking_tips),
@@ -21,4 +22,28 @@ def recipe_token(match: RecipeMatch, meal_id: str) -> str:
     encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     # Standard Base64 avoids the renderer's Markdown-cleaning ``__`` token
     # while remaining safe inside one pipe-table cell.
+    return "recipe:" + base64.b64encode(encoded).decode("ascii")
+
+
+def assembly_token(meal: object, language: str) -> str:
+    """Serialize a bounded serving instruction when no exact recipe is safe."""
+    bulgarian = str(language).lower() != "en"
+    payload = {
+        "id": "assembly-v1",
+        "meal_id": str(getattr(meal, "id")),
+        "food_ids": [str(getattr(food, "food_id", "")) for food in getattr(meal, "foods", ())],
+        "preparation_type": "assembly",
+        "title": str(getattr(meal, "name", "")),
+        "difficulty": "",
+        "minutes": "",
+        "steps": [
+            "Сервирай посочените компоненти в дадените количества."
+            if bulgarian else "Serve the listed components in the stated quantities."
+        ],
+        "tips": [],
+        "substitutions": [],
+        "storage": "",
+        "meal_prep": False,
+    }
+    encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     return "recipe:" + base64.b64encode(encoded).decode("ascii")

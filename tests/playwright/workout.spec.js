@@ -755,6 +755,34 @@ test.describe('APEX approved app shell — UX regression', () => {
     await expect(card.locator('.nm-recipe')).toHaveCount(0);
   });
 
+  test('NP-1G: complete meal cards show menu title and assembly without a fake recipe', async ({ page }) => {
+    await page.evaluate(() => {
+      const assembly = (mealId, title) => 'recipe:' + btoa(JSON.stringify({
+        id: 'assembly-v1', meal_id: mealId, title, preparation_type: 'assembly',
+        difficulty: '', minutes: '', steps: ['Serve the listed components in the stated quantities.'],
+        tips: [], substitutions: [], storage: '', meal_prep: false
+      }));
+      const md = [
+        '| Meal | Menu title | Meal ID | Food | Quantity | Protein | Carbs | Fat | Calories | Why this meal | Recipe |',
+        '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+        '| Breakfast | Yogurt oats bowl | meal-breakfast | Greek yogurt | 200 g | 20 | 8 | 4 | 150 | Balanced start. | ' + assembly('meal-breakfast', 'Yogurt oats bowl') + ' |',
+        '| | | | Oats | 60 g | 8 | 36 | 4 | 230 | | |',
+        '| Daily Total | | | | | 28 | 44 | 8 | 380 | | |'
+      ].join('\n');
+      const el = appendCoach();
+      el.innerHTML = renderMarkdown(md);
+    });
+
+    const card = page.locator('.nutri-meal');
+    await expect(card).toContainText('Breakfast');
+    await expect(card.locator('.nm-menu-title')).toHaveText('Yogurt oats bowl');
+    await expect(card).toContainText('Greek yogurt');
+    await expect(card).toContainText(/Protein|\u0411\u0435\u043b\u0442\u044a\u0447\u0438\u043d\u0438/);
+    await expect(card.locator('.nm-recipe')).toHaveAttribute('open', '');
+    await expect(card.locator('.nm-recipe')).toContainText(/How to prepare|\u041a\u0430\u043a \u0434\u0430 \u0433\u043e \u043f\u0440\u0438\u0433\u043e\u0442\u0432\u0438\u0448/);
+    await expect(card.locator('.nm-recipe-title')).toHaveCount(0);
+  });
+
   test('NR-1: nutrition readability — full words, units, colour is not the sole signal', async ({ page }) => {
     await page.evaluate(() => {
       const md = [

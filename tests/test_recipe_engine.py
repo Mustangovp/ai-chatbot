@@ -90,7 +90,55 @@ def test_recipe_token_carries_the_immutable_meal_id_and_recipe_food_identity():
     assert payload["meal_id"] == meal_id
     assert payload["id"] == recipe_match.recipe.id
     assert payload["food_ids"] == list(recipe_match.recipe.food_ids)
+    assert payload["preparation_type"] == "recipe"
     assert payload["substitutions"]
+
+
+def _delivery_preparation_payloads(delivery: str):
+    return [
+        json.loads(base64.b64decode(token.removeprefix("recipe:")))
+        for token in delivery.split()
+        if token.startswith("recipe:")
+    ]
+
+
+def test_main_meals_receive_safe_assembly_when_no_exact_recipe_matches(monkeypatch):
+    plan = _plan()
+    monkeypatch.setattr("recipe_engine.recipe_engine.match_plan", lambda *_args, **_kwargs: {})
+    delivery = nutrition_plan.render_delivery(plan, "en", {})
+    preparations = _delivery_preparation_payloads(delivery)
+
+    assert len(preparations) == 3
+    assert {item["preparation_type"] for item in preparations} == {"assembly"}
+    assert all(item["steps"] == ["Serve the listed components in the stated quantities."]
+               for item in preparations)
+    assert all(item["substitutions"] == [] for item in preparations)
+
+
+def test_recipe_matching_preserves_curated_substitutions_and_uses_recipe_presentation():
+    plan = _plan()
+    delivery = nutrition_plan.render_delivery(plan, "en", {"cooking_equipment": ["pan", "oven"]})
+    preparations = _delivery_preparation_payloads(delivery)
+
+    recipes = [item for item in preparations if item["preparation_type"] == "recipe"]
+    assemblies = [item for item in preparations if item["preparation_type"] == "assembly"]
+    assert {item["id"] for item in recipes} == {"breakfast-eggs-oats", "dinner-salmon-quinoa"}
+    assert all(item["substitutions"] for item in recipes)
+    assert len(assemblies) == 1
+
+
+def test_meal_preparation_survives_structured_plan_persistence_and_reloads_localized(monkeypatch):
+    plan = _plan()
+    restored = nutrition_plan.from_record(nutrition_plan.to_record(plan))
+
+    assert [meal.preparation_type for meal in restored.meals] == ["assembly", "assembly", "assembly"]
+    assert "preparation_type" in nutrition_plan.to_record(plan)["meals"][0]
+    monkeypatch.setattr("recipe_engine.recipe_engine.match_plan", lambda *_args, **_kwargs: {})
+    delivery = nutrition_plan.render_delivery(restored, "bg", {})
+    preparations = _delivery_preparation_payloads(delivery)
+    assert all(item["preparation_type"] == "assembly" for item in preparations)
+    assert all(item["steps"] == ["Сервирай посочените компоненти в дадените количества."]
+               for item in preparations)
 
 
 def test_exact_meal_identity_rejects_recipe_with_an_absent_ingredient():

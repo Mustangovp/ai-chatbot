@@ -226,6 +226,7 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 .nm-meal-icon{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 28px;color:var(--pulse);}
 .nm-meal-icon svg{width:28px;height:28px;fill:none;stroke:currentColor;stroke-width:1.65;stroke-linecap:round;stroke-linejoin:round;}
 .nm-name{font-family:'Unbounded';font-weight:600;font-size:14px;color:#fff;}
+.nm-menu-title{margin:2px 0 10px 37px;color:var(--muted);font-size:12.5px;font-weight:600;line-height:1.4;}
 .nm-qty{font-size:12px;color:var(--muted);font-weight:600;flex-shrink:0;}
 .nm-reason{margin-top:10px;color:var(--muted);font-size:12.5px;line-height:1.5;}
 .nm-recipe{margin-top:12px;border-top:1px solid var(--border);padding-top:10px;}
@@ -2000,6 +2001,7 @@ const _isTotal=s=>/[\s(|:](total|totals|\u043e\u0431\u0449\u043e|\u0441\u0443\u0
 function _nums(s){return (String(s).match(/\d+(?:[.,]\d+)?/g)||[]);}
 const BG_NUTRITION_FIELDS=Object.freeze({
   '\u0445\u0440\u0430\u043d\u0435\u043d\u0435':'name',
+  '\u043c\u0435\u043d\u044e':'title',
   'id \u043d\u0430 \u0445\u0440\u0430\u043d\u0435\u043d\u0435':'mealId',
   '\u0445\u0440\u0430\u043d\u0430':'food','\u0445\u0440\u0430\u043d\u0438':'food',
   '\u044f\u0441\u0442\u0438\u0435':'food','\u043f\u0440\u043e\u0434\u0443\u043a\u0442':'food','\u0438\u043c\u0435':'food',
@@ -2014,6 +2016,7 @@ function nutritionField(v){
   const h=mdClean(v).toLowerCase().replace(/\s*\([^)]*\)\s*$/,'').trim();
   if(BG_NUTRITION_FIELDS[h])return BG_NUTRITION_FIELDS[h];
   if(/^(meal)$/.test(h))return'name';
+  if(/^(menu|menu title)$/.test(h))return'title';
   if(/^(meal id)$/.test(h))return'mealId';
   if(/^(food|dish|product|name)$/.test(h))return'food';
   if(/^(quantity|qty|amount|serving|serving size|portion|grams?)$/.test(h))return'qty';
@@ -2026,7 +2029,7 @@ function nutritionField(v){
   return null;
 }
 function nutritionSchema(cells){
-  const schema={name:-1,mealId:-1,food:-1,qty:-1,p:-1,c:-1,f:-1,k:-1,reason:-1,recipe:-1,width:(cells||[]).length};
+  const schema={name:-1,title:-1,mealId:-1,food:-1,qty:-1,p:-1,c:-1,f:-1,k:-1,reason:-1,recipe:-1,width:(cells||[]).length};
   (cells||[]).forEach((cell,index)=>{const field=nutritionField(cell);if(field&&schema[field]===-1)schema[field]=index;});
   return (schema.name>=0||schema.food>=0)&&[schema.p,schema.c,schema.f,schema.k].filter(index=>index>=0).length>=3?schema:null;
 }
@@ -2039,7 +2042,7 @@ function isNutritionTableHeader(cells){
 function itemFromSchema(cells,schema){
   const value=field=>schema[field]>=0?mdClean(cells[schema[field]]||''):'';
   const meal=value('name'); const food=value('food'); const name=food||meal; if(!name)return [];
-  const item={mealId:value('mealId'),p:value('p'),c:value('c'),f:value('f'),k:value('k'),reason:value('reason'),recipe:value('recipe')};
+  const item={title:value('title'),mealId:value('mealId'),p:value('p'),c:value('c'),f:value('f'),k:value('k'),reason:value('reason'),recipe:value('recipe')};
   if(_isTotal(meal||food))return[{type:'total',...item}];
   if(isMealCell(meal)&&!food&&!item.p&&!item.c&&!item.f&&!item.k)return[{type:'meal',name:mealHeaderName(meal)||meal}];
   const items=[];
@@ -2145,6 +2148,7 @@ function renderNutritionModel(model){
       const bytes=Uint8Array.from(atob(base64),c=>c.charCodeAt(0));
       const recipe=JSON.parse(new TextDecoder().decode(bytes));
       if(!recipe||typeof recipe.meal_id!=='string'||typeof recipe.title!=='string'||!Array.isArray(recipe.steps)||!Array.isArray(recipe.tips)||!Array.isArray(recipe.substitutions))return null;
+      if(recipe.preparation_type!==undefined&&recipe.preparation_type!=='recipe'&&recipe.preparation_type!=='assembly')return null;
       return recipe;
     }catch(_){return null;}
   };
@@ -2152,16 +2156,19 @@ function renderNutritionModel(model){
     if(!recipe)return '';
     try{
       const labels=lang==='bg'
-        ?{recipe:'Рецепта',steps:'Стъпки за приготвяне',tips:'Съвети за здравословно готвене',storage:'Съхранение',subs:'Замени',minutes:'мин',prep:'Подходяща за meal prep'}
-        :{recipe:'Recipe',steps:'Preparation steps',tips:'Healthy cooking tips',storage:'Storage',subs:'Substitutions',minutes:'min',prep:'Suitable for meal prep'};
+        ?{recipe:'Рецепта',assembly:'Как да го приготвиш',steps:'Стъпки за приготвяне',tips:'Съвети за здравословно готвене',storage:'Съхранение',subs:'Замени',minutes:'мин',prep:'Подходяща за meal prep'}
+        :{recipe:'Recipe',assembly:'How to prepare',steps:'Preparation steps',tips:'Healthy cooking tips',storage:'Storage',subs:'Substitutions',minutes:'min',prep:'Suitable for meal prep'};
       const list=items=>'<ul>'+items.map(item=>'<li>'+esc(String(item))+'</li>').join('')+'</ul>';
+      if(recipe.preparation_type==='assembly'){
+        return '<details class="nm-recipe" open><summary>'+esc(labels.assembly)+'</summary><p>'+esc(recipe.steps.map(step=>String(step)).join(' '))+'</p></details>';
+      }
       const title='<div class="nm-recipe-title">'+esc(labels.recipe+': '+recipe.title)+'</div>';
       const meta='<div class="nm-recipe-meta">'+esc(String(recipe.difficulty||'')+' · '+String(recipe.minutes||'')+' '+labels.minutes+(recipe.meal_prep?' · '+labels.prep:''))+'</div>';
       return title+meta+
         '<details class="nm-recipe"><summary>'+esc(labels.steps)+'</summary><ol>'+recipe.steps.map(step=>'<li>'+esc(String(step))+'</li>').join('')+'</ol></details>'+
-        '<details class="nm-recipe"><summary>'+esc(labels.tips)+'</summary>'+list(recipe.tips)+'</details>'+
-        '<details class="nm-recipe"><summary>'+esc(labels.storage)+'</summary><p>'+esc(String(recipe.storage||''))+'</p></details>'+
-        '<details class="nm-recipe"><summary>'+esc(labels.subs)+'</summary>'+list(recipe.substitutions)+'</details>';
+        (recipe.tips.length?'<details class="nm-recipe"><summary>'+esc(labels.tips)+'</summary>'+list(recipe.tips)+'</details>':'')+
+        (recipe.storage?'<details class="nm-recipe"><summary>'+esc(labels.storage)+'</summary><p>'+esc(String(recipe.storage))+'</p></details>':'')+
+        (recipe.substitutions.length?'<details class="nm-recipe"><summary>'+esc(labels.subs)+'</summary>'+list(recipe.substitutions)+'</details>':'');
     }catch(_){return '';}
   };
   const macroBlock=it=>{
@@ -2186,9 +2193,8 @@ function renderNutritionModel(model){
     const foods=group.foods;
     const rows=group.summary?'':foods.map(food=>'<div class="nm-food-row"><span class="nm-food-name">'+esc(mdClean(food.name))+'</span>'+(food.qty?'<span class="nm-food-qty">'+esc(mdClean(food.qty))+'</span>':'')+'</div>').join('');
     const reason=group.reason?'<div class="nm-reason">'+esc(mdClean(group.reason))+'</div>':'';
-    const noRecipe=group.canOwnRecipe&&group.mealId&&!group.recipe
-      ?'<div class="nm-recipe-missing">'+(lang==='bg'?'\u041d\u044f\u043c\u0430 \u043f\u043e\u0434\u0445\u043e\u0434\u044f\u0449\u0430 \u0440\u0435\u0446\u0435\u043f\u0442\u0430 \u0437\u0430 \u0442\u043e\u0432\u0430 \u0445\u0440\u0430\u043d\u0435\u043d\u0435.':'No suitable recipe is available for this meal.')+'</div>':'';
     return '<div class="nutri-meal nutri-title"><div class="nm-head"><span class="nm-title-main">'+mealIcon(foods)+'<span class="nm-name">'+esc(group.name)+'</span></span></div>'+
+      (group.menuTitle?'<div class="nm-menu-title">'+esc(group.menuTitle)+'</div>':'')+
       (rows?'<div class="nm-foods">'+rows+'</div>':'')+macroBlock(mealTotals(foods))+reason+recipeCard(group.recipe)+'</div>';
   };
   const groups=[]; let active=null; let total=null;
@@ -2196,17 +2202,18 @@ function renderNutritionModel(model){
     if(it.type==='total'){ if(clip(it.p)||clip(it.c)||clip(it.f)||clip(it.k)) total=it; continue; }
     if(it.type==='meal'){
       const name=mdClean(it.name); if(!name) continue;
-      active={name,mealId:'',foods:[],reason:'',recipe:null,canOwnRecipe:true}; groups.push(active); continue;
+      active={name,menuTitle:'',mealId:'',foods:[],reason:'',recipe:null,canOwnRecipe:true}; groups.push(active); continue;
     }
     const name=mdClean(it.name); if(!name) continue;
     // Legacy meal-only tables have no separate Food column. Keep their one row
     // as a self-contained meal, but never let a recipe token float onto it.
-    if(!active||it.mealSummary) { active={name,mealId:'',foods:[],reason:'',recipe:null,canOwnRecipe:false,summary:!!it.mealSummary}; groups.push(active); }
+    if(!active||it.mealSummary) { active={name,menuTitle:'',mealId:'',foods:[],reason:'',recipe:null,canOwnRecipe:false,summary:!!it.mealSummary}; groups.push(active); }
     const key=name.toLowerCase()+'~'+clip(it.p)+'~'+clip(it.c)+'~'+clip(it.f)+'~'+clip(it.k);
     if(active.foods.some(food=>food._key===key)) continue;
     active.foods.push({...it,_key:key});
     const mealId=mdClean(it.mealId);
     if(mealId&&(!active.mealId||active.mealId===mealId)) active.mealId=mealId;
+    if(!active.menuTitle&&it.title) active.menuTitle=mdClean(it.title);
     if(!active.reason&&it.reason) active.reason=it.reason;
     if(active.canOwnRecipe&&!active.recipe&&it.recipe){
       const candidate=recipePayload(it.recipe);

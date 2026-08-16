@@ -3601,7 +3601,7 @@ def test_nutrition_delivery_adds_a_deterministic_explanation_after_the_canonical
 
     delivered = nutrition_plan.render_delivery(plan, "en")
 
-    assert delivered.startswith("| Meal | Meal ID | Food")
+    assert delivered.startswith("| Meal | Menu title | Meal ID | Food")
     assert delivered.endswith("If anything does not work for you, tell me and we'll adapt it straight away.")
     assert "**Why this plan:**" in delivered
     assert delivered.count("Why this meal") == 1
@@ -3810,7 +3810,8 @@ def test_daily_nutrition_source_backed_recovery_accepts_calorie_only_target(clie
     events = _events(_post(client, "Give me a full-day nutrition plan", profile=_profile()))
 
     assert events[-1] == {"done": True}
-    assert events[0]["t"].startswith("| Meal | Meal ID | Food")
+    assert events[0]["t"].startswith("| Meal | Menu title | Meal ID | Food")
+    assert "recipe:" in events[0]["t"]
     assert nutrition_conversation.failed_message("en") not in events[0]["t"]
     assert len(calls) == 2
 
@@ -4817,7 +4818,7 @@ def test_missed_menu_phrase_never_streams_or_persists_rejected_daily_plan(client
     failure = events[0]["t"]
 
     assert events == [{"t": failure}, {"done": True}]
-    assert failure.startswith("| Meal | Meal ID | Food")
+    assert failure.startswith("| Meal | Menu title | Meal ID | Food")
     assert _PRODUCTION_MALFORMED_NUTRITION not in str(events)
     saved = store.list_conversation(uid, limit=10)
     assert [turn["content"] for turn in saved] == ["дай ми меню", failure]

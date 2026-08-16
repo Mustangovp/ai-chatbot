@@ -87,6 +87,7 @@ class NutritionMeal:
     time: str
     foods: tuple[NutritionFood, ...]
     macros: NutritionMacros
+    preparation_type: str | None = None
 
 
 @dataclass(frozen=True)
@@ -263,6 +264,7 @@ def build_plan(payload: Mapping[str, object], targets: NutritionTargets, *,
             time=str(raw_meal.get("time") or meal_type).strip(),
             foods=foods,
             macros=meal_macros,
+            preparation_type="assembly" if meal_type in _MEALS else None,
         ))
     if not set(_MEALS).issubset(seen):
         raise NutritionPlanError("breakfast, lunch, and dinner are required")
@@ -530,9 +532,20 @@ def from_record(record: Mapping[str, object]) -> NutritionPlan:
             )
             foods.append(food)
             macros = macros.plus(food_macros)
+        stored_preparation_type = raw_meal.get("preparation_type")
+        if stored_preparation_type is None:
+            # Older persisted plans gain the safe main-meal default without
+            # parsing rendered text to reconstruct it.
+            preparation_type = "assembly" if meal_type in _MEALS else None
+        elif stored_preparation_type in {"assembly", "none"}:
+            preparation_type = str(stored_preparation_type)
+        else:
+            raise NutritionPlanError("stored meal preparation_type is invalid")
+        if meal_type in _MEALS and preparation_type != "assembly":
+            raise NutritionPlanError("stored primary meal preparation is invalid")
         meals.append(NutritionMeal(
             meal_id, str(raw_meal.get("name") or meal_type.title()).strip(), meal_type,
-            str(raw_meal.get("time") or meal_type).strip(), tuple(foods), macros))
+            str(raw_meal.get("time") or meal_type).strip(), tuple(foods), macros, preparation_type))
     if not set(_MEALS).issubset(seen):
         raise NutritionPlanError("stored plan primary meals are incomplete")
     ordering = {"breakfast": 0, "snack": 1, "lunch": 2, "dinner": 3}
@@ -608,7 +621,8 @@ def apply_revision(plan: NutritionPlan, operation: RevisionOperation) -> Nutriti
                     changed = True
                 else:
                     foods.append(food)
-            meals.append(NutritionMeal(meal.id, meal.name, meal.meal_type, meal.time, tuple(foods), meal.macros))
+            meals.append(NutritionMeal(meal.id, meal.name, meal.meal_type, meal.time, tuple(foods), meal.macros,
+                                       meal.preparation_type))
         if not changed:
             raise NutritionPlanError("ingredient is not present in the active plan")
         return _revision_plan(plan, tuple(meals), restrictions=plan.restrictions + (f"no {target}",), operation=operation)
@@ -627,7 +641,8 @@ def apply_revision(plan: NutritionPlan, operation: RevisionOperation) -> Nutriti
                 next((replacement for name, replacement in _BREAKFAST_REPLACEMENTS.items()
                       if name in food.display_name.lower()), f"Alternative {food.display_name}"),
                 food.grams, food.macros, food.food_id, food.measurement_state) for food in meal.foods)
-            meals.append(NutritionMeal(meal.id, "Alternative breakfast", meal.meal_type, meal.time, foods, meal.macros))
+            meals.append(NutritionMeal(meal.id, "Alternative breakfast", meal.meal_type, meal.time, foods,
+                                       meal.macros, meal.preparation_type))
             changed = True
         if not changed:
             raise NutritionPlanError("meal is not present in the active plan")
@@ -654,7 +669,8 @@ def apply_revision(plan: NutritionPlan, operation: RevisionOperation) -> Nutriti
                     changed = True
                 foods.append(food)
                 macros = macros.plus(food.macros)
-            meals.append(NutritionMeal(meal.id, meal.name, meal.meal_type, meal.time, tuple(foods), macros))
+            meals.append(NutritionMeal(meal.id, meal.name, meal.meal_type, meal.time, tuple(foods), macros,
+                                       meal.preparation_type))
         if not changed:
             raise NutritionPlanError("ingredient is not present in the active plan")
         return _revision_plan(plan, tuple(meals), restrictions=plan.restrictions, operation=operation)
@@ -728,27 +744,29 @@ def render(plan: NutritionPlan, lang: str, recipe_tokens: Mapping[str, str] | No
         "lunch": ("Lunch", "\u041e\u0431\u044f\u0434"),
         "dinner": ("Dinner", "\u0412\u0435\u0447\u0435\u0440\u044f"),
     }
-    header = "| Meal | Meal ID | Food | Quantity | Protein (g) | Carbs (g) | Fat (g) | Kcal | Why this meal |"
+    header = "| Meal | Menu title | Meal ID | Food | Quantity | Protein (g) | Carbs (g) | Fat (g) | Kcal | Why this meal |"
     if not english:
         header = "| \u0425\u0440\u0430\u043d\u0435\u043d\u0435 | \u0425\u0440\u0430\u043d\u0430 | \u041a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e | \u0411\u0435\u043b\u0442\u044a\u0447\u0438\u043d\u0438 (g) | \u0412\u044a\u0433\u043b\u0435\u0445\u0438\u0434\u0440\u0430\u0442\u0438 (g) | \u041c\u0430\u0437\u043d\u0438\u043d\u0438 (g) | \u041a\u043a\u0430\u043b | \u0417\u0430\u0449\u043e \u0442\u043e\u0432\u0430 \u0445\u0440\u0430\u043d\u0435\u043d\u0435 |"
     if not english:
         header = "| \u0425\u0440\u0430\u043d\u0435\u043d\u0435 | ID \u043d\u0430 \u0445\u0440\u0430\u043d\u0435\u043d\u0435 | \u0425\u0440\u0430\u043d\u0430 | \u041a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e | \u0411\u0435\u043b\u0442\u044a\u0447\u0438\u043d\u0438 (g) | \u0412\u044a\u0433\u043b\u0435\u0445\u0438\u0434\u0440\u0430\u0442\u0438 (g) | \u041c\u0430\u0437\u043d\u0438\u043d\u0438 (g) | \u041a\u043a\u0430\u043b | \u0417\u0430\u0449\u043e \u0442\u043e\u0432\u0430 \u0445\u0440\u0430\u043d\u0435\u043d\u0435 |"
+    if not english:
+        header = header.replace("| ID ", "| \u041c\u0435\u043d\u044e | ID ", 1)
     if include_recipes:
         header += " Recipe |" if english else " \u0420\u0435\u0446\u0435\u043f\u0442\u0430 |"
-    lines = [header, "| --- | --- | --- | --- | --- | --- | --- | --- | --- |" + (" --- |" if include_recipes else "")]
+    lines = [header, "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |" + (" --- |" if include_recipes else "")]
     for meal in plan.meals:
         for index, food in enumerate(meal.foods):
             label = labels[meal.meal_type][0 if english else 1] if index == 0 else ""
             reason = _meal_reason(meal, plan.targets, lang) if index == 0 else ""
             recipe = (recipe_tokens or {}).get(meal.id, "") if index == 0 else ""
-            row = "| {} | {} | {} | {} | {} | {} | {} | {} | {} |".format(
-                label, meal.id if index == 0 else "", food.display_name, _quantity_label(food, lang),
+            row = "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |".format(
+                label, meal.name if index == 0 else "", meal.id if index == 0 else "", food.display_name, _quantity_label(food, lang),
                 _display_decimal(food.macros.protein_g), _display_decimal(food.macros.carbs_g),
                 _display_decimal(food.macros.fat_g), _display_decimal(food.macros.kcal), reason,
             )
             lines.append(row[:-1] + f" | {recipe} |" if include_recipes else row)
     total_label = "Daily Total" if english else "\u041e\u0431\u0449\u043e"
-    total_row = "| {} | | | | {} | {} | {} | {} | |".format(
+    total_row = "| {} | | | | | {} | {} | {} | {} | |".format(
         total_label, _display_decimal(plan.totals.protein_g), _display_decimal(plan.totals.carbs_g),
         _display_decimal(plan.totals.fat_g), _display_decimal(plan.totals.kcal),
     )
@@ -768,6 +786,15 @@ def render_delivery(plan: NutritionPlan, lang: str, profile: Mapping[str, object
         # Recipes are optional presentation. A bad local record must never block
         # a plan that has already passed the delivery contract.
         recipe_tokens = {}
+    try:
+        from recipe_engine.recipe_renderer import assembly_token
+
+        for meal in plan.meals:
+            if meal.preparation_type == "assembly" and meal.id not in recipe_tokens:
+                recipe_tokens[meal.id] = assembly_token(meal, lang)
+    except Exception:
+        # Presentation enhancement must not block the validated plan contract.
+        pass
     table = render(plan, lang, recipe_tokens)
     target = _display_decimal(plan.targets.kcal)
     delivered = _display_decimal(plan.totals.kcal)
@@ -814,6 +841,7 @@ def to_record(plan: NutritionPlan) -> dict[str, object]:
         "totals": macros(plan.totals), "provenance": dict(plan.provenance),
         "meals": [
             {"id": meal.id, "name": meal.name, "meal_type": meal.meal_type, "time": meal.time,
+             "preparation_type": meal.preparation_type,
              "macros": macros(meal.macros), "foods": [
                  {"id": food.id, "catalog_id": food.catalog_id, "food_id": food.food_id,
                   "display_name": food.display_name, "measurement_state": (
