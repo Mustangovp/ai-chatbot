@@ -119,6 +119,14 @@ _workout_conversation_health_restrictions = {}
 _workout_conversation_fitness_limitations = {}
 _workout_conversation_medical_holds = {}
 _workout_conversation_stale = set()
+_workout_conversation_decisions = {}
+
+_WORKOUT_DECISIONS = frozenset({
+    "WORKOUT_APPROVED",
+    "WORKOUT_CLARIFICATION_REQUIRED",
+    "WORKOUT_RESTRICTION_UNSUPPORTED",
+    "WORKOUT_PLANNING_FAILURE",
+})
 
 
 def _workout_conversation_scope(payload, user_id, device_id):
@@ -167,6 +175,7 @@ def _remember_workout(scope, plan):
     try:
         store.update_conversation_runtime_state(
             *scope, workout_blueprint=serialize_conversation_plan(plan),
+            workout_decision="WORKOUT_APPROVED",
             workout_delivered=True, workout_stale=False)
     except Exception as error:
         print(f"[chat] conversation workout marker unavailable: {type(error).__name__}")
@@ -176,6 +185,29 @@ def _conversation_has_delivered_workout(scope):
     if _last_workout_for(scope) is not None:
         return True
     return bool(_durable_workout_state(scope).get("workout_delivered"))
+
+
+def _conversation_workout_decision(scope):
+    if scope is None:
+        return None
+    with _workout_conversation_lock:
+        local = _workout_conversation_decisions.get(scope)
+    if local in _WORKOUT_DECISIONS:
+        return local
+    durable = _durable_workout_state(scope).get("workout_decision")
+    return durable if durable in _WORKOUT_DECISIONS else None
+
+
+def _record_conversation_workout_decision(scope, decision):
+    """Persist only a closed authority outcome, never assistant prose."""
+    if scope is None or decision not in _WORKOUT_DECISIONS:
+        return
+    with _workout_conversation_lock:
+        _workout_conversation_decisions[scope] = decision
+    try:
+        store.update_conversation_runtime_state(*scope, workout_decision=decision)
+    except Exception as error:
+        print(f"[chat] conversation workout decision unavailable: {type(error).__name__}")
 
 
 def _conversation_health_restrictions(scope):
@@ -2070,6 +2102,10 @@ _WORKOUT_CONTINUATION_TERMS = (
     "suggest it", "propose it", "give it to me",
     "предложи ми я", "предложи я", "дай ми я",
 )
+_WORKOUT_EXPLANATION_TERMS = (
+    "why", "what do you mean", "why not", "what is it",
+    "защо", "каква е тя", "какво имаш предвид", "защо не можеш",
+)
 
 
 def _workout_continuation_request(message, history):
@@ -2087,6 +2123,25 @@ def _workout_continuation_request(message, history):
         for turn in (history or ())
         if isinstance(turn, dict) and turn.get("role") == "user"
     )
+
+
+def _workout_explanation_request(message):
+    text = re.sub(r"\s+", " ", str(message or "").casefold()).strip(" ?!.")
+    return any(term == text or term in text for term in _WORKOUT_EXPLANATION_TERMS)
+
+
+def _workout_decision_reply(decision, lang):
+    """Bounded explanation for an unresolved authoritative workout turn."""
+    english = str(lang).lower() == "en"
+    if decision == "WORKOUT_CLARIFICATION_REQUIRED":
+        return ("I still need the specific missing training detail before I can build a workout."
+                if english else
+                "Все още ми липсва конкретният тренировъчен детайл, за да изградя тренировка.")
+    if decision == "WORKOUT_RESTRICTION_UNSUPPORTED":
+        return _explicit_health_restriction_reply(lang)
+    return ("I couldn't build a validated workout from the current training constraints. I won't invent one."
+            if english else
+            "Не успях да изградя валидирана тренировка според текущите тренировъчни ограничения. Няма да измисля такава.")
 
 
 def _planning_intent(message, history, classified_intent, *, require_explicit_workout=False):
@@ -2821,6 +2876,7 @@ def chat():
         _workout_scope = _workout_conversation_scope(data, chat_uid, g.device_id)
         _workout_followup = parse_workout_followup(user_message)
         _previous_workout = _last_workout_for(_workout_scope)
+        _prior_workout_decision = _conversation_workout_decision(_workout_scope)
         _followup_reply = None
         _followup_failure_reply = None
         if _workout_followup is not None:
@@ -3239,6 +3295,13 @@ def chat():
             if (_restriction_controlled_reply is not None and
                     not (_medical_hold and _medical_hold.get("status") == "ACTIVE_MEDICAL_HOLD")):
                 _controlled_reply = _restriction_controlled_reply
+            if (_prior_workout_decision in _WORKOUT_DECISIONS
+                    and _prior_workout_decision != "WORKOUT_APPROVED"
+                    and _workout_explanation_request(user_message)):
+                # An explanation turn inherits the unresolved deterministic
+                # outcome. It must never reopen generic streaming as a second
+                # workout authority.
+                _controlled_reply = _workout_decision_reply(_prior_workout_decision, lang)
             if _conversation_composer_active_for_request:
                 try:
                     _conversation_policy = conversation_composer.build_policy(
@@ -3876,6 +3939,20 @@ def chat():
                     human_state.ingest(_hs_subj, persist_user_msg, source="message")
             except Exception as _he:
                 print(f"[hse] ingest failed: {type(_he).__name__}")
+
+        # Preserve unresolved outcomes before streaming starts. This is bounded
+        # operational state, not assistant content, and keeps later "why" turns
+        # under the same deterministic authority.
+        if not (_medical_hold and _medical_hold.get("status") == "ACTIVE_MEDICAL_HOLD"):
+            if _training_engine_failure == "training_engine_explicit_health_restriction":
+                _record_conversation_workout_decision(
+                    _workout_scope, "WORKOUT_RESTRICTION_UNSUPPORTED")
+            elif _training_engine_failure is not None:
+                _record_conversation_workout_decision(
+                    _workout_scope, "WORKOUT_PLANNING_FAILURE")
+            elif _planning_reply is not None and _planning_request_intent == "workout":
+                _record_conversation_workout_decision(
+                    _workout_scope, "WORKOUT_CLARIFICATION_REQUIRED")
 
         def generate():
             full = []

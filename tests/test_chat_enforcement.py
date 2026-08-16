@@ -2756,6 +2756,36 @@ def test_bulgarian_light_workout_with_context_uses_deterministic_authority_acros
                for exercise in _completion_exercises(proposed))
 
 
+def test_unresolved_workout_planning_failure_owns_bulgarian_why_turn(
+        client, captured, monkeypatch):
+    """A rejected plan cannot be explained or replaced by generic LLM output."""
+    profile = _profile(recoveryFeel="fresh")
+    _login_for_chat(client, profile)
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setenv("BRAIN_ENFORCE", "true")
+    monkeypatch.setattr(appmod, "_active_training_plan", lambda *_args, **_kwargs: None)
+    conversation_id = "unresolved-workout-authority-0001"
+
+    first = _events(client.post("/chat", json={
+        "message": "Дай ми тренировка", "lang": "bg", "conversation_id": conversation_id,
+    }))
+    assert first[-1] == {"done": True}
+    assert not any("training_completion" in event for event in first)
+    first_text = next(event["t"] for event in first if "t" in event)
+    assert "готов" not in first_text.casefold()
+
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
+    why = _events(client.post("/chat", json={
+        "message": "защо", "lang": "bg", "conversation_id": conversation_id,
+    }))
+    assert why[-1] == {"done": True}
+    why_text = next(event["t"] for event in why if "t" in event)
+    assert "готов" not in why_text.casefold()
+    assert "тренировъчен протокол" not in why_text.casefold()
+    assert not any("training_completion" in event for event in why)
+    assert captured == {}
+
+
 def test_combined_request_with_training_profile_failure_keeps_nutrition_follow_up_visible(
         client, captured, monkeypatch):
     profile = _profile(equipment="office")

@@ -199,6 +199,7 @@ conversation_runtime_state = Table("conversation_runtime_state", metadata,
     Column("medical_hold", JSON),
     Column("health_restrictions", JSON),
     Column("workout_blueprint", JSON),
+    Column("workout_decision", String(40)),
     Column("workout_delivered", Boolean, nullable=False, default=False),
     Column("workout_stale", Boolean, nullable=False, default=False),
     Column("created_at", DateTime(timezone=True), server_default=func.now()),
@@ -355,6 +356,7 @@ _MIGRATIONS = [
     (13, lambda c: _remove_legacy_hse_free_text(c)),
     (14, lambda c: None), # account-owned canonical training constraints
     (15, lambda c: _add_account_training_constraint_lifecycle(c)),
+    (16, lambda c: _add_runtime_workout_decision(c)),
 ]
 
 
@@ -387,6 +389,18 @@ def _add_account_training_constraint_lifecycle(connection):
         retired_type = "TIMESTAMP WITH TIME ZONE" if connection.dialect.name == "postgresql" else "DATETIME"
         connection.execute(text(
             f"ALTER TABLE account_training_constraints ADD COLUMN retired_at {retired_type}"))
+
+
+def _add_runtime_workout_decision(connection):
+    """Persist the bounded authority outcome for referential workout turns."""
+    inspector = inspect(connection)
+    if not inspector.has_table("conversation_runtime_state"):
+        return
+    columns = {column["name"] for column in inspector.get_columns(
+        "conversation_runtime_state")}
+    if "workout_decision" not in columns:
+        connection.execute(text(
+            "ALTER TABLE conversation_runtime_state ADD COLUMN workout_decision VARCHAR(40)"))
 
 def run_migrations():
     """Create the base schema, then apply any pending versioned migrations.
@@ -832,7 +846,7 @@ def get_conversation_runtime_state(subject, conversation_id):
 
 def update_conversation_runtime_state(subject, conversation_id, **values):
     """Update only supplied safety fields, preserving concurrent field ownership."""
-    allowed = {"medical_hold", "health_restrictions", "workout_blueprint", "workout_delivered", "workout_stale"}
+    allowed = {"medical_hold", "health_restrictions", "workout_blueprint", "workout_decision", "workout_delivered", "workout_stale"}
     changes = {key: value for key, value in values.items() if key in allowed}
     if not changes:
         return
