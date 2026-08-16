@@ -2066,12 +2066,42 @@ def _explicit_workout_request(message):
                  or any(f" {prefix}" in text for prefix in _WORKOUT_REQUEST_PREFIXES)))
 
 
+_WORKOUT_CONTINUATION_TERMS = (
+    "suggest it", "propose it", "give it to me",
+    "предложи ми я", "предложи я", "дай ми я",
+)
+
+
+def _workout_continuation_request(message, history):
+    """Recognize a referential workout request only after a real prior request.
+
+    This is intentionally narrower than generic conversation: it gives an
+    authoritative deterministic route to ``предложи ми я`` without treating
+    ordinary pronouns or coaching questions as exercise prescriptions.
+    """
+    text = re.sub(r"\s+", " ", str(message or "").casefold()).strip()
+    if not any(term in text for term in _WORKOUT_CONTINUATION_TERMS):
+        return False
+    return any(
+        _explicit_workout_request(turn.get("content"))
+        for turn in (history or ())
+        if isinstance(turn, dict) and turn.get("role") == "user"
+    )
+
+
 def _planning_intent(message, history, classified_intent, *, require_explicit_workout=False):
     """Keep nutrition parsing BG-safe and make enforce-mode workout routing explicit."""
     if classified_intent == "medical":
         return None
     if nutrition_conversation.is_plan_request(message, history):
         return "nutrition"
+    # A concrete prescription request is authoritative even when the narrow
+    # observational classifier misses a greeting-prefixed or Bulgarian form.
+    # Otherwise the request can escape into generic streaming, where no layer
+    # is permitted to construct a workout.
+    if (_explicit_workout_request(message)
+            or _workout_continuation_request(message, history)):
+        return "workout"
     if classified_intent == "workout":
         return "workout" if not require_explicit_workout or _explicit_workout_request(message) else None
     return None
@@ -3035,6 +3065,9 @@ def chat():
             _legacy_profile = profile if isinstance(profile, dict) else {}
             _legacy_history = history if isinstance(history, list) else []
             _shadow_intent = decision_engine.classify_intent(user_message)
+            if (_explicit_workout_request(user_message)
+                    or _workout_continuation_request(user_message, _legacy_history)):
+                _shadow_intent = "workout"
             if _recovering_light_session_requested:
                 _shadow_intent = "workout"
             if (_workout_followup is not None
@@ -3235,6 +3268,9 @@ def chat():
         model_to_use = "gpt-4o" if is_pro else "gpt-4o-mini"
         if is_first_contact:
             _first_intent = decision_engine.classify_intent(user_message)
+            if (_explicit_workout_request(user_message)
+                    or _workout_continuation_request(user_message, history)):
+                _first_intent = "workout"
             if _recovering_light_session_requested:
                 _first_intent = "workout"
             _first_planning_intent = _planning_intent(

@@ -2713,6 +2713,49 @@ def test_authenticated_bulgarian_health_context_does_not_become_an_unsupported_t
                    for event in events)
 
 
+def test_bulgarian_light_workout_with_context_uses_deterministic_authority_across_followups(
+        client, captured, monkeypatch):
+    """Greeting-prefixed BG workout requests must not escape to generic generation."""
+    limitation = appmod.transition_fitness_limitation(
+        None, "Рамото ме боли при раменна преса.")
+    profile = _profile(
+        recoveryFeel="fresh",
+        healthRestrictions=["Имам болка в кръста"],
+        healthNotes="Имам болка в кръста.",
+        _fitness_limitation_state=limitation.to_record(),
+    )
+    _login_for_chat(client, profile)
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setenv("BRAIN_ENFORCE", "true")
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": []}))
+    conversation_id = "bg-light-workout-context-0001"
+
+    first = _events(client.post("/chat", json={
+        "message": "Здравей, дай ми една лека тренировка да разгрея днес",
+        "lang": "bg", "conversation_id": conversation_id,
+    }))
+    assert first[-1] == {"done": True}
+    assert sum("training_completion" in event for event in first) == 1
+    assert all(exercise["exercise_id"] != "dumbbell.overhead_press"
+               for exercise in _completion_exercises(first))
+
+    for followup in ("каква е тя", "защо ?"):
+        events = _events(client.post("/chat", json={
+            "message": followup, "lang": "bg", "conversation_id": conversation_id,
+        }))
+        assert events[-1] == {"done": True}
+        assert not any("error" in event for event in events)
+        assert not any("training_completion" in event for event in events)
+
+    proposed = _events(client.post("/chat", json={
+        "message": "предложи ми я", "lang": "bg", "conversation_id": conversation_id,
+    }))
+    assert proposed[-1] == {"done": True}
+    assert sum("training_completion" in event for event in proposed) == 1
+    assert all(exercise["exercise_id"] != "dumbbell.overhead_press"
+               for exercise in _completion_exercises(proposed))
+
+
 def test_combined_request_with_training_profile_failure_keeps_nutrition_follow_up_visible(
         client, captured, monkeypatch):
     profile = _profile(equipment="office")
