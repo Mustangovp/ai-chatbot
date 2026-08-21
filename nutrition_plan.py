@@ -289,21 +289,6 @@ def build_plan(payload: Mapping[str, object], targets: NutritionTargets, *,
     )
 
 
-def _source_backed_dinner_additions(foods: Sequence[Mapping[str, object]]) -> tuple[str, ...]:
-    """Prefer one primary dinner starch without sacrificing calorie feasibility."""
-    additions = ("dev_rice_cooked", "dev_pasta_cooked", "dev_olive_oil")
-    starches = {"dev_rice_cooked", "dev_pasta_cooked"}
-    existing = {str(food.get("food_id", "")) for food in foods}
-    available = tuple(food_id for food_id in additions if food_id not in existing)
-    if not existing.intersection(starches):
-        return available
-    # Consider a non-starch first; a distinct starch remains available only
-    # when it is required to reach the validated calorie target.
-    return tuple(food_id for food_id in available if food_id not in starches) + tuple(
-        food_id for food_id in available if food_id in starches
-    )
-
-
 def build_source_backed_plan(targets: NutritionTargets, lang: str, *,
                               restrictions: tuple[str, ...]) -> NutritionPlan | None:
     """Build a validated fallback plan from the existing source-backed catalog.
@@ -439,7 +424,7 @@ def build_source_backed_plan(targets: NutritionTargets, lang: str, *,
         # Source-backed additions are deliberately limited to familiar, single
         # ingredient food records.  They extend only an otherwise validated
         # base plan and keep every value traceable to the same catalog.
-        for food_id in _source_backed_dinner_additions(meals[-1]["foods"]):
+        for food_id in ("dev_rice_cooked", "dev_pasta_cooked", "dev_olive_oil"):
             if current_kcal >= lower_kcal:
                 break
             source = catalog.by_id(food_id)
@@ -715,8 +700,6 @@ def _quantity_label(food: NutritionFood, lang: str) -> str:
     if food.measurement_state is None:
         return f"{amount} g"
     english = str(lang).lower() == "en"
-    if food.measurement_state is MeasurementState.RAW and food.food_id in {"egg_whites", "dev_egg_whites"}:
-        return f"{amount} {'g, measured before preparation' if english else 'г, измерени преди приготвяне'}"
     labels = {
         MeasurementState.RAW: ("raw weight", "сурово тегло"),
         MeasurementState.COOKED: ("cooked", "сготвено"),
@@ -808,16 +791,13 @@ def render_delivery(plan: NutritionPlan, lang: str, profile: Mapping[str, object
 
         for meal in plan.meals:
             if meal.preparation_type == "assembly" and meal.id not in recipe_tokens:
-                token = assembly_token(meal, lang)
-                if token:
-                    recipe_tokens[meal.id] = token
+                recipe_tokens[meal.id] = assembly_token(meal, lang)
     except Exception:
         # Presentation enhancement must not block the validated plan contract.
         pass
     table = render(plan, lang, recipe_tokens)
-    protein_meal = max(plan.meals, key=lambda meal: meal.macros.protein_g, default=None)
-    energy_meal = max(plan.meals, key=lambda meal: meal.macros.kcal, default=None)
-    protein_sources = {food.food_id for meal in plan.meals for food in meal.foods if food.food_id and food.macros.protein_g >= Decimal("10")}
+    protein_total = _display_decimal(plan.totals.protein_g)
+    protein_target = _display_decimal(plan.targets.protein) if plan.targets.protein is not None else None
     status_text_en = (
         "exactly meets the confirmed target"
         if plan.target_status is PlanTargetStatus.EXACT
@@ -830,19 +810,21 @@ def render_delivery(plan: NutritionPlan, lang: str, profile: Mapping[str, object
     )
     if str(lang).lower() == "en":
         explanation = (
-            "**Why this plan:** " + " ".join(filter(None, (
-                f"{protein_meal.name} carries the largest protein portion ({_display_decimal(protein_meal.macros.protein_g)} g)." if protein_meal else "",
-                f"{energy_meal.name} carries the largest share of daily energy ({_display_decimal(energy_meal.macros.kcal)} kcal)." if energy_meal else "",
-                f"The plan uses {len(protein_sources)} distinct protein source{'s' if len(protein_sources) != 1 else ''}." if protein_sources else "",
-            ))) + " Tell me if a food or portion needs changing and we'll adapt the plan."
+            "**Why this plan:** " + (
+                f"Breakfast, lunch, and dinner distribute {protein_total} g protein across the day toward your {protein_target} g protein target. "
+                if protein_target else "Breakfast, lunch, and dinner use the listed portions to structure the day's energy target. "
+            ) +
+            "Each meal has a defined role in the day, and the portions keep the full plan aligned with your nutrition targets. "
+            "If a food or portion does not fit, tell me and we'll adjust the plan."
         )
     else:
         explanation = (
-            "**Защо този режим:** " + " ".join(filter(None, (
-                f"{protein_meal.name} носи най-голямата порция белтъчини ({_display_decimal(protein_meal.macros.protein_g)} г)." if protein_meal else "",
-                f"{energy_meal.name} носи най-голям дял от дневната енергия ({_display_decimal(energy_meal.macros.kcal)} ккал)." if energy_meal else "",
-                f"Планът използва {len(protein_sources)} различни източника на белтъчини." if protein_sources else "",
-            ))) + " Ако храна или количество не ти пасва, кажи ми и ще адаптираме плана."
+            "**Защо този режим:** " + (
+                f"Закуската, обядът и вечерята разпределят {protein_total} г белтъчини през деня към целта ти от {protein_target} г. "
+                if protein_target else "Закуската, обядът и вечерята използват посочените количества, за да структурират дневната енергийна цел. "
+            ) +
+            "Всяко хранене има ясна роля в деня, а количествата държат целия план съобразен с хранителните ти цели. "
+            "Ако храна или количество не ти пасва, кажи ми и ще адаптираме плана."
         )
     return table + "\n\n" + explanation
 

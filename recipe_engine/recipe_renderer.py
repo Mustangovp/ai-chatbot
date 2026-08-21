@@ -7,40 +7,6 @@ import json
 from .recipe_models import RecipeMatch
 
 
-_PREPARATION_ROLES = {
-    "egg_whites": "cook_protein", "dev_egg_whites": "cook_protein",
-    "chicken": "cooked_protein", "dev_chicken_breast_cooked": "cooked_protein",
-    "turkey": "cooked_protein", "dev_turkey_breast_cooked": "cooked_protein",
-    "rice": "cooked_starch", "dev_rice_cooked": "cooked_starch",
-    "pasta": "cooked_starch", "dev_pasta_cooked": "cooked_starch",
-    "oats": "dry_starch", "dev_oats_dry": "dry_starch",
-    "apple": "fruit", "dev_apple": "fruit", "banana": "fruit", "dev_banana": "fruit",
-    "zucchini": "cooked_vegetable", "dev_zucchini_cooked": "cooked_vegetable",
-    "olive_oil": "added_fat", "dev_olive_oil": "added_fat",
-}
-
-
-def _assembly_steps(meal: object, language: str) -> list[str]:
-    """Return only food-identity-backed preparation guidance, or no guidance."""
-    bulgarian = str(language).lower() != "en"
-    roles = {_PREPARATION_ROLES.get(str(getattr(food, "food_id", ""))) for food in getattr(meal, "foods", ())}
-    roles.discard(None)
-    if not roles:
-        return []
-    steps: list[str] = []
-    if "cook_protein" in roles:
-        steps.append("Приготви белтъците отделно до пълна готовност." if bulgarian else "Cook the egg whites separately until fully cooked.")
-    if "dry_starch" in roles:
-        steps.append("Приготви овеса отделно." if bulgarian else "Prepare the oats separately.")
-    if "cooked_protein" in roles or "cooked_starch" in roles or "cooked_vegetable" in roles:
-        steps.append("Подреди готовите компоненти в чиния; сервирай ги заедно само ако това ти е удобно." if bulgarian else "Plate the ready-to-eat components; serve them together only if convenient.")
-    if "added_fat" in roles:
-        steps.append("Добави зехтина към готовото ястие или зеленчуците." if bulgarian else "Add the olive oil to the finished meal or vegetables.")
-    if "fruit" in roles:
-        steps.append("Сервирай плода отделно или към храненето." if bulgarian else "Serve the fruit separately or alongside the meal.")
-    return steps
-
-
 def recipe_token(match: RecipeMatch, meal_id: str) -> str:
     """Bind recipe presentation to one immutable NutritionPlan meal ID."""
     recipe = match.recipe
@@ -59,12 +25,9 @@ def recipe_token(match: RecipeMatch, meal_id: str) -> str:
     return "recipe:" + base64.b64encode(encoded).decode("ascii")
 
 
-def assembly_token(meal: object, language: str) -> str | None:
-    """Serialize bounded food-aware preparation when structured identities permit it."""
+def assembly_token(meal: object, language: str) -> str:
+    """Serialize a bounded serving instruction when no exact recipe is safe."""
     bulgarian = str(language).lower() != "en"
-    steps = _assembly_steps(meal, language)
-    if not steps:
-        return None
     payload = {
         "id": "assembly-v1",
         "meal_id": str(getattr(meal, "id")),
@@ -73,7 +36,10 @@ def assembly_token(meal: object, language: str) -> str | None:
         "title": str(getattr(meal, "name", "")),
         "difficulty": "",
         "minutes": "",
-        "steps": steps,
+        "steps": [
+            "Сервирай посочените компоненти в дадените количества."
+            if bulgarian else "Serve the listed components in the stated quantities."
+        ],
         "tips": [],
         "substitutions": [],
         "storage": "",

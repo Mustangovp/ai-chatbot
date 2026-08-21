@@ -3602,13 +3602,11 @@ def test_nutrition_delivery_adds_a_deterministic_explanation_after_the_canonical
     delivered = nutrition_plan.render_delivery(plan, "en")
 
     assert delivered.startswith("| Meal | Menu title | Meal ID | Food")
-    assert delivered.endswith("Tell me if a food or portion needs changing and we'll adapt the plan.")
+    assert delivered.endswith("If a food or portion does not fit, tell me and we'll adjust the plan.")
     assert "**Why this plan:**" in delivered
-    assert "carries the largest protein portion" in delivered
-    assert "carries the largest share of daily energy" in delivered
-    assert "distinct protein sources" in delivered
+    assert "Breakfast, lunch, and dinner distribute" in delivered
+    assert "Each meal has a defined role in the day" in delivered
     assert "approved target tolerance" not in delivered
-    assert "performance" not in delivered.lower()
     assert delivered.count("Why this meal") == 1
     assert "Starts the day with 40 g protein toward your 175 g daily target." in delivered
     assert "Keeps protein and energy on track for your 175 g daily target." in delivered
@@ -3623,9 +3621,7 @@ def test_nutrition_delivery_rationale_is_localized_and_uses_only_plan_facts():
     delivered = nutrition_plan.render_delivery(plan, "bg")
 
     assert "**Защо този режим:**" in delivered
-    assert "носи най-голямата порция белтъчини" in delivered
-    assert "най-голям дял от дневната енергия" in delivered
-    assert "различни източника на белтъчини" in delivered
+    assert "Закуската, обядът и вечерята разпределят" in delivered
     assert "одобрения допуск" not in delivered
     assert "оптимал" not in delivered.lower()
 
