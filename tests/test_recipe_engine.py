@@ -15,7 +15,7 @@ from recipe_engine.recipe_matcher import (
     profile_equipment,
     validate_recipe_for_meal,
 )
-from recipe_engine.recipe_renderer import recipe_token
+from recipe_engine.recipe_renderer import assembly_token, recipe_token
 
 
 def _food(food_id, name, grams, protein, carbs, fat, kcal, state):
@@ -108,11 +108,44 @@ def test_main_meals_receive_safe_assembly_when_no_exact_recipe_matches(monkeypat
     delivery = nutrition_plan.render_delivery(plan, "en", {})
     preparations = _delivery_preparation_payloads(delivery)
 
-    assert len(preparations) == 3
+    assert len(preparations) == 2
     assert {item["preparation_type"] for item in preparations} == {"assembly"}
-    assert all(item["steps"] == ["Serve the listed components in the stated quantities."]
+    assert all("Serve the listed components" not in " ".join(item["steps"])
                for item in preparations)
     assert all(item["substitutions"] == [] for item in preparations)
+
+
+def test_food_aware_assembly_and_raw_weight_labels_are_bounded():
+    meal = SimpleNamespace(id="meal-1", name="Breakfast", foods=(
+        SimpleNamespace(food_id="dev_egg_whites"), SimpleNamespace(food_id="dev_oats_dry"),
+        SimpleNamespace(food_id="dev_apple"),
+    ))
+    payload = json.loads(base64.b64decode(assembly_token(meal, "en").removeprefix("recipe:")))
+    steps = " ".join(payload["steps"])
+    assert "egg whites separately" in steps and "oats separately" in steps and "fruit separately" in steps
+    assert not any(word in steps.lower() for word in ("minute", "temperature", "spice", "sauce", "listed components"))
+    food = nutrition_plan.NutritionFood("food", None, "Pasteurized egg whites", Decimal("300"), nutrition_plan.NutritionMacros.zero(), "dev_egg_whites", nutrition_plan.MeasurementState.RAW)
+    assert nutrition_plan._quantity_label(food, "en") == "300 g, measured before preparation"
+    assert nutrition_plan._quantity_label(food, "bg") == "300 г, измерени преди приготвяне"
+    apple = nutrition_plan.NutritionFood("apple", None, "Apple", Decimal("150"), nutrition_plan.NutritionMacros.zero(), "apple", nutrition_plan.MeasurementState.RAW)
+    assert "raw weight" in nutrition_plan._quantity_label(apple, "en")
+
+
+def test_unknown_assembly_emits_no_preparation_token():
+    meal = SimpleNamespace(id="unknown", name="Dinner", foods=(SimpleNamespace(food_id="unclassified"),))
+    assert assembly_token(meal, "en") is None
+
+
+def test_source_backed_fallback_prefers_one_starch_but_keeps_feasibility_option():
+    dinner = ({"food_id": "dev_turkey_breast_cooked"}, {"food_id": "dev_pasta_cooked"})
+
+    additions = nutrition_plan._source_backed_dinner_additions(dinner)
+
+    # A non-starch calorie closer is considered first when dinner already has
+    # pasta. The other starch remains available for a genuinely infeasible gap.
+    assert additions == ("dev_olive_oil", "dev_rice_cooked")
+    assert "dev_pasta_cooked" not in additions
+    assert nutrition_plan._source_backed_dinner_additions(dinner) == additions
 
 
 def test_recipe_matching_preserves_curated_substitutions_and_uses_recipe_presentation():
@@ -137,7 +170,7 @@ def test_meal_preparation_survives_structured_plan_persistence_and_reloads_local
     delivery = nutrition_plan.render_delivery(restored, "bg", {})
     preparations = _delivery_preparation_payloads(delivery)
     assert all(item["preparation_type"] == "assembly" for item in preparations)
-    assert all(item["steps"] == ["Сервирай посочените компоненти в дадените количества."]
+    assert all("Сервирай посочените компоненти" not in " ".join(item["steps"])
                for item in preparations)
 
 
