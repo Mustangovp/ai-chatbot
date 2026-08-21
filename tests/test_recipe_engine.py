@@ -215,7 +215,7 @@ def test_target_status_rejects_outside_current_approved_tolerance():
     assert nutrition_plan.target_status(totals, NutritionTargets(Decimal("2559"), None, None, None)) is nutrition_plan.PlanTargetStatus.OUTSIDE_TOLERANCE
 
 
-def test_delivery_wording_discloses_within_tolerance_instead_of_claiming_exact_match():
+def test_delivery_rationale_does_not_expose_internal_tolerance_wording():
     targets = NutritionTargets(Decimal("2559"), None, None, None)
     totals = nutrition_plan.NutritionMacros(Decimal("0"), Decimal("0"), Decimal("0"), Decimal("2458"))
     plan = nutrition_plan.NutritionPlan(
@@ -223,7 +223,9 @@ def test_delivery_wording_discloses_within_tolerance_instead_of_claiming_exact_m
         targets=targets, restrictions=(), meals=(), totals=totals, provenance=(),
         target_status=nutrition_plan.PlanTargetStatus.WITHIN_TOLERANCE,
     )
-    assert "within the approved target tolerance" in nutrition_plan.render_delivery(plan, "en")
+    delivery = nutrition_plan.render_delivery(plan, "en")
+    assert "approved target tolerance" not in delivery
+    assert "exactly meets the confirmed target" not in delivery
 
 
 def test_equipment_filter_still_applies_after_identity_validation():

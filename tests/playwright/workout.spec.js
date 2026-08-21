@@ -783,6 +783,24 @@ test.describe('APEX approved app shell — UX regression', () => {
     await expect(card.locator('.nm-recipe-title')).toHaveCount(0);
   });
 
+  test('NP-1H: a menu title matching its meal label is not repeated', async ({ page }) => {
+    await page.evaluate(() => {
+      const md = [
+        '| Meal | Menu title | Meal ID | Food | Quantity | Protein | Carbs | Fat | Calories |',
+        '| --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+        '| Breakfast | Breakfast | meal-breakfast | Eggs | 150 g | 21 | 2 | 14 | 207 |'
+      ].join('\n');
+      const el = appendCoach();
+      el.innerHTML = renderMarkdown(md);
+    });
+
+    const card = page.locator('.nutri-meal');
+    await expect(card).toContainText('Breakfast');
+    await expect(card.locator('.nm-menu-title')).toHaveCount(0);
+    await expect(card.locator('svg')).toHaveCount(1);
+    await expect(card).not.toContainText('svg');
+  });
+
   test('NR-1: nutrition readability — full words, units, colour is not the sole signal', async ({ page }) => {
     await page.evaluate(() => {
       const md = [

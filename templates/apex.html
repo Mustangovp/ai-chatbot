@@ -2193,8 +2193,10 @@ function renderNutritionModel(model){
     const foods=group.foods;
     const rows=group.summary?'':foods.map(food=>'<div class="nm-food-row"><span class="nm-food-name">'+esc(mdClean(food.name))+'</span>'+(food.qty?'<span class="nm-food-qty">'+esc(mdClean(food.qty))+'</span>':'')+'</div>').join('');
     const reason=group.reason?'<div class="nm-reason">'+esc(mdClean(group.reason))+'</div>':'';
+    const menuTitle=mdClean(group.menuTitle);
+    const showMenuTitle=menuTitle&&menuTitle.toLocaleLowerCase()!==mdClean(group.name).toLocaleLowerCase();
     return '<div class="nutri-meal nutri-title"><div class="nm-head"><span class="nm-title-main">'+mealIcon(foods)+'<span class="nm-name">'+esc(group.name)+'</span></span></div>'+
-      (group.menuTitle?'<div class="nm-menu-title">'+esc(group.menuTitle)+'</div>':'')+
+      (showMenuTitle?'<div class="nm-menu-title">'+esc(menuTitle)+'</div>':'')+
       (rows?'<div class="nm-foods">'+rows+'</div>':'')+macroBlock(mealTotals(foods))+reason+recipeCard(group.recipe)+'</div>';
   };
   const groups=[]; let active=null; let total=null;

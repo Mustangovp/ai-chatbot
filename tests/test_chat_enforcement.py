@@ -3602,12 +3602,28 @@ def test_nutrition_delivery_adds_a_deterministic_explanation_after_the_canonical
     delivered = nutrition_plan.render_delivery(plan, "en")
 
     assert delivered.startswith("| Meal | Menu title | Meal ID | Food")
-    assert delivered.endswith("If anything does not work for you, tell me and we'll adapt it straight away.")
+    assert delivered.endswith("If a food or portion does not fit, tell me and we'll adjust the plan.")
     assert "**Why this plan:**" in delivered
+    assert "Breakfast, lunch, and dinner distribute" in delivered
+    assert "Each meal has a defined role in the day" in delivered
+    assert "approved target tolerance" not in delivered
     assert delivered.count("Why this meal") == 1
     assert "Starts the day with 40 g protein toward your 175 g daily target." in delivered
     assert "Keeps protein and energy on track for your 175 g daily target." in delivered
     assert "Completes the day while keeping the confirmed 175 g protein target in range." in delivered
+
+
+def test_nutrition_delivery_rationale_is_localized_and_uses_only_plan_facts():
+    plan = nutrition_plan.build_plan(
+        _structured_plan_payload(), _NUTRITION_TARGETS,
+        restrictions=("vegetarian",), provenance={"test": "structured"})
+
+    delivered = nutrition_plan.render_delivery(plan, "bg")
+
+    assert "**Защо този режим:**" in delivered
+    assert "Закуската, обядът и вечерята разпределят" in delivered
+    assert "одобрения допуск" not in delivered
+    assert "оптимал" not in delivered.lower()
 
 
 def test_nutrition_plan_rejects_calorie_and_protein_shortfall_before_delivery():

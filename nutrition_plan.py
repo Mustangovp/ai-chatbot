@@ -796,8 +796,8 @@ def render_delivery(plan: NutritionPlan, lang: str, profile: Mapping[str, object
         # Presentation enhancement must not block the validated plan contract.
         pass
     table = render(plan, lang, recipe_tokens)
-    target = _display_decimal(plan.targets.kcal)
-    delivered = _display_decimal(plan.totals.kcal)
+    protein_total = _display_decimal(plan.totals.protein_g)
+    protein_target = _display_decimal(plan.targets.protein) if plan.targets.protein is not None else None
     status_text_en = (
         "exactly meets the confirmed target"
         if plan.target_status is PlanTargetStatus.EXACT
@@ -810,18 +810,22 @@ def render_delivery(plan: NutritionPlan, lang: str, profile: Mapping[str, object
     )
     if str(lang).lower() == "en":
         explanation = (
-            "**Why this plan:** the three meals distribute your day around the confirmed "
-            f"{target} kcal target; the displayed foods add up to {delivered} kcal and {status_text_en}. "
-            "Stick to these portions today. If anything does not work for you, tell me and we'll adapt it straight away."
+            "**Why this plan:** " + (
+                f"Breakfast, lunch, and dinner distribute {protein_total} g protein across the day toward your {protein_target} g protein target. "
+                if protein_target else "Breakfast, lunch, and dinner use the listed portions to structure the day's energy target. "
+            ) +
+            "Each meal has a defined role in the day, and the portions keep the full plan aligned with your nutrition targets. "
+            "If a food or portion does not fit, tell me and we'll adjust the plan."
         )
     else:
         explanation = (
-            "**Защо този режим:** трите хранения разпределят деня около потвърдения "
-            f"таргет от {target} ккал; показаните храни дават общо {delivered} ккал. "
-            "Дръж се към тези количества днес. Ако нещо не ти пасва — кажи ми и го адаптираме веднага."
+            "**Защо този режим:** " + (
+                f"Закуската, обядът и вечерята разпределят {protein_total} г белтъчини през деня към целта ти от {protein_target} г. "
+                if protein_target else "Закуската, обядът и вечерята използват посочените количества, за да структурират дневната енергийна цел. "
+            ) +
+            "Всяко хранене има ясна роля в деня, а количествата държат целия план съобразен с хранителните ти цели. "
+            "Ако храна или количество не ти пасва, кажи ми и ще адаптираме плана."
         )
-    if str(lang).lower() != "en":
-        explanation += f" \u041e\u0431\u0449\u0438\u044f\u0442 \u0440\u0435\u0437\u0443\u043b\u0442\u0430\u0442 {status_text_bg}."
     return table + "\n\n" + explanation
 
 
