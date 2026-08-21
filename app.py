@@ -36,6 +36,7 @@ import context_builder
 import decision_engine
 import conversation_composer
 import nutrition_conversation
+import nutrition_followups
 import nutrition_plan
 import nutrition_validation
 from knowledge import KnowledgeResolver, load_default_registry
@@ -120,6 +121,7 @@ _workout_conversation_fitness_limitations = {}
 _workout_conversation_medical_holds = {}
 _workout_conversation_stale = set()
 _workout_conversation_decisions = {}
+_nutrition_followup_state = {}
 
 _WORKOUT_DECISIONS = frozenset({
     "WORKOUT_APPROVED",
@@ -136,6 +138,28 @@ def _workout_conversation_scope(payload, user_id, device_id):
         return None
     subject = f"account:{user_id}" if user_id else f"device:{device_id or ''}"
     return subject, conversation_id
+
+
+def _pending_nutrition_followup(scope):
+    if scope is None:
+        return None
+    with _workout_conversation_lock:
+        local = _nutrition_followup_state.get(scope)
+    return local or _durable_workout_state(scope).get("nutrition_followup")
+
+
+def _record_pending_nutrition_followup(scope, pending_state):
+    if scope is None:
+        return
+    with _workout_conversation_lock:
+        if pending_state:
+            _nutrition_followup_state[scope] = pending_state
+        else:
+            _nutrition_followup_state.pop(scope, None)
+    try:
+        store.update_conversation_runtime_state(*scope, nutrition_followup=pending_state)
+    except Exception as error:
+        print(f"[chat] nutrition follow-up state unavailable: {type(error).__name__}")
 
 
 def _last_workout_for(scope):
@@ -3531,75 +3555,24 @@ def chat():
         _nutrition_revision = nutrition_conversation.parse_revision_operation(user_message)
         _revised_nutrition_plan = None
         _nutrition_revision_failure = None
-        _recipe_followup_reply = None
-        _recipe_followup_meal = nutrition_conversation.recipe_followup_meal(user_message)
-        _recipe_followup_is_substitution = nutrition_conversation.is_substitution_followup(user_message)
-        if _recipe_followup_meal is not None:
+        def _load_active_nutrition_plan():
             if not chat_uid:
-                _recipe_followup_reply = nutrition_conversation.recipe_followup_unavailable_message(lang)
-            else:
-                try:
-                    _recipe_records = store.list_nutrition_plans(chat_uid, limit=1)
-                    _recipe_plan = (nutrition_plan.from_record(_recipe_records[0]["plan"])
-                                    if _recipe_records else None)
-                    if _recipe_plan is None:
-                        _recipe_followup_reply = nutrition_conversation.recipe_followup_unavailable_message(lang)
-                    else:
-                        from recipe_engine.recipe_engine import match_plan
-                        from recipe_engine.recipe_matcher import ingredient_key, mentioned_food_ids
+                return None
+            records = store.list_nutrition_plans(chat_uid, limit=1)
+            return nutrition_plan.from_record(records[0]["plan"]) if records else None
 
-                        _recipe_matches = match_plan(_recipe_plan, profile if isinstance(profile, dict) else {})
-                        _requested_food_ids = mentioned_food_ids(user_message)
-                        if _recipe_followup_meal:
-                            _selected_meal = next((meal for meal in _recipe_plan.meals
-                                                   if meal.meal_type == _recipe_followup_meal), None)
-                        elif _recipe_followup_is_substitution:
-                            _candidate_meals = [
-                                meal for meal in _recipe_plan.meals
-                                if _requested_food_ids & frozenset(
-                                    str(food.food_id).strip() if getattr(food, "food_id", None)
-                                    else ingredient_key(str(getattr(food, "display_name", "")))
-                                    for food in meal.foods)
-                            ]
-                            _selected_meal = _candidate_meals[0] if len(_candidate_meals) == 1 else None
-                            if not _candidate_meals:
-                                _recipe_followup_reply = nutrition_conversation.substitution_source_not_in_meal_message(lang)
-                            elif len(_candidate_meals) > 1:
-                                _recipe_followup_reply = ("Which meal should I use: breakfast, lunch, or dinner?"
-                                                          if lang == "en" else "Към кое хранене: закуска, обяд или вечеря?")
-                        else:
-                            _selected_meal = None
-                            _recipe_followup_reply = ("Which meal should I use: breakfast, lunch, or dinner?"
-                                                      if lang == "en" else "Към кое хранене: закуска, обяд или вечеря?")
-                        if _selected_meal is None:
-                            if _recipe_followup_reply is None:
-                                _recipe_followup_reply = nutrition_conversation.recipe_followup_unavailable_message(lang)
-                        elif _recipe_followup_is_substitution:
-                            _meal_food_ids = frozenset(
-                                str(food.food_id).strip() if getattr(food, "food_id", None)
-                                else ingredient_key(str(getattr(food, "display_name", "")))
-                                for food in _selected_meal.foods)
-                            _requested_meal_food_ids = _requested_food_ids & _meal_food_ids
-                            if not _requested_meal_food_ids:
-                                _recipe_followup_reply = nutrition_conversation.substitution_source_not_in_meal_message(lang)
-                            else:
-                                _recipe_match = _recipe_matches.get(_selected_meal.id)
-                                _substitutions = (() if _recipe_match is None else tuple(
-                                    substitution for substitution in _recipe_match.recipe.substitutions
-                                    if substitution.source_food_id in _requested_meal_food_ids))
-                                _recipe_followup_reply = (
-                                    _substitutions[0].text if _substitutions else
-                                    nutrition_conversation.substitution_unavailable_message(lang))
-                        else:
-                            _recipe_match = _recipe_matches.get(_selected_meal.id)
-                            _recipe_followup_reply = (nutrition_plan.render_delivery(_recipe_plan, lang, profile)
-                                                      if _recipe_match is not None else
-                                                      ("I don't have a confirmed curated recipe for that exact meal."
-                                                       if lang == "en" else
-                                                       "Нямам потвърдена подбрана рецепта за това точно хранене."))
-                except Exception as _recipe_followup_error:
-                    print(f"[chat] recipe follow-up failed: {type(_recipe_followup_error).__name__}")
-                    _recipe_followup_reply = nutrition_conversation.recipe_followup_error_message(lang)
+        _nutrition_followup = (
+            nutrition_followups.NutritionFollowup(nutrition_followups.NutritionFollowupOutcome.NO_MATCH)
+            if _nutrition_revision is not None else
+            nutrition_followups.resolve(
+                message=user_message,
+                language=lang,
+                profile=profile,
+                active_plan_loader=_load_active_nutrition_plan,
+                pending_state=_pending_nutrition_followup(_workout_scope),
+            ))
+        if _nutrition_followup.handled:
+            _record_pending_nutrition_followup(_workout_scope, _nutrition_followup.next_pending_state)
         if _nutrition_revision is not None:
             if not chat_uid:
                 _nutrition_revision_failure = nutrition_conversation.revision_unavailable_message(lang)
@@ -4047,8 +4020,8 @@ def chat():
                     _shadow_log()
                     yield sse({"done": True})
                     return
-                if _recipe_followup_reply is not None:
-                    reply_text = _recipe_followup_reply
+                if _nutrition_followup.handled:
+                    reply_text = _nutrition_followup.reply
                     yield sse({"t": reply_text})
                     _persist_reply(reply_text)
                     yield sse({"done": True})

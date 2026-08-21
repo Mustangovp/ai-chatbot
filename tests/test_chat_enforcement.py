@@ -28,6 +28,7 @@ import db as store
 import decision_engine
 import conversation_composer
 import nutrition_conversation
+import nutrition_followups
 import nutrition_plan
 import athlete_model as athlete_model
 from training_engine import build_training_plan, load_exercise_library
@@ -113,10 +114,12 @@ def _events(resp):
     return out
 
 
-def _post(client, message, profile=None, *, voice=False, lang="en"):
+def _post(client, message, profile=None, *, voice=False, lang="en", conversation_id=None):
     payload = {"message": message, "lang": lang, "profile": profile or {}}
     if voice:
         payload["voice"] = True
+    if conversation_id is not None:
+        payload["conversation_id"] = conversation_id
     return client.post("/chat", json=payload)
 
 
@@ -3598,7 +3601,7 @@ def test_recipe_followup_without_plan_is_bounded_and_does_not_stream(client, cap
 
     events = _events(_post(client, "имаш ли рецепта за вечерята?", lang="bg"))
 
-    assert events == [{"t": nutrition_conversation.recipe_followup_unavailable_message("bg")}, {"done": True}]
+    assert events == [{"t": "Нуждая се от текущ хранителен план, преди да покажа рецепта към него."}, {"done": True}]
 
 
 def test_recipe_followup_continuity_renders_only_the_persisted_curated_dinner(client, captured, monkeypatch):
@@ -3613,11 +3616,13 @@ def test_recipe_followup_continuity_renders_only_the_persisted_curated_dinner(cl
     store.save_nutrition_plan(uid, nutrition_plan.to_record(plan))
     before = store.list_nutrition_plans(uid, limit=1)[0]["plan"]
     monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("generic stream"))
-    assert "Which meal" in _events(_post(client, "do you have a recipe?"))[0]["t"]
-    events = _events(_post(client, "for dinner"))
+    conversation_id = "recipe-followup-0001"
+    assert "Which meal" in _events(_post(client, "do you have a recipe?", conversation_id=conversation_id))[0]["t"]
+    events = _events(_post(client, "for dinner", conversation_id=conversation_id))
     assert events[-1] == {"done": True}
     assert "recipe:" in events[0]["t"]
     assert all(value in events[0]["t"] for value in ("Salmon", "Quinoa", "Spinach", "Olives"))
+    assert store.get_conversation_runtime_state(f"account:{uid}", conversation_id).get("nutrition_followup") is None
     assert store.list_nutrition_plans(uid, limit=1)[0]["plan"] == before
 
     substitution = _events(_post(client, "с какво мога да заменя спанака?", lang="bg"))
@@ -3630,14 +3635,32 @@ def test_recipe_followup_continuity_renders_only_the_persisted_curated_dinner(cl
     assert store.list_nutrition_plans(uid, limit=1)[0]["plan"] == before
 
     unavailable = _events(_post(client, "с какво мога да заменя сьомгата?", lang="bg"))
-    assert unavailable == [{"t": nutrition_conversation.substitution_unavailable_message("bg")}, {"done": True}]
+    assert unavailable == [{"t": "За тази храна нямам потвърдена замяна в текущия план."}, {"done": True}]
     assert "recipe:" not in unavailable[0]["t"]
     assert store.list_nutrition_plans(uid, limit=1)[0]["plan"] == before
 
     not_in_meal = _events(_post(client, "с какво мога да заменя домата за вечерята?", lang="bg"))
-    assert not_in_meal == [{"t": nutrition_conversation.substitution_source_not_in_meal_message("bg")}, {"done": True}]
+    assert not_in_meal == [{"t": "Тази храна не присъства в избраното хранене."}, {"done": True}]
     assert "recipe:" not in not_in_meal[0]["t"]
     assert store.list_nutrition_plans(uid, limit=1)[0]["plan"] == before
+
+
+@pytest.mark.parametrize("message,lang", [
+    ("What should I eat for dinner?", "en"),
+    ("Какво да ям за вечеря?", "bg"),
+])
+def test_meal_only_nutrition_turn_without_pending_recipe_state_uses_generic_chat(client, captured, message, lang):
+    uid = _login_for_chat(client, _profile())
+    plan = nutrition_plan.build_plan(_structured_plan_payload(), _NUTRITION_TARGETS,
+                                     restrictions=(), provenance={"test": "meal-only"})
+    store.save_nutrition_plan(uid, nutrition_plan.to_record(plan))
+
+    events = _events(_post(client, message, lang=lang, conversation_id="meal-only-route-0001"))
+
+    assert events == [{"t": "ok"}, {"done": True}]
+    assert "messages" in captured
+    assert store.get_conversation_runtime_state(
+        f"account:{uid}", "meal-only-route-0001").get("nutrition_followup") is None
 
 
 def test_nutrition_plan_is_immutable_structured_authority_with_deterministic_rendering():

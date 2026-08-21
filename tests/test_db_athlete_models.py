@@ -75,3 +75,42 @@ def test_v14_constraint_lifecycle_migration_preserves_rows_and_is_idempotent(tmp
                                      .where(versions.c.version == 15)).scalar_one()
     assert row == ("vertical_push", "active", None)
     assert applied == 1
+
+
+def test_v16_nutrition_followup_migration_is_additive_and_idempotent(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'v16.db'}")
+    legacy = MetaData()
+    runtime = Table(
+        "conversation_runtime_state", legacy,
+        Column("id", String(36), primary_key=True),
+        Column("subject", String(96), nullable=False),
+        Column("conversation_id", String(128), nullable=False),
+    )
+    versions = Table("schema_version", legacy, Column("version", Integer, primary_key=True))
+    legacy.create_all(engine)
+    with engine.begin() as connection:
+        connection.execute(runtime.insert().values(
+            id="runtime-v16", subject="account:user-v16", conversation_id="recipe-followup-0001"))
+        connection.execute(versions.insert(), [{"version": version} for version in range(1, 17)])
+
+    def apply_pending_migrations():
+        with engine.begin() as connection:
+            applied = {row[0] for row in connection.execute(select(versions.c.version)).all()}
+            for version, migration in store._MIGRATIONS:
+                if version not in applied:
+                    migration(connection)
+                    connection.execute(versions.insert().values(version=version))
+
+    apply_pending_migrations()
+    apply_pending_migrations()
+
+    columns = {column["name"] for column in inspect(engine).get_columns("conversation_runtime_state")}
+    assert "nutrition_followup" in columns
+    migrated = Table("conversation_runtime_state", MetaData(), autoload_with=engine)
+    with engine.begin() as connection:
+        row = connection.execute(select(migrated.c.nutrition_followup)
+                                 .where(migrated.c.id == "runtime-v16")).one()
+        applied = connection.execute(select(func.count()).select_from(versions)
+                                     .where(versions.c.version == 17)).scalar_one()
+    assert row == (None,)
+    assert applied == 1

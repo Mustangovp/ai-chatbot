@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 import nutrition_plan
-import nutrition_conversation
+import nutrition_followups
 from nutrition_validation import NutritionTargets
 from recipe_engine.recipe_engine import match_plan
 from recipe_engine.recipe_library import load_recipes
@@ -117,22 +117,71 @@ def test_recipe_library_is_small_and_curated():
     assert all(1 <= len(recipe.healthy_cooking_tips) <= 3 for recipe in recipes)
 
 
-@pytest.mark.parametrize(("message", "meal"), [
-    ("имаш ли рецепта за вечерята?", "dinner"),
-    ("за обяда", "lunch"),
-    ("give me the breakfast recipe", "breakfast"),
-    ("what can I swap for the rice?", ""),
+@pytest.mark.parametrize("message", [
+    "имаш ли рецепта за вечерята?",
+    "give me the dinner recipe",
 ])
-def test_recipe_followup_intent_is_plan_owned(message, meal):
-    assert nutrition_conversation.recipe_followup_meal(message) == meal
+def test_recipe_followup_resolver_returns_the_exact_curated_plan_delivery(message):
+    result = nutrition_followups.resolve(
+        message=message, language="en", profile={"cooking_equipment": ["pan", "oven"]},
+        active_plan_loader=_plan,
+    )
+    assert result.outcome is nutrition_followups.NutritionFollowupOutcome.CURATED_RECIPE_AVAILABLE
+    assert result.reply and "recipe:" in result.reply
 
 
 @pytest.mark.parametrize("message", [
     "с какво мога да заменя спанака?",
     "What can I replace spinach with?",
 ])
-def test_substitution_followup_is_distinct_from_recipe_rendering_intent(message):
-    assert nutrition_conversation.is_substitution_followup(message) is True
+def test_substitution_followup_resolver_returns_only_curated_substitution(message):
+    result = nutrition_followups.resolve(
+        message=message, language="bg", profile={"cooking_equipment": ["pan", "oven"]},
+        active_plan_loader=_plan,
+    )
+    assert result.outcome is nutrition_followups.NutritionFollowupOutcome.SUBSTITUTION_AVAILABLE
+    assert result.reply == "Спанакът може да се смени с броколи само в одобреното количество."
+
+
+def test_meal_only_language_is_not_recipe_owned_without_pending_state():
+    result = nutrition_followups.resolve(
+        message="What should I eat for dinner?", language="en", profile={}, active_plan_loader=_plan,
+    )
+    assert result.outcome is nutrition_followups.NutritionFollowupOutcome.NO_MATCH
+
+
+def test_recipe_meal_continuation_requires_and_consumes_closed_pending_state():
+    pending = nutrition_followups.resolve(
+        message="Имаш ли рецепта?", language="bg", profile={}, active_plan_loader=_plan,
+    )
+    assert pending.outcome is nutrition_followups.NutritionFollowupOutcome.AMBIGUOUS_MEAL
+    assert pending.next_pending_state == nutrition_followups.PENDING_RECIPE_MEAL_REQUIRED
+    resolved = nutrition_followups.resolve(
+        message="за вечерята", language="bg", profile={"cooking_equipment": ["pan", "oven"]},
+        active_plan_loader=_plan, pending_state=pending.next_pending_state,
+    )
+    assert resolved.outcome is nutrition_followups.NutritionFollowupOutcome.CURATED_RECIPE_AVAILABLE
+
+
+@pytest.mark.parametrize(("message", "outcome"), [
+    ("replace salmon", nutrition_followups.NutritionFollowupOutcome.SUBSTITUTION_UNAVAILABLE),
+    ("replace tomato in dinner", nutrition_followups.NutritionFollowupOutcome.SOURCE_FOOD_NOT_IN_MEAL),
+])
+def test_substitution_unavailable_states_are_closed_and_never_recipe_delivery(message, outcome):
+    result = nutrition_followups.resolve(
+        message=message, language="en", profile={"cooking_equipment": ["pan", "oven"]},
+        active_plan_loader=_plan,
+    )
+    assert result.outcome is outcome
+    assert result.reply and "recipe:" not in result.reply
+
+
+def test_recipe_followup_requires_an_active_plan_after_intent_is_recognized():
+    result = nutrition_followups.resolve(
+        message="Do you have a recipe for dinner?", language="en", profile={},
+        active_plan_loader=lambda: None,
+    )
+    assert result.outcome is nutrition_followups.NutritionFollowupOutcome.NO_ACTIVE_PLAN
 
 
 def test_recipe_matching_is_deterministic_and_preserves_plan_macros():

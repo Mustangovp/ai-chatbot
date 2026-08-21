@@ -88,51 +88,6 @@ def parse_revision_operation(message: str) -> nutrition_plan.RevisionOperation |
     return None
 
 
-def recipe_followup_meal(message: str) -> str | None:
-    """Return a requested meal for a bounded plan-owned recipe follow-up."""
-    text = str(message or "").casefold()
-    owns_recipe_turn = re.search(
-        r"recipe|prepare|swap|replace|instead of|рецепт|приготв|замен|вместо", text)
-    names_meal = re.search(r"breakfast|lunch|dinner|закуск|обяд|вечер", text)
-    if not owns_recipe_turn and not names_meal:
-        return None
-    if re.search(r"breakfast|закуск", text):
-        return "breakfast"
-    if re.search(r"lunch|обяд", text):
-        return "lunch"
-    if re.search(r"dinner|вечер", text):
-        return "dinner"
-    return ""
-
-
-def is_substitution_followup(message: str) -> bool:
-    """Recognize only a direct request for a plan-bound curated substitution."""
-    return bool(re.search(r"swap|replace|instead of|замен|вместо", str(message or "").casefold()))
-
-
-def recipe_followup_unavailable_message(lang: str) -> str:
-    return ("I need a current nutrition plan before I can show a plan-bound recipe."
-            if _english(lang) else
-            "Нуждая се от текущ хранителен план, преди да покажа рецепта към него.")
-
-
-def substitution_unavailable_message(lang: str) -> str:
-    return ("I don't have a confirmed substitution for that food in the current plan."
-            if _english(lang) else
-            "За тази храна нямам потвърдена замяна в текущия план.")
-
-
-def substitution_source_not_in_meal_message(lang: str) -> str:
-    return ("That food isn't part of the selected meal."
-            if _english(lang) else
-            "Тази храна не присъства в избраното хранене.")
-
-
-def recipe_followup_error_message(lang: str) -> str:
-    return ("I can't verify a recipe follow-up for the current plan right now."
-            if _english(lang) else
-            "Не мога да потвърдя тази заявка за рецепта към текущия план в момента.")
-
 _PROFILE_FIELDS = (
     ("age", "age", "\u0432\u044a\u0437\u0440\u0430\u0441\u0442"),
     ("gender", "sex", "\u043f\u043e\u043b"),

@@ -29,6 +29,12 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
+    - name: Run Tracked Python Tests
+      run: python -m pytest $(git ls-files 'tests/test_*.py') -q
+
+    - name: Compile Tracked Python Files
+      run: python -m py_compile $(git ls-files '*.py')
+
     - name: Install Node Dependencies
       run: |
         npm init -y
