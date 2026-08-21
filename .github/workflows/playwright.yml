@@ -17,17 +17,17 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.13'
+        python-version: '3.13.13'
 
     - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: lts/*
+        node-version: '24'
 
     - name: Install Python Dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
 
     - name: Run Tracked Python Tests
       run: python -m pytest $(git ls-files 'tests/test_*.py') -q
@@ -36,9 +36,7 @@ jobs:
       run: python -m py_compile $(git ls-files '*.py')
 
     - name: Install Node Dependencies
-      run: |
-        npm init -y
-        npm install -D @playwright/test wait-on
+      run: npm ci
 
     - name: Install Playwright Browsers
       run: npx playwright install --with-deps
