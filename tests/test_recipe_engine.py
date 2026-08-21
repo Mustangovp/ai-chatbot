@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 import nutrition_plan
+import nutrition_conversation
 from nutrition_validation import NutritionTargets
 from recipe_engine.recipe_engine import match_plan
 from recipe_engine.recipe_library import load_recipes
@@ -114,6 +115,24 @@ def test_recipe_library_is_small_and_curated():
     assert all(recipe.food_ids for recipe in recipes)
     assert all(1 <= len(recipe.steps) <= 6 for recipe in recipes)
     assert all(1 <= len(recipe.healthy_cooking_tips) <= 3 for recipe in recipes)
+
+
+@pytest.mark.parametrize(("message", "meal"), [
+    ("имаш ли рецепта за вечерята?", "dinner"),
+    ("за обяда", "lunch"),
+    ("give me the breakfast recipe", "breakfast"),
+    ("what can I swap for the rice?", ""),
+])
+def test_recipe_followup_intent_is_plan_owned(message, meal):
+    assert nutrition_conversation.recipe_followup_meal(message) == meal
+
+
+@pytest.mark.parametrize("message", [
+    "с какво мога да заменя спанака?",
+    "What can I replace spinach with?",
+])
+def test_substitution_followup_is_distinct_from_recipe_rendering_intent(message):
+    assert nutrition_conversation.is_substitution_followup(message) is True
 
 
 def test_recipe_matching_is_deterministic_and_preserves_plan_macros():

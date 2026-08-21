@@ -3577,6 +3577,69 @@ def _assert_structured_plan_events(events, lang="en"):
     assert _stable_delivery_text(events[0]["t"]) == _stable_delivery_text(_structured_plan_text(lang))
 
 
+def test_recipe_followup_uses_persisted_plan_and_never_streams(client, captured, monkeypatch):
+    uid = _login_for_chat(client, _profile())
+    plan = nutrition_plan.build_plan(_structured_plan_payload(), _NUTRITION_TARGETS,
+                                     restrictions=(), provenance={"test": "recipe-followup"})
+    store.save_nutrition_plan(uid, nutrition_plan.to_record(plan))
+    monkeypatch.setattr(appmod.client.chat.completions, "create",
+                        lambda **_kwargs: pytest.fail("recipe follow-up invoked generic streaming"))
+
+    events = _events(_post(client, "do you have a recipe for dinner?"))
+
+    assert events[-1] == {"done": True}
+    assert "confirmed curated recipe" in events[0]["t"].lower()
+    assert "honey" not in events[0]["t"].lower()
+
+
+def test_recipe_followup_without_plan_is_bounded_and_does_not_stream(client, captured, monkeypatch):
+    monkeypatch.setattr(appmod.client.chat.completions, "create",
+                        lambda **_kwargs: pytest.fail("recipe follow-up invoked generic streaming"))
+
+    events = _events(_post(client, "имаш ли рецепта за вечерята?", lang="bg"))
+
+    assert events == [{"t": nutrition_conversation.recipe_followup_unavailable_message("bg")}, {"done": True}]
+
+
+def test_recipe_followup_continuity_renders_only_the_persisted_curated_dinner(client, captured, monkeypatch):
+    uid = _login_for_chat(client, _profile())
+    food = lambda fid, name: nutrition_plan.NutritionFood(fid, None, name, Decimal("100"), nutrition_plan.NutritionMacros(Decimal("1"), Decimal("1"), Decimal("1"), Decimal("20")), fid, nutrition_plan.MeasurementState.COOKED)
+    meals = (
+        nutrition_plan.NutritionMeal("b", "Breakfast", "breakfast", "08:00", (food("eggs", "Eggs"),), nutrition_plan.NutritionMacros(Decimal("1"), Decimal("1"), Decimal("1"), Decimal("20")), "assembly"),
+        nutrition_plan.NutritionMeal("l", "Lunch", "lunch", "13:00", (food("chicken", "Chicken"),), nutrition_plan.NutritionMacros(Decimal("1"), Decimal("1"), Decimal("1"), Decimal("20")), "assembly"),
+        nutrition_plan.NutritionMeal("d", "Dinner", "dinner", "19:00", tuple(food(fid, name) for fid, name in (("salmon", "Salmon"), ("quinoa", "Quinoa"), ("spinach", "Spinach"), ("olives", "Olives"))), nutrition_plan.NutritionMacros(Decimal("4"), Decimal("4"), Decimal("4"), Decimal("80")), "assembly"),
+    )
+    plan = nutrition_plan.NutritionPlan("recipe-followup", "nutrition-plan-v1", "2026-01-01T00:00:00+00:00", NutritionTargets(Decimal("120"), Decimal("6"), Decimal("6"), Decimal("6")), (), meals, nutrition_plan.NutritionMacros(Decimal("6"), Decimal("6"), Decimal("6"), Decimal("120")), (), nutrition_plan.PlanTargetStatus.EXACT)
+    store.save_nutrition_plan(uid, nutrition_plan.to_record(plan))
+    before = store.list_nutrition_plans(uid, limit=1)[0]["plan"]
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("generic stream"))
+    assert "Which meal" in _events(_post(client, "do you have a recipe?"))[0]["t"]
+    events = _events(_post(client, "for dinner"))
+    assert events[-1] == {"done": True}
+    assert "recipe:" in events[0]["t"]
+    assert all(value in events[0]["t"] for value in ("Salmon", "Quinoa", "Spinach", "Olives"))
+    assert store.list_nutrition_plans(uid, limit=1)[0]["plan"] == before
+
+    substitution = _events(_post(client, "с какво мога да заменя спанака?", lang="bg"))
+    assert substitution == [{"t": "Спанакът може да се смени с броколи само в одобреното количество."}, {"done": True}]
+    assert "recipe:" not in substitution[0]["t"]
+    assert store.list_nutrition_plans(uid, limit=1)[0]["plan"] == before
+
+    english_substitution = _events(_post(client, "What can I replace spinach with?", lang="en"))
+    assert english_substitution == substitution
+    assert store.list_nutrition_plans(uid, limit=1)[0]["plan"] == before
+
+    unavailable = _events(_post(client, "с какво мога да заменя сьомгата?", lang="bg"))
+    assert unavailable == [{"t": nutrition_conversation.substitution_unavailable_message("bg")}, {"done": True}]
+    assert "recipe:" not in unavailable[0]["t"]
+    assert store.list_nutrition_plans(uid, limit=1)[0]["plan"] == before
+
+    not_in_meal = _events(_post(client, "с какво мога да заменя домата за вечерята?", lang="bg"))
+    assert not_in_meal == [{"t": nutrition_conversation.substitution_source_not_in_meal_message("bg")}, {"done": True}]
+    assert "recipe:" not in not_in_meal[0]["t"]
+    assert store.list_nutrition_plans(uid, limit=1)[0]["plan"] == before
+
+
 def test_nutrition_plan_is_immutable_structured_authority_with_deterministic_rendering():
     plan = nutrition_plan.build_plan(
         _structured_plan_payload(), _NUTRITION_TARGETS,

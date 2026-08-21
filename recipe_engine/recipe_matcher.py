@@ -107,6 +107,11 @@ def _mentioned_food_ids(text: str) -> frozenset[str]:
     return frozenset(mentions)
 
 
+def mentioned_food_ids(text: str) -> frozenset[str]:
+    """Return canonical food IDs explicitly mentioned in supported EN/BG food names."""
+    return _mentioned_food_ids(text)
+
+
 def validate_recipe_for_meal(recipe: Recipe, meal: object) -> str | None:
     """Return an integrity reason, or ``None`` for an exact safe recipe binding."""
     meal_ids = _meal_food_ids(meal)
