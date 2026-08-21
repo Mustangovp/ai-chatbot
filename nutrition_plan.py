@@ -12,7 +12,7 @@ import datetime as dt
 import json
 import re
 import uuid
-from typing import Mapping
+from typing import Mapping, Sequence
 
 from nutrition_validation import NutritionTargets
 
@@ -101,6 +101,40 @@ class NutritionPlan:
     totals: NutritionMacros
     provenance: tuple[tuple[str, str], ...]
     target_status: PlanTargetStatus = PlanTargetStatus.EXACT
+
+
+@dataclass(frozen=True)
+class RecentNutritionContext:
+    """Small, non-authoritative variety context reconstructed from saved plans."""
+    recent_plan_count: int = 0
+    recent_meals: tuple[tuple[str, tuple[str, ...]], ...] = ()
+
+    @property
+    def available(self) -> bool:
+        return bool(self.recent_meals)
+
+
+def recent_nutrition_context(records: Sequence[Mapping[str, object]] | object,
+                             *, maximum_history_depth: int = 3) -> RecentNutritionContext:
+    if (not isinstance(records, Sequence) or isinstance(records, (str, bytes, bytearray))
+            or not 0 <= maximum_history_depth <= 6):
+        return RecentNutritionContext()
+    meals: list[tuple[str, tuple[str, ...]]] = []
+    valid_plans = 0
+    for record in records[:maximum_history_depth]:
+        raw = record.get("plan") if isinstance(record, Mapping) else None
+        try:
+            plan = from_record(raw) if isinstance(raw, Mapping) else None
+        except (TypeError, ValueError, NutritionPlanError):
+            continue
+        if plan is None:
+            continue
+        valid_plans += 1
+        for meal in plan.meals:
+            labels = tuple(food.display_name for food in meal.foods if food.display_name)[:5]
+            if labels:
+                meals.append((meal.meal_type, labels))
+    return RecentNutritionContext(valid_plans, tuple(meals))
 
 
 _MEALS = ("breakfast", "lunch", "dinner")
@@ -856,7 +890,8 @@ def to_record(plan: NutritionPlan) -> dict[str, object]:
     }
 
 
-def generation_contract(targets: NutritionTargets, lang: str) -> str:
+def generation_contract(targets: NutritionTargets, lang: str,
+                        recent_context: RecentNutritionContext | None = None) -> str:
     """The only model contract for canonical daily-plan generation."""
     return (
         "[STRUCTURED DAILY NUTRITION PLAN]\n"
@@ -874,6 +909,11 @@ def generation_contract(targets: NutritionTargets, lang: str) -> str:
         f"{targets.kcal} kcal; protein {targets.protein if targets.protein is not None else 'unspecified'}g; "
         f"carbs {targets.carbs if targets.carbs is not None else 'unspecified'}g; "
         f"fat {targets.fat if targets.fat is not None else 'unspecified'}g."
+        + ("\n[RECENT STRUCTURED PLAN CONTEXT]\n"
+           "Avoid unnecessary repetition of these recent meal ingredients when equivalent choices meet targets and restrictions: "
+           + "; ".join(f"{meal}: {', '.join(labels)}" for meal, labels in recent_context.recent_meals)
+           + ". Repetition is allowed when targets, restrictions, or practicality require it."
+           if recent_context is not None and recent_context.available else "")
     )
 
 

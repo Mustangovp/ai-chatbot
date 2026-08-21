@@ -91,6 +91,19 @@ def test_daily_totals_use_structured_plan_totals_not_the_last_meal_fields():
     assert "| 100.5 | 91 | 13.5 | 940 |" not in total_row
 
 
+def test_recent_nutrition_context_uses_only_valid_structured_records():
+    record = nutrition_plan.to_record(_plan())
+    context = nutrition_plan.recent_nutrition_context(({"plan": record}, {"plan": {"broken": True}}))
+
+    assert context.recent_plan_count == 1
+    assert context.available
+    assert ("lunch", ("Chicken breast", "Rice", "Broccoli")) in context.recent_meals
+    contract = nutrition_plan.generation_contract(_plan().targets, "en", context)
+    assert "RECENT STRUCTURED PLAN CONTEXT" in contract
+    assert "Chicken breast, Rice, Broccoli" in contract
+    assert "Repetition is allowed" in contract
+
+
 def _recipe(recipe_id):
     return next(recipe for recipe in load_recipes() if recipe.id == recipe_id)
 

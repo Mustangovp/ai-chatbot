@@ -3709,8 +3709,10 @@ def chat():
         if _health_scope.scope is HealthSafetyScope.DECLARED_HEALTH_CONTEXT:
             system_content = system_content + "\n\n" + declared_context_prompt(lang)
         if nutrition_delivery_targets is not None:
+            _recent_nutrition_context = nutrition_plan.recent_nutrition_context(
+                pers_nutrition_plans if chat_uid else ())
             system_content = system_content + "\n\n" + nutrition_plan.generation_contract(
-                nutrition_delivery_targets, lang)
+                nutrition_delivery_targets, lang, _recent_nutrition_context)
         if (_persona_expert_communication_active_for_request
                 and _training_plan_blueprint is not None
                 and _training_persona_expert_evaluation is not None):
