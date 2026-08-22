@@ -1568,13 +1568,13 @@ def add_security_headers(response):
 @app.route("/")
 def landing():
     """Premium landing page — first impression for new visitors."""
-    return render_template("landing.html")
+    return render_template("landing_v17_en.html")
 
 
 @app.route("/en")
 def landing_en():
     """English-only landing tuned for Western European premium audience (DE/SE/NL)."""
-    return render_template("landing_en.html")
+    return render_template("landing_v17_en.html")
 
 
 @app.route("/app")
