@@ -1549,13 +1549,7 @@ def verify_token(token: str):
 
 @app.after_request
 def add_security_headers(response):
-    # The landing may embed only the deliberately read-only organism preview.
-    # The full application remains unframeable.
-    if request.path == '/core-preview':
-        response.headers['X-Frame-Options'] = 'SAMEORIGIN'
-        response.headers['Content-Security-Policy'] = "frame-ancestors 'self'"
-    else:
-        response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-Frame-Options'] = 'DENY'
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
     # microphone=(self): the browser mic is allowed for our own origin only, so
@@ -1573,32 +1567,20 @@ def add_security_headers(response):
 
 @app.route("/")
 def landing():
-    """Redesigned global landing — the default project view."""
-    return render_template("landing_en.html", landing_locale='auto')
+    """Premium landing page — first impression for new visitors."""
+    return render_template("landing.html")
 
 
 @app.route("/en")
 def landing_en():
     """English-only landing tuned for Western European premium audience (DE/SE/NL)."""
-    return render_template("landing_en.html", landing_locale='en')
-
-
-@app.route("/bg")
-def landing_bg():
-    """Bulgarian landing with the same approved interaction model."""
-    return render_template("landing_bg.html", landing_locale='bg')
+    return render_template("landing_en.html")
 
 
 @app.route("/app")
 def app_chat():
     """APEX V3 — the AI Operating System shell. The landing page, alive."""
-    return render_template("apex.html", core_preview=False)
-
-
-@app.route("/core-preview")
-def core_preview():
-    """Same-origin, read-only Living Core preview for the landing page."""
-    return render_template("apex.html", core_preview=True)
+    return render_template("apex.html")
 
 
 # ═══════════════════════════════════════════════════════════
