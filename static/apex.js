@@ -531,7 +531,8 @@ class HumanCoreView{
     this.figure=new Image();this.figureReady=false;
     this.figure.onload=()=>{this.figureReady=true;};
     this.figure.src='/static/apex-human-energy-neutral.png';
-    this.color=[255,177,60];this.color2=[255,106,60];this.lastCss=0;this.resize();
+    this.color=[255,177,60];this.color2=[255,106,60];this.lastCss=0;
+    this.answerPulse=0;this.lastBase='waiting';this.lastNow=0;this.resize();
     window.addEventListener('resize',()=>this.resize());
   }
   resize(){
@@ -544,6 +545,16 @@ class HumanCoreView{
     if(key==='strained'||key==='recover')return[[242,31,43],[255,90,50]];
     if(key==='peak')return[[200,255,61],[76,220,138]];
     return[[255,177,60],[255,106,60]];
+  }
+  expression(){
+    // Read only already-derived Presence state. This adapter has no state of
+    // its own beyond visual interpolation, and cannot influence Core motion.
+    const base=this.core.presence.base;
+    if(base==='listening')return{base,speed:.72,focus:.22,energy:.52};
+    if(base==='thinking')return{base,speed:1.28,focus:.30,energy:.64};
+    if(base==='answering')return{base,speed:.94,focus:.42,energy:.70};
+    if(base==='recovering')return{base,speed:.54,focus:.50,energy:.42};
+    return{base,speed:.46,focus:.47,energy:.38};
   }
   body(g,cx,top,H,breath,paint='#fff'){
     const s=H/720,lean=(this.core.presence.p.attX||0)*9*s,b=1+breath*.018;
@@ -582,14 +593,20 @@ class HumanCoreView{
     const target=this.targetPalette(),ease=.035;
     for(let i=0;i<3;i++){this.color[i]+=(target[0][i]-this.color[i])*ease;this.color2[i]+=(target[1][i]-this.color2[i])*ease;}
     const c1=this.color.map(Math.round),c2=this.color2.map(Math.round),p=this.core.cur;
-    const breath=this.core.presence.breath.value,cx=this.w*(innerWidth<=560?.5:.53);
+    const reduced=this.core.presence.reduced;
+    const dt=this.lastNow?Math.min((now-this.lastNow)/1000,.08):0;this.lastNow=now;
+    const expression=this.expression();
+    if(!reduced&&expression.base==='answering'&&this.lastBase!=='answering')this.answerPulse=1;
+    this.answerPulse=Math.max(0,this.answerPulse-dt*.82);this.lastBase=expression.base;
+    const breath=reduced?0:this.core.presence.breath.value,cx=this.w*(innerWidth<=560?.5:.53);
     const H=Math.min(this.h*(innerWidth<=560?.94:1.08),this.w*(innerWidth<=560?1.68:1.26));
     const top=Math.max(innerWidth<=560?8:-30,(this.h-H)*(innerWidth<=560?.34:.48));
     const mg=this.mctx,tg=this.tctx,c=this.ctx;
     mg.clearRect(0,0,this.w,this.h);this.figureMask(mg,cx,top,H,breath);
     tg.clearRect(0,0,this.w,this.h);
-    const halo=tg.createRadialGradient(cx,top+H*.38,H*.04,cx,top+H*.4,H*.55);
-    halo.addColorStop(0,`rgba(${c1.join(',')},${.34+p.recovery*.18})`);
+    const haloY=top+H*expression.focus;
+    const halo=tg.createRadialGradient(cx,haloY,H*.04,cx,haloY,H*.55);
+    halo.addColorStop(0,`rgba(${c1.join(',')},${.20+(p.recovery*.14)+expression.energy*.15})`);
     halo.addColorStop(.56,`rgba(${c2.join(',')},.16)`);halo.addColorStop(1,'rgba(0,0,0,0)');
     tg.fillStyle=halo;tg.fillRect(0,0,this.w,this.h);
     // A continuous tissue layer keeps the organism legible even while the
@@ -603,12 +620,23 @@ class HumanCoreView{
     tg.fillStyle=tissue;tg.fillRect(cx-H*.24,top-H*.02,H*.48,H*1.04);
     tg.globalCompositeOperation='screen';tg.globalAlpha=.9;
     tg.drawImage(this.source,0,0,this.source.width,this.source.height,cx-H*.34,top-H*.02,H*.68,H*1.02);
-    // Fine energy fibres move with the same living clock and remain inside the body.
-    tg.globalAlpha=.34;tg.strokeStyle=`rgb(${c1.join(',')})`;tg.lineWidth=.7;
+    // Fine energy fibres use the Core clock, not a second physiology loop, and
+    // are clipped by the existing human silhouette below.
+    tg.globalAlpha=.18+expression.energy*.24;tg.strokeStyle=`rgb(${c1.join(',')})`;tg.lineWidth=.7;
     for(let n=0;n<20;n++){
-      const y=top+H*(.10+n*.039),phase=this.core.t*1.7+n*.71;
+      const y=top+H*(.10+n*.039),phase=(reduced?0:this.core.t*expression.speed*1.7)+n*.71;
       tg.beginPath();tg.moveTo(cx-H*.16,y);
       tg.bezierCurveTo(cx-H*(.03+Math.sin(phase)*.07),y+H*.04,cx+H*(.04+Math.cos(phase*.8)*.08),y-H*.035,cx+H*.16,y+H*.02);tg.stroke();
+    }
+    // Answering is one bounded signal through the existing form. It decays
+    // after a single entry into Presence's answering state; no state is set.
+    if(this.answerPulse>0){
+      const progress=1-this.answerPulse,pulseY=top+H*(.30+progress*.42);
+      const pulse=tg.createRadialGradient(cx,pulseY,H*.02,cx,pulseY,H*.22);
+      pulse.addColorStop(0,`rgba(${c1.join(',')},${this.answerPulse*.78})`);
+      pulse.addColorStop(.42,`rgba(${c2.join(',')},${this.answerPulse*.28})`);
+      pulse.addColorStop(1,'rgba(0,0,0,0)');
+      tg.globalCompositeOperation='screen';tg.fillStyle=pulse;tg.fillRect(cx-H*.26,pulseY-H*.24,H*.52,H*.48);tg.globalCompositeOperation='source-over';
     }
     tg.globalAlpha=1;tg.globalCompositeOperation='destination-in';tg.drawImage(this.mask,0,0,this.w,this.h);tg.globalCompositeOperation='source-over';
     c.clearRect(0,0,this.w,this.h);
