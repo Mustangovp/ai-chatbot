@@ -550,11 +550,11 @@ class HumanCoreView{
     // Read only already-derived Presence state. This adapter has no state of
     // its own beyond visual interpolation, and cannot influence Core motion.
     const base=this.core.presence.base;
-    if(base==='listening')return{base,speed:.72,focus:.22,energy:.52};
-    if(base==='thinking')return{base,speed:1.28,focus:.30,energy:.64};
-    if(base==='answering')return{base,speed:.94,focus:.42,energy:.70};
-    if(base==='recovering')return{base,speed:.54,focus:.50,energy:.42};
-    return{base,speed:.46,focus:.47,energy:.38};
+    if(base==='listening')return{base,speed:.88,focus:.20,energy:.66};
+    if(base==='thinking')return{base,speed:2.08,focus:.25,energy:1.10};
+    if(base==='answering')return{base,speed:1.32,focus:.36,energy:1.08};
+    if(base==='recovering')return{base,speed:.62,focus:.50,energy:.54};
+    return{base,speed:.68,focus:.47,energy:.58};
   }
   body(g,cx,top,H,breath,paint='#fff'){
     const s=H/720,lean=(this.core.presence.p.attX||0)*9*s,b=1+breath*.018;
@@ -584,9 +584,17 @@ class HumanCoreView{
   }
   figureMask(g,cx,top,H,breath){
     if(!this.figureReady){this.body(g,cx,top,H,breath);return;}
-    const lean=(this.core.presence.p.attX||0)*9*(H/720),b=1+breath*.018;
+    const lean=(this.core.presence.p.attX||0)*9*(H/720);
     const fw=H*(this.figure.naturalWidth/this.figure.naturalHeight);
-    g.save();g.translate(cx+lean,top+H*.48);g.scale(b,1+(b-1)*.65);g.translate(-cx,-(top+H*.48));
+    // Keep the asset's whole-body geometry still. Only the clipped ribcage and
+    // shoulder band expands around the existing BreathEngine phase, so it reads
+    // as respiration rather than a zoomed PNG.
+    g.save();g.translate(lean,0);g.drawImage(this.figure,cx-fw*.5,top,fw,H);g.restore();
+    const signal=(breath-.5)*2,chestY=top+H*.17,chestH=H*.34;
+    g.save();g.beginPath();g.rect(cx-fw*.34,chestY,fw*.68,chestH);g.clip();
+    g.translate(cx+lean,chestY+chestH*.46);
+    g.scale(1+signal*.035,1+signal*.012);
+    g.translate(-cx,-(chestY+chestH*.46));
     g.drawImage(this.figure,cx-fw*.5,top,fw,H);g.restore();
   }
   render(now){
@@ -604,6 +612,7 @@ class HumanCoreView{
     const mg=this.mctx,tg=this.tctx,c=this.ctx;
     mg.clearRect(0,0,this.w,this.h);this.figureMask(mg,cx,top,H,breath);
     tg.clearRect(0,0,this.w,this.h);
+    const breathSignal=(breath-.5)*2;
     const haloY=top+H*expression.focus;
     const halo=tg.createRadialGradient(cx,haloY,H*.04,cx,haloY,H*.55);
     halo.addColorStop(0,`rgba(${c1.join(',')},${.20+(p.recovery*.14)+expression.energy*.15})`);
@@ -619,22 +628,47 @@ class HumanCoreView{
     tissue.addColorStop(1,`rgba(${c1.join(',')},.76)`);
     tg.fillStyle=tissue;tg.fillRect(cx-H*.24,top-H*.02,H*.48,H*1.04);
     tg.globalCompositeOperation='screen';tg.globalAlpha=.9;
-    tg.drawImage(this.source,0,0,this.source.width,this.source.height,cx-H*.34,top-H*.02,H*.68,H*1.02);
+    // Reduced motion keeps the Human Core's tone but removes the inherited
+    // travelling source texture as well as this adapter's own deformation.
+    if(!reduced)tg.drawImage(this.source,0,0,this.source.width,this.source.height,cx-H*.34,top-H*.02,H*.68,H*1.02);
     // Fine energy fibres use the Core clock, not a second physiology loop, and
     // are clipped by the existing human silhouette below.
-    tg.globalAlpha=.18+expression.energy*.24;tg.strokeStyle=`rgb(${c1.join(',')})`;tg.lineWidth=.7;
-    for(let n=0;n<20;n++){
-      const y=top+H*(.10+n*.039),phase=(reduced?0:this.core.t*expression.speed*1.7)+n*.71;
+    tg.globalAlpha=.26+expression.energy*.30;tg.strokeStyle=`rgb(${c1.join(',')})`;tg.lineWidth=.82;
+    for(let n=0;n<26;n++){
+      const y=top+H*(.09+n*.031),phase=(reduced?0:this.core.t*expression.speed*2.15)+n*.71;
       tg.beginPath();tg.moveTo(cx-H*.16,y);
-      tg.bezierCurveTo(cx-H*(.03+Math.sin(phase)*.07),y+H*.04,cx+H*(.04+Math.cos(phase*.8)*.08),y-H*.035,cx+H*.16,y+H*.02);tg.stroke();
+      tg.bezierCurveTo(cx-H*(.02+Math.sin(phase)*.10),y+H*(.06-expression.focus*.04),cx+H*(.05+Math.cos(phase*.8)*.11),y-H*.05,cx+H*.16,y+H*.025);tg.stroke();
+    }
+    // A small, breath-synchronised sternum luminance is an embodied Core cue,
+    // never a heart-rate claim. It stays inside the same silhouette mask.
+    const chestY=top+H*.315,chestPulse=.34+breath*.66,chestRadius=H*(.042+breath*.015);
+    const sternum=tg.createRadialGradient(cx,chestY,0,cx,chestY,chestRadius*3.2);
+    sternum.addColorStop(0,`rgba(${c1.join(',')},${.34+chestPulse*.26})`);
+    sternum.addColorStop(.24,`rgba(${c2.join(',')},${.16+chestPulse*.17})`);
+    sternum.addColorStop(1,'rgba(0,0,0,0)');tg.fillStyle=sternum;tg.fillRect(cx-chestRadius*3.4,chestY-chestRadius*3.4,chestRadius*6.8,chestRadius*6.8);
+    // Attention already comes from PresenceEngine. This adds only a local light
+    // response at that existing focus point; the form never follows the cursor.
+    const att=this.core.presence.p,attStrength=Math.max(0,att.attStrength||0);
+    if(attStrength>.12){
+      const ax=cx+(att.attX||0)*H*.13,ay=top+H*(.34+(att.attY||0)*.08);
+      const focus=tg.createRadialGradient(ax,ay,0,ax,ay,H*.14);
+      focus.addColorStop(0,`rgba(${c1.join(',')},${attStrength*.28})`);focus.addColorStop(1,'rgba(0,0,0,0)');
+      tg.globalCompositeOperation='screen';tg.fillStyle=focus;tg.fillRect(ax-H*.16,ay-H*.16,H*.32,H*.32);tg.globalCompositeOperation='source-over';
+    }
+    if(expression.base==='thinking'){
+      const headY=top+H*.17,thought=.34+Math.sin(this.core.t*expression.speed*3)*.12;
+      const head=tg.createRadialGradient(cx,headY,0,cx,headY,H*.13);
+      head.addColorStop(0,`rgba(${c1.join(',')},${thought})`);head.addColorStop(.42,`rgba(${c2.join(',')},${thought*.36})`);head.addColorStop(1,'rgba(0,0,0,0)');
+      tg.globalCompositeOperation='screen';tg.fillStyle=head;tg.fillRect(cx-H*.16,headY-H*.16,H*.32,H*.32);tg.globalCompositeOperation='source-over';
     }
     // Answering is one bounded signal through the existing form. It decays
     // after a single entry into Presence's answering state; no state is set.
     if(this.answerPulse>0){
       const progress=1-this.answerPulse,pulseY=top+H*(.30+progress*.42);
-      const pulse=tg.createRadialGradient(cx,pulseY,H*.02,cx,pulseY,H*.22);
-      pulse.addColorStop(0,`rgba(${c1.join(',')},${this.answerPulse*.78})`);
-      pulse.addColorStop(.42,`rgba(${c2.join(',')},${this.answerPulse*.28})`);
+      const pulse=tg.createRadialGradient(cx,pulseY,H*.01,cx,pulseY,H*.15);
+      pulse.addColorStop(0,`rgba(${c1.join(',')},${this.answerPulse})`);
+      pulse.addColorStop(.30,`rgba(${c2.join(',')},${this.answerPulse*.58})`);
+      pulse.addColorStop(.66,`rgba(${c2.join(',')},${this.answerPulse*.13})`);
       pulse.addColorStop(1,'rgba(0,0,0,0)');
       tg.globalCompositeOperation='screen';tg.fillStyle=pulse;tg.fillRect(cx-H*.26,pulseY-H*.24,H*.52,H*.48);tg.globalCompositeOperation='source-over';
     }
