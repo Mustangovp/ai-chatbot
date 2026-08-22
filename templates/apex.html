@@ -54,6 +54,12 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
   animation:grain 7s steps(6) infinite;}
 @keyframes grain{0%{transform:translate(0,0)}20%{transform:translate(-3%,2%)}40%{transform:translate(2%,-3%)}60%{transform:translate(-2%,1%)}80%{transform:translate(3%,2%)}100%{transform:translate(0,0)}}
 
+/* Landing preview: the same organism, without the interactive application shell. */
+body.core-preview #ui,body.core-preview #consult,body.core-preview #workout,
+body.core-preview #profile-modal,body.core-preview #drawer,body.core-preview #drawer-scrim,
+body.core-preview #panel,body.core-preview #toast,body.core-preview .modal{display:none!important}
+body.core-preview #stage{position:fixed;inset:0}
+
 /* ── UI LAYER ─────────────────────────────────────────────────────── */
 #ui{position:fixed;inset:0;z-index:10;display:flex;flex-direction:column;pointer-events:none;}
 #ui > *{pointer-events:auto;}
@@ -480,14 +486,159 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
   .cta-row{flex-direction:column;width:100%;max-width:300px;} .cta{justify-content:center;}
   .ex-glyph{width:58px;height:58px;font-size:24px;}
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   APEX HUMAN CORE INTERFACE
+   Presentation layer only. LivingCore, AthleteModel and PresenceEngine remain
+   the source of physiology, colour, breath and behaviour.
+   ═══════════════════════════════════════════════════════════════════ */
+:root{
+  --apx-ink:#08090B;--apx-paper:#F1EFE8;--apx-red:#F21F2B;
+  --apx-line:#2A2D33;--apx-muted:#969BA4;--apx-live:#C8FF3D;
+  --apx-state:#FFB13C;--apx-state-rgb:255,177,60;
+}
+body{background:var(--apx-ink);}
+#stage{background:linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px) 0 0/8.333% 100%,var(--apx-ink);}
+#stage::before{content:'';position:absolute;left:34px;top:84px;bottom:0;width:1px;background:rgba(242,31,43,.72);z-index:3;pointer-events:none;}
+#stage::after{content:'';position:absolute;left:0;top:44%;width:65px;height:170px;background:var(--apx-red);clip-path:polygon(55% 0,100% 15%,100% 82%,0 100%,0 17%);z-index:3;pointer-events:none;}
+#grid{background-image:none;mask-image:none;-webkit-mask-image:none;}
+#core{opacity:0;pointer-events:none;}
+#human-core{position:absolute;inset:84px 33.5% 0 0;z-index:2;width:66.5%;height:calc(100% - 84px);display:block;pointer-events:none;filter:drop-shadow(0 0 22px rgba(var(--apx-state-rgb),.24));}
+#vignette{background:radial-gradient(ellipse 62% 78% at 34% 44%,transparent 26%,rgba(8,9,11,.24) 62%,rgba(8,9,11,.82) 100%);}
+
+#ui{background:transparent;}
+.topbar{height:84px;padding:0 36px;border-bottom:1px solid rgba(255,255,255,.16);background:rgba(8,9,11,.88);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);}
+.topbar{display:grid;grid-template-columns:1fr auto 1fr;}
+.brand img{width:42px;height:42px;}
+.brand .bt{font-size:15px;letter-spacing:.65px;color:#fff;}
+.brand .bs{display:none;}
+.pill{height:42px;border-radius:0;background:transparent;border:0;padding:0 14px;font-size:9px;letter-spacing:2px;color:#fff;}
+.pill.live::before{background:var(--apx-state);box-shadow:0 0 10px rgba(var(--apx-state-rgb),.75);}
+.menu-btn{width:44px;height:42px;border-radius:0;background:#0d0f12;border:1px solid rgba(255,255,255,.24);}
+.top-right{justify-self:end;}
+.app-nav{height:100%;display:flex;align-items:center;gap:42px;}
+.app-nav button{height:100%;position:relative;color:#c6c8cc;font:700 11px/1 'Unbounded';letter-spacing:2px;transition:color .2s;}
+.app-nav button::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--apx-red);transform:scaleX(0);transition:transform .2s;}
+.app-nav button:hover,.app-nav button.on{color:#fff;}.app-nav button.on{color:var(--apx-red);}.app-nav button.on::after{transform:scaleX(1);}
+
+.center{padding:0;display:block;text-align:left;}
+#overview{position:absolute;inset:0;display:grid;grid-template-columns:66.5% 33.5%;align-items:stretch;width:100%;max-width:none;transition:opacity .55s var(--ease),transform .55s var(--ease);}
+.organism-story{align-self:end;padding:0 8% 48px 5.8%;position:relative;z-index:5;max-width:none;}
+.eyebrow{justify-content:flex-start;color:#c7cad0;margin-bottom:20px;font-size:9px;letter-spacing:2.5px;}
+.eyebrow::before{width:30px;height:2px;background:var(--apx-red);}
+.eyebrow::after{display:none;}
+#read-state{max-width:17ch;font-size:clamp(27px,2.55vw,44px);line-height:1.03;letter-spacing:-.045em;text-transform:uppercase;background:none;color:#fff;filter:drop-shadow(0 3px 24px rgba(0,0,0,.9));}
+#read-sub{max-width:49ch;margin:14px 0 0;color:#c4c7cd;font-size:clamp(12px,1vw,15px);line-height:1.55;text-shadow:0 2px 18px #000;padding-left:0;border-left:0;}
+.quick-ask{margin-top:26px;width:min(720px,94%);height:56px;border:1px solid rgba(255,255,255,.28);display:flex;align-items:center;justify-content:space-between;padding-left:20px;color:#989ca3;text-align:left;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;background:rgba(5,6,8,.42);backdrop-filter:blur(8px);}
+.quick-ask b{align-self:stretch;width:56px;display:grid;place-items:center;background:var(--apx-red);color:#fff;font:300 34px/1 Manrope;transition:background .2s;}.quick-ask:hover b{background:#ff3943;}
+
+.decision-surface{grid-column:2;grid-row:1;min-width:0;background:var(--apx-paper);color:var(--apx-ink);padding:clamp(34px,4.5vh,58px) clamp(34px,3.3vw,60px) 30px;display:flex;flex-direction:column;position:relative;z-index:4;}
+.decision-surface::before{content:'';position:absolute;inset:0 auto 0 0;width:1px;background:rgba(8,9,11,.18);}
+.decision-kicker{display:flex;justify-content:space-between;gap:20px;padding-bottom:20px;border-bottom:1px solid rgba(8,9,11,.18);font-size:9px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:#60636a;}
+#decision-state{color:var(--apx-state);}
+.decision-surface .metrics{display:grid;grid-template-columns:1fr 1fr;margin:0;gap:0;align-items:stretch;}
+.decision-surface .metric{min-width:0;border:0;border-bottom:1px solid rgba(8,9,11,.18);border-radius:0;background:transparent;padding:24px 0;align-items:flex-start;backdrop-filter:none;-webkit-backdrop-filter:none;}
+.decision-surface .metric.rec{grid-column:1/-1;padding:clamp(32px,6vh,72px) 0 clamp(28px,4vh,52px);align-items:flex-start;}
+.decision-surface .metric.rec .mv{order:1;color:var(--apx-ink)!important;font-size:clamp(72px,8vw,138px);line-height:.78;letter-spacing:-.085em;}
+.decision-surface .metric.rec .ml{order:2;color:#4c5056;font-size:10px;letter-spacing:2px;margin-top:18px;}
+.decision-surface .metric.fat{border-right:1px solid rgba(8,9,11,.18);padding-right:20px;}
+.decision-surface .metric.str{padding-left:24px;}
+.decision-surface .metric.fat .mv,.decision-surface .metric.str .mv{color:var(--apx-ink)!important;font-size:clamp(24px,2.4vw,38px);}
+.decision-surface .metric.fat .ml,.decision-surface .metric.str .ml{color:#62666c;font-size:8px;letter-spacing:1.6px;}
+.decision-surface .cta-row{margin-top:auto;display:grid;grid-template-columns:1fr;gap:10px;justify-content:stretch;}
+.decision-surface .cta{width:100%;height:58px;border-radius:0;background:var(--apx-red);padding:0 18px 0 22px;justify-content:space-between;text-transform:uppercase;font-size:10px;letter-spacing:1.8px;box-shadow:none;}
+.decision-surface .cta .arr{width:38px;height:38px;background:#fff;color:#111;display:grid;place-items:center;font-size:18px;}
+.decision-surface .cta.ghost{height:48px;background:transparent;border:1px solid rgba(8,9,11,.35);color:var(--apx-ink);}
+.assessment-pending .decision-surface .metrics{display:none;}
+.assessment-message{display:none;align-items:flex-start;justify-content:center;flex-direction:column;flex:1;color:#6a6d72;font:700 clamp(22px,2.6vw,40px)/1.1 'Unbounded';letter-spacing:-.035em;}
+.assessment-pending .assessment-message{display:flex;}
+.assessment-message button{margin-top:30px;width:100%;height:58px;padding:0 22px;display:flex;align-items:center;justify-content:space-between;background:var(--apx-red);color:#fff;font:800 10px/1 Manrope,sans-serif;letter-spacing:1.8px;text-transform:uppercase;}
+.assessment-message button b{width:38px;height:38px;background:#fff;color:#111;display:grid;place-items:center;font-size:18px;}
+
+/* The decision panel mirrors the landing's editorial hierarchy while every
+   value remains sourced from the existing profile and physiology model. */
+.decision-surface .performance-readout{display:flex;flex-direction:column;flex:1;min-height:0;}
+.decision-surface .performance-readout .metric.rec{display:flex;flex-direction:column;padding:clamp(30px,4.8vh,56px) 0 clamp(24px,3.4vh,42px);border-bottom:1px solid rgba(8,9,11,.18);}
+.decision-surface .performance-readout .metric.rec .mv{font:700 clamp(82px,8.2vw,132px)/.78 Manrope,sans-serif;letter-spacing:-.09em;}
+.decision-surface .performance-readout .metric.rec .ml{font-size:10px;letter-spacing:2.6px;margin-top:20px;color:#17191d;}
+.decision-copy{padding:clamp(26px,4vh,46px) 0 22px;}
+.decision-copy h2{font:700 clamp(25px,2.45vw,39px)/1.06 'Unbounded';letter-spacing:-.045em;text-transform:uppercase;max-width:12ch;}
+.decision-copy p{margin-top:15px;color:#4f5359;font-size:14px;line-height:1.55;max-width:31ch;}
+.decision-copy .cta-row{margin-top:24px;}.decision-copy .cta{height:56px;}
+.signal-list{margin-top:auto;border-top:1px solid rgba(8,9,11,.2);}
+.signal-row{height:56px;display:grid;grid-template-columns:36px 1fr auto;align-items:center;gap:14px;border-bottom:1px solid rgba(8,9,11,.2);font-size:10px;letter-spacing:1.8px;text-transform:uppercase;}
+.signal-row i{width:30px;height:30px;border:1px dashed rgba(8,9,11,.4);border-radius:50%;display:grid;place-items:center;font:400 17px/1 Manrope;font-style:normal;}
+.signal-row b{font-weight:700;color:#454950;text-align:right;}
+
+/* Coach mode occupies the dark performance stage; the human core remains alive. */
+#consult{right:33.5%;top:84px;background:linear-gradient(90deg,rgba(8,9,11,.985),rgba(8,9,11,.91) 78%,rgba(8,9,11,.34));}
+.consult-head{padding:24px 30px 8px;justify-content:flex-end;}
+.consult-head .ch-label{color:var(--apx-state);font-size:9px;letter-spacing:2px;}
+.back-btn{top:18px;left:30px;height:38px;border-radius:0;background:#0d0f12;border:1px solid rgba(255,255,255,.2);font-size:9px;text-transform:uppercase;letter-spacing:1.4px;}
+#feed{max-width:760px;padding:22px 30px 10px;}
+.msg.u{border-radius:0;background:#17191e;border:1px solid var(--apx-line);border-right:3px solid var(--apx-red);}
+.msg.a .body{border-radius:0;background:rgba(17,19,23,.94);border-color:var(--apx-line);border-left-color:var(--apx-red);}
+.msg.a .who{color:var(--apx-red);}
+.greet{text-align:left;}
+.greet h3 .grad{background:none;color:#fff;}
+.greet .goalrow{color:var(--apx-state);}
+.chips{justify-content:flex-start;}
+.chip{border-radius:0;background:#111317;}
+.inputbar{max-width:760px;padding:12px 30px calc(18px + env(safe-area-inset-bottom));}
+.input-wrap{border-radius:0;background:#0d0f12;}
+.mic-btn,.send-btn{border-radius:0;}
+.send-btn{background:var(--apx-red);box-shadow:none;}
+
+/* Keep all secondary surfaces in the same editorial system. */
+#drawer{background:#0d0f12;border-left-color:var(--apx-line);}
+.drawer-close,.mi,.plan-badge,.cancel-btn{border-radius:0;}
+.modal{justify-content:flex-end;padding:0;background:rgba(5,6,8,.76);}
+.sheet{height:100dvh;max-height:none;max-width:520px;border-radius:0;border:0;border-left:1px solid var(--apx-line);background:#0d0f12;padding:32px 30px calc(24px + env(safe-area-inset-bottom));}
+.field input,.field select,.field textarea,.wiz-nav button,.sheet .save,.safety-note{border-radius:0;}
+.wiz-dot{border-radius:0;}
+.wiz-dot.on,.wiz-nav .next,.sheet .save{background:var(--apx-red);}
+.wiz-cat{color:var(--apx-state);}
+.nutri-meal,.nutri-total,.ex-card,.workout-exercise-card,.workout-protocol,.workout-card-stat{border-radius:0!important;}
+
+@media(max-width:900px){
+  #human-core{right:42%;width:58%;}
+  #overview{grid-template-columns:58% 42%;}
+  .decision-surface{grid-column:2;padding-inline:30px;}
+  #consult{right:42%;}
+  .organism-story{padding-left:5%;padding-right:5%;}
+}
+
+@media(max-width:560px){
+  html,body{height:100%;min-height:100dvh;}
+  #ui{overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;}
+  .topbar{height:70px;padding:0 16px;position:sticky;top:0;z-index:8;flex:0 0 70px;}
+  .brand img{width:34px;height:34px}.brand .bt{font-size:11px}.pill{padding:0 6px}.menu-btn{width:40px;height:38px;}.app-nav{display:none;}
+  #stage::before{left:14px;top:70px}#stage::after{display:none;}
+  #human-core{inset:70px 0 auto;width:100%;height:48dvh;min-height:330px;}
+  #vignette{background:linear-gradient(180deg,rgba(8,9,11,.06),rgba(8,9,11,.05) 34%,rgba(8,9,11,.92) 62%,rgba(8,9,11,1) 100%);}
+  .center{display:block;flex:0 0 auto;min-height:calc(100dvh - 70px);}
+  #overview{position:relative;inset:auto;display:flex;flex-direction:column;width:100%;padding-top:43dvh;}
+  .organism-story{order:1;align-self:stretch;padding:34px 20px 36px;max-width:none;min-height:250px;}
+  #read-state{font-size:clamp(30px,9.7vw,42px);max-width:11ch;}
+  #read-sub{font-size:13px;max-width:34ch;margin-top:17px;}
+  .decision-surface{order:2;width:100%;padding:30px 20px calc(104px + env(safe-area-inset-bottom));min-height:590px;}
+  .quick-ask{width:100%;}.decision-surface .performance-readout .metric.rec{padding:34px 0 30px}.decision-surface .performance-readout .metric.rec .mv{font-size:clamp(78px,28vw,112px)}
+  .decision-surface .cta-row{margin-top:24px}.decision-copy h2{font-size:28px;}
+  .assessment-pending .assessment-message{min-height:170px;font-size:28px;}
+  #consult{position:fixed;inset:70px 0 0;width:100%;background:rgba(8,9,11,.97);}
+  .consult-head{padding:16px 16px 6px}.back-btn{left:16px;top:10px}#feed{padding:18px 16px 8px}.inputbar{padding:10px 12px calc(12px + env(safe-area-inset-bottom));}
+  .sheet{width:100%;max-width:none;height:92dvh;border-left:0;border-top:1px solid var(--apx-line);padding:25px 18px calc(18px + env(safe-area-inset-bottom));}
+  .f2,.f3{grid-template-columns:1fr;}
+}
 @media (prefers-reduced-motion:reduce){ #grain{animation:none;} .msg{animation:none;} }
 </style>
 </head>
-<body>
+<body{% if core_preview %} class="core-preview"{% endif %}>
 
 <div id="stage">
   <div id="grid"></div>
   <canvas id="core"></canvas>
+  <canvas id="human-core" aria-hidden="true"></canvas>
   <div id="vignette"></div>
   <div id="grain"></div>
 </div>
@@ -498,6 +649,11 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
       <img src="/static/logo.png" alt="APEX PULSE PRO">
       <span class="bt"><span class="rd">APEX</span> PULSE PRO<br><span class="bs">Your peak. Your pulse.</span></span>
     </a>
+    <nav class="app-nav" aria-label="Primary">
+      <button id="nav-today" class="on" onclick="exitConsult()">TODAY</button>
+      <button id="nav-coach" onclick="enterConsult()">COACH</button>
+      <button id="nav-history" onclick="showHistory()">HISTORY</button>
+    </nav>
     <div class="top-right">
       <button class="pill live" id="status-pill">LIVE</button>
       <button class="menu-btn" id="menu-btn" onclick="openMenu()" aria-label="Menu"><span></span><span></span><span></span></button>
@@ -506,18 +662,35 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 
   <div class="center">
     <div id="overview">
-      <span class="eyebrow" id="ov-eyebrow">SYSTEM ONLINE</span>
-      <h1 id="read-state">Reading your physiology</h1>
-      <p id="read-sub">Your organism is calibrating to today's signals.</p>
-      <div class="metrics">
-        <div class="metric rec"><span class="mv" id="m-rec">—</span><span class="ml" id="ml-rec">Recovery</span></div>
-        <div class="metric fat"><span class="mv" id="m-fat">—</span><span class="ml" id="ml-fat">Fatigue</span></div>
-        <div class="metric str"><span class="mv" id="m-str">—</span><span class="ml" id="ml-str">Stress</span></div>
-      </div>
-      <div class="cta-row">
-        <button class="cta" onclick="intentTrain()"><span id="cta-train">Start training</span><span class="arr">→</span></button>
-        <button class="cta ghost" onclick="enterConsult()"><span id="cta-consult">Consult</span></button>
-      </div>
+      <section class="organism-story">
+        <span class="eyebrow" id="ov-eyebrow">SYSTEM ONLINE</span>
+        <h1 id="read-state">Reading your physiology</h1>
+        <p id="read-sub">Your organism is calibrating to today's signals.</p>
+        <button class="quick-ask" onclick="enterConsult()"><span id="cta-consult">Ask APEX about today</span><b>›</b></button>
+      </section>
+      <aside class="decision-surface">
+        <div class="decision-kicker"><span id="decision-label">APEX</span><span id="decision-state">CALIBRATING</span></div>
+        <div class="assessment-message" aria-live="polite">
+          <p id="assessment-message"></p>
+          <button onclick="openProfile(0)"><span id="assessment-action">Complete profile</span><b>→</b></button>
+        </div>
+        <div class="metrics performance-readout">
+          <div class="metric rec"><span class="mv" id="m-rec">—</span><span class="ml" id="ml-rec">Readiness today</span></div>
+          <div class="decision-copy">
+            <h2 id="decision-head">Reading your signals</h2>
+            <p id="decision-copy">Your plan will adapt to the body that shows up today.</p>
+            <div class="cta-row">
+              <button class="cta" onclick="intentTrain()"><span id="cta-train">Open today's plan</span><span class="arr">→</span></button>
+            </div>
+          </div>
+          <div class="signal-list">
+            <div class="signal-row"><i>◔</i><span id="sl-sleep">Sleep</span><b id="m-sleep">—</b></div>
+            <div class="signal-row"><i>⌁</i><span id="ml-fat">Fatigue</span><b id="m-fat">—</b></div>
+            <div class="signal-row"><i>⚑</i><span id="sl-goal">Goal</span><b id="m-goal">—</b></div>
+          </div>
+          <span id="m-str" hidden></span><span id="ml-str" hidden></span>
+        </div>
+      </aside>
     </div>
   </div>
 </div>
@@ -1211,6 +1384,128 @@ class LivingCore{
   start(){requestAnimationFrame(this.frame);}
 }
 
+/* HumanCoreView is a presentation adapter. It never computes physiology and
+   never sends commands to the organism. It reads LivingCore's rendered canvas,
+   breath and already-derived state, then composes that living material into a
+   neutral human form. */
+class HumanCoreView{
+  constructor(canvas,source,livingCore){
+    this.cv=canvas;this.source=source;this.core=livingCore;this.ctx=canvas.getContext('2d');
+    this.dpr=Math.min(window.devicePixelRatio||1,2);this.mask=document.createElement('canvas');
+    this.texture=document.createElement('canvas');this.mctx=this.mask.getContext('2d');this.tctx=this.texture.getContext('2d');
+    this.figure=new Image();this.figureReady=false;
+    this.figure.onload=()=>{this.figureReady=true;};
+    this.figure.src='/static/apex-human-energy-neutral.png';
+    this.color=[255,177,60];this.color2=[255,106,60];this.lastCss=0;this.resize();
+    window.addEventListener('resize',()=>this.resize());
+  }
+  resize(){
+    this.w=Math.max(2,this.cv.clientWidth);this.h=Math.max(2,this.cv.clientHeight);
+    for(const c of [this.cv,this.mask,this.texture]){c.width=Math.round(this.w*this.dpr);c.height=Math.round(this.h*this.dpr);}
+    for(const g of [this.ctx,this.mctx,this.tctx])g.setTransform(this.dpr,0,0,this.dpr,0,0);
+  }
+  targetPalette(){
+    const key=readoutKey(this.core.cur);
+    if(key==='strained'||key==='recover')return[[242,31,43],[255,90,50]];
+    if(key==='peak')return[[200,255,61],[76,220,138]];
+    return[[255,177,60],[255,106,60]];
+  }
+  body(g,cx,top,H,breath,paint='#fff'){
+    const s=H/720,lean=(this.core.presence.p.attX||0)*9*s,b=1+breath*.018;
+    g.save();g.translate(cx+lean,top+H*.48);g.scale(b,1+(b-1)*.65);g.translate(-cx,-(top+H*.48));
+    g.fillStyle=paint;g.strokeStyle=paint;g.lineCap='round';g.lineJoin='round';
+    // Head and neck: a quiet three-quarter orientation, never a portrait.
+    g.beginPath();g.ellipse(cx+18*s,top+58*s,39*s,51*s,-.12,0,Math.PI*2);g.fill();
+    g.lineWidth=36*s;g.beginPath();g.moveTo(cx+5*s,top+103*s);g.lineTo(cx-2*s,top+143*s);g.stroke();
+    // Torso and pelvis.
+    g.beginPath();g.moveTo(cx-7*s,top+132*s);
+    g.bezierCurveTo(cx-72*s,top+127*s,cx-102*s,top+158*s,cx-92*s,top+226*s);
+    g.bezierCurveTo(cx-84*s,top+282*s,cx-65*s,top+326*s,cx-64*s,top+374*s);
+    g.bezierCurveTo(cx-28*s,top+398*s,cx+27*s,top+398*s,cx+65*s,top+370*s);
+    g.bezierCurveTo(cx+62*s,top+317*s,cx+89*s,top+274*s,cx+93*s,top+214*s);
+    g.bezierCurveTo(cx+99*s,top+157*s,cx+66*s,top+132*s,cx-7*s,top+132*s);g.closePath();g.fill();
+    // Arms, built in tapering segments for an anatomically neutral silhouette.
+    g.lineWidth=43*s;g.beginPath();g.moveTo(cx-76*s,top+164*s);g.quadraticCurveTo(cx-126*s,top+233*s,cx-115*s,top+302*s);g.stroke();
+    g.lineWidth=31*s;g.beginPath();g.moveTo(cx-115*s,top+294*s);g.quadraticCurveTo(cx-103*s,top+357*s,cx-88*s,top+405*s);g.stroke();
+    g.lineWidth=44*s;g.beginPath();g.moveTo(cx+75*s,top+166*s);g.quadraticCurveTo(cx+127*s,top+224*s,cx+116*s,top+294*s);g.stroke();
+    g.lineWidth=30*s;g.beginPath();g.moveTo(cx+116*s,top+286*s);g.quadraticCurveTo(cx+105*s,top+349*s,cx+91*s,top+402*s);g.stroke();
+    // Legs.
+    g.lineWidth=58*s;g.beginPath();g.moveTo(cx-35*s,top+371*s);g.quadraticCurveTo(cx-55*s,top+478*s,cx-47*s,top+548*s);g.stroke();
+    g.lineWidth=42*s;g.beginPath();g.moveTo(cx-47*s,top+535*s);g.quadraticCurveTo(cx-55*s,top+623*s,cx-63*s,top+697*s);g.stroke();
+    g.lineWidth=59*s;g.beginPath();g.moveTo(cx+34*s,top+371*s);g.quadraticCurveTo(cx+56*s,top+470*s,cx+48*s,top+544*s);g.stroke();
+    g.lineWidth=42*s;g.beginPath();g.moveTo(cx+48*s,top+532*s);g.quadraticCurveTo(cx+57*s,top+620*s,cx+66*s,top+697*s);g.stroke();
+    g.restore();
+  }
+  figureMask(g,cx,top,H,breath){
+    if(!this.figureReady){this.body(g,cx,top,H,breath);return;}
+    const lean=(this.core.presence.p.attX||0)*9*(H/720),b=1+breath*.018;
+    const fw=H*(this.figure.naturalWidth/this.figure.naturalHeight);
+    g.save();g.translate(cx+lean,top+H*.48);g.scale(b,1+(b-1)*.65);g.translate(-cx,-(top+H*.48));
+    g.drawImage(this.figure,cx-fw*.5,top,fw,H);g.restore();
+  }
+  render(now){
+    const target=this.targetPalette(),ease=.035;
+    for(let i=0;i<3;i++){this.color[i]+=(target[0][i]-this.color[i])*ease;this.color2[i]+=(target[1][i]-this.color2[i])*ease;}
+    const c1=this.color.map(Math.round),c2=this.color2.map(Math.round),p=this.core.cur;
+    const breath=this.core.presence.breath.value,cx=this.w*(innerWidth<=560?.5:.53);
+    const H=Math.min(this.h*(innerWidth<=560?.94:1.08),this.w*(innerWidth<=560?1.68:1.26));
+    const top=Math.max(innerWidth<=560?8:-30,(this.h-H)*(innerWidth<=560?.34:.48));
+    const mg=this.mctx,tg=this.tctx,c=this.ctx;
+    mg.clearRect(0,0,this.w,this.h);this.figureMask(mg,cx,top,H,breath);
+    tg.clearRect(0,0,this.w,this.h);
+    const halo=tg.createRadialGradient(cx,top+H*.38,H*.04,cx,top+H*.4,H*.55);
+    halo.addColorStop(0,`rgba(${c1.join(',')},${.34+p.recovery*.18})`);
+    halo.addColorStop(.56,`rgba(${c2.join(',')},.16)`);halo.addColorStop(1,'rgba(0,0,0,0)');
+    tg.fillStyle=halo;tg.fillRect(0,0,this.w,this.h);
+    // A continuous tissue layer keeps the organism legible even while the
+    // original core is in a quiet phase. Its colour still comes only from the
+    // already-classified physiology state above.
+    const tissue=tg.createLinearGradient(cx-H*.22,top,cx+H*.23,top+H);
+    tissue.addColorStop(0,`rgba(${c2.join(',')},.58)`);
+    tissue.addColorStop(.42,`rgba(${c1.join(',')},.94)`);
+    tissue.addColorStop(.72,`rgba(${c2.join(',')},.68)`);
+    tissue.addColorStop(1,`rgba(${c1.join(',')},.76)`);
+    tg.fillStyle=tissue;tg.fillRect(cx-H*.24,top-H*.02,H*.48,H*1.04);
+    tg.globalCompositeOperation='screen';tg.globalAlpha=.9;
+    tg.drawImage(this.source,0,0,this.source.width,this.source.height,cx-H*.34,top-H*.02,H*.68,H*1.02);
+    // Fine energy fibres move with the same living clock and remain inside the body.
+    tg.globalAlpha=.34;tg.strokeStyle=`rgb(${c1.join(',')})`;tg.lineWidth=.7;
+    for(let n=0;n<20;n++){
+      const y=top+H*(.10+n*.039),phase=this.core.t*1.7+n*.71;
+      tg.beginPath();tg.moveTo(cx-H*.16,y);
+      tg.bezierCurveTo(cx-H*(.03+Math.sin(phase)*.07),y+H*.04,cx+H*(.04+Math.cos(phase*.8)*.08),y-H*.035,cx+H*.16,y+H*.02);tg.stroke();
+    }
+    tg.globalAlpha=1;tg.globalCompositeOperation='destination-in';tg.drawImage(this.mask,0,0,this.w,this.h);tg.globalCompositeOperation='source-over';
+    c.clearRect(0,0,this.w,this.h);
+    // Draw the state-coloured organism itself first, then layer the original
+    // LivingCore material over it. This is deliberately independent of how
+    // sparse the core becomes during a quiet/resting frame.
+    const visibleTissue=c.createLinearGradient(cx-H*.18,top,cx+H*.2,top+H);
+    visibleTissue.addColorStop(0,`rgb(${c2.join(',')})`);
+    visibleTissue.addColorStop(.48,`rgb(${c1.join(',')})`);
+    visibleTissue.addColorStop(1,`rgb(${c2.join(',')})`);
+    c.save();c.globalAlpha=.95;c.shadowColor=`rgba(${c1.join(',')},.62)`;c.shadowBlur=30;
+    if(this.figureReady){
+      // Preserve the generated figure's anatomical fibres and light detail;
+      // colour is blended over those pixels rather than replacing them.
+      this.figureMask(c,cx,top,H,breath);c.globalCompositeOperation='source-atop';c.globalAlpha=.72;
+      c.fillStyle=visibleTissue;c.fillRect(0,0,this.w,this.h);
+    }else{
+      c.drawImage(this.mask,0,0,this.w,this.h);c.globalCompositeOperation='source-in';
+      c.fillStyle=visibleTissue;c.fillRect(0,0,this.w,this.h);
+    }
+    c.restore();
+    c.save();c.globalCompositeOperation='screen';c.globalAlpha=.38;c.filter='blur(18px)';c.drawImage(this.texture,0,0,this.w,this.h);c.restore();
+    c.save();c.globalCompositeOperation='screen';c.globalAlpha=.72;c.drawImage(this.texture,0,0,this.w,this.h);c.restore();
+    if(now-this.lastCss>180){
+      document.documentElement.style.setProperty('--apx-state',`rgb(${c1.join(',')})`);
+      document.documentElement.style.setProperty('--apx-state-rgb',c1.join(','));this.lastCss=now;
+    }
+  }
+  frame=(now)=>{this.render(now);requestAnimationFrame(this.frame);};
+  start(){requestAnimationFrame(this.frame);}
+}
+
 // The interface never speaks to the organism. It reports FACTS to the nervous
 // system — in the world's vocabulary, not the body's — and the body derives
 // everything from state. A model failure must never break chat, workouts, or
@@ -1276,7 +1571,7 @@ function buildWorkoutContext(en){
    LOCALIZATION — complete EN / BG. Zero English in BG mode.
    ═══════════════════════════════════════════════════════════════════ */
 const T={
-  en:{eyebrow:'SYSTEM ONLINE',ctaTrain:'Start training',ctaConsult:'Consult',back:'Back',live:'LIVE',
+  en:{eyebrow:'SYSTEM ONLINE',ctaTrain:"Open today's plan",ctaConsult:'Ask APEX about today',back:'Back',live:'LIVE',bodyAdapted:'Your body changed. APEX adapted.',readinessToday:'Recovery',navToday:'Today',navCoach:'Coach',navHistory:'History',completeProfile:'Complete profile',
     feedback:'Send feedback',profile:'Profile',chEngine:'APEX COACH ENGINE',placeholder:'Describe your goal…',
     recovery:'Recovery',fatigue:'Fatigue',stress:'Stress',assessmentTitle:'Profile assessment',assessmentPending:'Assessment pending',assessmentSupport:'Complete your profile to calculate these values.',coach:'APEX',typing:'CALIBRATING',
     greetHi:'I read your signals.',greetSub:'Goal on file:',
@@ -1335,7 +1630,7 @@ const T={
       resetDesc:'Clears profile, memory and history on this device.',resetConfirm:'Erase all local APEX data on this device?',reset2:'Local data cleared.'},
     priv:{title:'Privacy & Safety',b:'<h4>Your data</h4><p>Your profile, memory and history are stored locally in your browser. Coaching context is sent to the AI only to generate your plans.</p><h4>Medical safety</h4><p>APEX is a coaching tool. It does not diagnose, prescribe, or replace medical professionals. For pain, symptoms or medical conditions, consult a doctor.</p><h4>Never shared</h4><p>Your data is never sold or shared with third parties.</p>'},
     about:{title:'About APEX',b:'<p><strong>APEX PULSE PRO</strong> is a living AI biological operating system — a personal coach that reads your physiology and adapts every plan to you.</p><h4>What it does</h4><ul><li>Personalized training & nutrition</li><li>Recovery-aware coaching</li><li>Persistent coaching memory</li></ul><p style="color:var(--faint);margin-top:12px">Version 3.3 · Your peak. Your pulse.</p>'}},
-  bg:{eyebrow:'СИСТЕМАТА Е АКТИВНА',ctaTrain:'Започни тренировка',ctaConsult:'Консултация',back:'Назад',live:'НА ЖИВО',
+  bg:{eyebrow:'СИСТЕМАТА Е АКТИВНА',ctaTrain:'Отвори плана за днес',ctaConsult:'Попитай APEX за днес',back:'Назад',live:'НА ЖИВО',bodyAdapted:'Тялото ти се промени. APEX се адаптира.',readinessToday:'Възстановяване',navToday:'Днес',navCoach:'Треньор',navHistory:'История',completeProfile:'Попълни профила',
     feedback:'Изпрати обратна връзка',profile:'Профил',chEngine:'APEX ТРЕНЬОРСКО ЯДРО',placeholder:'Опиши целта си…',
     recovery:'Възстановяване',fatigue:'Умора',stress:'Стрес',assessmentTitle:'Оценка на профила',assessmentPending:'Очаква оценка',assessmentSupport:'Попълни профила си, за да изчислим стойностите.',coach:'APEX',typing:'ПРЕСМЯТАМ',
     greetHi:'Прочетох сигналите ти.',greetSub:'Цел във файла:',
@@ -1413,22 +1708,34 @@ function hasCompletedProfileAssessment(){
     .every(key=>String(p[key]||'').trim()!=='');
 }
 function applyReadout(){
+  const overview=document.getElementById('overview'),decisionState=document.getElementById('decision-state'),assessmentMessage=document.getElementById('assessment-message'),t=tr();
   if(!hasCompletedProfileAssessment()){
-    const t=tr();
+    overview.classList.add('assessment-pending');
     document.getElementById('read-state').textContent=t.assessmentTitle;
     document.getElementById('read-sub').textContent=t.assessmentSupport;
-    document.getElementById('m-rec').textContent=t.assessmentPending;
-    document.getElementById('m-fat').textContent=t.assessmentPending;
-    document.getElementById('m-str').textContent=t.assessmentPending;
+    document.getElementById('m-rec').textContent='';
+    document.getElementById('m-fat').textContent='';
+    document.getElementById('m-str').textContent='';
+    document.getElementById('m-sleep').textContent='';
+    document.getElementById('m-goal').textContent='';
+    decisionState.textContent=t.assessmentPending;
+    assessmentMessage.textContent=t.assessmentSupport;
     return;
   }
+  overview.classList.remove('assessment-pending');
+  assessmentMessage.textContent='';
   const ph=computePhysiology(); core.setPhysiology(ph);
-  const s=tr().states[readoutKey(ph)];
-  document.getElementById('read-state').textContent=s.h;
+  const s=t.states[readoutKey(ph)],p=pfLoad();
+  document.getElementById('read-state').textContent=t.bodyAdapted;
   document.getElementById('read-sub').textContent=s.s;
+  document.getElementById('decision-head').textContent=s.h;
+  document.getElementById('decision-copy').textContent=s.s;
+  decisionState.textContent=s.h;
   document.getElementById('m-rec').textContent=Math.round(ph.recovery*100)+'%';
   document.getElementById('m-fat').textContent=Math.round(ph.fatigue*100)+'%';
   document.getElementById('m-str').textContent=Math.round(ph.stress*100)+'%';
+  document.getElementById('m-sleep').textContent=t.wiz.opt.sleep[p.sleepQuality]||p.sleepQuality;
+  document.getElementById('m-goal').textContent=t.wiz.opt.goal[p.goal]||p.goal;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -1439,8 +1746,20 @@ function txt(id,v){const e=document.getElementById(id);if(e)e.textContent=v;}
 function applyLang(){
   const t=tr(),w=t.wiz; document.documentElement.lang=lang;
   txt('ov-eyebrow',t.eyebrow); txt('cta-train',t.ctaTrain); txt('cta-consult',t.ctaConsult);
+  txt('nav-today',t.navToday);txt('nav-coach',t.navCoach);txt('nav-history',t.navHistory);
+  txt('ml-rec',t.readinessToday);txt('sl-sleep',w.sleep);txt('sl-goal',w.goal);
+  txt('assessment-action',t.completeProfile);
+  const bgA11y=lang==='bg';
+  document.querySelector('.app-nav')?.setAttribute('aria-label',bgA11y?'Основна навигация':'Primary');
+  document.getElementById('menu-btn')?.setAttribute('aria-label',bgA11y?'Меню':'Menu');
+  document.getElementById('user-in')?.setAttribute('aria-label',bgA11y?'Опиши целта си':'Describe your goal');
+  document.getElementById('user-in')?.setAttribute('placeholder',bgA11y?'Опиши целта си…':'Describe your goal…');
+  document.querySelector('.mic-btn')?.setAttribute('aria-label',bgA11y?'Говори с APEX':'Talk to APEX');
+  document.querySelector('.mic-btn')?.setAttribute('title',bgA11y?'Говори с APEX':'Talk to APEX');
+  document.querySelector('.send-btn')?.setAttribute('aria-label',bgA11y?'Изпрати':'Send');
+  document.querySelector('.send-btn')?.setAttribute('title',bgA11y?'Изпрати':'Send');
   txt('back-label',t.back); document.getElementById('status-pill').childNodes[0].nodeValue=t.live;
-  txt('ch-label',t.chEngine); txt('ml-rec',t.recovery); txt('ml-fat',t.fatigue); txt('ml-str',t.stress);
+  txt('ch-label',t.chEngine); txt('ml-fat',t.fatigue); txt('ml-str',t.stress);
   txt('jump-label',t.jumpLatest);
   const _ui=document.getElementById('user-in'); _ui.placeholder=t.placeholder; _ui.setAttribute('aria-label',t.placeholder);
   buildMenu();
@@ -3222,18 +3541,24 @@ function pollToken(sid){
 /* ═══════════════════════════════════════════════════════════════════
    BOOT
    ═══════════════════════════════════════════════════════════════════ */
-let core,appStartupStarted=false;
+let core,humanCoreView,appStartupStarted=false;
 async function startApp(){
   if(appStartupStarted)return;
   appStartupStarted=true;
   core=new LivingCore(document.getElementById('core'));
   core.setPhysiology(computePhysiology()); core.start();
+  humanCoreView=new HumanCoreView(document.getElementById('human-core'),document.getElementById('core'),core);
+  humanCoreView.start();
+
+  // The landing preview intentionally starts only the same Living Core. It does
+  // not boot session, profile, chat, storage, or input behavior.
+  if(document.body.classList.contains('core-preview'))return;
 
   // ── SENSES: the interface reports FACTS to the nervous system. It never
   // commands the body. Typing is not a cause — attention is. Movement is not
   // a cause — curiosity is. The model decides what everything means.
-  const orgNorm=e=>{const w=innerWidth,h=innerHeight,R=Math.min(w,h)*0.34;
-    return {x:(e.clientX-w/2)/R, y:(e.clientY-h*0.46)/R};};
+  const orgNorm=e=>{const rect=document.getElementById('human-core').getBoundingClientRect(),R=Math.min(rect.width,rect.height)*.34;
+    return {x:(e.clientX-(rect.left+rect.width*.5))/R,y:(e.clientY-(rect.top+rect.height*.46))/R};};
   window.addEventListener('pointermove',e=>witness('pointer',orgNorm(e)),{passive:true});
   // Physical contact — a fact about the world touching the body. Never reported
   // from interactive surfaces or scroll containers: the body yields to the UI.
