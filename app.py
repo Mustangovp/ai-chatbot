@@ -1577,6 +1577,12 @@ def landing_en():
     return render_template("landing_v17_en.html")
 
 
+@app.route("/bg")
+def landing_bg():
+    """Bulgarian Sites V17 landing with canonical legal and consent controls."""
+    return render_template("landing_v17_bg.html")
+
+
 @app.route("/app")
 def app_chat():
     """APEX V3 — the AI Operating System shell. The landing page, alive."""
