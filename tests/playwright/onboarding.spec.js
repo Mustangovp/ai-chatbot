@@ -19,6 +19,17 @@ test.describe('first-session calibration clarity', () => {
     await expect(page.locator('#calibration-facts')).toContainText(/Beginner/);
     await expect(page.locator('.cta').first()).toContainText('Start training');
   });
+  test('brand tagline follows the active locale without affecting the Core', async ({page}) => {
+    await page.addInitScript(seed, null); await page.goto('/app?lang=en');
+    await expect(page.locator('#brand-tagline')).toHaveText('Your peak. Your pulse.');
+    await expect(page.locator('#core')).toBeVisible();
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+    await page.goto('/app?lang=bg');
+    await expect(page.locator('#brand-tagline')).toHaveText('Твоят връх. Твоят пулс.');
+    await expect(page.locator('#brand-tagline')).not.toContainText('Your peak. Your pulse.');
+    await expect(page.locator('#core')).toBeVisible();
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+  });
   test('Bulgarian calibration is localized', async ({page}) => {
     await page.addInitScript(seed, null); await page.goto('/app?lang=bg');
     await expect(page.locator('#read-state')).toContainText('калибрираме APEX');
