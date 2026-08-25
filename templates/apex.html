@@ -1076,6 +1076,25 @@ class PresenceEngine{
   }
 }
 
+const NEURAL_STATE_STYLE=Object.freeze({
+  waiting:{routes:3,links:0,reach:.54,opacity:.62,width:.72,converge:0,upward:0},
+  listening:{routes:5,links:1,reach:.68,opacity:.90,width:.92,converge:.12,upward:0},
+  thinking:{routes:7,links:3,reach:.78,opacity:1.28,width:1.20,converge:.04,upward:.12},
+  answering:{routes:5,links:1,reach:.96,opacity:1.14,width:1.05,converge:0,upward:.02},
+  resting:{routes:2,links:0,reach:.38,opacity:.34,width:.60,converge:0,upward:0},
+  recovering:{routes:5,links:2,reach:.70,opacity:.86,width:.92,converge:.04,upward:.05},
+  goodbye:{routes:1,links:0,reach:.26,opacity:.20,width:.52,converge:.10,upward:0},
+});
+const NEURAL_ROUTE_SEEDS=Object.freeze([
+  {a:-2.65,out:.68,bend:-.20,activation:.43,mobile:true},
+  {a:-2.05,out:.86,bend:.13,activation:.77,mobile:false},
+  {a:-1.44,out:.68,bend:-.19,activation:.55,mobile:true},
+  {a:-.92,out:.95,bend:.22,activation:.92,mobile:true},
+  {a:-.30,out:.67,bend:-.16,activation:.63,mobile:false},
+  {a:.36,out:.55,bend:.13,activation:.34,mobile:true},
+  {a:2.62,out:.58,bend:.19,activation:.48,mobile:false},
+]);
+
 class LivingCore{
   constructor(canvas){
     this.cv=canvas; this.ctx=canvas.getContext('2d');
@@ -1103,6 +1122,7 @@ class LivingCore{
         this.lobes[i].seed+=Math.sin(i*7.31+d*13.7)*0.35;
         this.lobes[i].seedT=this.lobes[i].seed;
       }
+    this.neuralRoutes=[]; this.neuralLinks=[];
     this.resize(); window.addEventListener('resize',()=>this.resize());
   }
   // Learning: a subtle, PERMANENT rearrangement of the internal flow —
@@ -1122,6 +1142,15 @@ class LivingCore{
     this.off.width=this.ow; this.off.height=this.oh;
     this.octx.fillStyle='#070910'; this.octx.fillRect(0,0,this.ow,this.oh);
     this.cx=this.ow/2; this.cy=this.oh*.46; this.R=Math.min(this.ow,this.oh)*.34;
+    this.buildNeuralRoutes();
+  }
+  buildNeuralRoutes(){
+    const mobile=this.w<=480;
+    this.neuralRoutes=NEURAL_ROUTE_SEEDS.filter(route=>!mobile||route.mobile).map((route,index)=>{
+      const ux=Math.cos(route.a), uy=Math.sin(route.a);
+      return{...route,index,ux,uy,px:-uy,py:ux};
+    });
+    this.neuralLinks=mobile?[[0,2]]:[[0,2],[1,3],[3,5]];
   }
   setPhysiology(p){this.athlete.setPhysiology(p);}   // somatic state lives in the model
   setServerProjection(p){return this.presence.setServerProjection(p);}
@@ -1140,61 +1169,63 @@ class LivingCore{
   // do not retain state, schedule frames, or decide how the organism behaves.
   drawNeuralLayer(g,{c1,c2},ps,breath,now,acx,acy,lum){
     const reduced=this.presence.reduced, base=this.presence.base, A=this.athlete;
-    const activity={waiting:.34,listening:.54,thinking:.76,answering:.68,resting:.20,recovering:.66,goodbye:.18}[base]||.34;
+    const style=NEURAL_STATE_STYLE[base]||NEURAL_STATE_STYLE.waiting;
     const gesture=this.presence.transient&&this.presence.transient.name;
     const gestureLift=gesture==='celebrating'||gesture==='welcome'?.15:gesture==='learning'||gesture==='noticing'?.09:0;
     const coherence=Math.min(1,ps.coherence+gestureLift);
     const breathLift=.72+breath*.28;
-    const alpha=(.026+activity*.046+coherence*.025)*breathLift*lum*(reduced?.62:1);
-    const reach=this.R*(.98+activity*.15+(base==='recovering'?A.recoveryFill*.16:0));
-    const attentionX=ps.attX*ps.attStrength*this.R*.13;
-    const attentionY=ps.attY*ps.attStrength*this.R*.08;
-    const routes=[
-      {a:-2.62,out:1.04,bend:-.34},{a:-2.12,out:1.46,bend:-.20},{a:-1.58,out:1.56,bend:.06},
-      {a:-1.02,out:1.42,bend:.22},{a:-.50,out:1.02,bend:.34},{a:.44,out:1.02,bend:-.32},
-      {a:1.02,out:1.32,bend:-.22},{a:1.68,out:1.38,bend:.10},{a:2.16,out:1.22,bend:.28}
-    ];
-    const pointer=!reduced&&this.presence.pointerFresh(now)&&A.pointer?
-      {x:this.cx+A.pointer.x*this.R,y:this.cy+A.pointer.y*this.R}:null;
+    const alpha=(.042+coherence*.058)*style.opacity*breathLift*lum*(reduced?.62:1);
+    const reach=this.R*(style.reach+(base==='recovering'?A.recoveryFill*.10:0));
+    const attentionX=ps.attX*ps.attStrength*this.R*(base==='listening'?.16:.07);
+    const attentionY=ps.attY*ps.attStrength*this.R*(base==='listening'?.12:.05);
+    const hasPointer=!reduced&&this.presence.pointerFresh(now)&&A.pointer;
+    const pointerX=hasPointer?this.cx+A.pointer.x*this.R:0, pointerY=hasPointer?this.cy+A.pointer.y*this.R:0;
     g.save(); g.globalCompositeOperation='lighter'; g.lineCap='round'; g.lineJoin='round';
-    for(let i=0;i<routes.length;i++){
-      const q=routes[i], a=q.a, ca=Math.cos(a), sa=Math.sin(a), perpX=-sa, perpY=ca;
-      let sx=acx+ca*this.R*.24, sy=acy+sa*this.R*.24;
-      let ex=acx+ca*reach*q.out+attentionX*(q.out>1.2?.72:.26);
-      let ey=acy+sa*reach*q.out+attentionY*(q.out>1.2?.72:.26);
+    const routeCount=Math.min(style.routes,this.neuralRoutes.length);
+    for(let i=0;i<routeCount;i++){
+      const q=this.neuralRoutes[i];
+      let sx=acx+q.ux*this.R*.18, sy=acy+q.uy*this.R*.18;
+      let ex=acx+q.ux*reach*q.out+attentionX*q.activation;
+      let ey=acy+q.uy*reach*q.out+attentionY*q.activation-style.upward*this.R*q.activation;
       const bend=reach*q.bend;
-      let c1x=acx+ca*reach*.52+perpX*bend, c1y=acy+sa*reach*.52+perpY*bend;
-      let c2x=acx+ca*reach*(q.out*.80)-perpX*bend*.65, c2y=acy+sa*reach*(q.out*.80)-perpY*bend*.65;
-      if(pointer){
-        const d=Math.hypot(ex-pointer.x,ey-pointer.y), local=Math.max(0,1-d/(this.R*1.15));
+      let c1x=acx+q.ux*reach*.42+q.px*bend, c1y=acy+q.uy*reach*.42+q.py*bend;
+      let c2x=acx+q.ux*reach*(q.out*.76)-q.px*bend*.62, c2y=acy+q.uy*reach*(q.out*.76)-q.py*bend*.62;
+      if(style.converge){
+        ex+=(acx-ex)*style.converge; ey+=(acy-ey)*style.converge;
+        c2x+=(acx-c2x)*style.converge*.55; c2y+=(acy-c2y)*style.converge*.55;
+      }
+      if(hasPointer){
+        const d=Math.hypot(ex-pointerX,ey-pointerY), local=Math.max(0,1-d/(this.R*.86));
         if(local){
           const inf=this.presence.touchInfluence(now-A._pointerAt)*local;
-          ex+=(pointer.x-ex)*inf*.09; ey+=(pointer.y-ey)*inf*.09;
-          c2x+=(pointer.x-c2x)*inf*.055; c2y+=(pointer.y-c2y)*inf*.055;
+          ex+=(pointerX-ex)*inf*.07; ey+=(pointerY-ey)*inf*.07;
+          c2x+=(pointerX-c2x)*inf*.042; c2y+=(pointerY-c2y)*inf*.042;
         }
       }
-      const grad=g.createLinearGradient(sx,sy,ex,ey);
-      grad.addColorStop(0,`rgba(${c1[0]},${c1[1]},${c1[2]},${alpha*.22})`);
-      grad.addColorStop(.48,`rgba(${c1[0]},${c1[1]},${c1[2]},${alpha})`);
-      grad.addColorStop(1,`rgba(${c2[0]},${c2[1]},${c2[2]},${alpha*(.42+coherence*.28)})`);
-      g.strokeStyle=grad; g.lineWidth=.64+coherence*.38;
+      const color=i%2?c2:c1;
+      const routeAlpha=alpha*(.42+q.activation*.58)*(this.neuralRoutes.length<=4?1.14:1);
+      g.strokeStyle=`rgba(${color[0]},${color[1]},${color[2]},${routeAlpha})`; g.lineWidth=(.54+coherence*.34)*style.width;
       g.beginPath(); g.moveTo(sx,sy); g.bezierCurveTo(c1x,c1y,c2x,c2y,ex,ey); g.stroke();
-      // A quiet endpoint keeps the structure organic without becoming a node map.
-      if(i%2===1){
-        const rg=g.createRadialGradient(ex,ey,0,ex,ey,Math.max(.9,this.R*.028));
-        rg.addColorStop(0,`rgba(${c2[0]},${c2[1]},${c2[2]},${alpha*.58})`);
-        rg.addColorStop(1,'rgba(0,0,0,0)'); g.fillStyle=rg;
-        g.beginPath(); g.arc(ex,ey,Math.max(.9,this.R*.028),0,6.2832); g.fill();
+      if(i===routeCount-1){g.fillStyle=`rgba(${color[0]},${color[1]},${color[2]},${routeAlpha*.38})`;g.fillRect(ex-.7,ey-.7,1.4,1.4);}
+      const speech=!reduced&&base==='answering'?Math.min(1,A.speechPulse*.9+breath*.18):0;
+      if(speech>0&&i===0){
+        const t=.30+speech*.50, q1x=sx+(c1x-sx)*t, q1y=sy+(c1y-sy)*t;
+        const q2x=c1x+(c2x-c1x)*t, q2y=c1y+(c2y-c1y)*t;
+        const q3x=c2x+(ex-c2x)*t, q3y=c2y+(ey-c2y)*t;
+        const r1x=q1x+(q2x-q1x)*t, r1y=q1y+(q2y-q1y)*t;
+        const r2x=q2x+(q3x-q2x)*t, r2y=q2y+(q3y-q2y)*t;
+        const endX=r1x+(r2x-r1x)*t, endY=r1y+(r2y-r1y)*t;
+        g.strokeStyle=`rgba(${c2[0]},${c2[1]},${c2[2]},${routeAlpha*.9*speech})`; g.lineWidth=1.1;
+        g.beginPath(); g.moveTo(sx,sy); g.bezierCurveTo(q1x,q1y,r1x,r1y,endX,endY); g.stroke();
       }
     }
-    // Answering inherits actual speech energy and the current breath; it is a
-    // soft expansion through the same paths, never an independently timed pulse.
-    const speech=!reduced&&base==='answering'?Math.min(1,A.speechPulse*.9+breath*.18):0;
-    if(speech>0){
-      const halo=g.createRadialGradient(acx,acy,this.R*.18,acx,acy,this.R*(.72+speech*.34));
-      halo.addColorStop(0,`rgba(${c1[0]},${c1[1]},${c1[2]},${alpha*.22*speech})`);
-      halo.addColorStop(1,'rgba(0,0,0,0)'); g.fillStyle=halo;
-      g.fillRect(acx-this.R*1.2,acy-this.R*1.2,this.R*2.4,this.R*2.4);
+    for(let i=0;i<style.links&&i<this.neuralLinks.length;i++){
+      const link=this.neuralLinks[i], from=this.neuralRoutes[link[0]], to=this.neuralRoutes[link[1]];
+      if(!from||!to)continue;
+      const fromX=acx+from.ux*reach*.34, fromY=acy+from.uy*reach*.34-style.upward*this.R*.35;
+      const toX=acx+to.ux*reach*.34, toY=acy+to.uy*reach*.34-style.upward*this.R*.35;
+      g.strokeStyle=`rgba(${c1[0]},${c1[1]},${c1[2]},${alpha*.58})`; g.lineWidth=.48*style.width;
+      g.beginPath(); g.moveTo(fromX,fromY); g.quadraticCurveTo(acx,acy-style.upward*this.R*.52,toX,toY); g.stroke();
     }
     g.restore();
   }
@@ -1241,7 +1272,6 @@ class LivingCore{
     neb.addColorStop(.55,`rgba(${c2[0]},${c2[1]},${c2[2]},${0.014*lum})`);
     neb.addColorStop(1,'rgba(0,0,0,0)');
     g.fillStyle=neb; g.fillRect(0,0,this.ow,this.oh);
-    this.drawNeuralLayer(g,{c1,c2},ps,breath,now,acx,acy,lum);
     // plasma lobes — distributed soft smoke orbiting a ring, NOT piled at centre
     const touches=this.presence.touches;
     for(let i=0;i<this.lobes.length;i++){
@@ -1272,6 +1302,9 @@ class LivingCore{
       rg.addColorStop(1,'rgba(0,0,0,0)');
       g.fillStyle=rg; g.beginPath(); g.arc(x,y,Math.max(size,1),0,6.2832); g.fill();
     }
+    // The local neural field sits above the smoke so its state-specific shape
+    // remains legible without expanding into an anatomical silhouette.
+    this.drawNeuralLayer(g,{c1,c2},ps,breath,now,acx,acy,lum);
     // NO white nucleus — the organism is plasma/smoke, never a spotlight
     g.globalCompositeOperation='source-over';
     // upscale to main canvas — smoothing gives the final soft, cinematic blur

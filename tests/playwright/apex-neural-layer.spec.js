@@ -36,11 +36,17 @@ test.describe('APEX Neural Layer', () => {
     const source=await appSource(page);
     const neural=source.slice(source.indexOf('drawNeuralLayer('),source.indexOf('  step(now){',source.indexOf('drawNeuralLayer(')));
     expect(neural).toContain('this.presence.base');
+    expect(neural).toContain('NEURAL_STATE_STYLE');
+    expect(neural).toContain('this.neuralRoutes');
     expect(source).toContain('const breath=this.presence.breath.value');
     expect(source).toContain('this.drawNeuralLayer(g,{c1,c2},ps,breath');
+    expect(source).toContain('this.buildNeuralRoutes();');
     expect(neural).toContain('this.presence.touchInfluence');
     expect(neural).toContain('this.presence.reduced');
     expect(neural).not.toContain('requestAnimationFrame');
+    expect(neural).not.toContain('const routes=[');
+    expect(neural).not.toContain('createLinearGradient');
+    expect(neural).not.toContain('createRadialGradient');
     expect(neural).not.toContain('new PresenceEngine');
     expect(neural).not.toContain('new BreathEngine');
     for(const state of ['waiting','listening','thinking','answering','resting','recovering','goodbye']){
