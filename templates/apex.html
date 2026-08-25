@@ -505,7 +505,7 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
   <div class="topbar">
     <a class="brand" href="/">
       <img src="/static/logo.png" alt="APEX PULSE PRO">
-      <span class="bt"><span class="rd">APEX</span> PULSE PRO<br><span class="bs">Your peak. Your pulse.</span></span>
+      <span class="bt"><span class="rd">APEX</span> PULSE PRO<br><span class="bs" id="brand-tagline">Your peak. Your pulse.</span></span>
     </a>
     <div class="top-right">
       <button class="pill live" id="status-pill">LIVE</button>
@@ -1286,7 +1286,7 @@ function buildWorkoutContext(en){
    LOCALIZATION — complete EN / BG. Zero English in BG mode.
    ═══════════════════════════════════════════════════════════════════ */
 const T={
-  en:{eyebrow:'SYSTEM ONLINE',ctaTrain:'Start training',ctaConsult:'Consult',back:'Back',live:'LIVE',
+  en:{eyebrow:'SYSTEM ONLINE',tagline:'Your peak. Your pulse.',ctaTrain:'Start training',ctaConsult:'Consult',back:'Back',live:'LIVE',
     feedback:'Send feedback',profile:'Profile',chEngine:'APEX COACH ENGINE',placeholder:'Describe your goal…',
     recovery:'Recovery',fatigue:'Fatigue',stress:'Stress',assessmentTitle:'Let\'s calibrate APEX to you.',assessmentPending:'Calibration needed',assessmentSupport:'I need a few details before I can tailor your training. Your answers shape exercise selection, volume, recovery demands, and progression.',calibrate:'Complete calibration',goalFact:'Goal',levelFact:'Experience',equipmentFact:'Equipment',frequencyFact:'Frequency',coach:'APEX',typing:'CALIBRATING',
     greetHi:'I read your signals.',greetSub:'Goal on file:',
@@ -1345,7 +1345,7 @@ const T={
       resetDesc:'Clears profile, memory and history on this device.',resetConfirm:'Erase all local APEX data on this device?',reset2:'Local data cleared.'},
     priv:{title:'Privacy & Safety',b:'<h4>Your data</h4><p>Your profile, memory and history are stored locally in your browser. Coaching context is sent to the AI only to generate your plans.</p><h4>Medical safety</h4><p>APEX is a coaching tool. It does not diagnose, prescribe, or replace medical professionals. For pain, symptoms or medical conditions, consult a doctor.</p><h4>Never shared</h4><p>Your data is never sold or shared with third parties.</p>'},
     about:{title:'About APEX',b:'<p><strong>APEX PULSE PRO</strong> is a living AI biological operating system — a personal coach that reads your physiology and adapts every plan to you.</p><h4>What it does</h4><ul><li>Personalized training & nutrition</li><li>Recovery-aware coaching</li><li>Persistent coaching memory</li></ul><p style="color:var(--faint);margin-top:12px">Version 3.3 · Your peak. Your pulse.</p>'}},
-  bg:{eyebrow:'СИСТЕМАТА Е АКТИВНА',ctaTrain:'Започни тренировка',ctaConsult:'Консултация',back:'Назад',live:'НА ЖИВО',
+  bg:{eyebrow:'СИСТЕМАТА Е АКТИВНА',tagline:'Твоят връх. Твоят пулс.',ctaTrain:'Започни тренировка',ctaConsult:'Консултация',back:'Назад',live:'НА ЖИВО',
     feedback:'Изпрати обратна връзка',profile:'Профил',chEngine:'APEX ТРЕНЬОРСКО ЯДРО',placeholder:'Опиши целта си…',
     recovery:'Възстановяване',fatigue:'Умора',stress:'Стрес',assessmentTitle:'Нека калибрираме APEX за теб.',assessmentPending:'Нужна е калибрация',assessmentSupport:'Нужни са ми няколко детайла, преди да пригодя тренировките ти. Отговорите ти оформят избора на упражнения, обема, нуждите за възстановяване и прогресията.',calibrate:'Завърши калибрацията',goalFact:'Цел',levelFact:'Опит',equipmentFact:'Оборудване',frequencyFact:'Честота',coach:'APEX',typing:'ПРЕСМЯТАМ',
     greetHi:'Прочетох сигналите ти.',greetSub:'Цел във файла:',
@@ -1403,7 +1403,7 @@ const T={
     settings:{title:'Настройки',lang:'Език',theme:'Тема',dark:'Тъмна (по подразбиране)',reset:'Изчисти локалните данни',
       resetDesc:'Изтрива профил, памет и история на това устройство.',resetConfirm:'Да изтрия всички локални данни на APEX на това устройство?',reset2:'Локалните данни са изчистени.'},
     priv:{title:'Поверителност и безопасност',b:'<h4>Твоите данни</h4><p>Профилът, паметта и историята ти се съхраняват локално в браузъра ти. Треньорският контекст се изпраща до AI само за да генерира плановете ти.</p><h4>Медицинска безопасност</h4><p>APEX е треньорски инструмент. Не диагностицира, не предписва и не замества медицински специалисти. При болка, симптоми или заболявания се консултирай с лекар.</p><h4>Никога не се споделя</h4><p>Данните ти никога не се продават или споделят с трети страни.</p>'},
-    about:{title:'За APEX',b:'<p><strong>APEX PULSE PRO</strong> е жива AI биологична операционна система — личен треньор, който чете физиологията ти и адаптира всеки план за теб.</p><h4>Какво прави</h4><ul><li>Персонализирани тренировки и хранене</li><li>Треньорство спрямо възстановяването</li><li>Постоянна треньорска памет</li></ul><p style="color:var(--faint);margin-top:12px">Версия 3.3 · Your peak. Your pulse.</p>'}}
+    about:{title:'За APEX',b:'<p><strong>APEX PULSE PRO</strong> е жива AI биологична операционна система — личен треньор, който чете физиологията ти и адаптира всеки план за теб.</p><h4>Какво прави</h4><ul><li>Персонализирани тренировки и хранене</li><li>Треньорство спрямо възстановяването</li><li>Постоянна треньорска памет</li></ul><p style="color:var(--faint);margin-top:12px">Версия 3.3 · Твоят връх. Твоят пулс.</p>'}}
 };
 let lang=(localStorage.getItem('apexLang')||'en').toLowerCase(); if(lang!=='bg'&&lang!=='en')lang='en';
 function tr(){return T[lang];}
@@ -1454,7 +1454,7 @@ function setOpts(id,map){const el=document.getElementById(id);if(!el)return;[...
 function txt(id,v){const e=document.getElementById(id);if(e)e.textContent=v;}
 function applyLang(){
   const t=tr(),w=t.wiz; document.documentElement.lang=lang;
-  txt('ov-eyebrow',t.eyebrow); txt('cta-train',t.ctaTrain); txt('cta-consult',t.ctaConsult);
+  txt('ov-eyebrow',t.eyebrow); txt('brand-tagline',t.tagline); txt('cta-train',t.ctaTrain); txt('cta-consult',t.ctaConsult);
   txt('back-label',t.back); document.getElementById('status-pill').childNodes[0].nodeValue=t.live;
   txt('ch-label',t.chEngine); txt('ml-rec',t.recovery); txt('ml-fat',t.fatigue); txt('ml-str',t.stress);
   txt('jump-label',t.jumpLatest);
