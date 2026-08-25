@@ -29,6 +29,7 @@
   --app-viewport-height:100dvh;
 }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+[hidden]{display:none!important;}
 html,body{height:100%;overflow:hidden;}
 body{
   background:var(--bg-deep); color:var(--text);
@@ -154,6 +155,8 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 .metric .mv{font-family:'Unbounded';font-weight:700;font-size:18px;}
 .metric .ml{font-size:9px;font-weight:700;letter-spacing:1.3px;text-transform:uppercase;color:var(--faint);}
 .metric.rec .mv{color:var(--lime);} .metric.fat .mv{color:var(--gold);} .metric.str .mv{color:var(--ember);}
+.calibration-facts{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;max-width:560px;margin:18px auto 0;}
+.calibration-facts span{padding:7px 10px;border:1px solid var(--border);border-radius:999px;background:rgba(18,23,36,.58);font-size:11px;font-weight:700;color:var(--muted);}
 
 .cta-row{display:flex;gap:12px;margin-top:34px;flex-wrap:wrap;justify-content:center;}
 .cta{background:var(--pulse);color:#fff;font-weight:800;font-size:15px;padding:15px 30px;border-radius:40px;
@@ -515,13 +518,14 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
       <span class="eyebrow" id="ov-eyebrow">SYSTEM ONLINE</span>
       <h1 id="read-state">Reading your physiology</h1>
       <p id="read-sub">Your organism is calibrating to today's signals.</p>
+      <div class="calibration-facts" id="calibration-facts" hidden aria-live="polite"></div>
       <div class="metrics">
         <div class="metric rec"><span class="mv" id="m-rec">—</span><span class="ml" id="ml-rec">Recovery</span></div>
         <div class="metric fat"><span class="mv" id="m-fat">—</span><span class="ml" id="ml-fat">Fatigue</span></div>
         <div class="metric str"><span class="mv" id="m-str">—</span><span class="ml" id="ml-str">Stress</span></div>
       </div>
       <div class="cta-row">
-        <button class="cta" onclick="intentTrain()"><span id="cta-train">Start training</span><span class="arr">→</span></button>
+        <button class="cta" onclick="primaryOverviewAction()"><span id="cta-train">Start training</span><span class="arr">→</span></button>
         <button class="cta ghost" onclick="enterConsult()"><span id="cta-consult">Consult</span></button>
       </div>
     </div>
@@ -1284,7 +1288,7 @@ function buildWorkoutContext(en){
 const T={
   en:{eyebrow:'SYSTEM ONLINE',ctaTrain:'Start training',ctaConsult:'Consult',back:'Back',live:'LIVE',
     feedback:'Send feedback',profile:'Profile',chEngine:'APEX COACH ENGINE',placeholder:'Describe your goal…',
-    recovery:'Recovery',fatigue:'Fatigue',stress:'Stress',assessmentTitle:'Profile assessment',assessmentPending:'Assessment pending',assessmentSupport:'Complete your profile to calculate these values.',coach:'APEX',typing:'CALIBRATING',
+    recovery:'Recovery',fatigue:'Fatigue',stress:'Stress',assessmentTitle:'Let\'s calibrate APEX to you.',assessmentPending:'Calibration needed',assessmentSupport:'I need a few details before I can tailor your training. Your answers shape exercise selection, volume, recovery demands, and progression.',calibrate:'Complete calibration',goalFact:'Goal',levelFact:'Experience',equipmentFact:'Equipment',frequencyFact:'Frequency',coach:'APEX',typing:'CALIBRATING',
     greetHi:'I read your signals.',greetSub:'Goal on file:',
     chips:[{label:"Today's Workout",q:'Make me a workout for today'},{label:'Nutrition Plan',q:'Make me a nutrition plan'},{label:'Progress',q:'How am I progressing?'},{label:'Ask APEX',q:null}],
     states:{peak:{h:'Peak readiness',s:'Recovery is high. Your nervous system is primed — this is your window to push.'},
@@ -1343,7 +1347,7 @@ const T={
     about:{title:'About APEX',b:'<p><strong>APEX PULSE PRO</strong> is a living AI biological operating system — a personal coach that reads your physiology and adapts every plan to you.</p><h4>What it does</h4><ul><li>Personalized training & nutrition</li><li>Recovery-aware coaching</li><li>Persistent coaching memory</li></ul><p style="color:var(--faint);margin-top:12px">Version 3.3 · Your peak. Your pulse.</p>'}},
   bg:{eyebrow:'СИСТЕМАТА Е АКТИВНА',ctaTrain:'Започни тренировка',ctaConsult:'Консултация',back:'Назад',live:'НА ЖИВО',
     feedback:'Изпрати обратна връзка',profile:'Профил',chEngine:'APEX ТРЕНЬОРСКО ЯДРО',placeholder:'Опиши целта си…',
-    recovery:'Възстановяване',fatigue:'Умора',stress:'Стрес',assessmentTitle:'Оценка на профила',assessmentPending:'Очаква оценка',assessmentSupport:'Попълни профила си, за да изчислим стойностите.',coach:'APEX',typing:'ПРЕСМЯТАМ',
+    recovery:'Възстановяване',fatigue:'Умора',stress:'Стрес',assessmentTitle:'Нека калибрираме APEX за теб.',assessmentPending:'Нужна е калибрация',assessmentSupport:'Нужни са ми няколко детайла, преди да пригодя тренировките ти. Отговорите ти оформят избора на упражнения, обема, нуждите за възстановяване и прогресията.',calibrate:'Завърши калибрацията',goalFact:'Цел',levelFact:'Опит',equipmentFact:'Оборудване',frequencyFact:'Честота',coach:'APEX',typing:'ПРЕСМЯТАМ',
     greetHi:'Прочетох сигналите ти.',greetSub:'Цел във файла:',
     chips:[{label:'Тренировка за днес',q:'Направи ми тренировка за днес'},{label:'Хранителен план',q:'Направи ми хранителен план'},{label:'Прогрес',q:'Как напредвам?'},{label:'Попитай APEX',q:null}],
     states:{peak:{h:'Пиково състояние',s:'Възстановяването е високо. Нервната ти система е заредена — това е моментът да натиснеш.'},
@@ -1419,22 +1423,28 @@ function hasCompletedProfileAssessment(){
     .every(key=>String(p[key]||'').trim()!=='');
 }
 function applyReadout(){
+  const facts=document.getElementById('calibration-facts'), metrics=document.querySelector('.metrics'), p=pfLoad(), t=tr();
   if(!hasCompletedProfileAssessment()){
-    const t=tr();
     document.getElementById('read-state').textContent=t.assessmentTitle;
     document.getElementById('read-sub').textContent=t.assessmentSupport;
-    document.getElementById('m-rec').textContent=t.assessmentPending;
-    document.getElementById('m-fat').textContent=t.assessmentPending;
-    document.getElementById('m-str').textContent=t.assessmentPending;
+    document.getElementById('cta-train').textContent=t.calibrate;
+    metrics.hidden=true; facts.hidden=true; facts.textContent='';
     return;
   }
   const ph=computePhysiology(); core.setPhysiology(ph);
-  const s=tr().states[readoutKey(ph)];
+  const s=t.states[readoutKey(ph)];
   document.getElementById('read-state').textContent=s.h;
   document.getElementById('read-sub').textContent=s.s;
-  document.getElementById('m-rec').textContent=Math.round(ph.recovery*100)+'%';
-  document.getElementById('m-fat').textContent=Math.round(ph.fatigue*100)+'%';
-  document.getElementById('m-str').textContent=Math.round(ph.stress*100)+'%';
+  document.getElementById('cta-train').textContent=t.ctaTrain;
+  // Profile answers can guide the internal presentation state, but they are not
+  // measured recovery metrics and must not be presented as such.
+  metrics.hidden=true;
+  const value=(map,key)=>map[p[key]]||p[key];
+  facts.innerHTML=[
+    [t.goalFact,value(t.wiz.opt.goal,'goal')], [t.levelFact,value(t.wiz.opt.level,'level')],
+    [t.equipmentFact,value(t.wiz.opt.equip,'equipment')], [t.frequencyFact,value(t.wiz.opt.freq,'frequency')]
+  ].filter(([,v])=>v).map(([label,v])=>'<span>'+esc(label)+': '+esc(v)+'</span>').join('');
+  facts.hidden=!facts.textContent;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -1890,6 +1900,10 @@ function exitConsult(){
   ov.style.opacity='1';ov.style.transform='none';ov.style.pointerEvents='auto';
   document.getElementById('vignette').style.background='';
   applyReadout();
+}
+function primaryOverviewAction(){
+  if(!hasCompletedProfileAssessment()){openProfile(0);return;}
+  intentTrain();
 }
 function intentTrain(){ enterConsult(tr().todayWO); }
 function resetGreeting(){
