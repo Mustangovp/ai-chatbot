@@ -57,4 +57,32 @@ test.describe('stable APEX mobile shell', () => {
     expect(send.y + send.height).toBeLessThanOrEqual(560);
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
   });
+
+  test('keeps Position and the primary action ahead of supporting profile detail', async ({ page }) => {
+    for (const viewport of [
+      { width: 360, height: 800 },
+      { width: 390, height: 844 },
+      { width: 393, height: 873 },
+      { width: 430, height: 932 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await page.reload();
+
+      const position = await page.locator('.position-head').boundingBox();
+      const action = await page.locator('.cta-row .cta').first().boundingBox();
+      const facts = await page.locator('#calibration-facts').boundingBox();
+      const signals = await page.locator('#position-signals').boundingBox();
+
+      expect(position).not.toBeNull();
+      expect(action).not.toBeNull();
+      expect(action.y + action.height).toBeLessThanOrEqual(viewport.height);
+      expect(facts.y).toBeGreaterThanOrEqual(viewport.height);
+      expect(signals.y).toBeGreaterThanOrEqual(action.y + action.height);
+      await page.locator('#calibration-facts').scrollIntoViewIfNeeded();
+      await expect(page.locator('#calibration-facts')).toBeVisible();
+      await expect(page.locator('#position-signals')).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+      await expect(page.locator('#core')).toBeVisible();
+    }
+  });
 });
