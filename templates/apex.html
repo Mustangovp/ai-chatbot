@@ -1170,26 +1170,36 @@ class LivingCore{
   drawNeuralLayer(g,{c1,c2},ps,breath,now,acx,acy,lum){
     const reduced=this.presence.reduced, base=this.presence.base, A=this.athlete;
     const style=NEURAL_STATE_STYLE[base]||NEURAL_STATE_STYLE.waiting;
+    const mobile=this.neuralRoutes.length===4;
+    const mobileWaiting=mobile&&base==='waiting';
+    const mobileAnswering=mobile&&base==='answering';
     const gesture=this.presence.transient&&this.presence.transient.name;
     const gestureLift=gesture==='celebrating'||gesture==='welcome'?.15:gesture==='learning'||gesture==='noticing'?.09:0;
     const coherence=Math.min(1,ps.coherence+gestureLift);
     const breathLift=.72+breath*.28;
-    const alpha=(.042+coherence*.058)*style.opacity*breathLift*lum*(reduced?.62:1);
+    const alpha=(.042+coherence*.058)*style.opacity*(mobileWaiting?2.05:1)*breathLift*lum*(reduced?.62:1);
     const reach=this.R*(style.reach+(base==='recovering'?A.recoveryFill*.10:0));
     const attentionX=ps.attX*ps.attStrength*this.R*(base==='listening'?.16:.07);
     const attentionY=ps.attY*ps.attStrength*this.R*(base==='listening'?.12:.05);
     const hasPointer=!reduced&&this.presence.pointerFresh(now)&&A.pointer;
     const pointerX=hasPointer?this.cx+A.pointer.x*this.R:0, pointerY=hasPointer?this.cy+A.pointer.y*this.R:0;
     g.save(); g.globalCompositeOperation='lighter'; g.lineCap='round'; g.lineJoin='round';
-    const routeCount=Math.min(style.routes,this.neuralRoutes.length);
+    const routeCount=Math.min(mobileAnswering?3:style.routes,this.neuralRoutes.length);
     for(let i=0;i<routeCount;i++){
-      const q=this.neuralRoutes[i];
+      // Keep the quiet mobile field visible around, rather than behind, the title stack.
+      const routeIndex=mobile&&(mobileWaiting||mobileAnswering)&&i===2?3:i;
+      const q=this.neuralRoutes[routeIndex];
       let sx=acx+q.ux*this.R*.18, sy=acy+q.uy*this.R*.18;
       let ex=acx+q.ux*reach*q.out+attentionX*q.activation;
       let ey=acy+q.uy*reach*q.out+attentionY*q.activation-style.upward*this.R*q.activation;
       const bend=reach*q.bend;
       let c1x=acx+q.ux*reach*.42+q.px*bend, c1y=acy+q.uy*reach*.42+q.py*bend;
       let c2x=acx+q.ux*reach*(q.out*.76)-q.px*bend*.62, c2y=acy+q.uy*reach*(q.out*.76)-q.py*bend*.62;
+      if(mobileAnswering){
+        // Answering resolves into a few direct transmissions from the Core.
+        c1x=sx+(c1x-sx)*.72; c1y=sy+(c1y-sy)*.72;
+        c2x=ex+(c2x-ex)*.44; c2y=ey+(c2y-ey)*.44;
+      }
       if(style.converge){
         ex+=(acx-ex)*style.converge; ey+=(acy-ey)*style.converge;
         c2x+=(acx-c2x)*style.converge*.55; c2y+=(acy-c2y)*style.converge*.55;
@@ -1203,8 +1213,8 @@ class LivingCore{
         }
       }
       const color=i%2?c2:c1;
-      const routeAlpha=alpha*(.42+q.activation*.58)*(this.neuralRoutes.length<=4?1.14:1);
-      g.strokeStyle=`rgba(${color[0]},${color[1]},${color[2]},${routeAlpha})`; g.lineWidth=(.54+coherence*.34)*style.width;
+      const routeAlpha=alpha*(.42+q.activation*.58)*(mobile?1.14:1)*(mobileAnswering?(1-i*.12):1);
+      g.strokeStyle=`rgba(${color[0]},${color[1]},${color[2]},${routeAlpha})`; g.lineWidth=(.54+coherence*.34)*style.width*(mobileWaiting?1.35:1)*(mobileAnswering?1.08:1);
       g.beginPath(); g.moveTo(sx,sy); g.bezierCurveTo(c1x,c1y,c2x,c2y,ex,ey); g.stroke();
       if(i===routeCount-1){g.fillStyle=`rgba(${color[0]},${color[1]},${color[2]},${routeAlpha*.38})`;g.fillRect(ex-.7,ey-.7,1.4,1.4);}
       const speech=!reduced&&base==='answering'?Math.min(1,A.speechPulse*.9+breath*.18):0;
@@ -1219,7 +1229,7 @@ class LivingCore{
         g.beginPath(); g.moveTo(sx,sy); g.bezierCurveTo(q1x,q1y,r1x,r1y,endX,endY); g.stroke();
       }
     }
-    for(let i=0;i<style.links&&i<this.neuralLinks.length;i++){
+    for(let i=0;i<(mobileAnswering?0:style.links)&&i<this.neuralLinks.length;i++){
       const link=this.neuralLinks[i], from=this.neuralRoutes[link[0]], to=this.neuralRoutes[link[1]];
       if(!from||!to)continue;
       const fromX=acx+from.ux*reach*.34, fromY=acy+from.uy*reach*.34-style.upward*this.R*.35;

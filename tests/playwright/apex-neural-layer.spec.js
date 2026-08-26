@@ -43,6 +43,11 @@ test.describe('APEX Neural Layer', () => {
     expect(source).toContain('this.buildNeuralRoutes();');
     expect(neural).toContain('this.presence.touchInfluence');
     expect(neural).toContain('this.presence.reduced');
+    expect(neural).toContain("const mobileWaiting=mobile&&base==='waiting'");
+    expect(neural).toContain("const mobileAnswering=mobile&&base==='answering'");
+    expect(neural).toContain('mobileAnswering?3:style.routes');
+    expect(neural).toContain('mobileAnswering?0:style.links');
+    expect(neural).toContain('mobile&&(mobileWaiting||mobileAnswering)&&i===2?3:i');
     expect(neural).not.toContain('requestAnimationFrame');
     expect(neural).not.toContain('const routes=[');
     expect(neural).not.toContain('createLinearGradient');
