@@ -58,11 +58,11 @@ test.describe('stable APEX mobile shell', () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
   });
 
-  test('keeps Position and the primary action ahead of supporting profile detail', async ({ page }) => {
+  test('keeps the Core, Position, recommendation, and one primary action ahead of supporting detail', async ({ page }) => {
     for (const viewport of [
       { width: 360, height: 800 },
       { width: 390, height: 844 },
-      { width: 393, height: 873 },
+      { width: 412, height: 915 },
       { width: 430, height: 932 },
     ]) {
       await page.setViewportSize(viewport);
@@ -72,17 +72,50 @@ test.describe('stable APEX mobile shell', () => {
       const action = await page.locator('.cta-row .cta').first().boundingBox();
       const facts = await page.locator('#calibration-facts').boundingBox();
       const signals = await page.locator('#position-signals').boundingBox();
+      const core = await page.locator('#core').boundingBox();
 
       expect(position).not.toBeNull();
       expect(action).not.toBeNull();
+      expect(core).not.toBeNull();
       expect(action.y + action.height).toBeLessThanOrEqual(viewport.height);
       expect(facts.y).toBeGreaterThanOrEqual(viewport.height);
       expect(signals.y).toBeGreaterThanOrEqual(action.y + action.height);
+      await expect(page.locator('#read-sub')).not.toBeVisible();
+      expect(await page.locator('.cta-row .cta').evaluateAll(elements => elements.filter(element => getComputedStyle(element).display !== 'none').length)).toBe(1);
       await page.locator('#calibration-facts').scrollIntoViewIfNeeded();
       await expect(page.locator('#calibration-facts')).toBeVisible();
       await expect(page.locator('#position-signals')).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
       await expect(page.locator('#core')).toBeVisible();
     }
+  });
+
+  test('uses a compact Coach header and leaves free-form questions to the composer', async ({ page }) => {
+    await page.evaluate(() => {
+      lang = 'bg';
+      applyLang();
+      enterConsult();
+    });
+
+    await expect(page.locator('#consult')).toHaveClass(/on/);
+    await expect(page.locator('.topbar')).not.toBeVisible();
+    await expect(page.locator('#overview')).not.toBeVisible();
+    await expect(page.locator('#ch-label')).not.toBeVisible();
+    await expect(page.locator('#user-in')).toHaveAttribute('placeholder', 'Попитай APEX…');
+    await expect(page.locator('.chips .chip')).toHaveCount(3);
+    await expect(page.locator('.chips')).not.toContainText('Попитай APEX');
+
+    const back = await page.locator('.back-btn').boundingBox();
+    const menu = await page.locator('#coach-menu-btn').boundingBox();
+    expect(back).not.toBeNull();
+    expect(menu).not.toBeNull();
+    expect(back.x + back.width).toBeLessThanOrEqual(menu.x);
+    expect(back.y + back.height).toBeLessThanOrEqual(100);
+    expect(menu.y + menu.height).toBeLessThanOrEqual(100);
+
+    await page.locator('#coach-menu-btn').click();
+    await expect(page.locator('#drawer')).toHaveClass(/on/);
+    await page.locator('.drawer-close').click();
+    await expect(page.locator('#drawer')).not.toHaveClass(/on/);
   });
 });
