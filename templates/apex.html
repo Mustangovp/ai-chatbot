@@ -1140,16 +1140,11 @@ class LivingCore{
     this.w=this.cv.clientWidth; this.h=this.cv.clientHeight;
     this.cv.width=this.w*this.dpr; this.cv.height=this.h*this.dpr;
     this.ctx.setTransform(this.dpr,0,0,this.dpr,0,0);
-    // Mobile preserves the same organism, but keeps more lobe definition so
-    // the Core reads as a distinct living form rather than ambient light.
-    this.renderScale=this.w<=560?1:.5;
-    this.ow=Math.max(2,Math.round(this.w*this.renderScale)); this.oh=Math.max(2,Math.round(this.h*this.renderScale));
+    // accumulation buffer at half-res → natural softness + performance
+    this.ow=Math.max(2,Math.round(this.w*.5)); this.oh=Math.max(2,Math.round(this.h*.5));
     this.off.width=this.ow; this.off.height=this.oh;
     this.octx.fillStyle='#070910'; this.octx.fillRect(0,0,this.ow,this.oh);
-    this.cx=this.ow/2;
-    // Keep the same Core composition, but bring the mobile organism nearer to
-    // the Position and its single next action without increasing its footprint.
-    this.cy=this.oh*(this.w<=560?.43:.46); this.R=Math.min(this.ow,this.oh)*.34;
+    this.cx=this.ow/2; this.cy=this.oh*.46; this.R=Math.min(this.ow,this.oh)*.34;
   }
   setPhysiology(p){this.athlete.setPhysiology(p);}   // somatic state lives in the model
   setServerProjection(p){return this.presence.setServerProjection(p);}
@@ -1188,12 +1183,9 @@ class LivingCore{
   render(){
     const g=this.octx,{recovery:r,fatigue:f,stress:st}=this.cur,{c1,c2}=this.palette();
     const ps=this.presence.p, now=this.presence._now;
-    const mobile=this.w<=560, lobeScale=mobile?.62:1, lobeAlpha=mobile?1.85:1;
     // smoke persistence — fade previous frame instead of clearing → volumetric trails
     g.globalCompositeOperation='source-over';
-    // Mobile clears a little more of the previous frame so living lobes retain
-    // their own form instead of accumulating into one diffuse background bloom.
-    g.fillStyle='rgba(7,9,16,'+((mobile?.24:.10)+st*0.04)+')'; g.fillRect(0,0,this.ow,this.oh);
+    g.fillStyle='rgba(7,9,16,'+(0.10+st*0.04)+')'; g.fillRect(0,0,this.ow,this.oh);
     const breath=this.presence.breath.value;                 // the one constant
     const compress=1-f*.26, expand=1+r*.14;
     // density: gathered ↔ diffuse (waiting 0.45 = scale 1.0, the approved look)
@@ -1206,8 +1198,8 @@ class LivingCore{
     g.globalCompositeOperation='lighter';
     // faint ambient nebula — wide, soft, never a spotlight
     const neb=g.createRadialGradient(acx,acy,this.R*0.3,acx,acy,this.R*2.8);
-    neb.addColorStop(0,`rgba(${c1[0]},${c1[1]},${c1[2]},${(0.030+r*0.018)*lum*(mobile?.72:1)})`);
-    neb.addColorStop(.55,`rgba(${c2[0]},${c2[1]},${c2[2]},${0.014*lum*(mobile?.72:1)})`);
+    neb.addColorStop(0,`rgba(${c1[0]},${c1[1]},${c1[2]},${(0.030+r*0.018)*lum})`);
+    neb.addColorStop(.55,`rgba(${c2[0]},${c2[1]},${c2[2]},${0.014*lum})`);
     neb.addColorStop(1,'rgba(0,0,0,0)');
     g.fillStyle=neb; g.fillRect(0,0,this.ow,this.oh);
     // plasma lobes — distributed soft smoke orbiting a ring, NOT piled at centre
@@ -1218,8 +1210,8 @@ class LivingCore{
       const n2=fbm(L.seed*.6+5, L.nt*0.8, L.nt);
       const turb=st*0.8;
       const ang=L.phase + n1*1.1 + n2*turb;
-      const orbit=this.R*(0.55+L.rad)*expand*compress*gather*(0.9+breath*0.12)*(mobile?.7:1);
-      const drift=this.R*(0.18+Math.abs(n1)*0.30)*gather*(mobile?.78:1);
+      const orbit=this.R*(0.55+L.rad)*expand*compress*gather*(0.9+breath*0.12);
+      const drift=this.R*(0.18+Math.abs(n1)*0.30)*gather;
       let x=acx+Math.cos(ang)*orbit + Math.cos(ang*1.7+n2*3)*drift*(1+turb*0.4);
       let y=acy+Math.sin(ang)*orbit + Math.sin(ang*1.7+n1*3)*drift*(1+turb*0.4);
       // Touch physics: the field parts around contact, then gathers toward it —
@@ -1232,15 +1224,12 @@ class LivingCore{
           x-=(dx/d)*inf*this.R*0.055; y-=(dy/d)*inf*this.R*0.055;
         }
       }
-      const size=this.R*(L.sz*0.95)*lobeScale*(0.7+breath*0.25)*expand*compress*(1+(ps.density-0.45)*0.18);
-      const alpha=(0.034+r*0.020-f*0.010)*lum*lobeAlpha;      // soft; no blown highlights
+      const size=this.R*(L.sz*0.95)*(0.7+breath*0.25)*expand*compress*(1+(ps.density-0.45)*0.18);
+      const alpha=(0.034+r*0.020-f*0.010)*lum;               // soft; no blown highlights
       const rg=g.createRadialGradient(x,y,0,x,y,Math.max(size,1));
-      rg.addColorStop(0,`rgba(${c1[0]},${c1[1]},${c1[2]},${alpha*(mobile?1.12:1)})`);
-      // A nearer falloff preserves the organic, edge-less language while
-      // keeping individual mobile lobes legible in a static frame.
-      rg.addColorStop(mobile?.22:.5,`rgba(${c2[0]},${c2[1]},${c2[2]},${alpha*(mobile?.84:.45)})`);
-      rg.addColorStop(mobile?.52:1,`rgba(${c2[0]},${c2[1]},${c2[2]},${alpha*(mobile?.16:0)})`);
-      rg.addColorStop(mobile?.78:1,'rgba(0,0,0,0)');
+      rg.addColorStop(0,`rgba(${c1[0]},${c1[1]},${c1[2]},${alpha})`);
+      rg.addColorStop(.5,`rgba(${c2[0]},${c2[1]},${c2[2]},${alpha*0.45})`);
+      rg.addColorStop(1,'rgba(0,0,0,0)');
       g.fillStyle=rg; g.beginPath(); g.arc(x,y,Math.max(size,1),0,6.2832); g.fill();
     }
     // NO white nucleus — the organism is plasma/smoke, never a spotlight
