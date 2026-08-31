@@ -3304,6 +3304,144 @@ def test_clr_004_cannot_change_workout_structure_progression_or_add_punishment_l
     assert expert.is_none
 
 
+def _wnk_011_projection(*, level, recovery="fresh", profile_extra=None, consensus_override=None):
+    profile = _neutral_expert_profile()
+    profile.update({"level": level, "recoveryFeel": recovery})
+    profile.update(profile_extra or {})
+    snapshot = _shadow_snapshot(profile=profile)
+    consensus = consensus_override or _expert_result(snapshot)
+    plan = build_training_plan(recommendation_blueprint_id="wnk-011", facts=profile)
+    _, constraints = persona_expert_projection.build_training_projections(
+        persona_adaptation={}, profile_facts=profile, locked_preferences={}, training_plan=plan,
+        exercise_library=load_exercise_library(), expert_consensus=consensus,
+    )
+    return snapshot, consensus, plan, constraints
+
+
+@pytest.mark.parametrize(("level", "recovery", "expected"), [
+    ("beginner", "fresh", "simple"),
+    ("intermediate", "tired", "standard"),
+    ("advanced", "tired", "advanced"),
+])
+def test_wnk_011_maps_only_canonical_experience_to_closed_single_cue_complexity(
+        level, recovery, expected):
+    snapshot, consensus, plan, constraints = _wnk_011_projection(level=level, recovery=recovery)
+
+    assert snapshot.profile["level"].source == "browser"
+    assert {"WNK-003", "WNK-011"}.issubset(consensus.applicable_rule_ids)
+    assert "WNK-011" not in consensus.unresolved_rule_ids
+    assert constraints.single_actionable_cue is True
+    assert constraints.cue_complexity == expected
+    prompt = conversation_composer.render_prompt(conversation_composer.compose(
+        conversation_composer.build_policy(
+            decision=types.SimpleNamespace(outcome="recommend"), message="build a workout",
+            respect_projection_preferences=True),
+        validated_blueprint=_workout_blueprint(), expert_communication_constraints=constraints), "en")
+    assert prompt.count("Give at most one short practical movement cue") == 1
+    assert "Do not add a movement" in prompt
+    assert plan == build_training_plan(recommendation_blueprint_id="wnk-011", facts={
+        **_neutral_expert_profile(), "level": level, "recoveryFeel": recovery,
+    })
+
+
+@pytest.mark.parametrize("profile", [
+    {"goal": "strength", "equipment": "gym", "recoveryFeel": "tired"},
+    {"goal": "strength", "equipment": "gym", "level": "expert", "recoveryFeel": "tired"},
+    {"goal": "strength", "equipment": "gym", "level": "beginner", "experience_level": "advanced"},
+])
+def test_wnk_011_fails_closed_for_missing_malformed_or_ambiguous_experience(profile):
+    snapshot = _shadow_snapshot(profile=profile)
+    result = _expert_result(snapshot)
+
+    assert "WNK-011" not in result.applicable_rule_ids
+
+
+def test_wnk_011_ignores_persona_and_hse_as_experience_sources():
+    profile = _neutral_expert_profile()
+    profile["level"] = "beginner"
+    snapshot = _shadow_snapshot(profile=profile, human_state={
+        "experience_level": {"value": "advanced", "confidence": 1.0, "ttl_seconds": 3600},
+    })
+    synthetic_advanced_persona = types.SimpleNamespace(
+        matched_problem_tags=(), primary_persona_id="P-advanced", confidence=1.0, evidence_refs=(),
+    )
+    result = expert_consensus.evaluate(snapshot, synthetic_advanced_persona, "workout")
+    _, _, _, constraints = _wnk_011_projection(level="beginner", consensus_override=result)
+
+    assert "WNK-011" in result.applicable_rule_ids
+    assert constraints.cue_complexity == "simple"
+
+    no_profile_snapshot = _shadow_snapshot(
+        profile={"goal": "strength", "equipment": "gym", "recoveryFeel": "tired"},
+        human_state={"experience_level": {"value": "advanced", "confidence": 1.0, "ttl_seconds": 3600}},
+    )
+    assert "WNK-011" not in _expert_result(no_profile_snapshot).applicable_rule_ids
+
+
+def test_wnk_011_yields_to_restrictions_and_medical_boundary_without_changing_blueprint():
+    profile = _neutral_expert_profile()
+    profile.update({"level": "beginner", "medicalRestrictions": "avoid overhead pressing"})
+    snapshot = _shadow_snapshot(profile=profile)
+    result = _expert_result(snapshot)
+    baseline = build_training_plan(recommendation_blueprint_id="wnk-safety", facts=profile)
+
+    assert "WNK-011" not in result.applicable_rule_ids
+    assert baseline == build_training_plan(recommendation_blueprint_id="wnk-safety", facts=profile)
+
+    medical = _shadow_snapshot(profile=_neutral_expert_profile(), explicit={"red_flag": True})
+    assert _expert_result(medical).applicable_rule_ids == ()
+
+
+def test_wnk_011_projection_requires_a_valid_consensus_and_cannot_change_plan_or_progression():
+    profile = _neutral_expert_profile()
+    profile.update({"level": "advanced", "recoveryFeel": "tired"})
+    malformed = types.SimpleNamespace(version="wrong", applicable_rule_ids=("WNK-003", "WNK-011"))
+    _, _, plan, constraints = _wnk_011_projection(
+        level="advanced", recovery="tired", consensus_override=malformed)
+    baseline = build_training_plan(recommendation_blueprint_id="wnk-malformed", facts=profile)
+    advised = build_training_plan(
+        recommendation_blueprint_id="wnk-malformed", facts=profile,
+        advisory_preferred_exercise_ids=persona_expert_training_signals(
+            expert_consensus=malformed).preferred_exercise_ids,
+    )
+
+    assert constraints.cue_complexity is None
+    assert plan == build_training_plan(recommendation_blueprint_id="wnk-011", facts=profile)
+    assert advised == baseline
+    snapshot = _shadow_snapshot(profile=profile)
+    decision = decision_engine.decide(snapshot, "workout")
+    consensus = _expert_result(snapshot)
+    without_wnk_011 = replace(
+        consensus,
+        applicable_rule_ids=tuple(rule_id for rule_id in consensus.applicable_rule_ids if rule_id != "WNK-011"),
+    )
+    with_wnk = appmod.recommendation_architect.design(
+        "workout", decision=decision, profile=profile, preferences={}, subject="wnk-blueprint",
+        record=False, expert_consensus=consensus, persona_adaptation=appmod._persona_adaptation(
+            persona_matcher.match(snapshot, "workout")),
+    )
+    without_wnk = appmod.recommendation_architect.design(
+        "workout", decision=decision, profile=profile, preferences={}, subject="wnk-blueprint",
+        record=False, expert_consensus=without_wnk_011, persona_adaptation=appmod._persona_adaptation(
+            persona_matcher.match(snapshot, "workout")),
+    )
+    assert with_wnk == without_wnk
+
+
+def test_wnk_011_malformed_projection_is_ignored_by_the_composer():
+    malformed = persona_expert_projection.ExpertCommunicationConstraints(cue_complexity="verbose")
+    frame = conversation_composer.compose(
+        conversation_composer.build_policy(
+            decision=types.SimpleNamespace(outcome="recommend"), message="build a workout"),
+        validated_blueprint=_workout_blueprint(), expert_communication_constraints=malformed,
+    )
+    prompt = conversation_composer.render_prompt(frame, "en")
+
+    assert malformed.is_none is True
+    assert "ADDITIONAL PRESENTATION CONSTRAINTS" not in prompt
+    assert "higher-detail" not in prompt
+
+
 def test_expert_consensus_conflicts_and_safety_are_resolved_deterministically():
     snapshot = _shadow_snapshot(
         profile=_profile(level="beginner", injuries="knee pain"),
@@ -4683,7 +4821,29 @@ def test_persona_expert_communication_flag_is_resolved_once_and_off_keeps_active
                                                decision=types.SimpleNamespace(outcome="recommend"),
                                                message="build a workout"),
                                            validated_blueprint=blueprint,
-                                           authority_facts=_profile(level="beginner")), "en"))
+                                   authority_facts=_profile(level="beginner")), "en"))
+
+
+def test_wnk_011_communication_flag_off_preserves_prompt_plan_and_sse(client, captured, monkeypatch):
+    blueprint = _workout_blueprint()
+    profile = _profile(level="beginner", recoveryFeel="fresh")
+    monkeypatch.setenv("RECOMMENDATION_ENGINE_ACTIVE", "true")
+    monkeypatch.setenv("CONVERSATION_COMPOSER_ACTIVE", "true")
+    monkeypatch.setattr(appmod.recommendation_architect, "design", lambda *args, **kwargs: blueprint)
+    _set_stream(monkeypatch, captured, json.dumps({"blueprint": to_dict(blueprint), "explanations": []}))
+
+    off_events = _events(_post(client, "build a workout", profile=profile))
+    off_system = captured["system"]
+    monkeypatch.setenv("PERSONA_EXPERT_COMMUNICATION_ACTIVE", "true")
+    _set_stream(monkeypatch, captured, json.dumps({"blueprint": to_dict(blueprint), "explanations": []}))
+    on_events = _events(_post(client, "build a workout", profile=profile))
+
+    assert off_events == on_events
+    assert off_events[-1] == {"done": True}
+    assert "external, and actionable" not in off_system
+    assert "external, and actionable" in captured["system"]
+    assert "Do not add a movement" in captured["system"]
+    assert all(token not in captured["system"] for token in ("WNK-011", "beginner", "experience_level"))
 
 
 def test_active_persona_expert_communication_appends_id_free_wording_after_blueprint_and_frame(

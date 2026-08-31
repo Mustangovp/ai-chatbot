@@ -4,10 +4,21 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Mapping
 
+from brain.runtime_assets.expert_consensus import EXPERT_CONSENSUS_VERSION
+
 
 _RECOVERY_STATES = frozenset({"tired", "fatigued", "poor"})
-_EFFECTIVE_RULE_IDS = frozenset({"MCG-001", "GRV-001", "GRV-003", "WNK-003"})
+_EFFECTIVE_RULE_IDS = frozenset({"MCG-001", "GRV-001", "GRV-003", "WNK-003", "WNK-011"})
 _HOME_EQUIPMENT = frozenset({"bodyweight", "dumbbell", "resistance_band", "bench", "pullup_bar"})
+_CUE_COMPLEXITY_BY_EXPERIENCE = {
+    "beginner": "simple",
+    "intermediate": "standard",
+    "advanced": "advanced",
+}
+_CUE_COMPLEXITIES = frozenset(_CUE_COMPLEXITY_BY_EXPERIENCE.values())
+_HIGHER_AUTHORITY_MOVEMENT_KEYS = frozenset({
+    "clinicianRestrictions", "medicalRestrictions", "healthRestrictions", "trainingRestrictions",
+})
 
 
 @dataclass(frozen=True)
@@ -32,11 +43,46 @@ class ExpertCommunicationConstraints:
     state_exclusion_reason: bool = False
     state_recovery_reason: bool = False
     single_actionable_cue: bool = False
+    cue_complexity: str | None = None
 
     @property
     def is_none(self) -> bool:
         return not any((self.state_exclusion_reason, self.state_recovery_reason,
-                        self.single_actionable_cue))
+                        self.single_actionable_cue, self.cue_complexity in _CUE_COMPLEXITIES))
+
+
+def _canonical_experience(facts: Mapping[str, object]) -> str | None:
+    values = []
+    for key in ("level", "experience_level"):
+        value = facts.get(key)
+        if value in (None, ""):
+            continue
+        if not isinstance(value, str):
+            return None
+        normalized = value.strip().lower()
+        if normalized not in _CUE_COMPLEXITY_BY_EXPERIENCE:
+            return None
+        values.append(normalized)
+    if not values or len(set(values)) != 1:
+        return None
+    return values[0]
+
+
+def _has_higher_authority_movement_instruction(facts: Mapping[str, object], preferences: Mapping[str, object]) -> bool:
+    if any(facts.get(key) not in (None, "", (), []) for key in _HIGHER_AUTHORITY_MOVEMENT_KEYS):
+        return True
+    return bool(preferences.get("exercise_exclusions") or preferences.get("training_restrictions"))
+
+
+def _cue_complexity(*, rule_ids: set[str], expert_consensus, experience: str | None,
+                    higher_authority_instruction: bool) -> str | None:
+    """Return a closed cue style only under the existing WNK-003 one-cue ceiling."""
+    if (getattr(expert_consensus, "version", None) != EXPERT_CONSENSUS_VERSION
+            or not {"WNK-003", "WNK-011"}.issubset(rule_ids)
+            or higher_authority_instruction
+            or experience is None):
+        return None
+    return _CUE_COMPLEXITY_BY_EXPERIENCE.get(experience)
 
 
 def _reduced_demand(blueprint) -> bool:
@@ -60,10 +106,16 @@ def build_projections(*, persona_adaptation: Mapping[str, object] | None,
     )
     rule_ids = set(getattr(expert_consensus, "applicable_rule_ids", ()) or ()) & _EFFECTIVE_RULE_IDS
     exclusion_present = bool(getattr(blueprint, "contraindications", ()) or ())
+    facts = getattr(authority, "verified_facts", {}) or {}
+    experience = _canonical_experience(facts)
     constraints = ExpertCommunicationConstraints(
         state_exclusion_reason="MCG-001" in rule_ids and exclusion_present,
         state_recovery_reason=bool(rule_ids & {"GRV-001", "GRV-003", "WNK-003"}) and reduced_demand,
         single_actionable_cue="WNK-003" in rule_ids and bool(getattr(blueprint, "exercise_families", ()) or ()),
+        cue_complexity=_cue_complexity(
+            rule_ids=rule_ids, expert_consensus=expert_consensus, experience=experience,
+            higher_authority_instruction=_has_higher_authority_movement_instruction(
+                facts, getattr(authority, "locked_preferences", {}) or {})),
     )
     return persona, constraints
 
@@ -113,9 +165,13 @@ def build_training_projections(*, persona_adaptation: Mapping[str, object] | Non
         advanced_autonomy=bool(adaptation.get("advanced")),
     )
     rule_ids = set(getattr(expert_consensus, "applicable_rule_ids", ()) or ()) & _EFFECTIVE_RULE_IDS
+    experience = _canonical_experience(facts)
     constraints = ExpertCommunicationConstraints(
         state_exclusion_reason="MCG-001" in rule_ids and has_exclusion,
         state_recovery_reason=bool(rule_ids & {"GRV-001", "GRV-003", "WNK-003"}) and reduced_demand,
         single_actionable_cue="WNK-003" in rule_ids and bool(equipment),
+        cue_complexity=_cue_complexity(
+            rule_ids=rule_ids, expert_consensus=expert_consensus, experience=experience,
+            higher_authority_instruction=_has_higher_authority_movement_instruction(facts, preferences)),
     )
     return persona, constraints

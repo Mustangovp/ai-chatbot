@@ -97,7 +97,7 @@ _PACKS = (
               ("coaching, especially novices or fatigue",), ("immediate safety correction",), "medium", "cue_complexity", "KC-WNK-003",
               _DOMAIN + "domain-7-coaching-communication.md", "6. Knowledge & Decision Cards / KC-WNK-003"),
         _rule("WNK-011", "Winkelman", "coaching_communication", "Scale cue complexity to experience.",
-              ("novice-to-expert communication",), ("unresolved",), "medium", "cue_complexity", "KC-WNK-011",
+              ("verified canonical experience level",), ("immediate safety correction",), "medium", "cue_complexity_style", "KC-WNK-011",
               _DOMAIN + "domain-7-coaching-communication.md", "6. Knowledge & Decision Cards / KC-WNK-011"),
     )),
 )
