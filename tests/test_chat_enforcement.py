@@ -30,6 +30,7 @@ import conversation_composer
 import nutrition_conversation
 import nutrition_plan
 from training_engine import build_training_plan, load_exercise_library
+from training_engine.advisory import persona_expert_training_signals
 from recommend import diversity as recommendation_diversity
 from recommend.blueprint import NutritionBlueprint, WorkoutBlueprint, to_dict
 from context_builder import LockedPreferences, Subject, build_context
@@ -2415,14 +2416,14 @@ def test_active_recommendation_engine_keeps_nutrition_on_the_legacy_path(client,
     assert _events(response) == [{"t": "ok"}, {"done": True}]
 
 
-def _persona_expert_blueprint(profile):
-    snapshot = _shadow_snapshot(profile=profile)
+def _persona_expert_blueprint(profile, *, explicit=None, use_expert=True):
+    snapshot = _shadow_snapshot(profile=profile, explicit=explicit)
     decision = decision_engine.decide(snapshot, "workout")
     match = persona_matcher.match(snapshot, "workout")
     consensus = expert_consensus.evaluate(snapshot, match, "workout")
     blueprint = appmod.recommendation_architect.design(
         "workout", decision=decision, profile=profile, preferences={}, subject="persona-expert-test",
-        record=False, expert_consensus=consensus,
+        record=False, expert_consensus=consensus if use_expert else None,
         persona_adaptation=appmod._persona_adaptation(match))
     return blueprint, match, consensus
 
@@ -2527,14 +2528,13 @@ def test_persona_expert_adapts_equipment_recovery_and_injury_constraints():
     recovering, _, recovery_consensus = _persona_expert_blueprint(_profile(level="intermediate"))
     fresh, _, _ = _persona_expert_blueprint({"goal": "strength", "level": "advanced"})
     injury, injury_match, injury_consensus = _persona_expert_blueprint({"injuries": "knee pain"})
+    injury_without_expert, _, _ = _persona_expert_blueprint({"injuries": "knee pain"}, use_expert=False)
 
     assert home.exercise_families != gym.exercise_families
     assert recovering.session_minutes < fresh.session_minutes
     assert recovery_consensus.abstained is False
-    assert injury_match.abstained is True and injury_consensus.abstained is False
-    assert injury.joint_impact == "low"
-    assert "painful range" in injury.contraindications
-    assert not ({"squat", "hinge", "conditioning"} & set(injury.exercise_families))
+    assert injury_match.abstained is True and injury_consensus.abstained is True
+    assert injury == injury_without_expert
 
 
 def _capture_shadow_traces(monkeypatch):
@@ -2641,7 +2641,8 @@ def test_active_recommendation_engine_does_not_run_for_non_recommend_outcomes(cl
 
 # Persona and expert assets are observational only. These tests exercise their
 # pure contracts and prove their shadow invocation cannot influence /chat.
-def _shadow_snapshot(*, intent="workout", profile=None, locked=None, explicit=None, history=None):
+def _shadow_snapshot(*, intent="workout", profile=None, locked=None, explicit=None, history=None,
+                     workouts=None, human_state=None):
     return build_context(
         intent=intent,
         subject=_device("persona-shadow"),
@@ -2650,6 +2651,8 @@ def _shadow_snapshot(*, intent="workout", profile=None, locked=None, explicit=No
         locked_preferences=locked,
         explicit_facts=explicit,
         recommendation_history=history,
+        client_workout_context=workouts,
+        human_state=human_state,
     )
 
 
@@ -2720,11 +2723,133 @@ def test_expert_consensus_uses_only_ready_rules_and_never_activates_unresolved_r
 
     assert set(result.unresolved_rule_ids) == unresolved
     assert not (set(result.applicable_rule_ids) & unresolved)
+    assert "MCG-001" not in result.applicable_rule_ids
+
+
+def _mcg_001_provenance(*, provoking="vertical_push", excluded="vertical_push",
+                        authority="fitness_limitation"):
+    return {
+        "version": "mcg-001-provenance-v1",
+        "evidence_source": "typed_fitness_limitation",
+        "symptom_state": "active",
+        "provoking_movement_pattern": provoking,
+        "excluded_movement_pattern": excluded,
+        "exclusion_authority": authority,
+    }
+
+
+def _clr_004_lapse(*, source="explicit_missed_workout", state="missed"):
+    return {
+        "version": "clr-004-lapse-v1",
+        "evidence_source": source,
+        "lapse_state": state,
+    }
+
+
+def _expert_result(snapshot):
+    return expert_consensus.evaluate(snapshot, persona_matcher.match(snapshot, "workout"), "workout")
+
+
+def _neutral_expert_profile():
+    return _profile(sleepQuality="good", stressLevel="low", recoveryFeel="fresh")
+
+
+def test_mcg_001_requires_typed_motion_provenance_for_an_existing_exclusion():
+    snapshot = _shadow_snapshot(
+        profile=_profile(injuries="shoulder pain"),
+        explicit={"mcg_001_provenance": _mcg_001_provenance()},
+    )
+    result = _expert_result(snapshot)
+
     assert "MCG-001" in result.applicable_rule_ids
+    assert "fact:mcg_001_provenance" in result.evidence_refs
+
+
+@pytest.mark.parametrize("explicit", [
+    {},
+    {"mcg_001_provenance": _mcg_001_provenance(provoking="vertical_push", excluded="squat")},
+    {"mcg_001_provenance": {"version": "mcg-001-provenance-v1", "pain": "shoulder hurts"}},
+])
+def test_mcg_001_fails_closed_without_unambiguous_typed_provenance(explicit):
+    snapshot = _shadow_snapshot(profile=_profile(injuries="shoulder pain"), explicit=explicit)
+    result = _expert_result(snapshot)
+
+    assert "MCG-001" not in result.applicable_rule_ids
+
+
+def test_mcg_001_is_presentation_only_and_cannot_change_safety_or_plan_structure():
+    snapshot = _shadow_snapshot(
+        profile=_neutral_expert_profile(), explicit={"mcg_001_provenance": _mcg_001_provenance()},
+    )
+    result = _expert_result(snapshot)
+    signals = persona_expert_training_signals(expert_consensus=result)
+    baseline = build_training_plan(recommendation_blueprint_id="mcg-baseline", facts=_neutral_expert_profile())
+    advised = build_training_plan(
+        recommendation_blueprint_id="mcg-baseline", facts=_neutral_expert_profile(),
+        advisory_preferred_exercise_ids=signals.preferred_exercise_ids,
+    )
+
+    assert signals.preferred_exercise_ids == ()
+    assert advised == baseline
+
+    profile = _neutral_expert_profile()
+    with_mcg, _, _ = _persona_expert_blueprint(
+        profile, explicit={"mcg_001_provenance": _mcg_001_provenance()},
+    )
+    without_mcg, _, _ = _persona_expert_blueprint(profile, use_expert=False)
+    assert with_mcg == without_mcg
+
+    medical = _shadow_snapshot(
+        profile=_neutral_expert_profile(),
+        explicit={"mcg_001_provenance": _mcg_001_provenance(), "red_flag": True},
+    )
+    assert _expert_result(medical).applicable_rule_ids == ()
+
+
+def test_clr_004_requires_an_explicit_typed_lapse_event():
+    snapshot = _shadow_snapshot(explicit={"clr_004_lapse": _clr_004_lapse()})
+    result = _expert_result(snapshot)
+
+    assert "CLR-004" in result.applicable_rule_ids
+    assert "fact:clr_004_lapse" in result.evidence_refs
+
+
+def test_clr_004_rejects_generic_history_old_workouts_inactivity_and_unwired_hse_state():
+    history = _shadow_snapshot(history=[{"kind": "workout", "anchor": "old-plan"}])
+    old_workout = _shadow_snapshot(workouts=[{"date": "2020-01-01", "completion": "complete"}])
+    inactive = _shadow_snapshot()
+    hse_only = _shadow_snapshot(human_state={
+        "adherence": {"value": "missed", "confidence": 1.0, "ttl_seconds": 3600},
+    })
+
+    for snapshot in (history, old_workout, inactive, hse_only):
+        assert "CLR-004" not in _expert_result(snapshot).applicable_rule_ids
+
+
+def test_clr_004_cannot_change_workout_structure_progression_or_add_punishment_language():
+    snapshot = _shadow_snapshot(profile=_neutral_expert_profile(), explicit={"clr_004_lapse": _clr_004_lapse()})
+    result = _expert_result(snapshot)
+    signals = persona_expert_training_signals(expert_consensus=result)
+    baseline = build_training_plan(recommendation_blueprint_id="clr-baseline", facts=_neutral_expert_profile())
+    advised = build_training_plan(
+        recommendation_blueprint_id="clr-baseline", facts=_neutral_expert_profile(),
+        advisory_preferred_exercise_ids=signals.preferred_exercise_ids,
+    )
+
+    assert signals.preferred_exercise_ids == ()
+    assert advised == baseline
+    _, expert = persona_expert_projection.build_training_projections(
+        persona_adaptation={}, profile_facts=_neutral_expert_profile(), locked_preferences={},
+        training_plan=baseline, exercise_library=load_exercise_library(), expert_consensus=result,
+    )
+    assert expert.is_none
 
 
 def test_expert_consensus_conflicts_and_safety_are_resolved_deterministically():
-    snapshot = _shadow_snapshot(profile=_profile(level="beginner", injuries="knee pain"))
+    snapshot = _shadow_snapshot(
+        profile=_profile(level="beginner", injuries="knee pain"),
+        explicit={"mcg_001_provenance": _mcg_001_provenance()},
+    )
     match = persona_matcher.match(snapshot, "workout")
     packs = list(load_expert_rule_packs())
     mcg = packs[2].rules[0]
