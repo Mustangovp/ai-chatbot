@@ -3532,6 +3532,94 @@ def test_glp_001_projection_is_composer_only_and_malformed_values_fail_closed():
     assert "ADDITIONAL PRESENTATION CONSTRAINTS" not in malformed_prompt
 
 
+def _arg_001_plan(provenance):
+    plan = nutrition_plan.build_plan(
+        _structured_plan_payload(), _NUTRITION_TARGETS,
+        restrictions=(), provenance={"test": "arg-001"})
+    return replace(plan, provenance=tuple(sorted(provenance.items())))
+
+
+@pytest.mark.parametrize(("provenance", "expected"), [
+    ({"nutrition_decision.energy_target": "confirmed"}, "energy_target"),
+    ({"nutrition_decision.macro_distribution": "confirmed"}, "macro_distribution"),
+    ({"nutrition_decision.meal_timing": "confirmed"}, "meal_timing"),
+])
+def test_arg_001_uses_only_closed_authoritative_nutrition_plan_decisions(provenance, expected):
+    plan = _arg_001_plan(provenance)
+    original = plan
+
+    rationale = persona_expert_projection.build_nutrition_rationale(plan)
+
+    assert rationale == persona_expert_projection.NutritionRationale(
+        expected, f"existing_{expected}")
+    assert plan == original
+    assert plan.targets == original.targets
+    assert plan.meals == original.meals
+    assert plan.totals == original.totals
+
+
+def test_arg_001_energy_precedes_macro_and_timing_and_timing_is_presentation_only():
+    plan = _arg_001_plan({
+        "nutrition_decision.energy_target": "confirmed",
+        "nutrition_decision.macro_distribution": "confirmed",
+        "nutrition_decision.meal_timing": "confirmed",
+    })
+    timing_plan = _arg_001_plan({"nutrition_decision.meal_timing": "confirmed"})
+
+    rationale = persona_expert_projection.build_nutrition_rationale(plan)
+    timing = persona_expert_projection.build_nutrition_rationale(timing_plan)
+    rendered = nutrition_plan.render_delivery(timing_plan, "en", nutrition_rationale=timing)
+
+    assert rationale.reason_type == "energy_target"
+    assert timing.reason_type == "meal_timing"
+    assert "meal timing is subordinate" in rendered
+    assert timing_plan.targets == _NUTRITION_TARGETS
+    assert timing_plan.totals.kcal == _NUTRITION_TARGETS.kcal
+
+
+def test_arg_001_fails_closed_without_typed_plan_provenance_or_for_metadata_hse_and_persona():
+    no_plan = None
+    metadata_only = types.SimpleNamespace(
+        provenance=(("goal", "fat_loss"), ("weight", "99"), ("message", "make me a diet")),
+        persona="beginner", hse={"motivation": "low"})
+    malformed = persona_expert_projection.NutritionRationale("energy_target", "untrusted")
+    lookalike = types.SimpleNamespace(reason_type="energy_target", plan_decision="existing_energy_target")
+
+    assert persona_expert_projection.build_nutrition_rationale(no_plan) is None
+    assert persona_expert_projection.build_nutrition_rationale(metadata_only) is None
+    assert persona_expert_projection.valid_nutrition_rationale(malformed) is None
+    assert "confirmed energy target comes before" not in nutrition_plan.render_delivery(
+        _arg_001_plan({}), "en", nutrition_rationale=malformed)
+    assert "confirmed energy target comes before" not in nutrition_plan.render_delivery(
+        _arg_001_plan({}), "en", nutrition_rationale=lookalike)
+
+
+def test_arg_001_flag_gates_delivery_without_mutating_plan_or_sse(client, captured, monkeypatch):
+    plan = nutrition_plan.build_plan(
+        _structured_plan_payload(), _NUTRITION_TARGETS,
+        restrictions=(), provenance={"test": "arg-001"})
+    original = nutrition_plan.to_record(plan)
+
+    monkeypatch.delenv("PERSONA_EXPERT_COMMUNICATION_ACTIVE", raising=False)
+    off = appmod._render_nutrition_delivery(plan, "en")
+    monkeypatch.setenv("PERSONA_EXPERT_COMMUNICATION_ACTIVE", "true")
+    on = appmod._render_nutrition_delivery(plan, "en")
+
+    assert off == nutrition_plan.render_delivery(plan, "en")
+    assert "confirmed energy target comes before" not in off
+    assert "confirmed energy target comes before" in on
+    assert nutrition_plan.to_record(plan) == original
+
+    profile_block = "Calorie target: 2800 kcal\nProtein target: minimum 175g/day"
+    monkeypatch.setattr(appmod, "_build_profile_block", lambda profile, lang: profile_block)
+    _set_sequence_stream(monkeypatch, captured, [_structured_plan_payload()])
+    events = _events(_post(client, "Give me a full-day nutrition plan", profile=_profile()))
+
+    assert events[-1] == {"done": True}
+    assert "confirmed energy target comes before" in events[0]["t"]
+    assert len(events) == 2
+
+
 def test_expert_consensus_conflicts_and_safety_are_resolved_deterministically():
     snapshot = _shadow_snapshot(
         profile=_profile(level="beginner", injuries="knee pain"),

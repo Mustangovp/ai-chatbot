@@ -20,6 +20,13 @@ _GLP_REASON_TYPES = frozenset({
     "restriction", "equipment", "experience", "goal", "progression",
     "recovery_adjustment", "substitution", "exclusion",
 })
+_ARG_REASON_TYPES = frozenset({"energy_target", "macro_distribution", "meal_timing"})
+_ARG_PROVENANCE = {
+    "nutrition_decision.energy_target": "energy_target",
+    "nutrition_decision.macro_distribution": "macro_distribution",
+    "nutrition_decision.meal_timing": "meal_timing",
+}
+_ARG_CONFIRMED = "confirmed"
 _GLP_PRIORITY = (
     "restriction", "exclusion", "substitution", "progression", "recovery_adjustment",
     "equipment", "experience", "goal",
@@ -77,6 +84,14 @@ class AdaptationRationale:
     plan_decision: str
 
 
+@dataclass(frozen=True)
+class NutritionRationale:
+    """Closed explanation of a decision already recorded on a NutritionPlan."""
+
+    reason_type: str
+    plan_decision: str
+
+
 def _valid_adaptation_rationale(value: object) -> AdaptationRationale | None:
     if not isinstance(value, AdaptationRationale):
         return None
@@ -84,6 +99,43 @@ def _valid_adaptation_rationale(value: object) -> AdaptationRationale | None:
         return None
     expected = f"existing_{value.reason_type}"
     return value if value.plan_decision == expected else None
+
+
+def valid_nutrition_rationale(value: object) -> NutritionRationale | None:
+    """Validate the sole ARG-001 presentation payload; unknown data abstains."""
+    if not isinstance(value, NutritionRationale):
+        return None
+    if value.reason_type not in _ARG_REASON_TYPES or not isinstance(value.plan_decision, str):
+        return None
+    return value if value.plan_decision == f"existing_{value.reason_type}" else None
+
+
+def build_nutrition_rationale(plan) -> NutritionRationale | None:
+    """Project one typed NutritionPlan decision without reading user metadata.
+
+    Energy wins over macro detail and timing. Missing, malformed, or merely
+    descriptive provenance is deliberately not a rationale source.
+    """
+    # Keep ARG-001 tied to the canonical immutable delivery object, rather
+    # than accepting lookalike mappings assembled by a presentation caller.
+    from nutrition_plan import NutritionPlan
+
+    if not isinstance(plan, NutritionPlan):
+        return None
+    raw_provenance = plan.provenance
+    try:
+        provenance = dict(raw_provenance)
+    except (TypeError, ValueError):
+        return None
+    for key in (
+        "nutrition_decision.energy_target",
+        "nutrition_decision.macro_distribution",
+        "nutrition_decision.meal_timing",
+    ):
+        reason_type = _ARG_PROVENANCE[key]
+        if provenance.get(key) == _ARG_CONFIRMED:
+            return NutritionRationale(reason_type, f"existing_{reason_type}")
+    return None
 
 
 def _values(value: object) -> tuple[str, ...]:
