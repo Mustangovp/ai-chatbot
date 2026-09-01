@@ -46,7 +46,7 @@ _DOMAIN = "docs/research/sprint-002/"
 _PACKS = (
     ExpertRulePack("Galpin", EXPERT_RULE_PACK_VERSION, (
         _rule("GLP-001", "Galpin", "performance_science", "Name the adaptation before prescribing anything.",
-              ("open-ended programming request",), ("unresolved",), "medium", "goal_definition", "KC-GLP-001",
+              ("authoritative delivered plan adaptation",), ("no authoritative plan adaptation",), "medium", "adaptation_rationale", "KC-GLP-001",
               _DOMAIN + "domain-1-performance-science.md", "6. Knowledge & Decision Cards / KC-GLP-001"),
         _rule("GLP-063", "Galpin", "performance_science", "Recoverable load, not planned load, is the ceiling; recovery gates progression.",
               ("elevated fatigue, stress, or sleep debt",), ("unresolved",), "high", "recovery_vs_progression", "KC-GLP-063",
