@@ -24,6 +24,14 @@ _GLP_PRIORITY = (
     "restriction", "exclusion", "substitution", "progression", "recovery_adjustment",
     "equipment", "experience", "goal",
 )
+# Profile facts identify the source; only a delivered-plan reason proves adaptation.
+_GLP_DELIVERED_REASON_TYPES = {
+    "validated_substitution": "substitution",
+    "reduced_demand": "recovery_adjustment",
+    "equipment_adaptation": "equipment",
+    "experience_adaptation": "experience",
+    "goal_adaptation": "goal",
+}
 _HIGHER_AUTHORITY_MOVEMENT_KEYS = frozenset({
     "clinicianRestrictions", "medicalRestrictions", "healthRestrictions", "trainingRestrictions",
 })
@@ -95,27 +103,18 @@ def _glp_001_rationale(*, facts: Mapping[str, object], preferences: Mapping[str,
     if _values(preferences.get("exercise_exclusions")):
         candidates.add("exclusion")
     revision_reasons = tuple(getattr(training_plan, "revision_reasons", ()) or ())
-    if "validated_substitution" in revision_reasons:
-        candidates.add("substitution")
+    for reason in revision_reasons:
+        reason_type = _GLP_DELIVERED_REASON_TYPES.get(reason)
+        if reason_type == "equipment" and not _values(facts.get("equipment")):
+            continue
+        if reason_type == "experience" and _canonical_experience(facts) is None:
+            continue
+        if reason_type == "goal" and not str(facts.get("goal") or "").strip():
+            continue
+        if reason_type is not None:
+            candidates.add(reason_type)
     if tuple(getattr(training_plan, "progression_decision_ids", ()) or ()):
         candidates.add("progression")
-    if "reduced_demand" in revision_reasons:
-        candidates.add("recovery_adjustment")
-    sessions = tuple(getattr(training_plan, "sessions", ()) or ())
-    if _values(facts.get("equipment")) and sessions:
-        try:
-            available = {item.strip().lower() for item in _values(facts.get("equipment"))}
-            used = {item.value for session in sessions for prescription in session.prescriptions
-                    for item in exercise_library.require(
-                        prescription.exercise_id, prescription.exercise_version).equipment}
-            if used and used.issubset(available):
-                candidates.add("equipment")
-        except Exception:
-            pass
-    if _canonical_experience(facts) is not None and sessions:
-        candidates.add("experience")
-    if str(facts.get("goal") or "").strip() and sessions:
-        candidates.add("goal")
     for reason_type in _GLP_PRIORITY:
         if reason_type in candidates:
             return AdaptationRationale(reason_type, f"existing_{reason_type}")
