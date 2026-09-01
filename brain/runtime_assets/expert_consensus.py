@@ -139,7 +139,11 @@ def _applies(rule: ExpertRule, snapshot: ContextSnapshot, match: PersonaMatchRes
         refs = _mcg_001_evidence(snapshot)
         return bool(refs), refs
     if rule.rule_id == "CLR-002":
-        return level == "beginner" or "mentions_motivation" in match.matched_problem_tags, ("fact:level",)
+        # CLR-002 is a bounded selector preference, so it needs the same
+        # source-validated experience contract as WNK-011. Persona/HSE/message
+        # signals must never supply its applicability.
+        experience = _canonical_experience_level(snapshot)
+        return experience == "beginner", ("fact:experience_level",) if experience == "beginner" else ()
     if rule.rule_id == "CLR-004":
         refs = _clr_004_evidence(snapshot)
         return bool(refs), refs
