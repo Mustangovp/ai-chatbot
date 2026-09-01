@@ -81,13 +81,33 @@ test.describe('stable APEX mobile shell', () => {
       expect(facts.y).toBeGreaterThanOrEqual(viewport.height);
       expect(signals.y).toBeGreaterThanOrEqual(action.y + action.height);
       await expect(page.locator('#read-sub')).not.toBeVisible();
-      expect(await page.locator('.cta-row .cta').evaluateAll(elements => elements.filter(element => getComputedStyle(element).display !== 'none').length)).toBe(1);
+      expect(await page.locator('.cta-row .cta').evaluateAll(elements => elements.filter(element => getComputedStyle(element).display !== 'none').length)).toBe(2);
       await page.locator('#calibration-facts').scrollIntoViewIfNeeded();
       await expect(page.locator('#calibration-facts')).toBeVisible();
       await expect(page.locator('#position-signals')).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
       await expect(page.locator('#core')).toBeVisible();
     }
+  });
+
+  test('keeps Consult visible and opens Coach shortcuts from the mobile overview', async ({ page }) => {
+    const train = page.locator('.cta-row .cta').first();
+    const consult = page.locator('#cta-consult');
+
+    await expect(train).toBeVisible();
+    await expect(consult).toBeVisible();
+    const trainBox = await train.boundingBox();
+    const consultBox = await consult.boundingBox();
+    expect(consultBox.y).toBeGreaterThanOrEqual(trainBox.y + trainBox.height);
+    expect(consultBox.y + consultBox.height).toBeLessThanOrEqual(844);
+
+    await consult.click();
+    await expect(page.locator('#consult')).toHaveClass(/on/);
+    await expect(page.locator('.chips .chip')).toHaveCount(3);
+    await expect(page.locator('.chips')).toContainText("Today's Workout");
+    await expect(page.locator('.chips')).toContainText('Nutrition Plan');
+    await expect(page.locator('.chips')).toContainText('Progress');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
   });
 
   test('uses a compact Coach header and leaves free-form questions to the composer', async ({ page }) => {
