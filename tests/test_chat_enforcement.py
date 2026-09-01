@@ -2754,6 +2754,58 @@ def _neutral_expert_profile():
     return _profile(sleepQuality="good", stressLevel="low", recoveryFeel="fresh")
 
 
+@pytest.mark.parametrize(("profile", "applicable"), [
+    (_profile(level="beginner"), True),
+    (_profile(level="intermediate"), False),
+    (_profile(level="advanced"), False),
+])
+def test_clr_002_uses_only_the_canonical_experience_contract(profile, applicable):
+    result = _expert_result(_shadow_snapshot(profile=profile))
+
+    assert ("CLR-002" in result.applicable_rule_ids) is applicable
+    if applicable:
+        assert _shadow_snapshot(profile=profile).profile["level"].source == "browser"
+        assert "fact:experience_level" in result.evidence_refs
+
+
+@pytest.mark.parametrize("profile", [
+    {"goal": "strength", "equipment": "gym"},
+    _profile(level="expert"),
+    _profile(level="beginner", experience_level="advanced"),
+])
+def test_clr_002_fails_closed_for_missing_malformed_or_ambiguous_experience(profile):
+    assert "CLR-002" not in _expert_result(_shadow_snapshot(profile=profile)).applicable_rule_ids
+
+
+def test_clr_002_rejects_persona_hse_and_free_text_as_applicability_sources():
+    profile = _profile(level="intermediate")
+    snapshot = _shadow_snapshot(profile=profile, human_state={
+        "motivation": {"value": "low", "confidence": 1.0, "ttl_seconds": 3600},
+    })
+    persona = types.SimpleNamespace(
+        matched_problem_tags=("mentions_motivation",), evidence_refs=(),
+    )
+
+    result = expert_consensus.evaluate(snapshot, persona, "workout")
+    free_text = _shadow_snapshot(profile=profile, history=[{
+        "role": "user", "content": "I have no motivation for training.",
+    }])
+
+    assert "CLR-002" not in result.applicable_rule_ids
+    assert "CLR-002" not in _expert_result(free_text).applicable_rule_ids
+
+
+def test_clr_002_training_flag_off_preserves_prior_runtime_behavior(monkeypatch):
+    snapshot = _shadow_snapshot(profile=_profile(level="beginner"))
+    decision = types.SimpleNamespace(outcome="recommend", intent="workout")
+    monkeypatch.delenv("PERSONA_EXPERT_TRAINING_ACTIVE", raising=False)
+
+    signals, evaluation = appmod._evaluate_training_persona_expert(snapshot, decision)
+
+    assert signals is None
+    assert evaluation is None
+
+
 def test_mcg_001_requires_typed_motion_provenance_for_an_existing_exclusion():
     snapshot = _shadow_snapshot(
         profile=_profile(injuries="shoulder pain"),
