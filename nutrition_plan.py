@@ -137,6 +137,13 @@ def recent_nutrition_context(records: Sequence[Mapping[str, object]] | object,
     return RecentNutritionContext(valid_plans, tuple(meals))
 
 
+# These markers record only decisions already fixed by the validated plan. They
+# are intentionally not inferred later from profile text, Persona, or HSE.
+_ARG_ENERGY_TARGET_PROVENANCE = "nutrition_decision.energy_target"
+_ARG_MACRO_DISTRIBUTION_PROVENANCE = "nutrition_decision.macro_distribution"
+_ARG_CONFIRMED = "confirmed"
+
+
 _MEALS = ("breakfast", "lunch", "dinner")
 _OPTIONAL_MEALS = ("snack",)
 _COMPOUND_NAME = re.compile(r"\s(?:and|with)\s|\s\u0438\s|[&+/]", re.I)
@@ -310,6 +317,13 @@ def build_plan(payload: Mapping[str, object], targets: NutritionTargets, *,
         totals = totals.plus(meal.macros)
     status = _validate_totals(totals, targets)
     stamp = (now or dt.datetime.now(dt.timezone.utc)).astimezone(dt.timezone.utc).isoformat()
+    plan_provenance = dict(provenance)
+    # The confirmed target is an authoritative input to every validated plan.
+    # Record that decision once, rather than asking a presentation layer to
+    # reconstruct it from profile metadata after delivery.
+    plan_provenance.setdefault(_ARG_ENERGY_TARGET_PROVENANCE, _ARG_CONFIRMED)
+    if all(value is not None for value in (targets.protein, targets.carbs, targets.fat)):
+        plan_provenance.setdefault(_ARG_MACRO_DISTRIBUTION_PROVENANCE, _ARG_CONFIRMED)
     return NutritionPlan(
         id=plan_id,
         version="nutrition-plan-v1",
@@ -318,7 +332,7 @@ def build_plan(payload: Mapping[str, object], targets: NutritionTargets, *,
         restrictions=tuple(sorted({item.strip() for item in restrictions if item.strip()})),
         meals=tuple(meals),
         totals=totals,
-        provenance=tuple(sorted((str(key), str(value)) for key, value in provenance.items())),
+        provenance=tuple(sorted((str(key), str(value)) for key, value in plan_provenance.items())),
         target_status=status,
     )
 
@@ -808,7 +822,8 @@ def render(plan: NutritionPlan, lang: str, recipe_tokens: Mapping[str, str] | No
     return "\n".join(lines)
 
 
-def render_delivery(plan: NutritionPlan, lang: str, profile: Mapping[str, object] | None = None) -> str:
+def render_delivery(plan: NutritionPlan, lang: str, profile: Mapping[str, object] | None = None,
+                    nutrition_rationale: object | None = None) -> str:
     """Render a validated plan with a deterministic, non-authoritative explanation."""
     recipe_tokens: dict[str, str] = {}
     try:
@@ -842,6 +857,12 @@ def render_delivery(plan: NutritionPlan, lang: str, profile: Mapping[str, object
         if plan.target_status is PlanTargetStatus.EXACT
         else "\u0435 \u0432 \u043e\u0434\u043e\u0431\u0440\u0435\u043d\u0438\u044f \u0434\u043e\u043f\u0443\u0441\u043a \u0441\u043f\u0440\u044f\u043c\u043e \u043f\u043e\u0442\u0432\u044a\u0440\u0434\u0435\u043d\u0430\u0442\u0430 \u0446\u0435\u043b"
     )
+    try:
+        from brain.runtime_assets.persona_expert_projection import valid_nutrition_rationale
+        rationale = valid_nutrition_rationale(nutrition_rationale)
+    except Exception:
+        rationale = None
+    rationale_type = rationale.reason_type if rationale is not None else None
     if str(lang).lower() == "en":
         explanation = (
             "**Why this plan:** " + (
@@ -860,6 +881,20 @@ def render_delivery(plan: NutritionPlan, lang: str, profile: Mapping[str, object
             "Всяко хранене има ясна роля в деня, а количествата държат целия план съобразен с хранителните ти цели. "
             "Ако храна или количество не ти пасва, кажи ми и ще адаптираме плана."
         )
+    if rationale_type == "energy_target":
+        explanation += (" The confirmed energy target comes before macro or meal-timing detail."
+                        if str(lang).lower() == "en" else
+                        " Потвърденият енергиен таргет е преди детайлите за макросите и времето на храненията.")
+    elif rationale_type == "macro_distribution":
+        explanation += (" The existing macro distribution follows the confirmed energy target."
+                        if str(lang).lower() == "en" else
+                        " Съществуващото разпределение на макросите следва потвърдения енергиен таргет.")
+    elif rationale_type == "meal_timing":
+        explanation += (" The existing meal timing is subordinate to the confirmed energy and macro structure."
+                        if str(lang).lower() == "en" else
+                        " Съществуващото време на храненията е подчинено на потвърдената енергийна и макро структура.")
+    if str(lang).lower() != "en":
+        explanation += f" \u041e\u0431\u0449\u0438\u044f\u0442 \u0440\u0435\u0437\u0443\u043b\u0442\u0430\u0442 {status_text_bg}."
     return table + "\n\n" + explanation
 
 

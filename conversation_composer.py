@@ -294,7 +294,18 @@ def render_prompt(frame: ConversationFrame, lang: str) -> str:
             )
     persona = frame.persona_projection
     expert = frame.expert_communication_constraints
-    if persona is not None or expert is not None:
+    expert_has_effect = bool(expert is not None and any((
+        bool(getattr(expert, "state_exclusion_reason", False)),
+        bool(getattr(expert, "state_recovery_reason", False)),
+        bool(getattr(expert, "single_actionable_cue", False)),
+        getattr(expert, "cue_complexity", None) in {"simple", "standard", "advanced"},
+        getattr(getattr(expert, "adaptation_rationale", None), "reason_type", None) in {
+            "restriction", "equipment", "experience", "goal", "progression",
+            "recovery_adjustment", "substitution", "exclusion",
+        } and getattr(getattr(expert, "adaptation_rationale", None), "plan_decision", None)
+        == f"existing_{getattr(getattr(expert, 'adaptation_rationale', None), 'reason_type', '')}",
+    )))
+    if persona is not None or expert_has_effect:
         lines.append("[ADDITIONAL PRESENTATION CONSTRAINTS]")
         lines.append("Wording only: never alter, add, remove, reorder, reinterpret, or replace any plan value. The structured plan wins on conflict, and an explicit user response-length preference wins on presentation.")
         has_reason = (bool(getattr(expert, "state_exclusion_reason", False)) or
@@ -304,6 +315,18 @@ def render_prompt(frame: ConversationFrame, lang: str) -> str:
             lines.append("Give at most one plain-language reason total, and only for an existing exclusion or a demand reduction already present in the structured plan.")
         if bool(getattr(expert, "single_actionable_cue", False)) or bool(getattr(persona, "guided_explanation", False)):
             lines.append("Give at most one short practical movement cue, only for a movement already present in the structured plan. Do not add a movement.")
+        cue_complexity = getattr(expert, "cue_complexity", None)
+        if cue_complexity == "simple":
+            lines.append("If a cue is useful, keep that one cue short, external, and actionable. Avoid jargon and stacked technical instructions.")
+        elif cue_complexity == "standard":
+            lines.append("If a cue is useful, keep that one cue concise and practical. Use limited technical language only when the existing movement context supports it.")
+        elif cue_complexity == "advanced":
+            lines.append("If a cue is useful, keep that one cue concise and higher-detail, anchored only to the existing movement. Do not introduce technique or biomechanics not already supplied.")
+        rationale = getattr(expert, "adaptation_rationale", None)
+        reason_type = getattr(rationale, "reason_type", None)
+        decision = getattr(rationale, "plan_decision", None)
+        if reason_type in {"restriction", "equipment", "experience", "goal", "progression", "recovery_adjustment", "substitution", "exclusion"} and decision == f"existing_{reason_type}":
+            lines.append("If relevant, give at most one short plain-language reason for the already fixed plan variation. State only its existing category; do not name internal rules, IDs, scores, physiology, or a new adaptation.")
         if bool(getattr(persona, "guided_explanation", False)):
             lines.append("Use clear practical language without condescension or unnecessary definitions.")
         if bool(getattr(persona, "advanced_autonomy", False)):

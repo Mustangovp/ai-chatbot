@@ -11,6 +11,7 @@ import base64
 import threading
 import json as _json_lib
 import re
+from typing import Mapping
 
 from werkzeug.middleware.proxy_fix import ProxyFix
 app = Flask(__name__, static_folder='static', template_folder='templates')
@@ -2573,6 +2574,17 @@ def _persona_expert_training_active():
     return os.getenv("PERSONA_EXPERT_TRAINING_ACTIVE", "false").strip().lower() == "true"
 
 
+def _render_nutrition_delivery(plan, lang: str, profile: Mapping[str, object] | None = None) -> str:
+    """Render a fixed NutritionPlan; ARG-001 is opt-in presentation only."""
+    rationale = None
+    if _persona_expert_communication_active():
+        try:
+            rationale = persona_expert_projection.build_nutrition_rationale(plan)
+        except Exception:
+            rationale = None
+    return nutrition_plan.render_delivery(plan, lang, profile, nutrition_rationale=rationale)
+
+
 def _conversation_composer_active():
     return os.getenv("CONVERSATION_COMPOSER_ACTIVE", "false").strip().lower() == "true"
 
@@ -4027,7 +4039,7 @@ def chat():
                     yield sse({"done": True})
                     return
                 if _revised_nutrition_plan is not None:
-                    reply_text = nutrition_plan.render_delivery(_revised_nutrition_plan, lang, profile)
+                    reply_text = _render_nutrition_delivery(_revised_nutrition_plan, lang, profile)
                     yield sse({"t": reply_text})
                     speech_event = _speech_event(reply_text, preserve_visible=True)
                     if speech_event:
@@ -4103,7 +4115,7 @@ def chat():
                                           or nutrition_conversation.failed_message(lang))
                             nutrition_delivery_failed = True
                         else:
-                            reply_text = nutrition_plan.render_delivery(authoritative_plan, lang, profile)
+                            reply_text = _render_nutrition_delivery(authoritative_plan, lang, profile)
                         yield sse({"t": reply_text})
                         speech_event = _speech_event(reply_text, preserve_visible=nutrition_delivery_failed)
                         if speech_event:
@@ -4130,7 +4142,7 @@ def chat():
                             provenance={"generator": "openai_chat_completions_json", "model": model_to_use},
                             language=lang,
                         )
-                        reply_text = nutrition_plan.render_delivery(authoritative_plan, lang, profile)
+                        reply_text = _render_nutrition_delivery(authoritative_plan, lang, profile)
                     except nutrition_plan.NutritionPlanError as validation_error:
                         # One repair attempt is allowed for a rejected structured
                         # response. It receives only the deterministic failure,
@@ -4156,7 +4168,7 @@ def chat():
                                 provenance={"generator": "openai_chat_completions_json_repair", "model": repair_model},
                                 language=lang,
                             )
-                            reply_text = nutrition_plan.render_delivery(authoritative_plan, lang, profile)
+                            reply_text = _render_nutrition_delivery(authoritative_plan, lang, profile)
                         except Exception as repair_error:
                             print(f"[chat] nutrition repair failed: {type(repair_error).__name__} reason={repair_error}")
                             authoritative_plan = nutrition_plan.build_source_backed_plan(
@@ -4165,7 +4177,7 @@ def chat():
                                 restrictions=_nutrition_restrictions(profile),
                             )
                             if authoritative_plan is not None:
-                                reply_text = nutrition_plan.render_delivery(authoritative_plan, lang, profile)
+                                reply_text = _render_nutrition_delivery(authoritative_plan, lang, profile)
                             else:
                                 failed_nutrition_turn = nutrition_conversation.fail_generation(
                                     _nutrition_conversation, lang, "structured_plan_validation_failed")
@@ -4179,7 +4191,7 @@ def chat():
                             restrictions=_nutrition_restrictions(profile),
                         )
                         if authoritative_plan is not None:
-                            reply_text = nutrition_plan.render_delivery(authoritative_plan, lang, profile)
+                            reply_text = _render_nutrition_delivery(authoritative_plan, lang, profile)
                         else:
                             failed_nutrition_turn = nutrition_conversation.fail_generation(
                                 _nutrition_conversation, lang, "structured_plan_validation_failed")

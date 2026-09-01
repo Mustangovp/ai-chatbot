@@ -176,12 +176,8 @@ def _workout(decision, profile, prefs, subject, *, record=True, expert_consensus
         minutes = min(minutes, 25)
         mobility_req = "gentle_rom"
         families = list(dict.fromkeys(families + ["mobility"]))
-    if "MCG-001" in rules:
-        joint = "low"
-        mobility_req = "gentle_rom"
-        minutes = min(minutes, 25)
-        families = [family for family in families if family not in {"squat", "hinge", "conditioning"}]
-        movements.append("painful range")
+    # MCG-001 may explain an exclusion already created by a higher authority.
+    # It never creates or changes a recommendation blueprint.
     if explicit_experience in {"beginner", "intermediate", "advanced"}:
         difficulty = explicit_experience if explicit_experience != "intermediate" else "moderate"
         minutes = {"beginner": min(minutes, 25), "moderate": 35, "advanced": max(minutes, 50)}[difficulty]
