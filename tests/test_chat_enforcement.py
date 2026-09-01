@@ -3459,12 +3459,51 @@ def test_glp_001_selects_only_plan_grounded_reasons_in_authority_order():
 
     for facts, expected in (
         ({**profile, "medicalRestrictions": "avoid overhead pressing"}, "restriction"),
-        (profile, "equipment"),
-        ({**profile, "equipment": "gym"}, "experience"),
+        (profile, None),
+        ({**profile, "equipment": "gym"}, None),
     ):
         rationale = persona_expert_projection._glp_001_rationale(
             facts=facts, preferences={}, training_plan=plan, exercise_library=library)
-        assert rationale is not None and rationale.reason_type == expected
+        assert (rationale.reason_type if rationale else None) == expected
+
+
+@pytest.mark.parametrize(("facts", "plan_reason", "expected"), [
+    ({"level": "beginner"}, "experience_adaptation", "experience"),
+    ({"goal": "strength"}, "goal_adaptation", "goal"),
+    ({"equipment": "bodyweight"}, "equipment_adaptation", "equipment"),
+])
+def test_glp_001_requires_a_typed_delivered_plan_adaptation_for_profile_metadata(
+        facts, plan_reason, expected):
+    plan = build_training_plan(recommendation_blueprint_id="glp-delivered", facts=_neutral_expert_profile())
+    delivered = replace(
+        plan,
+        parent_plan_id="glp-parent",
+        parent_plan_version="v1",
+        revision_id="glp-revision",
+        revision_reasons=(plan_reason,),
+        lifecycle_policy_version="glp-test-policy",
+    )
+
+    rationale = persona_expert_projection._glp_001_rationale(
+        facts=facts, preferences={}, training_plan=delivered, exercise_library=load_exercise_library())
+
+    assert rationale == persona_expert_projection.AdaptationRationale(expected, f"existing_{expected}")
+    assert plan == build_training_plan(recommendation_blueprint_id="glp-delivered", facts=_neutral_expert_profile())
+    assert persona_expert_projection._glp_001_rationale(
+        facts={}, preferences={}, training_plan=delivered, exercise_library=load_exercise_library()) is None
+
+
+def test_glp_001_does_not_join_clr_004_projection_without_a_delivered_adaptation():
+    profile = _neutral_expert_profile()
+    baseline = build_training_plan(recommendation_blueprint_id="glp-clr-isolation", facts=profile)
+    _, constraints = persona_expert_projection.build_training_projections(
+        persona_adaptation={}, profile_facts=profile, locked_preferences={},
+        training_plan=baseline, exercise_library=load_exercise_library(),
+        expert_consensus=types.SimpleNamespace(applicable_rule_ids=("CLR-004",)),
+    )
+
+    assert constraints.adaptation_rationale is None
+    assert constraints.is_none
 
 
 def test_glp_001_fails_closed_without_structured_plan_reason_or_from_hse_or_free_text():
