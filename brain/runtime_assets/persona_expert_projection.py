@@ -16,6 +16,14 @@ _CUE_COMPLEXITY_BY_EXPERIENCE = {
     "advanced": "advanced",
 }
 _CUE_COMPLEXITIES = frozenset(_CUE_COMPLEXITY_BY_EXPERIENCE.values())
+_GLP_REASON_TYPES = frozenset({
+    "restriction", "equipment", "experience", "goal", "progression",
+    "recovery_adjustment", "substitution", "exclusion",
+})
+_GLP_PRIORITY = (
+    "restriction", "exclusion", "substitution", "progression", "recovery_adjustment",
+    "equipment", "experience", "goal",
+)
 _HIGHER_AUTHORITY_MOVEMENT_KEYS = frozenset({
     "clinicianRestrictions", "medicalRestrictions", "healthRestrictions", "trainingRestrictions",
 })
@@ -44,11 +52,74 @@ class ExpertCommunicationConstraints:
     state_recovery_reason: bool = False
     single_actionable_cue: bool = False
     cue_complexity: str | None = None
+    adaptation_rationale: object | None = None
 
     @property
     def is_none(self) -> bool:
         return not any((self.state_exclusion_reason, self.state_recovery_reason,
-                        self.single_actionable_cue, self.cue_complexity in _CUE_COMPLEXITIES))
+                        self.single_actionable_cue, self.cue_complexity in _CUE_COMPLEXITIES,
+                        _valid_adaptation_rationale(self.adaptation_rationale) is not None))
+
+
+@dataclass(frozen=True)
+class AdaptationRationale:
+    """Closed, ID-free explanation of an adaptation already fixed in a plan."""
+
+    reason_type: str
+    plan_decision: str
+
+
+def _valid_adaptation_rationale(value: object) -> AdaptationRationale | None:
+    if not isinstance(value, AdaptationRationale):
+        return None
+    if value.reason_type not in _GLP_REASON_TYPES or not isinstance(value.plan_decision, str):
+        return None
+    expected = f"existing_{value.reason_type}"
+    return value if value.plan_decision == expected else None
+
+
+def _values(value: object) -> tuple[str, ...]:
+    if isinstance(value, str):
+        return (value,) if value.strip() else ()
+    if isinstance(value, (tuple, list, set, frozenset)):
+        return tuple(str(item) for item in value if str(item).strip())
+    return ()
+
+
+def _glp_001_rationale(*, facts: Mapping[str, object], preferences: Mapping[str, object],
+                        training_plan, exercise_library) -> AdaptationRationale | None:
+    """Select one pre-existing plan reason in the established authority order."""
+    candidates: set[str] = set()
+    if any(_values(facts.get(key)) for key in _HIGHER_AUTHORITY_MOVEMENT_KEYS):
+        candidates.add("restriction")
+    if _values(preferences.get("exercise_exclusions")):
+        candidates.add("exclusion")
+    revision_reasons = tuple(getattr(training_plan, "revision_reasons", ()) or ())
+    if "validated_substitution" in revision_reasons:
+        candidates.add("substitution")
+    if tuple(getattr(training_plan, "progression_decision_ids", ()) or ()):
+        candidates.add("progression")
+    if "reduced_demand" in revision_reasons:
+        candidates.add("recovery_adjustment")
+    sessions = tuple(getattr(training_plan, "sessions", ()) or ())
+    if _values(facts.get("equipment")) and sessions:
+        try:
+            available = {item.strip().lower() for item in _values(facts.get("equipment"))}
+            used = {item.value for session in sessions for prescription in session.prescriptions
+                    for item in exercise_library.require(
+                        prescription.exercise_id, prescription.exercise_version).equipment}
+            if used and used.issubset(available):
+                candidates.add("equipment")
+        except Exception:
+            pass
+    if _canonical_experience(facts) is not None and sessions:
+        candidates.add("experience")
+    if str(facts.get("goal") or "").strip() and sessions:
+        candidates.add("goal")
+    for reason_type in _GLP_PRIORITY:
+        if reason_type in candidates:
+            return AdaptationRationale(reason_type, f"existing_{reason_type}")
+    return None
 
 
 def _canonical_experience(facts: Mapping[str, object]) -> str | None:
@@ -173,5 +244,8 @@ def build_training_projections(*, persona_adaptation: Mapping[str, object] | Non
         cue_complexity=_cue_complexity(
             rule_ids=rule_ids, expert_consensus=expert_consensus, experience=experience,
             higher_authority_instruction=_has_higher_authority_movement_instruction(facts, preferences)),
+        adaptation_rationale=_glp_001_rationale(
+            facts=facts, preferences=preferences, training_plan=training_plan,
+            exercise_library=exercise_library),
     )
     return persona, constraints

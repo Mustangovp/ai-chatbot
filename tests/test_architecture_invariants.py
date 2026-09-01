@@ -153,9 +153,15 @@ def test_expert_rule_validation_fails_closed_for_duplicate_missing_or_unresolved
     with pytest.raises(ValueError, match="missing source reference"):
         validate_expert_rule_packs((replace(packs[0], rules=(missing, *packs[0].rules[1:])), *packs[1:]))
 
-    unresolved = replace(packs[0].rules[0], runtime_ready=True)
+    unresolved_pack = next(pack for pack in packs if any(not rule.runtime_ready for rule in pack.rules))
+    unresolved_rule = next(rule for rule in unresolved_pack.rules if not rule.runtime_ready)
+    unresolved = replace(unresolved_rule, runtime_ready=True)
     with pytest.raises(ValueError, match="unresolved rule"):
-        validate_expert_rule_packs((replace(packs[0], rules=(unresolved, *packs[0].rules[1:])), *packs[1:]))
+        validate_expert_rule_packs(tuple(
+            replace(pack, rules=tuple(unresolved if rule is unresolved_rule else rule for rule in pack.rules))
+            if pack is unresolved_pack else pack
+            for pack in packs
+        ))
 
 
 def test_runtime_assets_are_limited_to_the_approved_shadow_boundary():

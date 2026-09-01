@@ -2983,6 +2983,57 @@ def test_wnk_011_malformed_projection_is_ignored_by_the_composer():
     assert "higher-detail" not in prompt
 
 
+def test_glp_001_selects_only_plan_grounded_reasons_in_authority_order():
+    library = load_exercise_library()
+    profile = _neutral_expert_profile()
+    profile.update({"goal": "strength", "level": "beginner", "equipment": "bodyweight"})
+    plan = build_training_plan(recommendation_blueprint_id="glp-001", facts=profile)
+    _, constraints = persona_expert_projection.build_training_projections(
+        persona_adaptation={}, profile_facts=profile,
+        locked_preferences={"exercise_exclusions": ("vertical_push",)},
+        training_plan=plan, exercise_library=library,
+        expert_consensus=types.SimpleNamespace(applicable_rule_ids=()),
+    )
+
+    assert constraints.adaptation_rationale == persona_expert_projection.AdaptationRationale(
+        "exclusion", "existing_exclusion")
+
+    for facts, expected in (
+        ({**profile, "medicalRestrictions": "avoid overhead pressing"}, "restriction"),
+        (profile, "equipment"),
+        ({**profile, "equipment": "gym"}, "experience"),
+    ):
+        rationale = persona_expert_projection._glp_001_rationale(
+            facts=facts, preferences={}, training_plan=plan, exercise_library=library)
+        assert rationale is not None and rationale.reason_type == expected
+
+
+def test_glp_001_fails_closed_without_structured_plan_reason_or_from_hse_or_free_text():
+    empty_plan = types.SimpleNamespace(sessions=(), revision_reasons=(), progression_decision_ids=())
+    library = load_exercise_library()
+    for facts in ({}, {"message": "I need a different workout"}, {"motivation": "low", "confidence": "low"}):
+        assert persona_expert_projection._glp_001_rationale(
+            facts=facts, preferences={}, training_plan=empty_plan, exercise_library=library) is None
+
+
+def test_glp_001_projection_is_composer_only_and_malformed_values_fail_closed():
+    rationale = persona_expert_projection.AdaptationRationale("equipment", "existing_equipment")
+    expert = persona_expert_projection.ExpertCommunicationConstraints(adaptation_rationale=rationale)
+    prompt = conversation_composer.render_prompt(conversation_composer.compose(
+        conversation_composer.build_policy(
+            decision=types.SimpleNamespace(outcome="recommend"), message="build a workout"),
+        validated_blueprint=_workout_blueprint(), expert_communication_constraints=expert), "en")
+    malformed = persona_expert_projection.ExpertCommunicationConstraints(
+        adaptation_rationale=types.SimpleNamespace(reason_type="equipment", plan_decision="untrusted"))
+    malformed_prompt = conversation_composer.render_prompt(conversation_composer.compose(
+        conversation_composer.build_policy(
+            decision=types.SimpleNamespace(outcome="recommend"), message="build a workout"),
+        validated_blueprint=_workout_blueprint(), expert_communication_constraints=malformed), "en")
+
+    assert "already fixed plan variation" in prompt
+    assert "ADDITIONAL PRESENTATION CONSTRAINTS" not in malformed_prompt
+
+
 def test_expert_consensus_conflicts_and_safety_are_resolved_deterministically():
     snapshot = _shadow_snapshot(
         profile=_profile(level="beginner", injuries="knee pain"),
