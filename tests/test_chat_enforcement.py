@@ -1168,7 +1168,7 @@ def test_authenticated_chat_applies_only_comparable_persisted_completion_to_new_
 
 def test_api_workout_accepts_and_preserves_the_immutable_completion_contract(client, monkeypatch):
     profile = _profile(recoveryFeel="fresh")
-    _login_for_chat(client, profile)
+    uid = _login_for_chat(client, profile)
     plan = build_training_plan(recommendation_blueprint_id="api-completion", facts=profile)
     projection = appmod.training_renderer.render_completion_projection(plan, load_exercise_library())
     session = projection["sessions"][0]
@@ -1183,13 +1183,16 @@ def test_api_workout_accepts_and_preserves_the_immutable_completion_contract(cli
         } for item in session["exercises"]],
     }
     captured = {}
-    monkeypatch.setattr(appmod.store, "log_workout", lambda _uid, payload: captured.update(session=payload) or "workout-1")
+    store.persist_delivered_training_plan(uid, appmod.delivered_plan_lineage(plan))
+    monkeypatch.setattr(appmod.store, "record_training_completion",
+                        lambda _uid, payload, evidence: captured.update(session=payload, completion=evidence) or "workout-1")
 
-    response = client.post("/api/workout", json={"session": {"type": "full body", "exercises": []},
+    response = client.post("/api/workout", json={"session": {"type": "full body", "exercises": [], "completion": 100},
                                                    "workout_completion": completion})
 
     assert response.status_code == 200
     assert captured["session"]["workout_completion"] == completion
+    assert captured["completion"] == completion
 
 
 def test_api_workout_rejects_malformed_explicit_effort_without_persisting(client, monkeypatch):

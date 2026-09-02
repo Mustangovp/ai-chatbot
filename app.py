@@ -63,6 +63,7 @@ from training_engine import renderer as training_renderer
 from training_engine.rationale import build_recommendation_rationale
 from training_engine.cross_session import adapt_from_persisted_history
 from training_engine.longitudinal import context_from_persisted_history
+from training_engine.lineage import delivered_plan_lineage
 from training_engine.advisory import persona_expert_training_signals
 from training_engine.health_restrictions import (
     FitnessLimitationState,
@@ -1737,11 +1738,13 @@ def api_workout():
     if workout_completion is not None:
         try:
             validate_workout_completion_payload(workout_completion)
+            session = dict(session)
+            session["workout_completion"] = workout_completion
+            wid = store.record_training_completion(u["id"], session, workout_completion)
         except ValueError:
             return jsonify({"error": "invalid_workout_completion"}), 400
-        session = dict(session)
-        session["workout_completion"] = workout_completion
-    wid = store.log_workout(u["id"], session)
+    else:
+        wid = store.log_workout(u["id"], session)
     # M0: workout evidence for the Athlete Model (failure-isolated).
     athlete_store.observe(u["id"], "workout_completed", session)
     return jsonify({"ok": True, "id": wid})
@@ -2947,7 +2950,9 @@ def chat():
             except Exception as _me:
                 print(f"[chat] memory build failed: {_me}")
             try:
-                pers_workouts = store.list_workouts(chat_uid, limit=40)
+                pers_workouts = store.list_training_completion_records(chat_uid, limit=40)
+                if not pers_workouts:
+                    pers_workouts = store.list_workouts(chat_uid, limit=40)
             except Exception as _we:
                 print(f"[chat] workout load failed: {_we}")
             try:
@@ -4214,6 +4219,13 @@ def chat():
                     # an already validated deterministic training plan.
                     training_completion = None
                     try:
+                        if chat_uid:
+                            try:
+                                store.persist_delivered_training_plan(
+                                    chat_uid, delivered_plan_lineage(_training_plan_blueprint))
+                            except Exception as lineage_error:
+                                # Delivery remains available if additive lineage storage is unavailable.
+                                print(f"[training-lineage] delivery persistence omitted: {type(lineage_error).__name__}")
                         recommendation_rationale = _training_recommendation_rationale(
                             _training_plan_blueprint, profile,
                             followup=_workout_followup,

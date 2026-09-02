@@ -126,5 +126,6 @@ data/*.db
 !tests/test_progression_state.py
 !tests/test_training_lifecycle.py
 !tests/test_training_lifecycle_runtime.py
+!tests/test_training_lineage.py
 !tests/test_workout_completion_contract.py
 !tests/test_recipe_engine.py

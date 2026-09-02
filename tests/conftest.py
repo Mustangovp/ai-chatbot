@@ -38,6 +38,8 @@ def _bootstrap_schema():
 _CLEAN_ORDER = (
     "human_state_reviews", "human_state_events", "human_state",
     "recommendation_history", "user_preferences",
+    "training_completion_prescriptions", "training_completions", "delivered_training_prescriptions",
+    "delivered_training_sessions", "delivered_training_plans",
     "brain_events", "brain_decisions", "athlete_models", "conversations", "workout_history",
     "nutrition_history", "coach_memory", "account_training_constraints", "subscriptions", "auth_identities",
     "login_tokens", "sessions", "payments", "free_usage", "users",

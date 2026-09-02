@@ -13,7 +13,7 @@ Design guarantees requested for 1.0:
   • coach_id / source columns are present (nullable) so multiple AI coaches and
     wearable data sources can be added later without a migration redesign.
 """
-import os, uuid, hashlib, secrets, datetime as _dt, time as _time
+import os, uuid, hashlib, secrets, datetime as _dt, time as _time, math
 from contextlib import contextmanager
 from sqlalchemy import (
     create_engine, MetaData, Table, Column, String, Integer, Boolean, Float,
@@ -224,6 +224,70 @@ account_training_constraints = Table("account_training_constraints", metadata,
     Index("ix_account_training_constraints_user", "user_id"),
 )
 
+# Immutable, account-owned training lineage.  These records are deliberately
+# separate from conversation_runtime_state: the latter remains a bounded
+# conversation/safety cache, while this ledger proves cross-session identity.
+delivered_training_plans = Table("delivered_training_plans", metadata,
+    _uuid_col(),
+    Column("user_id", Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+    Column("plan_id", String(512), nullable=False),
+    Column("plan_version", String(48), nullable=False),
+    Column("lineage", JSON, nullable=False),
+    _ts(name="delivered_at"),
+    UniqueConstraint("user_id", "plan_id", "plan_version", name="uq_delivered_training_plan_identity"),
+    Index("ix_delivered_training_plans_user_delivered", "user_id", "delivered_at"),
+)
+
+delivered_training_sessions = Table("delivered_training_sessions", metadata,
+    _uuid_col(),
+    Column("delivered_plan_id", Uuid(as_uuid=True), ForeignKey("delivered_training_plans.id", ondelete="CASCADE"), nullable=False),
+    Column("session_id", String(512), nullable=False),
+    Column("session_index", Integer, nullable=False),
+    Column("selection_blueprint_id", String(512), nullable=False),
+    Column("estimated_duration_minutes", Integer, nullable=False),
+    UniqueConstraint("delivered_plan_id", "session_id", name="uq_delivered_training_session_identity"),
+)
+
+delivered_training_prescriptions = Table("delivered_training_prescriptions", metadata,
+    _uuid_col(),
+    Column("delivered_session_id", Uuid(as_uuid=True), ForeignKey("delivered_training_sessions.id", ondelete="CASCADE"), nullable=False),
+    Column("prescription_id", String(96), nullable=False),
+    Column("exercise_id", String(128), nullable=False),
+    Column("exercise_version", String(48), nullable=False),
+    Column("prescription", JSON, nullable=False),
+    UniqueConstraint("delivered_session_id", "prescription_id", name="uq_delivered_training_prescription_identity"),
+)
+
+training_completions = Table("training_completions", metadata,
+    _uuid_col(),
+    Column("user_id", Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+    Column("delivered_plan_id", Uuid(as_uuid=True), ForeignKey("delivered_training_plans.id", ondelete="CASCADE"), nullable=False),
+    Column("delivered_session_id", Uuid(as_uuid=True), ForeignKey("delivered_training_sessions.id", ondelete="CASCADE"), nullable=False),
+    Column("workout_id", String(256), nullable=False),
+    Column("completion_percent", Integer, nullable=False),
+    Column("completed_at", DateTime(timezone=True), nullable=False),
+    _ts(name="recorded_at"),
+    UniqueConstraint("user_id", "workout_id", name="uq_training_completion_workout"),
+    UniqueConstraint("delivered_plan_id", "delivered_session_id", name="uq_training_completion_session"),
+    Index("ix_training_completions_user_completed", "user_id", "completed_at"),
+)
+
+training_completion_prescriptions = Table("training_completion_prescriptions", metadata,
+    _uuid_col(),
+    Column("completion_id", Uuid(as_uuid=True), ForeignKey("training_completions.id", ondelete="CASCADE"), nullable=False),
+    Column("prescription_index", Integer, nullable=False),
+    Column("prescription_id", String(96), nullable=False),
+    Column("exercise_id", String(128), nullable=False),
+    Column("exercise_version", String(48), nullable=False),
+    Column("completed_sets", Integer, nullable=False),
+    Column("completed_repetitions", Integer, nullable=False),
+    Column("completed_load", Float),
+    Column("completed_rpe", Float),
+    Column("completed_rir", Integer),
+    Column("completed_effort", String(24)),
+    UniqueConstraint("completion_id", "prescription_id", name="uq_training_completion_prescription"),
+)
+
 _ACCOUNT_TRAINING_CONSTRAINT_PATTERNS = frozenset({
     "vertical_push", "horizontal_push", "vertical_pull", "squat", "lunge", "hinge",
 })
@@ -359,6 +423,7 @@ _MIGRATIONS = [
     (15, lambda c: _add_account_training_constraint_lifecycle(c)),
     (16, lambda c: _add_runtime_workout_decision(c)),
     (17, lambda c: _add_runtime_nutrition_followup(c)),
+    (18, lambda c: None), # account-owned immutable training lineage tables
 ]
 
 
@@ -890,6 +955,300 @@ def list_workouts(user_id, limit=60):
         rows = c.execute(select(workout_history).where(workout_history.c.user_id == _as_uuid(user_id))
                          .order_by(workout_history.c.occurred_at.desc()).limit(limit)).mappings().all()
     return [_serial(r) for r in rows]
+
+
+# ── Individual Model v1 · immutable training lineage ────────────────────────
+def persist_delivered_training_plan(user_id, lineage):
+    """Persist one validated immutable plan lineage, or return its exact prior row.
+
+    The caller supplies only a projection of ``TrainingPlanBlueprintV2``.  This
+    store never accepts renderer text, profile snapshots, or request history.
+    """
+    normalized = _validated_training_lineage(lineage)
+    user_uuid = _as_uuid(user_id)
+    with engine.begin() as c:
+        existing = c.execute(select(delivered_training_plans).where(
+            delivered_training_plans.c.user_id == user_uuid,
+            delivered_training_plans.c.plan_id == normalized["plan_id"],
+            delivered_training_plans.c.plan_version == normalized["plan_version"],
+        )).mappings().first()
+        if existing:
+            if existing["lineage"] != normalized:
+                raise ValueError("delivered training plan identity is immutable")
+            return str(existing["id"])
+        plan_uuid = uuid.uuid4()
+        c.execute(insert(delivered_training_plans).values(
+            id=plan_uuid, user_id=user_uuid, plan_id=normalized["plan_id"],
+            plan_version=normalized["plan_version"], lineage=normalized,
+        ))
+        for session in normalized["sessions"]:
+            session_uuid = uuid.uuid4()
+            c.execute(insert(delivered_training_sessions).values(
+                id=session_uuid, delivered_plan_id=plan_uuid,
+                session_id=session["session_id"], session_index=session["session_index"],
+                selection_blueprint_id=session["selection_blueprint_id"],
+                estimated_duration_minutes=session["estimated_duration_minutes"],
+            ))
+            for prescription in session["prescriptions"]:
+                c.execute(insert(delivered_training_prescriptions).values(
+                    id=uuid.uuid4(), delivered_session_id=session_uuid,
+                    prescription_id=prescription["prescription_id"],
+                    exercise_id=prescription["exercise_id"],
+                    exercise_version=prescription["exercise_version"],
+                    prescription=prescription,
+                ))
+    return str(plan_uuid)
+
+
+def list_training_completion_records(user_id, limit=60):
+    """Return normalized completions in the legacy reader shape for safe replay.
+
+    This is an account-owned source; legacy ``workout_history`` remains a
+    compatibility fallback for accounts that predate immutable lineage.
+    """
+    user_uuid = _as_uuid(user_id)
+    with engine.begin() as c:
+        rows = c.execute(select(training_completions).where(
+            training_completions.c.user_id == user_uuid,
+        ).order_by(training_completions.c.completed_at.desc()).limit(limit)).mappings().all()
+        records = []
+        for row in rows:
+            facts = c.execute(select(training_completion_prescriptions).where(
+                training_completion_prescriptions.c.completion_id == row["id"],
+            ).order_by(training_completion_prescriptions.c.prescription_index.asc())).mappings().all()
+            plan = c.execute(select(delivered_training_plans).where(
+                delivered_training_plans.c.id == row["delivered_plan_id"],
+                delivered_training_plans.c.user_id == user_uuid,
+            )).mappings().first()
+            session = c.execute(select(delivered_training_sessions).where(
+                delivered_training_sessions.c.id == row["delivered_session_id"],
+                delivered_training_sessions.c.delivered_plan_id == row["delivered_plan_id"],
+            )).mappings().first()
+            if not plan or not session or not facts:
+                continue
+            payload = {
+                "workout_id": row["workout_id"], "plan_id": plan["plan_id"],
+                "plan_version": plan["plan_version"], "session_id": session["session_id"],
+                "completion_timestamp": _aware(row["completed_at"]).isoformat(),
+                "exercises": [{
+                    "prescription_id": item["prescription_id"],
+                    "exercise_id": item["exercise_id"], "exercise_version": item["exercise_version"],
+                    "completed_sets": item["completed_sets"],
+                    "completed_repetitions": item["completed_repetitions"],
+                    "completed_load": item["completed_load"], "completed_rpe": item["completed_rpe"],
+                    "completed_rir": item["completed_rir"], "completed_effort": item["completed_effort"],
+                } for item in facts],
+            }
+            records.append({
+                "id": str(row["id"]), "occurred_at": _aware(row["completed_at"]).isoformat(),
+                "completion": row["completion_percent"],
+                "exercises": {"workout_completion": payload},
+            })
+    return records
+
+
+def record_training_completion(user_id, session, completion):
+    """Atomically store normalized completion facts and legacy history output.
+
+    Every identity is looked up through the authenticated account before a fact
+    is written.  A rejected lineage writes neither table.
+    """
+    if not isinstance(session, dict) or not isinstance(completion, dict):
+        raise ValueError("training completion requires structured session evidence")
+    user_uuid = _as_uuid(user_id)
+    plan_id = _lineage_text(completion.get("plan_id"), "plan_id", maximum=512)
+    plan_version = _lineage_text(completion.get("plan_version"), "plan_version", maximum=48)
+    session_id = _lineage_text(completion.get("session_id"), "session_id", maximum=512)
+    workout_id = _lineage_text(completion.get("workout_id"), "workout_id", maximum=256)
+    completed_at = _lineage_timestamp(completion.get("completion_timestamp"))
+    percentage = _lineage_percentage(session.get("completion"))
+    exercises = completion.get("exercises")
+    if not isinstance(exercises, list) or not exercises:
+        raise ValueError("training completion exercises are required")
+    with engine.begin() as c:
+        plan = c.execute(select(delivered_training_plans).where(
+            delivered_training_plans.c.user_id == user_uuid,
+            delivered_training_plans.c.plan_id == plan_id,
+            delivered_training_plans.c.plan_version == plan_version,
+        )).mappings().first()
+        if not plan:
+            raise ValueError("unknown delivered training plan")
+        delivered_session = c.execute(select(delivered_training_sessions).where(
+            delivered_training_sessions.c.delivered_plan_id == plan["id"],
+            delivered_training_sessions.c.session_id == session_id,
+        )).mappings().first()
+        if not delivered_session:
+            raise ValueError("unknown delivered training session")
+        expected_rows = c.execute(select(delivered_training_prescriptions).where(
+            delivered_training_prescriptions.c.delivered_session_id == delivered_session["id"],
+        )).mappings().all()
+        expected = {row["prescription_id"]: row for row in expected_rows}
+        facts = []
+        seen = set()
+        for raw in exercises:
+            fact = _validated_completion_fact(raw)
+            prescription = expected.get(fact["prescription_id"])
+            if prescription is None or fact["prescription_id"] in seen:
+                raise ValueError("unknown or duplicate delivered prescription")
+            if (fact["exercise_id"], fact["exercise_version"]) != (
+                    prescription["exercise_id"], prescription["exercise_version"]):
+                raise ValueError("completion exercise does not match delivered prescription")
+            prescribed_sets = prescription["prescription"].get("sets")
+            if not isinstance(prescribed_sets, int) or fact["completed_sets"] > prescribed_sets:
+                raise ValueError("completed sets exceed the delivered prescription")
+            if (fact["completed_sets"] == 0) != (fact["completed_repetitions"] == 0):
+                raise ValueError("completed work must include both sets and repetitions")
+            seen.add(fact["prescription_id"])
+            facts.append(fact)
+        if set(expected) != seen:
+            raise ValueError("completion must cover the exact delivered session")
+        duplicate = c.execute(select(training_completions.c.id).where(
+            (training_completions.c.user_id == user_uuid) & (
+                (training_completions.c.workout_id == workout_id) |
+                ((training_completions.c.delivered_plan_id == plan["id"]) &
+                 (training_completions.c.delivered_session_id == delivered_session["id"]))),
+        )).first()
+        if duplicate:
+            raise ValueError("duplicate training completion")
+        completion_uuid = uuid.uuid4()
+        c.execute(insert(training_completions).values(
+            id=completion_uuid, user_id=user_uuid, delivered_plan_id=plan["id"],
+            delivered_session_id=delivered_session["id"], workout_id=workout_id,
+            completion_percent=percentage, completed_at=completed_at,
+        ))
+        for fact_index, fact in enumerate(facts, 1):
+            c.execute(insert(training_completion_prescriptions).values(
+                id=uuid.uuid4(), completion_id=completion_uuid,
+                prescription_index=fact_index, **fact,
+            ))
+        legacy_id = uuid.uuid4()
+        c.execute(insert(workout_history).values(
+            id=legacy_id, user_id=user_uuid, type=session.get("type"),
+            exercises=session.get("exercises"), difficulty=session.get("diff"),
+            completion=percentage, source="app"))
+        c.execute(insert(coach_memory).values(
+            id=uuid.uuid4(), user_id=user_uuid, kind="workout", source="app", payload=session))
+    return str(legacy_id)
+
+
+def _validated_training_lineage(value):
+    if not isinstance(value, dict):
+        raise ValueError("delivered training lineage must be an object")
+    plan_id = _lineage_text(value.get("plan_id"), "plan_id", maximum=512)
+    plan_version = _lineage_text(value.get("plan_version"), "plan_version", maximum=48)
+    sessions = value.get("sessions")
+    if not isinstance(sessions, list) or not sessions:
+        raise ValueError("delivered training lineage requires sessions")
+    normalized_sessions = []
+    seen_sessions = set()
+    for expected_index, raw in enumerate(sessions, 1):
+        if not isinstance(raw, dict):
+            raise ValueError("delivered training session is invalid")
+        session_id = _lineage_text(raw.get("session_id"), "session_id", maximum=512)
+        if session_id in seen_sessions or raw.get("session_index") != expected_index:
+            raise ValueError("delivered training sessions must be unique and ordered")
+        seen_sessions.add(session_id)
+        if not isinstance(raw.get("estimated_duration_minutes"), int) or raw["estimated_duration_minutes"] < 1:
+            raise ValueError("delivered training session duration is invalid")
+        prescriptions = raw.get("prescriptions")
+        if not isinstance(prescriptions, list) or not prescriptions:
+            raise ValueError("delivered training session prescriptions are required")
+        normalized_prescriptions = []
+        seen_prescriptions = set()
+        for prescription in prescriptions:
+            if not isinstance(prescription, dict):
+                raise ValueError("delivered prescription is invalid")
+            pid = _lineage_text(prescription.get("prescription_id"), "prescription_id")
+            if pid in seen_prescriptions:
+                raise ValueError("delivered prescriptions must be unique")
+            seen_prescriptions.add(pid)
+            required = ("exercise_id", "exercise_version", "sets", "rep_min", "rep_max",
+                        "target_rpe", "target_rir", "rest_seconds", "tempo",
+                        "selection_policy_version", "prescription_policy_version",
+                        "construction_policy_version")
+            if any(field not in prescription for field in required):
+                raise ValueError("delivered prescription provenance is incomplete")
+            normalized_prescriptions.append(dict(prescription))
+        normalized_sessions.append({
+            "session_id": session_id, "session_index": raw["session_index"],
+            "selection_blueprint_id": _lineage_text(
+                raw.get("selection_blueprint_id"), "selection_blueprint_id", maximum=512),
+            "estimated_duration_minutes": raw["estimated_duration_minutes"],
+            "prescriptions": normalized_prescriptions,
+        })
+    metadata = value.get("metadata")
+    if not isinstance(metadata, dict):
+        raise ValueError("delivered training lineage metadata is required")
+    return {"plan_id": plan_id, "plan_version": plan_version,
+            "metadata": dict(metadata), "sessions": normalized_sessions}
+
+
+def _lineage_text(value, field, maximum=128):
+    if not isinstance(value, str) or not value.strip() or len(value.strip()) > maximum:
+        raise ValueError(f"{field} is invalid")
+    return value.strip()
+
+
+def _lineage_timestamp(value):
+    if not isinstance(value, str):
+        raise ValueError("completion timestamp is invalid")
+    try:
+        parsed = _dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise ValueError("completion timestamp is invalid") from error
+    if parsed.tzinfo is None:
+        raise ValueError("completion timestamp must be timezone-aware")
+    return parsed.astimezone(_dt.timezone.utc)
+
+
+def _lineage_percentage(value):
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 100:
+        raise ValueError("completion percentage is invalid")
+    return value
+
+
+def _validated_completion_fact(value):
+    if not isinstance(value, dict):
+        raise ValueError("completion prescription is invalid")
+    required = ("prescription_id", "exercise_id", "exercise_version", "completed_sets", "completed_repetitions")
+    if any(field not in value for field in required):
+        raise ValueError("completion prescription is incomplete")
+    if (isinstance(value["completed_sets"], bool) or isinstance(value["completed_repetitions"], bool)
+            or not isinstance(value["completed_sets"], int) or not isinstance(value["completed_repetitions"], int)
+            or value["completed_sets"] < 0 or value["completed_repetitions"] < 0):
+        raise ValueError("completion performance values are invalid")
+    def optional_number(field, minimum=None, maximum=None):
+        raw = value.get(field)
+        if raw is None:
+            return None
+        if isinstance(raw, bool):
+            raise ValueError(f"{field} is invalid")
+        try:
+            normalized = float(raw)
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"{field} is invalid") from error
+        if not math.isfinite(normalized) or (minimum is not None and normalized < minimum) or (
+                maximum is not None and normalized > maximum):
+            raise ValueError(f"{field} is invalid")
+        return normalized
+    completed_rir = value.get("completed_rir")
+    if completed_rir is not None and (isinstance(completed_rir, bool) or not isinstance(completed_rir, int)
+                                      or not 0 <= completed_rir <= 10):
+        raise ValueError("completed_rir is invalid")
+    effort = value.get("completed_effort")
+    if effort not in (None, "easy", "productive", "hard", "incomplete"):
+        raise ValueError("completed_effort is invalid")
+    return {
+        "prescription_id": _lineage_text(value["prescription_id"], "prescription_id"),
+        "exercise_id": _lineage_text(value["exercise_id"], "exercise_id"),
+        "exercise_version": _lineage_text(value["exercise_version"], "exercise_version"),
+        "completed_sets": value["completed_sets"],
+        "completed_repetitions": value["completed_repetitions"],
+        "completed_load": optional_number("completed_load", minimum=0),
+        "completed_rpe": optional_number("completed_rpe", minimum=1, maximum=10),
+        "completed_rir": completed_rir,
+        "completed_effort": effort,
+    }
 
 def list_timeline(user_id, limit=100):
     with engine.begin() as c:
