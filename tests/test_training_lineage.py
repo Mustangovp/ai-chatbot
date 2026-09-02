@@ -95,7 +95,7 @@ def test_v18_lineage_migration_is_additive_and_safe_to_rerun_for_legacy_accounts
             "delivered_training_prescriptions", "training_completions",
             "training_completion_prescriptions"} <= set(inspect(store.engine).get_table_names())
     with store.engine.begin() as connection:
-        assert connection.execute(select(func.max(store.schema_version.c.version))).scalar_one() == 18
+        assert connection.execute(select(func.max(store.schema_version.c.version))).scalar_one() == 19
 
 
 def test_completion_requires_exact_owned_plan_session_and_prescription_lineage():
@@ -177,3 +177,45 @@ def test_normalized_completion_reloads_to_the_same_deterministic_progression_evi
     assert advance_training_lifecycle(plan=plan, workouts=(reloaded_result,), recovery=recovery) == (
         advance_training_lifecycle(plan=plan, workouts=(original_result,), recovery=recovery))
     assert reloaded_result.completed_at == datetime(2026, 9, 2, 10, 0, tzinfo=timezone.utc)
+
+
+def test_authoritative_completion_materializes_idempotent_progression_events_and_states():
+    user = _user("lineage-progression@example.com")
+    plan = _plan()
+    store.persist_delivered_training_plan(user, delivered_plan_lineage(plan))
+    completion = _completion(plan)
+
+    store.record_training_completion(user, _session(completion), completion)
+    with store.engine.begin() as connection:
+        events = connection.execute(select(store.training_progression_events).where(
+            store.training_progression_events.c.user_id == store._as_uuid(user))).mappings().all()
+        states = connection.execute(select(store.exercise_progression_states).where(
+            store.exercise_progression_states.c.user_id == store._as_uuid(user))).mappings().all()
+    assert len(events) == len(completion["exercises"])
+    assert len(states) == len(completion["exercises"])
+    assert {(item["exercise_id"], item["exercise_version"]) for item in events} == {
+        (item["exercise_id"], item["exercise_version"]) for item in completion["exercises"]}
+
+    before = [item["state"] for item in states]
+    store.rebuild_progression_state(user, plan.plan_id, plan.version)
+    with store.engine.begin() as connection:
+        after = connection.execute(select(store.exercise_progression_states.c.state).where(
+            store.exercise_progression_states.c.user_id == store._as_uuid(user))).scalars().all()
+    assert sorted(after, key=lambda item: item["originating_workout_id"]) == sorted(
+        before, key=lambda item: item["originating_workout_id"])
+
+
+def test_progression_materialization_is_account_owned_and_never_backfills_legacy_history():
+    owner = _user("lineage-progression-owner@example.com")
+    other = _user("lineage-progression-other@example.com")
+    plan = _plan()
+    store.persist_delivered_training_plan(owner, delivered_plan_lineage(plan))
+    completion = _completion(plan)
+    store.record_training_completion(owner, _session(completion), completion)
+    store.log_workout(other, {"type": "legacy", "completion": 100})
+
+    with pytest.raises(ValueError, match="unknown delivered training plan"):
+        store.rebuild_progression_state(other, plan.plan_id, plan.version)
+    with store.engine.begin() as connection:
+        assert connection.execute(select(func.count()).select_from(store.training_progression_events).where(
+            store.training_progression_events.c.user_id == store._as_uuid(other))).scalar_one() == 0

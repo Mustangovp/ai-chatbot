@@ -288,6 +288,36 @@ training_completion_prescriptions = Table("training_completion_prescriptions", m
     UniqueConstraint("completion_id", "prescription_id", name="uq_training_completion_prescription"),
 )
 
+# Deterministic materializations of Slice 1 factual lineage. These are never
+# authored by a model and are replayable from the immutable completion ledger.
+training_progression_events = Table("training_progression_events", metadata,
+    _uuid_col(),
+    Column("user_id", Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+    Column("completion_id", Uuid(as_uuid=True), ForeignKey("training_completions.id", ondelete="CASCADE"), nullable=False),
+    Column("delivered_plan_id", Uuid(as_uuid=True), ForeignKey("delivered_training_plans.id", ondelete="CASCADE"), nullable=False),
+    Column("delivered_session_id", Uuid(as_uuid=True), ForeignKey("delivered_training_sessions.id", ondelete="CASCADE"), nullable=False),
+    Column("prescription_id", String(96), nullable=False),
+    Column("exercise_id", String(128), nullable=False),
+    Column("exercise_version", String(48), nullable=False),
+    Column("decision", JSON, nullable=False),
+    Column("event_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("completion_id", "prescription_id", name="uq_training_progression_event_source"),
+    Index("ix_training_progression_events_user_event", "user_id", "event_at"),
+)
+
+exercise_progression_states = Table("exercise_progression_states", metadata,
+    _uuid_col(),
+    Column("user_id", Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+    Column("delivered_plan_id", Uuid(as_uuid=True), ForeignKey("delivered_training_plans.id", ondelete="CASCADE"), nullable=False),
+    Column("exercise_id", String(128), nullable=False),
+    Column("exercise_version", String(48), nullable=False),
+    Column("source_completion_id", Uuid(as_uuid=True), ForeignKey("training_completions.id", ondelete="CASCADE"), nullable=False),
+    Column("state", JSON, nullable=False),
+    _ts(name="updated_at"),
+    UniqueConstraint("user_id", "delivered_plan_id", "exercise_id", "exercise_version",
+                     name="uq_exercise_progression_state_identity"),
+)
+
 _ACCOUNT_TRAINING_CONSTRAINT_PATTERNS = frozenset({
     "vertical_push", "horizontal_push", "vertical_pull", "squat", "lunge", "hinge",
 })
@@ -424,6 +454,7 @@ _MIGRATIONS = [
     (16, lambda c: _add_runtime_workout_decision(c)),
     (17, lambda c: _add_runtime_nutrition_followup(c)),
     (18, lambda c: None), # account-owned immutable training lineage tables
+    (19, lambda c: None), # deterministic progression event/state materializations
 ]
 
 
@@ -1121,6 +1152,7 @@ def record_training_completion(user_id, session, completion):
                 id=uuid.uuid4(), completion_id=completion_uuid,
                 prescription_index=fact_index, **fact,
             ))
+        _materialize_progression_from_lineage(c, user_uuid, plan, completion_uuid)
         legacy_id = uuid.uuid4()
         c.execute(insert(workout_history).values(
             id=legacy_id, user_id=user_uuid, type=session.get("type"),
@@ -1129,6 +1161,134 @@ def record_training_completion(user_id, session, completion):
         c.execute(insert(coach_memory).values(
             id=uuid.uuid4(), user_id=user_uuid, kind="workout", source="app", payload=session))
     return str(legacy_id)
+
+
+def rebuild_progression_state(user_id, plan_id, plan_version):
+    """Recreate materialized state from exact Slice 1 lineage, never legacy text."""
+    user_uuid = _as_uuid(user_id)
+    with engine.begin() as c:
+        plan = c.execute(select(delivered_training_plans).where(
+            delivered_training_plans.c.user_id == user_uuid,
+            delivered_training_plans.c.plan_id == _lineage_text(plan_id, "plan_id", maximum=512),
+            delivered_training_plans.c.plan_version == _lineage_text(plan_version, "plan_version", maximum=48),
+        )).mappings().first()
+        if not plan:
+            raise ValueError("unknown delivered training plan")
+        c.execute(delete(exercise_progression_states).where(
+            exercise_progression_states.c.user_id == user_uuid,
+            exercise_progression_states.c.delivered_plan_id == plan["id"],
+        ))
+        _materialize_progression_from_lineage(c, user_uuid, plan, None)
+
+
+def _materialize_progression_from_lineage(connection, user_uuid, plan_row, source_completion_id):
+    """Persist only deterministic lifecycle outputs from exact normalized facts."""
+    from decimal import Decimal
+    from training_engine import RecoverySnapshot, RecoveryState, advance_training_lifecycle, workout_completion_from_payload
+    from training_engine.lineage import plan_from_delivered_lineage
+
+    try:
+        plan = plan_from_delivered_lineage(plan_row["lineage"])
+        completions = connection.execute(select(training_completions).where(
+            training_completions.c.user_id == user_uuid,
+            training_completions.c.delivered_plan_id == plan_row["id"],
+            training_completions.c.completion_percent == 100,
+        ).order_by(training_completions.c.completed_at.asc(), training_completions.c.id.asc())).mappings().all()
+        if not completions:
+            return
+        payloads, sources = [], {}
+        for completion in completions:
+            session = connection.execute(select(delivered_training_sessions).where(
+                delivered_training_sessions.c.id == completion["delivered_session_id"],
+            )).mappings().first()
+            facts = connection.execute(select(training_completion_prescriptions).where(
+                training_completion_prescriptions.c.completion_id == completion["id"],
+            ).order_by(training_completion_prescriptions.c.prescription_index.asc())).mappings().all()
+            if not session or not facts:
+                return
+            payload = {
+                "workout_id": completion["workout_id"], "plan_id": plan.plan_id,
+                "plan_version": plan.version, "session_id": session["session_id"],
+                "completion_timestamp": _aware(completion["completed_at"]).isoformat(),
+                "exercises": [{key: row[key] for key in (
+                    "prescription_id", "exercise_id", "exercise_version", "completed_sets",
+                    "completed_repetitions", "completed_load", "completed_rpe", "completed_rir",
+                    "completed_effort")} for row in facts],
+            }
+            payloads.append(payload)
+            sources[completion["workout_id"]] = (completion, facts)
+        workouts = tuple(workout_completion_from_payload(payload, plan=plan).to_workout_result()
+                         for payload in payloads)
+        result = advance_training_lifecycle(
+            plan=plan, workouts=workouts,
+            recovery=RecoverySnapshot(RecoveryState.NORMALLY_RECOVERED, Decimal("30"),
+                                      "progression-lineage-replay-v1"),
+        )
+    except (TypeError, ValueError, KeyError):
+        # Corrupt or incomplete lineage does not create an inferred progression record.
+        return
+    for event in result.history.events:
+        completion, facts = sources[event.workout_id]
+        fact = next((row for row in facts if (row["exercise_id"], row["exercise_version"]) ==
+                     (event.decision.exercise_id, event.decision.exercise_version)), None)
+        if fact is None:
+            return
+        existing = connection.execute(select(training_progression_events.c.id).where(
+            training_progression_events.c.completion_id == completion["id"],
+            training_progression_events.c.prescription_id == fact["prescription_id"],
+        )).first()
+        if not existing:
+            connection.execute(insert(training_progression_events).values(
+                id=uuid.uuid4(), user_id=user_uuid, completion_id=completion["id"],
+                delivered_plan_id=plan_row["id"], delivered_session_id=completion["delivered_session_id"],
+                prescription_id=fact["prescription_id"], exercise_id=event.decision.exercise_id,
+                exercise_version=event.decision.exercise_version,
+                decision=_progression_decision_payload(event.decision),
+                event_at=completion["completed_at"],
+            ))
+    latest_completion = completions[-1]
+    for state in result.progress_states:
+        values = dict(user_id=user_uuid, delivered_plan_id=plan_row["id"],
+                      exercise_id=state.exercise_id, exercise_version=state.exercise_version,
+                      source_completion_id=latest_completion["id"], state=_progression_state_payload(state))
+        existing = connection.execute(select(exercise_progression_states.c.id).where(
+            exercise_progression_states.c.user_id == user_uuid,
+            exercise_progression_states.c.delivered_plan_id == plan_row["id"],
+            exercise_progression_states.c.exercise_id == state.exercise_id,
+            exercise_progression_states.c.exercise_version == state.exercise_version,
+        )).first()
+        if existing:
+            connection.execute(update(exercise_progression_states).where(
+                exercise_progression_states.c.id == existing[0]).values(**values))
+        else:
+            connection.execute(insert(exercise_progression_states).values(id=uuid.uuid4(), **values))
+
+
+def _progression_decision_payload(decision):
+    return {"decision_id": decision.decision_id, "decision_type": decision.decision_type.value,
+            "reason": decision.reason, "policy_version": decision.policy_version,
+            "load_delta_kg": None if decision.load_delta_kg is None else str(decision.load_delta_kg),
+            "repetition_delta": decision.repetition_delta, "set_delta": decision.set_delta,
+            "replacement_exercise_id": decision.replacement_exercise_id,
+            "replacement_exercise_version": decision.replacement_exercise_version}
+
+
+def _progression_state_payload(state):
+    counters = state.counters
+    deload = state.deload_history
+    return {"state_version": state.state_version, "progression_policy_version": state.progression_policy_version,
+            "originating_workout_id": state.originating_workout_id,
+            "first_workout_at": _aware(state.first_workout_at).isoformat(),
+            "counters": {field: getattr(counters, field) for field in (
+                "consecutive_successful_sessions", "consecutive_failed_sessions", "load_progression_stage",
+                "repetition_progression_stage", "set_progression_stage", "accumulated_progression_count")},
+            "deload_history": {"last_deload_workout_id": deload.last_deload_workout_id,
+                                "last_deload_at": None if deload.last_deload_at is None else _aware(deload.last_deload_at).isoformat(),
+                                "progression_cycles_since_deload": deload.progression_cycles_since_deload},
+            "weeks_on_current_exercise": state.weeks_on_current_exercise,
+            "load_progression_eligible": state.load_progression_eligible,
+            "deload_required": state.deload_required,
+            "rotation_recommended": state.rotation_recommended}
 
 
 def _validated_training_lineage(value):
@@ -1163,7 +1323,7 @@ def _validated_training_lineage(value):
                 raise ValueError("delivered prescriptions must be unique")
             seen_prescriptions.add(pid)
             required = ("exercise_id", "exercise_version", "sets", "rep_min", "rep_max",
-                        "target_rpe", "target_rir", "rest_seconds", "tempo",
+                        "movement_pattern", "target_rpe", "target_rir", "rest_seconds", "tempo",
                         "selection_policy_version", "prescription_policy_version",
                         "construction_policy_version")
             if any(field not in prescription for field in required):
@@ -1179,6 +1339,8 @@ def _validated_training_lineage(value):
     metadata = value.get("metadata")
     if not isinstance(metadata, dict):
         raise ValueError("delivered training lineage metadata is required")
+    if not isinstance(metadata.get("weekly_volume"), list) or not metadata["weekly_volume"]:
+        raise ValueError("delivered training lineage weekly volume is required")
     return {"plan_id": plan_id, "plan_version": plan_version,
             "metadata": dict(metadata), "sessions": normalized_sessions}
 
