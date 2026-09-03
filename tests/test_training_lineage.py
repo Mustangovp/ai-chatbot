@@ -18,6 +18,11 @@ from training_engine import (
 )
 from training_engine.cross_session import adapt_from_persisted_history
 from training_engine.lineage import delivered_plan_lineage
+from training_engine.training_trajectory import (
+    CLASSIFIER_VERSION,
+    TrajectoryObservation,
+    classify,
+)
 
 
 _FACTS = {"goal": "strength", "level": "intermediate", "equipment": "gym", "recoveryFeel": "fresh"}
@@ -95,7 +100,7 @@ def test_v18_lineage_migration_is_additive_and_safe_to_rerun_for_legacy_accounts
             "delivered_training_prescriptions", "training_completions",
             "training_completion_prescriptions"} <= set(inspect(store.engine).get_table_names())
     with store.engine.begin() as connection:
-        assert connection.execute(select(func.max(store.schema_version.c.version))).scalar_one() == 19
+        assert connection.execute(select(func.max(store.schema_version.c.version))).scalar_one() == store._MIGRATIONS[-1][0]
 
 
 def test_completion_requires_exact_owned_plan_session_and_prescription_lineage():
@@ -219,3 +224,40 @@ def test_progression_materialization_is_account_owned_and_never_backfills_legacy
     with store.engine.begin() as connection:
         assert connection.execute(select(func.count()).select_from(store.training_progression_events).where(
             store.training_progression_events.c.user_id == store._as_uuid(other))).scalar_one() == 0
+
+
+def _trajectory_observation(index, decision_type="maintain", *, version="1.0.0", exercise="dumbbell.goblet_squat"):
+    return TrajectoryObservation(
+        completion_id=f"completion-{index}", progression_event_id=f"event-{index}",
+        plan_id="comparable-plan", plan_version="training-plan-blueprint-v2",
+        prescription_id="comparable-prescription", exercise_id=exercise, exercise_version=version,
+        occurred_at=datetime(2026, 9, index, 10, 0, tzinfo=timezone.utc), decision_type=decision_type)
+
+
+@pytest.mark.parametrize("decision_type", ["increase_load", "increase_repetitions", "increase_sets"])
+def test_training_trajectory_marks_only_repeated_authoritative_forward_events_as_progressing(decision_type):
+    trajectory = classify(tuple(_trajectory_observation(index, decision_type) for index in range(1, 4)))
+    assert trajectory.classifier_version == CLASSIFIER_VERSION
+    assert trajectory.state == "progressing"
+    assert trajectory.completion_ids == ("completion-1", "completion-2", "completion-3")
+
+
+def test_training_trajectory_stable_and_all_fail_closed_paths():
+    stable = classify(tuple(_trajectory_observation(index) for index in range(1, 4)))
+    assert stable.state == "stable"
+    assert classify(tuple(_trajectory_observation(index) for index in range(1, 3))).state == "insufficient_evidence"
+    assert classify((_trajectory_observation(1, "maintain"), _trajectory_observation(2, "maintain"),
+                    _trajectory_observation(3, "maintain", version="2.0.0"))).state == "insufficient_evidence"
+    assert classify(tuple(_trajectory_observation(index, "deload") for index in range(1, 4))).state == "insufficient_evidence"
+
+
+def test_progression_materialization_creates_only_insufficient_trajectory_for_one_completion():
+    user = _user("lineage-trajectory@example.com")
+    plan = _plan()
+    store.persist_delivered_training_plan(user, delivered_plan_lineage(plan))
+    completion = _completion(plan)
+    store.record_training_completion(user, _session(completion), completion)
+    with store.engine.begin() as connection:
+        states = connection.execute(select(store.training_trajectory_states.c.trajectory_state).where(
+            store.training_trajectory_states.c.user_id == store._as_uuid(user))).scalars().all()
+    assert states and set(states) == {"insufficient_evidence"}

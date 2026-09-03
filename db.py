@@ -318,6 +318,21 @@ exercise_progression_states = Table("exercise_progression_states", metadata,
                      name="uq_exercise_progression_state_identity"),
 )
 
+training_trajectory_states = Table("training_trajectory_states", metadata,
+    _uuid_col(),
+    Column("user_id", Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+    Column("delivered_plan_id", Uuid(as_uuid=True), ForeignKey("delivered_training_plans.id", ondelete="CASCADE"), nullable=False),
+    Column("exercise_id", String(128), nullable=False),
+    Column("exercise_version", String(48), nullable=False),
+    Column("classifier_version", String(48), nullable=False),
+    Column("trajectory_state", String(32), nullable=False),
+    Column("completion_ids", JSON, nullable=False),
+    Column("progression_event_ids", JSON, nullable=False),
+    _ts(name="generated_at"),
+    UniqueConstraint("user_id", "delivered_plan_id", "exercise_id", "exercise_version",
+                     name="uq_training_trajectory_state_identity"),
+)
+
 _ACCOUNT_TRAINING_CONSTRAINT_PATTERNS = frozenset({
     "vertical_push", "horizontal_push", "vertical_pull", "squat", "lunge", "hinge",
 })
@@ -455,6 +470,7 @@ _MIGRATIONS = [
     (17, lambda c: _add_runtime_nutrition_followup(c)),
     (18, lambda c: None), # account-owned immutable training lineage tables
     (19, lambda c: None), # deterministic progression event/state materializations
+    (20, lambda c: None), # replay-derived training trajectory materialization
 ]
 
 
@@ -1153,6 +1169,7 @@ def record_training_completion(user_id, session, completion):
                 prescription_index=fact_index, **fact,
             ))
         _materialize_progression_from_lineage(c, user_uuid, plan, completion_uuid)
+        _materialize_training_trajectory(c, user_uuid, plan)
         legacy_id = uuid.uuid4()
         c.execute(insert(workout_history).values(
             id=legacy_id, user_id=user_uuid, type=session.get("type"),
@@ -1179,6 +1196,7 @@ def rebuild_progression_state(user_id, plan_id, plan_version):
             exercise_progression_states.c.delivered_plan_id == plan["id"],
         ))
         _materialize_progression_from_lineage(c, user_uuid, plan, None)
+        _materialize_training_trajectory(c, user_uuid, plan)
 
 
 def _materialize_progression_from_lineage(connection, user_uuid, plan_row, source_completion_id):
@@ -1289,6 +1307,48 @@ def _progression_state_payload(state):
             "load_progression_eligible": state.load_progression_eligible,
             "deload_required": state.deload_required,
             "rotation_recommended": state.rotation_recommended}
+
+
+def _materialize_training_trajectory(connection, user_uuid, plan_row):
+    """Materialize an observation only from persisted deterministic events."""
+    from training_engine.training_trajectory import TrajectoryObservation, classify
+
+    rows = connection.execute(select(training_progression_events).where(
+        training_progression_events.c.user_id == user_uuid,
+        training_progression_events.c.delivered_plan_id == plan_row["id"],
+    ).order_by(training_progression_events.c.event_at.asc(), training_progression_events.c.id.asc())).mappings().all()
+    grouped = {}
+    for row in rows:
+        decision = row["decision"]
+        if not isinstance(decision, dict) or not isinstance(decision.get("decision_type"), str):
+            continue
+        identity = (row["exercise_id"], row["exercise_version"])
+        grouped.setdefault(identity, []).append(TrajectoryObservation(
+            completion_id=str(row["completion_id"]), progression_event_id=str(row["id"]),
+            plan_id=plan_row["plan_id"], plan_version=plan_row["plan_version"],
+            prescription_id=row["prescription_id"], exercise_id=row["exercise_id"],
+            exercise_version=row["exercise_version"], occurred_at=_aware(row["event_at"]),
+            decision_type=decision["decision_type"],
+        ))
+    for (exercise_id, exercise_version), observations in grouped.items():
+        trajectory = classify(tuple(observations))
+        values = dict(user_id=user_uuid, delivered_plan_id=plan_row["id"],
+                      exercise_id=exercise_id, exercise_version=exercise_version,
+                      classifier_version=trajectory.classifier_version,
+                      trajectory_state=trajectory.state,
+                      completion_ids=list(trajectory.completion_ids),
+                      progression_event_ids=list(trajectory.progression_event_ids))
+        existing = connection.execute(select(training_trajectory_states.c.id).where(
+            training_trajectory_states.c.user_id == user_uuid,
+            training_trajectory_states.c.delivered_plan_id == plan_row["id"],
+            training_trajectory_states.c.exercise_id == exercise_id,
+            training_trajectory_states.c.exercise_version == exercise_version,
+        )).first()
+        if existing:
+            connection.execute(update(training_trajectory_states).where(
+                training_trajectory_states.c.id == existing[0]).values(**values))
+        else:
+            connection.execute(insert(training_trajectory_states).values(id=uuid.uuid4(), **values))
 
 
 def _validated_training_lineage(value):
