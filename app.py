@@ -34,6 +34,8 @@ stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 import db as store
 import personality
 import context_builder
+import individual_model_projection
+import individual_model_snapshot
 import decision_engine
 import conversation_composer
 import nutrition_conversation
@@ -2591,6 +2593,9 @@ def _render_nutrition_delivery(plan, lang: str, profile: Mapping[str, object] | 
 def _conversation_composer_active():
     return os.getenv("CONVERSATION_COMPOSER_ACTIVE", "false").strip().lower() == "true"
 
+def _individual_model_consumer_active():
+    return os.getenv("INDIVIDUAL_MODEL_CONSUMER", "false").strip().lower() == "true"
+
 
 def _nutrition_engine_v2_shadow_active():
     # Read-only Nutrition Engine V2 shadow. Fail-closed: default/invalid/missing → off.
@@ -3837,6 +3842,14 @@ def chat():
                     _conversation_frame, lang)
             except Exception as _composer_error:
                 print(f"[conversation-composer] frame failed: {_composer_error}")
+
+        if chat_uid and _individual_model_consumer_active() and _controlled_reply is None:
+            try:
+                _projection = individual_model_projection.build_projection(individual_model_snapshot.build_individual_model_snapshot(chat_uid))
+                _projection_prompt = individual_model_projection.render_prompt(_projection)
+                if _projection_prompt: system_content = system_content + "\n\n" + _projection_prompt
+            except Exception as _individual_model_error:
+                print(f"[individual-model] consumer failed: {type(_individual_model_error).__name__}")
 
         if _brain_enforcement_prompt_addendum:
             system_content = system_content + "\n\n" + _brain_enforcement_prompt_addendum
