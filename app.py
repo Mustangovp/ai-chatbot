@@ -35,6 +35,7 @@ import db as store
 import personality
 import context_builder
 import individual_model_projection
+import individual_model_shadow
 import individual_model_snapshot
 import decision_engine
 import conversation_composer
@@ -3843,13 +3844,41 @@ def chat():
             except Exception as _composer_error:
                 print(f"[conversation-composer] frame failed: {_composer_error}")
 
-        if chat_uid and _individual_model_consumer_active() and _controlled_reply is None:
+        if chat_uid and _controlled_reply is None:
+            _individual_model_consumer_for_request = _individual_model_consumer_active()
+            _individual_model_shadow_for_request = individual_model_shadow.shadow_enabled()
+        else:
+            _individual_model_consumer_for_request = False
+            _individual_model_shadow_for_request = False
+        if (_individual_model_consumer_for_request
+                or _individual_model_shadow_for_request):
+            _individual_model_started = time.perf_counter()
             try:
-                _projection = individual_model_projection.build_projection(individual_model_snapshot.build_individual_model_snapshot(chat_uid))
-                _projection_prompt = individual_model_projection.render_prompt(_projection)
-                if _projection_prompt: system_content = system_content + "\n\n" + _projection_prompt
+                _projection = individual_model_projection.build_projection(
+                    individual_model_snapshot.build_individual_model_snapshot(chat_uid))
             except Exception as _individual_model_error:
-                print(f"[individual-model] consumer failed: {type(_individual_model_error).__name__}")
+                if _individual_model_shadow_for_request:
+                    individual_model_shadow.observe_failure(
+                        _individual_model_error,
+                        latency_ms=(time.perf_counter() - _individual_model_started) * 1000,
+                    )
+                if _individual_model_consumer_for_request:
+                    print("[individual-model] consumer failed: "
+                          f"{type(_individual_model_error).__name__}")
+            else:
+                if _individual_model_shadow_for_request:
+                    individual_model_shadow.observe_projection(
+                        _projection,
+                        latency_ms=(time.perf_counter() - _individual_model_started) * 1000,
+                    )
+                if _individual_model_consumer_for_request:
+                    try:
+                        _projection_prompt = individual_model_projection.render_prompt(_projection)
+                        if _projection_prompt:
+                            system_content = system_content + "\n\n" + _projection_prompt
+                    except Exception as _individual_model_error:
+                        print("[individual-model] consumer failed: "
+                              f"{type(_individual_model_error).__name__}")
 
         if _brain_enforcement_prompt_addendum:
             system_content = system_content + "\n\n" + _brain_enforcement_prompt_addendum

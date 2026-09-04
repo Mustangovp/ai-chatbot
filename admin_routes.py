@@ -191,3 +191,21 @@ def admin_hse_presentation_shadow_telemetry():
     response.headers["Cache-Control"] = "no-store"
     response.headers["X-Robots-Tag"] = "noindex, nofollow"
     return response
+
+
+# Individual Model shadow exposes only approved process-local presence counters.
+@bp.route("/admin/individual-model-shadow/telemetry")
+def admin_individual_model_shadow_telemetry():
+    if not _admin_bearer_authorized():
+        return jsonify({"error": "not_found"}), 404
+
+    import individual_model_shadow
+
+    telemetry = individual_model_shadow.snapshot_telemetry()
+    response = jsonify({
+        field: int(telemetry.get(field, 0))
+        for field in individual_model_shadow.COUNTERS
+    })
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return response
