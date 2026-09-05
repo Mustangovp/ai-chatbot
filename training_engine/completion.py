@@ -144,7 +144,8 @@ def validate_workout_completion_payload(payload: Any) -> None:
         for field in ("prescription_id", "exercise_id", "exercise_version"):
             _text(item.get(field), field)
         _nonnegative_int(item.get("completed_sets"), "completed_sets")
-        _nonnegative_int(item.get("completed_repetitions"), "completed_repetitions")
+        if item.get("completed_repetitions") is not None:
+            _nonnegative_int(item.get("completed_repetitions"), "completed_repetitions")
         _optional_decimal(item.get("completed_load"), "completed_load")
         _optional_int(item.get("completed_rir"), "completed_rir", 0, 10)
         _optional_decimal(item.get("completed_rpe"), "completed_rpe", Decimal("1"), Decimal("10"))
