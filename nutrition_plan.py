@@ -15,10 +15,30 @@ import uuid
 from typing import Mapping, Sequence
 
 from nutrition_validation import NutritionTargets
+from nutrition_constraints import (
+    RestrictionSafetyError, recorded_profile_restrictions, validate_foods,
+)
 
 
 class NutritionPlanError(ValueError):
     pass
+
+
+class NutritionRestrictionError(NutritionPlanError):
+    """The existing plan authority cannot establish food suitability."""
+
+
+def _validate_restrictions(meals, restrictions):
+    try:
+        validate_foods((food for meal in meals for food in meal.foods), restrictions)
+    except RestrictionSafetyError as error:
+        raise NutritionRestrictionError(str(error)) from error
+
+
+def restriction_blocked_message(lang):
+    return ("I can't safely deliver this nutrition plan because its foods could not be verified against your recorded restrictions. Please clarify the restriction or food identity."
+            if str(lang).lower() == "en" else
+            "Не мога безопасно да предоставя този хранителен план, защото храните не са проверени спрямо записаните ограничения. Моля, уточни ограничението или храната.")
 
 
 class MeasurementState(str, Enum):
@@ -310,6 +330,7 @@ def build_plan(payload: Mapping[str, object], targets: NutritionTargets, *,
         totals = totals.plus(meal.macros)
     status = _validate_totals(totals, targets)
     stamp = (now or dt.datetime.now(dt.timezone.utc)).astimezone(dt.timezone.utc).isoformat()
+    _validate_restrictions(meals, restrictions)
     return NutritionPlan(
         id=plan_id,
         version="nutrition-plan-v1",
@@ -593,6 +614,7 @@ def from_record(record: Mapping[str, object]) -> NutritionPlan:
     provenance = record.get("provenance") or {}
     if not isinstance(restrictions, list) or not isinstance(provenance, Mapping):
         raise NutritionPlanError("stored plan metadata is invalid")
+    _validate_restrictions(meals, restrictions)
     return NutritionPlan(
         plan_id, version, created_at_utc, targets,
         tuple(sorted({str(item).strip() for item in restrictions if str(item).strip()})),
@@ -622,6 +644,7 @@ def _revision_plan(plan: NutritionPlan, meals: tuple[NutritionMeal, ...], *,
     status = _validate_totals(totals, plan.targets)
     provenance = dict(plan.provenance)
     provenance.update({"parent_plan_id": plan.id, "revision": operation.kind.value})
+    _validate_restrictions(meals, restrictions)
     return NutritionPlan(
         id=uuid.uuid4().hex,
         version=plan.version,
@@ -649,8 +672,8 @@ def apply_revision(plan: NutritionPlan, operation: RevisionOperation) -> Nutriti
             for food in meal.foods:
                 if target in food.display_name.lower():
                     foods.append(NutritionFood(
-                        food.id, food.catalog_id, replacement, food.grams, food.macros,
-                        food.food_id, food.measurement_state,
+                        food.id, None, replacement, food.grams, food.macros,
+                        _canonical_food_id(replacement, None), food.measurement_state,
                     ))
                     changed = True
                 else:
@@ -770,6 +793,7 @@ def _meal_reason(meal: NutritionMeal, targets: NutritionTargets, lang: str) -> s
 
 def render(plan: NutritionPlan, lang: str, recipe_tokens: Mapping[str, str] | None = None) -> str:
     """Deterministically project an authoritative plan into legacy chat text."""
+    _validate_restrictions(plan.meals, plan.restrictions)
     english = str(lang).lower() == "en"
     include_recipes = bool(recipe_tokens)
     labels = {
@@ -810,6 +834,10 @@ def render(plan: NutritionPlan, lang: str, recipe_tokens: Mapping[str, str] | No
 
 def render_delivery(plan: NutritionPlan, lang: str, profile: Mapping[str, object] | None = None) -> str:
     """Render a validated plan with a deterministic, non-authoritative explanation."""
+    try:
+        _validate_restrictions(plan.meals, plan.restrictions + recorded_profile_restrictions(profile))
+    except NutritionRestrictionError:
+        return restriction_blocked_message(lang)
     recipe_tokens: dict[str, str] = {}
     try:
         from recipe_engine.recipe_engine import match_plan

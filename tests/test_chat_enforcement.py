@@ -1098,7 +1098,7 @@ def test_chat_applies_traceable_completed_workout_to_next_training_revision(clie
         "exercise_id": item["exercise_id"],
         "exercise_version": item["exercise_version"],
         "completed_sets": item["prescribed_sets"],
-        "completed_repetitions": item["rep_max"],
+        "completed_repetitions": item["rep_max"], "actual_repetitions": item["rep_max"],
         "completed_load": "20",
         "completed_rpe": "7",
         "completed_rir": 3,
@@ -1138,10 +1138,12 @@ def test_authenticated_chat_applies_only_comparable_persisted_completion_to_new_
         "exercises": [{
             "prescription_id": item["prescription_id"], "exercise_id": item["exercise_id"],
             "exercise_version": item["exercise_version"],
-            "completed_sets": item["prescribed_sets"], "completed_repetitions": item["rep_max"],
+            "completed_sets": item["prescribed_sets"], "completed_repetitions": item["rep_max"], "actual_repetitions": item["rep_max"],
             "completed_load": None, "completed_rpe": "6", "completed_rir": 4,
         } for item in session["exercises"]],
     }
+    store.update_conversation_runtime_state(f"account:{uid}", "cross-session-evidence",
+        workout_blueprint=appmod.serialize_conversation_plan(parent))
     store.log_workout(uid, {
         "type": "deterministic", "completion": 100,
         "exercises": {"workout_completion": persisted_completion},
@@ -3702,7 +3704,7 @@ def test_nutrition_delivery_adds_a_deterministic_explanation_after_the_canonical
 def test_nutrition_delivery_rationale_is_localized_and_uses_only_plan_facts():
     plan = nutrition_plan.build_plan(
         _structured_plan_payload(), _NUTRITION_TARGETS,
-        restrictions=("vegetarian",), provenance={"test": "structured"})
+        restrictions=("peanut allergy",), provenance={"test": "structured"})
 
     delivered = nutrition_plan.render_delivery(plan, "bg")
 
@@ -4221,7 +4223,8 @@ def test_structured_nutrition_revisions_update_only_the_requested_objects_withou
     assert breakfast_revision["meals"][1:] == rice_revision["meals"][1:]
     assert breakfast_revision["totals"] == rice_revision["totals"]
     assert len(calls) == 1
-    assert len(store.list_nutrition_plans(uid)) == 4
+    assert breakfast[0]["t"] == nutrition_conversation.revision_unsupported_message("en")
+    assert len(store.list_nutrition_plans(uid)) == 3
     assert len(store.list_conversation(uid, limit=20)) == 8
 
 
@@ -4249,7 +4252,11 @@ def test_known_nutrition_constraints_do_not_trigger_a_duplicate_clarification_or
 
     response = _post(client, "I want a nutrition plan", profile=_profile(**{profile_key: profile_value}))
 
-    _assert_structured_plan_events(_events(response))
+    if profile_value == "vegetarian":
+        # The supplied fixture contains chicken/salmon: mathematical validity is not dietary suitability.
+        assert _events(response) == [{"t": nutrition_plan.restriction_blocked_message("en")}, {"done": True}]
+    else:
+        _assert_structured_plan_events(_events(response))
     assert len(calls) == 1
 
 

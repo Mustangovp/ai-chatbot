@@ -140,6 +140,8 @@ workout_history = Table("workout_history", metadata,
     Column("exercises", JSON),                  # [{name,sets,reps,weight}]
     Column("difficulty", String(24)),
     Column("completion", Integer),
+    Column("execution_state", String(16)),
+    Column("completion_evidence", JSON),
     Column("created_at", DateTime(timezone=True), server_default=func.now()),
     Index("ix_workout_user_occurred", "user_id", "occurred_at"),
 )
@@ -359,7 +361,18 @@ _MIGRATIONS = [
     (15, lambda c: _add_account_training_constraint_lifecycle(c)),
     (16, lambda c: _add_runtime_workout_decision(c)),
     (17, lambda c: _add_runtime_nutrition_followup(c)),
+    (18, lambda c: _add_execution_evidence(c)),
 ]
+
+
+def _add_execution_evidence(connection):
+    if not inspect(connection).has_table("workout_history"):
+        return
+    columns = {column["name"] for column in inspect(connection).get_columns("workout_history")}
+    if "execution_state" not in columns:
+        connection.execute(text("ALTER TABLE workout_history ADD COLUMN execution_state VARCHAR(16)"))
+    if "completion_evidence" not in columns:
+        connection.execute(text("ALTER TABLE workout_history ADD COLUMN completion_evidence JSON"))
 
 
 def _add_runtime_workout_blueprint(connection):
@@ -708,13 +721,15 @@ def list_account_training_constraint_records(user_id, *, active_only=True):
         if active_only:
             statement = statement.where(account_training_constraints.c.state == "active")
         rows = c.execute(statement.order_by(account_training_constraints.c.created_at.asc())).mappings().all()
+    if any(row["pattern"] not in _ACCOUNT_TRAINING_CONSTRAINT_PATTERNS for row in rows):
+        raise ValueError("account constraint identity unavailable")
     return tuple({
         "id": str(row["id"]),
         "pattern": str(row["pattern"]),
         "source": str(row["source"]),
         "state": str(row["state"]),
         "removable": row["source"] == "explicit_user" and row["state"] == "active",
-    } for row in rows if row["pattern"] in _ACCOUNT_TRAINING_CONSTRAINT_PATTERNS)
+    } for row in rows)
 
 
 def list_account_training_constraints(user_id):
@@ -786,15 +801,38 @@ def retire_account_training_constraint(user_id, constraint_id):
 
 # ── Workout / nutrition / conversation / memory (the account timeline) ────────
 def log_workout(user_id, session: dict):
+    from workout_execution import normalize_execution
+    completion = session.get("workout_completion")
+    if completion is None and isinstance(session.get("exercises"), dict):
+        completion = session["exercises"].get("workout_completion")
+    plan = _execution_plan(user_id, completion) if isinstance(completion, dict) else None
+    session = normalize_execution(session, completion, plan=plan)
     wid = uuid.uuid4()
     with engine.begin() as c:
         c.execute(insert(workout_history).values(
             id=wid, user_id=_as_uuid(user_id), type=session.get("type"),
             exercises=session.get("exercises"), difficulty=session.get("diff"),
-            completion=session.get("completion"), source="app"))
+            completion=session.get("completion"), execution_state=session["execution_state"],
+            completion_evidence=session.get("workout_completion"), source="app"))
         c.execute(insert(coach_memory).values(id=uuid.uuid4(), user_id=_as_uuid(user_id),
             kind="workout", source="app", payload=session))
     return str(wid)
+
+
+def _execution_plan(user_id, completion):
+    """Reuse account-owned server blueprints; never infer a prescription from UI text."""
+    from training_engine.followups import conversation_plan_from_record
+    with engine.begin() as c:
+        rows = c.execute(select(conversation_runtime_state.c.workout_blueprint).where(
+            conversation_runtime_state.c.subject == f"account:{user_id}"
+        )).scalars().all()
+    for raw in rows:
+        if isinstance(raw, dict) and (raw.get("plan_id"), raw.get("version")) == (
+                completion.get("plan_id"), completion.get("plan_version")):
+            state = conversation_plan_from_record(raw)
+            if state is not None:
+                return state.plan
+    return None
 
 def add_memory_event(user_id, kind, payload, source="app"):
     with engine.begin() as c:
@@ -889,7 +927,16 @@ def list_workouts(user_id, limit=60):
     with engine.begin() as c:
         rows = c.execute(select(workout_history).where(workout_history.c.user_id == _as_uuid(user_id))
                          .order_by(workout_history.c.occurred_at.desc()).limit(limit)).mappings().all()
-    return [_serial(r) for r in rows]
+    result = [_serial(r) for r in rows]
+    for row in result:
+        if not row.get("execution_state"):
+            # Legacy percentages/reps were populated from the prescription.
+            # Keep the historical row but never present those as observations.
+            row.update(execution_state="unknown", completion=None, completion_evidence=None)
+            from workout_execution import normalize_execution
+            raw = row.get("exercises")
+            row["exercises"] = normalize_execution({"exercises": raw if isinstance(raw, list) else []})["exercises"]
+    return result
 
 def list_timeline(user_id, limit=100):
     with engine.begin() as c:
@@ -916,7 +963,9 @@ def build_memory_context(user_id, en=True):
     last = wks[0]
     L = []
     L.append("[WORKOUT MEMORY]" if en else "[ТРЕНИРОВЪЧНА ПАМЕТ]")
-    L.append(("  Completed sessions: " if en else "  Завършени сесии: ") + str(len(wks)))
+    L.append(("  Recorded sessions: " if en else "  Записани сесии: ") + str(len(wks)))
+    L.append(("  Last execution state: " if en else "  Последно състояние на изпълнение: ")
+             + str(last.get("execution_state") or "unknown"))
     def _within(days):
         cnt = 0
         for w in wks:
@@ -928,7 +977,7 @@ def build_memory_context(user_id, en=True):
         return cnt
     L.append(("  Frequency (7d): " if en else "  Честота (7д): ") + str(_within(7)) + ("/week" if en else "/седмица"))
     exs = last.get("exercises") or []
-    exs_str = ", ".join(f"{e.get('name')} {e.get('sets')}×{e.get('reps')}" +
+    exs_str = ", ".join(f"{e.get('name') or e.get('exercise_id')} {e.get('completed_sets')}×{e.get('completed_repetitions')}" +
                         (f" @{e.get('weight')}kg" if e.get('weight') else "") for e in exs)
     try:
         occ = _aware(_dt.datetime.fromisoformat(last["occurred_at"]))
@@ -938,7 +987,7 @@ def build_memory_context(user_id, en=True):
         just, date_str = False, ""
     L.append(("  Last session: " if en else "  Последна сесия: ") + date_str + " — " +
              str(last.get("type") or "training") + ((" (" + exs_str + ")") if exs_str else ""))
-    if just:
+    if just and last.get("execution_state") == "completed":
         L.append("  ⚡ POST-WORKOUT — finished within the last 2 hours. Acknowledge it; do NOT prescribe a new workout."
                  if en else
                  "  ⚡ СЛЕД ТРЕНИРОВКА — завършена в последните 2 часа. Признай я; НЕ предлагай нова тренировка.")

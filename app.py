@@ -39,6 +39,8 @@ import nutrition_conversation
 import nutrition_followups
 import nutrition_plan
 import nutrition_validation
+from constraint_store_state import ConstraintLoadState, ConstraintStoreUnavailable, load_constraints
+from workout_execution import lifecycle_evidence
 from knowledge import KnowledgeResolver, load_default_registry
 from recommend import architect as recommendation_architect, engine as recommendation_planning, renderer as recommendation_renderer
 from training_engine import (
@@ -330,16 +332,15 @@ _ACCOUNT_TRAINING_CONSTRAINT_TEXT = {
 }
 
 
+def _load_account_training_constraints(user_id):
+    return load_constraints(lambda: store.list_account_training_constraints(user_id),
+                            _ACCOUNT_TRAINING_CONSTRAINT_TEXT)
+
+
 def _account_training_constraint_patterns(user_id):
-    """Read only known canonical account constraints; malformed records fail closed to ignored."""
     if not user_id:
         return ()
-    try:
-        stored = store.list_account_training_constraints(user_id)
-    except Exception as error:
-        print(f"[chat] account training constraint read unavailable: {type(error).__name__}")
-        return ()
-    return tuple(pattern for pattern in stored if pattern in _ACCOUNT_TRAINING_CONSTRAINT_TEXT)
+    return _load_account_training_constraints(user_id).require_available()
 
 
 def _account_training_constraint_records(user_id):
@@ -416,10 +417,15 @@ def _persist_account_training_constraints(user_id, restrictions):
     if not patterns:
         return ()
     try:
-        return store.add_account_training_constraints(user_id, patterns)
+        persisted = load_constraints(
+            lambda: store.add_account_training_constraints(user_id, patterns),
+            _ACCOUNT_TRAINING_CONSTRAINT_TEXT).require_available()
+        if not set(patterns).issubset(persisted):
+            raise ConstraintStoreUnavailable("account_constraint_write_not_confirmed")
+        return persisted
     except Exception as error:
         print(f"[chat] account training constraint write unavailable: {type(error).__name__}")
-        return ()
+        raise ConstraintStoreUnavailable("account_constraint_write_failed") from error
 
 
 def _conversation_medical_hold(scope):
@@ -1680,6 +1686,7 @@ def api_profile():
     if not u:
         return jsonify({"error": "unauthenticated"}), 401
     if request.method == "GET":
+        constraint_load = _load_account_training_constraints(u["id"])
         try:
             athlete_core = athlete_store.core_presence_projection(u["id"])
         except Exception as error:
@@ -1687,7 +1694,9 @@ def api_profile():
             athlete_core = None
         return jsonify({
             "profile": store.get_profile(u["id"]),
-            "training_constraints": list(_account_training_constraint_patterns(u["id"])),
+            "training_constraints": (list(constraint_load.patterns)
+                                     if constraint_load.state is not ConstraintLoadState.UNAVAILABLE else None),
+            "training_constraint_load_state": constraint_load.state.value,
             "training_constraint_records": list(_account_training_constraint_records(u["id"])),
             "athlete_core": athlete_core,
         })
@@ -1740,9 +1749,19 @@ def api_workout():
             return jsonify({"error": "invalid_workout_completion"}), 400
         session = dict(session)
         session["workout_completion"] = workout_completion
-    wid = store.log_workout(u["id"], session)
+    try:
+        wid = store.log_workout(u["id"], session)
+    except ValueError:
+        return jsonify({"error": "invalid_execution_evidence"}), 400
     # M0: workout evidence for the Athlete Model (failure-isolated).
-    athlete_store.observe(u["id"], "workout_completed", session)
+    # The frozen legacy browser cannot attest actual reps. Do not turn its final
+    # screen into completion evidence for the Athlete Model.
+    try:
+        saved = next((row for row in store.list_workouts(u["id"]) if row["id"] == wid), None)
+        if saved and saved.get("execution_state") == "completed":
+            athlete_store.observe(u["id"], "workout_completed", saved)
+    except Exception as error:
+        print(f"[workout] optional observation unavailable: {type(error).__name__}")
     return jsonify({"ok": True, "id": wid})
 
 
@@ -2553,7 +2572,10 @@ def _advance_active_training_plan(plan, payload):
     if not isinstance(raw_recovery, dict):
         raise TrainingRuntimeError("training lifecycle requires verified recovery evidence")
     try:
-        workouts = tuple(workout_result_from_payload(item, plan=plan) for item in raw_workouts)
+        evidence = tuple(lifecycle_evidence(item, plan) for item in raw_workouts)
+        if any(item is None for item in evidence):
+            return plan
+        workouts = tuple(workout_result_from_payload(item, plan=plan) for item in evidence)
         result = advance_training_lifecycle(
             plan=plan,
             workouts=workouts,
@@ -2919,14 +2941,17 @@ def chat():
         pers_nutrition_plans = []
         _account_constraint_retirement_intent = explicit_user_constraint_clearance_patterns(user_message)
         _retired_account_constraints = ()
+        _account_constraints_unavailable = False
+        _constraint_write_failed = False
         if chat_uid:
             db_profile = store.get_profile(chat_uid)
             if db_profile:
                 profile = db_profile
             _retired_account_constraints = _retire_account_training_constraints(
                 chat_uid, _account_constraint_retirement_intent)
-            profile = _merge_account_training_constraints(
-                profile, _account_training_constraint_patterns(chat_uid))
+            _constraint_load = _load_account_training_constraints(chat_uid)
+            _account_constraints_unavailable = _constraint_load.state is ConstraintLoadState.UNAVAILABLE
+            profile = _merge_account_training_constraints(profile, _constraint_load.patterns)
             try:
                 mem = store.build_memory_context(chat_uid, en=(lang == "en"))
                 if mem:
@@ -2936,6 +2961,8 @@ def chat():
                 print(f"[chat] memory build failed: {_me}")
             try:
                 pers_workouts = store.list_workouts(chat_uid, limit=40)
+                pers_workouts = [{**row, "exercises": {"workout_completion": row["completion_evidence"]}}
+                                 if row.get("completion_evidence") else row for row in pers_workouts]
             except Exception as _we:
                 print(f"[chat] workout load failed: {_we}")
             try:
@@ -3065,8 +3092,10 @@ def chat():
                 _restriction_controlled_reply = _explicit_health_restriction_reply(lang)
             else:
                 if chat_uid:
-                    _persist_account_training_constraints(
-                        chat_uid, _new_explicit_health_restrictions)
+                    try:
+                        _persist_account_training_constraints(chat_uid, _new_explicit_health_restrictions)
+                    except ConstraintStoreUnavailable:
+                        _constraint_write_failed = True
                 if not _restriction_turn_requests_workout(user_message):
                     _restriction_controlled_reply = _explicit_health_restriction_acknowledgement(lang)
         if (_retired_account_constraints and not _restriction_turn_requests_workout(user_message)):
@@ -3662,6 +3691,21 @@ def chat():
                         "[nutrition-v2-shadow] event=hook_import_failed reason=runtime_error "
                         "exception=%s worker_id=unknown", type(_v2_err).__name__)
 
+        # Missing authoritative constraints are not an empty constraint set. No
+        # subset from a profile/conversation proves an equivalent complete source.
+        _constraint_delivery_blocked = _constraint_write_failed or _account_constraints_unavailable
+        if _constraint_delivery_blocked:
+            _training_plan_blueprint = None
+            _recommendation_blueprint = None
+            _recommendation_plan = None
+            _planning_reply = None
+            _controlled_reply = (
+                ("I recognized your restriction, but couldn't save it to your account. I can't provide a workout until it is safely saved. Please try again."
+                 if lang == "en" else
+                 "Разпознах ограничението, но не успях да го запазя в профила. Не мога да предоставя тренировка, преди да е безопасно записано. Моля, опитай отново.")
+                if _constraint_write_failed else _safety_constraints_unavailable_reply(lang))
+            _training_engine_failure = "training_engine_safety_constraints_unavailable"
+
         if _medical_hold and _medical_hold.get("status") == "ACTIVE_MEDICAL_HOLD":
             # Highest authority: no workout or plan delivery can survive a hold, even
             # when a prior deterministic blueprint or legacy fallback was prepared.
@@ -4014,7 +4058,8 @@ def chat():
                     if speech_event:
                         yield sse(speech_event)
                     _persist_reply(_controlled_reply)
-                    _update_learning_engine(chat_uid, user_message, _controlled_reply, profile)
+                    if not _constraint_delivery_blocked:
+                        _update_learning_engine(chat_uid, user_message, _controlled_reply, profile)
                     _log_analytics(_t_start)
                     _ingest_state()
                     _shadow_log()
@@ -4131,6 +4176,10 @@ def chat():
                             language=lang,
                         )
                         reply_text = nutrition_plan.render_delivery(authoritative_plan, lang, profile)
+                    except nutrition_plan.NutritionRestrictionError:
+                        authoritative_plan = None
+                        reply_text = nutrition_plan.restriction_blocked_message(lang)
+                        nutrition_delivery_failed = True
                     except nutrition_plan.NutritionPlanError as validation_error:
                         # One repair attempt is allowed for a rejected structured
                         # response. It receives only the deterministic failure,
