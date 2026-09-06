@@ -1180,7 +1180,8 @@ def test_api_workout_accepts_and_preserves_the_immutable_completion_contract(cli
         "exercises": [{
             "prescription_id": item["prescription_id"], "exercise_id": item["exercise_id"],
             "exercise_version": item["exercise_version"], "completed_sets": item["prescribed_sets"],
-            "completed_repetitions": item["rep_max"], "completed_load": None,
+            "completed_repetitions": item["rep_max"], "actual_repetitions": item["rep_max"],
+            "execution_state": "completed", "completed_load": None,
             "completed_rpe": "6", "completed_rir": 4,
         } for item in session["exercises"]],
     }
@@ -1189,7 +1190,9 @@ def test_api_workout_accepts_and_preserves_the_immutable_completion_contract(cli
     monkeypatch.setattr(appmod.store, "record_training_completion",
                         lambda _uid, payload, evidence: captured.update(session=payload, completion=evidence) or "workout-1")
 
-    response = client.post("/api/workout", json={"session": {"type": "full body", "exercises": [], "completion": 100},
+    completion["execution_state"] = "completed"
+    response = client.post("/api/workout", json={"session": {"type": "full body", "exercises": [], "completion": 100,
+                                                               "execution_state": "completed"},
                                                    "workout_completion": completion})
 
     assert response.status_code == 200

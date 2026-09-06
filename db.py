@@ -1218,12 +1218,21 @@ def record_training_completion(user_id, session, completion):
         _materialize_progression_from_lineage(c, user_uuid, plan, completion_uuid)
         _materialize_training_trajectory(c, user_uuid, plan)
         legacy_id = uuid.uuid4()
+        execution_facts = [{**fact, "actual_repetitions": fact["completed_repetitions"],
+                            "execution_state": "completed"} for fact in facts]
+        execution_completion = {**completion, "execution_state": "completed",
+                                "exercises": execution_facts}
         c.execute(insert(workout_history).values(
             id=legacy_id, user_id=user_uuid, type=session.get("type"),
-            exercises=session.get("exercises"), difficulty=session.get("diff"),
-            completion=percentage, source="app"))
+            exercises=execution_facts, difficulty=session.get("diff"),
+            completion=percentage, execution_state="completed",
+            completion_evidence=execution_completion, source="app"))
+        memory_session = {**session, "execution_schema": "workout-execution-v1",
+                          "execution_state": "completed", "completion": percentage,
+                          "exercises": execution_facts,
+                          "workout_completion": execution_completion}
         c.execute(insert(coach_memory).values(
-            id=uuid.uuid4(), user_id=user_uuid, kind="workout", source="app", payload=session))
+            id=uuid.uuid4(), user_id=user_uuid, kind="workout", source="app", payload=memory_session))
     return str(legacy_id)
 
 

@@ -2985,6 +2985,11 @@ def chat():
                 pers_workouts = store.list_training_completion_records(chat_uid, limit=40)
                 if not pers_workouts:
                     pers_workouts = store.list_workouts(chat_uid, limit=40)
+                    pers_workouts = [
+                        {**row, "exercises": {"workout_completion": row["completion_evidence"]}}
+                        if row.get("completion_evidence") else row
+                        for row in pers_workouts
+                    ]
             except Exception as _we:
                 print(f"[chat] workout load failed: {_we}")
             try:

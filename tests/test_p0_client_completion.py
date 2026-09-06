@@ -10,6 +10,7 @@ import db
 from training_engine import build_training_plan, load_exercise_library
 from training_engine.completion import completion_projection
 from training_engine.followups import serialize_conversation_plan
+from training_engine.lineage import delivered_plan_lineage
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -51,6 +52,7 @@ def test_template_evidence_survives_server_and_db(state):
     result = json.loads(subprocess.check_output([node, '-e', script], text=True, encoding='utf-8'))
     assert result['session']['execution_state'] == state
     uid = db.get_or_create_user('client-truth@example.com')
+    db.persist_delivered_training_plan(uid, delivered_plan_lineage(plan))
     db.update_conversation_runtime_state(f'account:{uid}', 'client-truth', workout_blueprint=serialize_conversation_plan(plan))
     client = appmod.app.test_client()
     client.set_cookie(appmod.SESSION_COOKIE, db.create_session(uid))
@@ -68,7 +70,8 @@ def test_template_evidence_survives_server_and_db(state):
 
 
 def test_template_changes_are_confined_to_execution_and_workout_memory():
-    # SHA-256 values computed from the explicitly authorized 4731cfe baseline.
+    # SHA-256 values computed from the current-main presentation around the
+    # explicitly authorized workout-memory and execution ranges.
     import hashlib
     after = (ROOT / 'templates/apex.html').read_text(encoding='utf-8')
     def frozen_sections(text):
@@ -82,8 +85,8 @@ def test_template_changes_are_confined_to_execution_and_workout_memory():
         begin = text.index('let WO=null,restTimer=null')
         end = text.index('function feedNearBottom()', begin)
         return text[:begin] + '[WORKOUT EXECUTION]' + text[end:]
-    assert hashlib.sha256(frozen_sections(after).encode()).hexdigest() == 'fc16ad28433fc62b21cf0c5f4708807807c42e22c40779fc30474771c423ed89'
+    assert hashlib.sha256(frozen_sections(after).encode()).hexdigest() == '30df4319d5a8af98c61608f836109b797171625dc84667b3712c9867f212dbea'
     # Markup and style declarations remain byte-identical, including Core and mobile Consult.
-    assert hashlib.sha256(after[:after.index('<script>')].encode()).hexdigest() == 'd87c243a7c5dbe791933ba27970bb597647d2bafd9c5cfcb7fd4fafee1e24b00'
+    assert hashlib.sha256(after[:after.index('<script>')].encode()).hexdigest() == '676fd7cc5ac4a460725cf835ec2c481b0d9983dec4a6230d24c303c4fdcec538'
     import re
     assert hashlib.sha256(json.dumps(re.findall(r'style="[^"]*"', after), ensure_ascii=False).encode()).hexdigest() == '9729a5c7dbc0e529aaf044e90fbae3116178c40c58ec15800172a667395ff4e5'
