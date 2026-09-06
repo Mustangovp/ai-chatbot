@@ -468,8 +468,8 @@ test.describe('APEX approved app shell — UX regression', () => {
       let submitted = null;
       const originalLogWorkout = window.logWorkout;
       window.logWorkout = (_session, payload) => { submitted = payload; };
-      WO = { ex: [{ name: 'Push-up', sets: '1', completion: { prescription_id: 'p', exercise_id: 'e', exercise_version: 'v' },
-        completedSets: 1, reps: '10', weight: '', completedRpe: 'invalid', completedRir: '11' }],
+      WO = { ex: [{ name: 'Push-up', sets: '1', completion: { prescription_id: 'p', exercise_id: 'e', exercise_version: 'v', prescribed_sets: 1, rep_min: 10 },
+        observedReps: [10], completedSets: 1, reps: '10', weight: '', completedRpe: 'invalid', completedRir: '11' }],
         contract: { plan_id: 'plan', plan_version: 'v', session_id: 'session' }, i: 0, set: 0, phase: 'work' };
       sessionStart = Date.now();
       finishWorkout();
@@ -509,6 +509,7 @@ test.describe('APEX approved app shell — UX regression', () => {
       };
       SESSION.authenticated = true;
       startWorkout('session-next');
+      document.getElementById('wo-reps-in').value='10';
       completeSet();
       finishToCoach();
       await new Promise((resolve) => setTimeout(resolve, 350));
@@ -551,13 +552,9 @@ test.describe('APEX approved app shell — UX regression', () => {
       return chat;
     });
 
-    expect(posted.message).toBe('Завърших я.');
+    expect(posted.message).toBe('Прегледай записаното изпълнение.');
     expect(posted.completed_workout).toMatchObject({
-      completion: 100,
-      exercises: [
-        { name: 'Squat', completed_sets: 3, completed_repetitions: 8, completed_load: 60 },
-        { name: 'Row', completed_sets: 2, completed_repetitions: 10, completed_load: null }
-      ]
+      completion: null, execution_state: 'unknown', exercises: []
     });
     expect(posted.completed_workout).not.toHaveProperty('plan_id');
   });
@@ -1566,15 +1563,15 @@ test.describe('APEX approved app shell — UX regression', () => {
       goal: 'server-goal', age: '42', localOnly: 'kept'
     });
     expect(restored.workouts).toEqual([
-      { ts: Date.parse('2026-07-23T08:00:00Z'), type: 'local-only', exercises: [] },
+      { ts: Date.parse('2026-07-23T08:00:00Z'), type: 'local-only', exercises: [], completion: null, execution_schema: 'workout-execution-v1', execution_state: 'unknown' },
       {
         ts: Date.parse('2026-07-24T08:00:00Z'),
         date: '2026-07-24',
         serverId: 'server-workout',
         type: 'strength',
-        exercises: [{ name: 'Squat', sets: 3, reps: 8 }],
+        exercises: [{ name: 'Squat', completed_sets: null, actual_repetitions: null, completed_repetitions: null, execution_state: 'unknown' }],
         diff: 'medium',
-        completion: 100,
+        completion: null, execution_schema: 'workout-execution-v1', execution_state: 'unknown',
         localOnly: 'kept'
       }
     ]);
@@ -1649,7 +1646,7 @@ test.describe('APEX approved app shell — UX regression', () => {
       url: '/api/workout',
       method: 'POST',
       body: expect.objectContaining({
-        session: expect.objectContaining({ type: 'strength', completion: 100 })
+        session: expect.objectContaining({ type: 'strength', completion: null, execution_state: 'unknown' })
       })
     }));
   });
