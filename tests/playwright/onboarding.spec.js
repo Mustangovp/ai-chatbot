@@ -6,7 +6,8 @@ test.describe('first-session calibration clarity', () => {
   test.use({ viewport:{width:390,height:844}, isMobile:true, hasTouch:true });
   test('new user sees calibration, opens the existing profile, and does not see fake metrics', async ({page}) => {
     await page.addInitScript(seed, null); await page.goto('/app?lang=en');
-    await expect(page.locator('#read-state')).toContainText('calibrate APEX');
+    await expect(page.locator('#brief-context')).toHaveText('PROFILE INCOMPLETE');
+    await expect(page.locator('#read-state')).toContainText('Set your training context.');
     await expect(page.locator('.metrics')).toBeHidden();
     await page.locator('.cta').first().click(); await expect(page.locator('#profile-modal')).toHaveClass(/on/);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
@@ -17,7 +18,7 @@ test.describe('first-session calibration clarity', () => {
     await expect(page.locator('#profile-modal')).not.toHaveClass(/on/);
     await expect(page.locator('#calibration-facts')).toContainText(/Lose fat/);
     await expect(page.locator('#calibration-facts')).toContainText(/Beginner/);
-    await expect(page.locator('.cta').first()).toContainText('Start training');
+    await expect(page.locator('.cta').first()).toContainText('Build my workout');
   });
   test('brand tagline follows the active locale without affecting the Core', async ({page}) => {
     await page.addInitScript(seed, null); await page.goto('/app?lang=en');
@@ -32,8 +33,9 @@ test.describe('first-session calibration clarity', () => {
   });
   test('Bulgarian calibration is localized', async ({page}) => {
     await page.addInitScript(seed, null); await page.goto('/app?lang=bg');
-    await expect(page.locator('#read-state')).toContainText('калибрираме APEX');
-    await expect(page.locator('.cta').first()).toContainText('Завърши калибрацията');
+    await expect(page.locator('#brief-context')).toHaveText('ПРОФИЛЪТ НЕ Е ЗАВЪРШЕН');
+    await expect(page.locator('#read-state')).toContainText('Задай тренировъчния си контекст.');
+    await expect(page.locator('.cta').first()).toContainText('Завърши профила');
   });
   test('active training constraints remain visible through calibration save', async ({page}) => {
     await page.addInitScript(seed, complete); await page.goto('/app?lang=en');

@@ -58,7 +58,7 @@ test.describe('stable APEX mobile shell', () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
   });
 
-  test('keeps the Core, Position, recommendation, and one primary action ahead of supporting detail', async ({ page }) => {
+  test('keeps the Core, factual briefing, and one primary action ahead of supporting detail', async ({ page }) => {
     for (const viewport of [
       { width: 360, height: 800 },
       { width: 390, height: 844 },
@@ -69,18 +69,28 @@ test.describe('stable APEX mobile shell', () => {
       await page.reload();
 
       const position = await page.locator('.position-head').boundingBox();
+      const context = await page.locator('#brief-context').boundingBox();
+      const message = await page.locator('#read-state').boundingBox();
+      const why = await page.locator('#read-sub').boundingBox();
       const action = await page.locator('.cta-row .cta').first().boundingBox();
       const facts = await page.locator('#calibration-facts').boundingBox();
       const signals = await page.locator('#position-signals').boundingBox();
       const core = await page.locator('#core').boundingBox();
 
       expect(position).not.toBeNull();
+      expect(context).not.toBeNull();
+      expect(message).not.toBeNull();
+      expect(why).not.toBeNull();
       expect(action).not.toBeNull();
+      await expect(page.locator('#brief-context')).toHaveText('Lose fat · Full gym');
+      await expect(page.locator('#read-state')).toHaveText("Build today's workout.");
+      await expect(page.locator('#read-sub')).toHaveText('Start with your saved goal and equipment.');
+      await expect(page.locator('.cta-row .cta').first()).toContainText('Build my workout');
       expect(core).not.toBeNull();
       expect(action.y + action.height).toBeLessThanOrEqual(viewport.height);
+      expect(why.y + why.height).toBeLessThanOrEqual(viewport.height);
       expect(facts.y).toBeGreaterThanOrEqual(viewport.height);
       expect(signals.y).toBeGreaterThanOrEqual(action.y + action.height);
-      await expect(page.locator('#read-sub')).not.toBeVisible();
       expect(await page.locator('.cta-row .cta').evaluateAll(elements => elements.filter(element => getComputedStyle(element).display !== 'none').length)).toBe(2);
       await page.locator('#calibration-facts').scrollIntoViewIfNeeded();
       await expect(page.locator('#calibration-facts')).toBeVisible();
@@ -88,6 +98,33 @@ test.describe('stable APEX mobile shell', () => {
       expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
       await expect(page.locator('#core')).toBeVisible();
     }
+  });
+
+  test('keeps the primary briefing CTA bound to the existing workout action', async ({ page }) => {
+    await expect(page.locator('.cta-row .cta').first()).toContainText('Build my workout');
+    expect(await page.evaluate(() => {
+      let invoked = false;
+      const original = window.intentTrain;
+      window.intentTrain = () => { invoked = true; };
+      primaryOverviewAction();
+      window.intentTrain = original;
+      return invoked;
+    })).toBe(true);
+  });
+
+  test('uses the existing profile flow for an incomplete context without a workout claim', async ({ page }) => {
+    await page.evaluate(() => {
+      ownedStorageRemove('apexProfile');
+      applyReadout();
+    });
+
+    await expect(page.locator('#brief-context')).toHaveText('PROFILE INCOMPLETE');
+    await expect(page.locator('#read-state')).toHaveText('Set your training context.');
+    await expect(page.locator('#read-sub')).toHaveText('Give APEX the basics it needs to tailor your workout.');
+    await expect(page.locator('.cta-row .cta').first()).toContainText('Complete profile');
+    await expect(page.locator('#apex-position-readout')).toBeHidden();
+    await page.locator('.cta-row .cta').first().click();
+    await expect(page.locator('#profile-modal')).toHaveClass(/on/);
   });
 
   test('keeps Consult visible and opens Coach shortcuts from the mobile overview', async ({ page }) => {
