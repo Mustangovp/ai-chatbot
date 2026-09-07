@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 import db
+from sqlalchemy import create_engine, text
 from individual_model_snapshot import SCHEMA_VERSION, build_individual_model_snapshot
 from training_engine import build_training_plan
 from training_engine.lineage import delivered_plan_lineage
@@ -47,3 +48,38 @@ def test_snapshot_rebuild_is_read_only_and_does_not_merge_anonymous_or_hse_when_
     assert first == second
     assert db.get_profile(user) == before
     assert first.training is None and first.progression == () and first.trajectory == ()
+
+
+def test_snapshot_omits_legacy_trajectory_schema_without_query_failure(monkeypatch):
+    """Use a real legacy-shaped table; metadata.create_all never repairs its columns."""
+    engine = create_engine("sqlite://")
+    monkeypatch.setattr(db, "engine", engine)
+    db.metadata.create_all(engine)
+    with engine.begin() as connection:
+        connection.execute(text("DROP TABLE training_trajectory_states"))
+        connection.execute(text("""
+            CREATE TABLE training_trajectory_states (
+                id VARCHAR(36) PRIMARY KEY,
+                user_id VARCHAR(36) NOT NULL,
+                delivered_plan_id VARCHAR(36) NOT NULL,
+                exercise_id VARCHAR(128) NOT NULL,
+                exercise_version VARCHAR(48) NOT NULL,
+                trajectory_state VARCHAR(32) NOT NULL,
+                completion_ids JSON NOT NULL,
+                progression_event_ids JSON NOT NULL,
+                generated_at TIMESTAMP
+            )
+        """))
+
+    user = db.get_or_create_user("snapshot-legacy-trajectory@example.com")
+    plan = build_training_plan(recommendation_blueprint_id="snapshot-legacy", facts={
+        "goal": "strength", "level": "intermediate", "equipment": "gym",
+    })
+    db.persist_delivered_training_plan(user, delivered_plan_lineage(plan))
+    monkeypatch.setattr("individual_model_snapshot.ingest_enabled", lambda: False)
+    monkeypatch.setattr("individual_model_snapshot.audit_enabled", lambda: False)
+
+    snapshot = build_individual_model_snapshot(user)
+
+    assert snapshot.training is not None
+    assert snapshot.trajectory == ()
