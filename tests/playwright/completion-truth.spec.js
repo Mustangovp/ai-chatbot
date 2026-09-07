@@ -1,7 +1,10 @@
 const {test, expect} = require('@playwright/test');
 
 async function start(page) {
+  const authReady=page.waitForResponse(response => new URL(response.url()).pathname==='/auth/me');
   await page.goto('/app?lang=en');
+  await authReady;
+  await page.waitForTimeout(50);
   await page.evaluate(() => {
     ownedStorageSet('apexProfile',JSON.stringify({goal:'strength',age:'30',weight:'75',height:'178',gender:'male',level:'beginner',equip:'full_gym'}));
     enterConsult('');document.getElementById('profile-modal').classList.remove('on');
