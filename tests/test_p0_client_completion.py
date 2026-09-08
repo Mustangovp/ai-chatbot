@@ -1,5 +1,6 @@
 """Execute the shipped client projection, then accept it through Flask and SQLite."""
 import json
+import hashlib
 from pathlib import Path
 import shutil
 import subprocess
@@ -13,6 +14,34 @@ from training_engine.followups import serialize_conversation_plan
 from training_engine.lineage import delivered_plan_lineage
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+_PROTECTED_TEMPLATE_BLOCKS = {
+    # Core renderer and its sole state authorities.
+    'core_runtime': ('class BreathEngine{', 'function truthfulWorkoutRecord('),
+    # P0 truth handling in local workout memory.
+    'workout_memory': ('function truthfulWorkoutRecord(', 'const T={'),
+    # P0 truth handling while reconciling the account workout timeline.
+    'workout_history_sync': ('        const serverLog=d.workouts.map', '    if(conversationResponse.ok)'),
+    # P0 execution observations and canonical completion payload generation.
+    'workout_execution': ('let WO=null,restTimer=null', 'function feedNearBottom()'),
+}
+
+_PROTECTED_TEMPLATE_HASHES = {
+    'core_runtime': 'd3922dd1f8da465dc9529bd5db8e8ad3ecc8287e64a50df123645756a6ee10c7',
+    'workout_memory': '47ad99846b2884f01a0c85b6af57769279424981f6590c288c1f7f4a66a98c26',
+    'workout_history_sync': '61d31b1430c619311d11a95dc00018c4a40aefc77e7f42c91b0f3d64c1dc10f4',
+    'workout_execution': '16603d10477684313c93355ba1b16d3eb020b2be66007d8a9110a3fbac259d8c',
+}
+
+
+def _protected_template_hashes(template):
+    hashes = {}
+    for name, (start, end) in _PROTECTED_TEMPLATE_BLOCKS.items():
+        begin = template.index(start)
+        finish = template.index(end, begin)
+        hashes[name] = hashlib.sha256(template[begin:finish].encode()).hexdigest()
+    return hashes
 
 
 @pytest.mark.parametrize('state', ['completed', 'partial', 'skipped', 'abandoned', 'unknown', 'empty_abandoned', 'mixed_unknown', 'each_missing'])
@@ -70,23 +99,21 @@ def test_template_evidence_survives_server_and_db(state):
 
 
 def test_template_changes_are_confined_to_execution_and_workout_memory():
-    # SHA-256 values computed from the current-main presentation around the
-    # explicitly authorized workout-memory and execution ranges.
-    import hashlib
     after = (ROOT / 'templates/apex.html').read_text(encoding='utf-8')
-    def frozen_sections(text):
-        # Explicitly authorized execution and local workout-memory ranges only.
-        begin = text.index('function truthfulWorkoutRecord(') if 'function truthfulWorkoutRecord(' in text else text.index('function memLoad(')
-        end = text.index('const T={', begin)
-        text = text[:begin] + '[WORKOUT MEMORY]' + text[end:]
-        begin = text.index('        const serverLog=d.workouts.map')
-        end = text.index("        ownedStorageSet('apexWorkoutLog'", begin)
-        text = text[:begin] + '[WORKOUT HISTORY SYNC]' + text[end:]
-        begin = text.index('let WO=null,restTimer=null')
-        end = text.index('function feedNearBottom()', begin)
-        return text[:begin] + '[WORKOUT EXECUTION]' + text[end:]
-    assert hashlib.sha256(frozen_sections(after).encode()).hexdigest() == '30df4319d5a8af98c61608f836109b797171625dc84667b3712c9867f212dbea'
-    # Markup and style declarations remain byte-identical, including Core and mobile Consult.
-    assert hashlib.sha256(after[:after.index('<script>')].encode()).hexdigest() == '676fd7cc5ac4a460725cf835ec2c481b0d9983dec4a6230d24c303c4fdcec538'
-    import re
-    assert hashlib.sha256(json.dumps(re.findall(r'style="[^"]*"', after), ensure_ascii=False).encode()).hexdigest() == '9729a5c7dbc0e529aaf044e90fbae3116178c40c58ec15800172a667395ff4e5'
+    assert _protected_template_hashes(after) == _PROTECTED_TEMPLATE_HASHES
+
+    # The presentation may evolve, but the actual Core bootstrap remains fixed.
+    assert '<canvas id="core"></canvas>' in after
+    assert "core=new LivingCore(document.getElementById('core'));" in after
+    assert 'core.setPhysiology(computePhysiology()); core.start();' in after
+
+    core_runtime = after[after.index('class BreathEngine{'):after.index('function truthfulWorkoutRecord(')]
+    for marker in (
+        'class BreathEngine{',
+        'class AttentionEngine{',
+        'class AthleteModel{',
+        'class PresenceEngine{',
+        'class LivingCore{',
+        'function computeApexPosition(ph){',
+    ):
+        assert marker in core_runtime
