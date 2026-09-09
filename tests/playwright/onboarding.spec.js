@@ -16,8 +16,8 @@ test.describe('first-session calibration clarity', () => {
   test('completed returning profile exposes only saved facts and keeps training action', async ({page}) => {
     await page.addInitScript(seed, complete); await page.goto('/app?lang=en');
     await expect(page.locator('#profile-modal')).not.toHaveClass(/on/);
-    await expect(page.locator('#calibration-facts')).toContainText(/Lose fat/);
     await expect(page.locator('#calibration-facts')).toContainText(/Beginner/);
+    await expect(page.locator('#calibration-facts')).not.toContainText(/Lose fat|Full gym/);
     await expect(page.locator('.cta').first()).toContainText('Build my workout');
   });
   test('brand tagline follows the active locale without affecting the Core', async ({page}) => {

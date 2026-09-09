@@ -84,13 +84,16 @@ test.describe('stable APEX mobile shell', () => {
       expect(action).not.toBeNull();
       await expect(page.locator('#brief-context')).toHaveText('Lose fat · Full gym');
       await expect(page.locator('#read-state')).toHaveText("Build today's workout.");
-      await expect(page.locator('#read-sub')).toHaveText('Start with your saved goal and equipment.');
+      await expect(page.locator('#read-sub')).toHaveText("Use the training context you've already saved.");
       await expect(page.locator('.cta-row .cta').first()).toContainText('Build my workout');
       expect(core).not.toBeNull();
       expect(action.y + action.height).toBeLessThanOrEqual(viewport.height);
       expect(why.y + why.height).toBeLessThanOrEqual(viewport.height);
+      expect(position.y).toBeGreaterThanOrEqual(action.y + action.height);
       expect(facts.y).toBeGreaterThanOrEqual(viewport.height);
       expect(signals.y).toBeGreaterThanOrEqual(action.y + action.height);
+      await expect(page.locator('#calibration-facts')).not.toContainText('Goal: Lose fat');
+      await expect(page.locator('#calibration-facts')).not.toContainText('Equipment: Full gym');
       expect(await page.locator('.cta-row .cta').evaluateAll(elements => elements.filter(element => getComputedStyle(element).display !== 'none').length)).toBe(2);
       await page.locator('#calibration-facts').scrollIntoViewIfNeeded();
       await expect(page.locator('#calibration-facts')).toBeVisible();
@@ -137,6 +140,7 @@ test.describe('stable APEX mobile shell', () => {
     const consultBox = await consult.boundingBox();
     expect(consultBox.y).toBeGreaterThanOrEqual(trainBox.y + trainBox.height);
     expect(consultBox.y + consultBox.height).toBeLessThanOrEqual(844);
+    await expect(consult).toHaveCSS('color', 'rgb(212, 218, 229)');
 
     await consult.click();
     await expect(page.locator('#consult')).toHaveClass(/on/);
