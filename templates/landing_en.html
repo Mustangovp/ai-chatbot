@@ -182,6 +182,11 @@ h1 .grad{background:linear-gradient(90deg,#F5212D 0%,#FF6A3C 45%,#FFB13C 100%);b
 .ph-badge{display:flex;justify-content:center;align-items:center;gap:14px;flex-wrap:wrap;margin:22px auto 0;position:relative;z-index:2;opacity:0;animation:hero-fadeup 1s 1.5s cubic-bezier(.2,.7,.2,1) forwards;}
 .ph-badge img{height:54px;width:auto;transition:transform .2s,filter .2s;}
 .ph-badge a:hover img{transform:translateY(-1px);filter:drop-shadow(0 6px 18px rgba(245,33,45,.25));}
+header.hero .ph-badge{gap:10px;max-width:640px;margin-top:30px;}
+header.hero .ph-badge a{display:inline-flex;align-items:center;justify-content:center;opacity:.74;transition:opacity .2s;}
+header.hero .ph-badge a:hover,header.hero .ph-badge a:focus-visible{opacity:1;}
+header.hero .ph-badge a:focus-visible{outline:2px solid var(--gold);outline-offset:4px;}
+header.hero .ph-badge img{height:42px;max-width:154px;object-fit:contain;}
 
 /* payment strip under hero */
 .paystrip{position:relative;display:flex;justify-content:center;align-items:center;gap:9px;flex-wrap:wrap;margin-top:18px;position:relative;}
@@ -361,6 +366,31 @@ footer a:hover{color:var(--text);}
 @keyframes drift3{from{transform:translate3d(-50%,0,0) scale(1);}to{transform:translate3d(-44%,-60px,0) scale(1.12);}}
 @media (prefers-reduced-motion:reduce){.aurora i{animation:none;}}
 @media (max-width:480px){.aurora i{filter:blur(70px);}}
+@media (max-width:640px){
+  .nav-inner{padding:10px 14px;gap:8px;}
+  .logo{gap:7px;font-size:12px;min-width:0;letter-spacing:.25px;}
+  .logo img{width:30px;height:30px;flex:0 0 auto;}
+  .logo>span{min-width:0;white-space:nowrap;}
+  .logo-slogan{font-size:7.5px;letter-spacing:.85px;white-space:nowrap;}
+  .nav-right{gap:7px;flex-shrink:0;}
+  .lang-toggle{font-size:11px;}
+  .lang-toggle a,.lang-toggle span{padding:5px 8px;}
+  .nav-cta{font-size:12px;padding:9px 11px;}
+  .hero{padding:26px 0 38px;}
+  .eyebrow{margin-bottom:16px;}
+  h1{font-size:clamp(28px,7.8vw,33px);line-height:1.04;}
+  .hero .sub{font-size:14px;line-height:1.45;max-width:34ch;margin-top:14px;}
+  .goal-line{margin-top:14px;padding:12px;border-radius:16px;}
+  .gl-chips{gap:6px;margin-bottom:12px;}
+  .gl-chips button{font-size:12.5px;min-height:40px;padding:9px 11px;}
+  .goal-line .gl-text{font-size:15px;gap:6px;line-height:1.55;}
+  .goal-line select{font-size:13px;padding:6px 24px 6px 10px;background-position:right 8px center;}
+  .goal-line .gl-btn{margin-top:10px;font-size:16px;padding:14px;}
+  .micro{font-size:10.5px;letter-spacing:1.2px;margin-top:16px;}
+  header.hero .ph-badge{gap:8px;max-width:320px;margin-top:24px;}
+  header.hero .ph-badge img{height:34px;max-width:132px;}
+}
+@media (max-width:380px){.hero{padding-top:22px;}}
 </style>
 </head>
 <body>
