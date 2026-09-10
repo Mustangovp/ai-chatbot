@@ -22,7 +22,7 @@ COUNTERS = (
     "experience_present",
     "equipment_present",
     "constraint_present",
-    "recent_completion_present",
+    "completed_session_evidence_present",
     "trajectory_progressing",
     "trajectory_stable",
     "nutrition_targets_present",
@@ -69,8 +69,8 @@ def observe_projection(
             "experience_present": int(projection.experience_context is not None),
             "equipment_present": int(projection.equipment_context is not None),
             "constraint_present": int(bool(projection.active_training_constraint_context)),
-            "recent_completion_present": int(
-                projection.completed_recent_authoritative_session),
+            "completed_session_evidence_present": int(
+                projection.authoritative_completed_session_evidence),
             "trajectory_progressing": int(projection.trajectory_context == "progressing"),
             "trajectory_stable": int(projection.trajectory_context == "stable"),
             "nutrition_targets_present": int(bool(projection.nutrition_target_context)),

@@ -10,6 +10,9 @@ from enum import Enum
 from fractions import Fraction
 
 
+EXECUTION_SCHEMA = "workout-execution-v1"
+
+
 class ExecutionState(str, Enum):
     COMPLETED = "completed"
     PARTIAL = "partial"
@@ -120,7 +123,7 @@ def normalize_execution(session, completion=None, *, plan=None):
         state = ExecutionState.PARTIAL
     if state is ExecutionState.UNKNOWN and not observed_work:
         percentage = None
-    result.update(execution_schema="workout-execution-v1", execution_state=state.value,
+    result.update(execution_schema=EXECUTION_SCHEMA, execution_state=state.value,
                   completion=percentage, exercises=observations)
     if payload:
         result["workout_completion"] = {**payload, "execution_state": state.value,

@@ -15,7 +15,7 @@ _NUTRITION_TARGETS = frozenset({"calories", "protein_g", "carbs_g", "fat_g"})
 @dataclass(frozen=True)
 class IndividualModelCoachingProjectionV1:
     goal_context: str | None; experience_context: str | None; equipment_context: str | None
-    active_training_constraint_context: tuple[str, ...]; completed_recent_authoritative_session: bool
+    active_training_constraint_context: tuple[str, ...]; authoritative_completed_session_evidence: bool
     trajectory_context: str | None; nutrition_target_context: tuple[tuple[str, int | float], ...]
 
 
@@ -35,8 +35,8 @@ def validate_projection(
             or any(value not in _CONSTRAINTS
                    for value in projection.active_training_constraint_context)):
         raise ValueError("invalid training constraint context")
-    if type(projection.completed_recent_authoritative_session) is not bool:
-        raise ValueError("invalid recent completion context")
+    if type(projection.authoritative_completed_session_evidence) is not bool:
+        raise ValueError("invalid completed-session evidence context")
     if projection.trajectory_context not in (None, "progressing", "stable"):
         raise ValueError("invalid trajectory context")
     if not isinstance(projection.nutrition_target_context, tuple):
@@ -61,7 +61,8 @@ def build_projection(snapshot: IndividualModelSnapshotV1) -> IndividualModelCoac
         profile.get("goal") if profile.get("goal") in _GOALS else None,
         level if level in _LEVELS else None, profile.get("equipment") if profile.get("equipment") in _EQUIPMENT else None,
         tuple(item["pattern"] for item in snapshot.constraints if item.get("pattern") in _CONSTRAINTS),
-        bool(snapshot.training and snapshot.training.get("latest_completion_id")),
+        snapshot.training.get("latest_authoritative_completed_session_evidence") is True
+        if isinstance(snapshot.training, dict) else False,
         "progressing" if "progressing" in states else "stable" if "stable" in states else None, nutrition))
 
 def render_prompt(projection: IndividualModelCoachingProjectionV1) -> str:
@@ -69,6 +70,7 @@ def render_prompt(projection: IndividualModelCoachingProjectionV1) -> str:
     fields = [f"{key}={value}" for key, value in (("goal", projection.goal_context), ("experience", projection.experience_context),
               ("equipment", projection.equipment_context), ("trajectory", projection.trajectory_context)) if value]
     if projection.active_training_constraint_context: fields.append("active movement exclusions=" + ",".join(projection.active_training_constraint_context))
-    if projection.completed_recent_authoritative_session: fields.append("recent authoritative session completed=true")
+    if projection.authoritative_completed_session_evidence:
+        fields.append("authoritative completed-session evidence=true")
     if projection.nutrition_target_context: fields.append("authoritative nutrition targets=" + ",".join(f"{key}:{value}" for key, value in projection.nutrition_target_context))
     return "" if not fields else "[REDACTED INDIVIDUAL MODEL CONTEXT] " + "; ".join(fields) + ". Context only: do not alter deterministic plans, progression, restrictions, safety, or nutrition authority."

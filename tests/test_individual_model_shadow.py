@@ -48,8 +48,7 @@ def _snapshot(**changes):
         },),
         training={
             "plan_id": "private-plan-id",
-            "latest_session_id": "private-session-id",
-            "latest_completion_id": "private-completion-id",
+            "latest_authoritative_completed_session_evidence": True,
         },
         progression=(),
         trajectory=({
@@ -166,7 +165,7 @@ def test_shadow_on_observes_redacted_presence_and_does_not_change_prompt(client,
         "experience_present": 1,
         "equipment_present": 1,
         "constraint_present": 1,
-        "recent_completion_present": 1,
+        "completed_session_evidence_present": 1,
         "trajectory_progressing": 1,
         "trajectory_stable": 0,
         "nutrition_targets_present": 1,

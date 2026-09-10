@@ -18,7 +18,11 @@ _TABLE_COLUMNS = {
     }),
     "training_completions": frozenset({
         "id", "user_id", "delivered_plan_id", "delivered_session_id",
-        "workout_id", "completion_percent", "completed_at", "recorded_at",
+        "workout_id", "execution_schema", "execution_state", "completion_percent",
+        "completed_at", "recorded_at",
+    }),
+    "workout_history": frozenset({
+        "id", "user_id", "execution_state", "occurred_at",
     }),
     "exercise_progression_states": frozenset({
         "id", "user_id", "delivered_plan_id", "exercise_id", "exercise_version",
@@ -103,14 +107,30 @@ def _training_section(connection, user_uuid, plan):
         completion = connection.execute(db.select(db.training_completions).where(
             db.training_completions.c.user_id == user_uuid,
             db.training_completions.c.delivered_plan_id == plan["id"],
+            db.training_completions.c.execution_schema == "workout-execution-v1",
+            db.training_completions.c.execution_state == "completed",
+            db.training_completions.c.completion_percent == 100,
         ).order_by(db.training_completions.c.completed_at.desc()).limit(1)).mappings().first()
+        latest_execution_state = _latest_execution_state(connection, user_uuid)
     except SQLAlchemyError:
         return None
     return {"authority": "persisted_training_lineage", "plan_id": plan["plan_id"],
             "plan_version": plan["plan_version"],
-            "latest_completion_id": None if not completion else str(completion["id"]),
-            "latest_session_id": None if not completion else str(completion["delivered_session_id"]),
-            "completion_percent": None if not completion else completion["completion_percent"]}
+            "latest_execution_state": latest_execution_state,
+            "latest_authoritative_completed_session_evidence": completion is not None}
+
+
+def _latest_execution_state(connection, user_uuid):
+    """Return only a closed execution state; old untyped history stays unknown."""
+    if not _has_columns(connection, db.workout_history):
+        return None
+    row = connection.execute(db.select(db.workout_history.c.execution_state).where(
+        db.workout_history.c.user_id == user_uuid,
+    ).order_by(db.workout_history.c.occurred_at.desc()).limit(1)).mappings().first()
+    if not row:
+        return None
+    state = row["execution_state"]
+    return state if state in {"completed", "partial", "skipped", "abandoned", "unknown"} else "unknown"
 
 
 def _state_rows(connection, table, user_uuid, plan, field):
