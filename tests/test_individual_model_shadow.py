@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import inspect
 import json
+import re
 
 import pytest
 
@@ -108,6 +109,38 @@ def _events(response):
             if line.startswith("data: ")]
 
 
+def _system_content(call):
+    return "\n".join(
+        message["content"] for message in call["messages"]
+        if message.get("role") == "system"
+    )
+
+
+def _individual_model_addendum(call):
+    marker = "[REDACTED INDIVIDUAL MODEL CONTEXT]"
+    _before, found, remainder = _system_content(call).partition(marker)
+    assert found == marker
+    return marker + remainder.split("\n\n", 1)[0]
+
+
+def _completion_evidence_snapshot(freshness="unknown"):
+    return _snapshot(
+        training={
+            "plan_id": "private-plan-id",
+            "latest_execution_id": "private-execution-id",
+            "latest_session_id": "private-session-id",
+            "latest_completion_id": "private-completion-id",
+            "latest_authoritative_completed_session_evidence": True,
+            "latest_authoritative_completed_session_occurred_at": datetime(
+                2026, 9, 2, 10, 11, 12, tzinfo=timezone.utc),
+            "latest_authoritative_completed_session_freshness": freshness,
+        },
+        trajectory=(),
+        adherence="missed",
+        human_state={"motivation": {"value": "private-hse-value"}},
+    )
+
+
 def test_shadow_default_off_skips_builder_and_telemetry(client, monkeypatch):
     calls = _mock_stream(monkeypatch)
     _login(client, "shadow-off@example.com")
@@ -125,6 +158,151 @@ def test_shadow_default_off_skips_builder_and_telemetry(client, monkeypatch):
     assert built["count"] == 0
     assert len(calls) == 1
     assert shadow.snapshot_telemetry() == {field: 0 for field in shadow.COUNTERS}
+
+
+@pytest.mark.parametrize("consumer_value", (None, "false"))
+def test_consumer_flag_off_skips_builder_and_preserves_chat_baseline(
+        client, monkeypatch, consumer_value):
+    llm_calls = _mock_stream(monkeypatch)
+    _login(client, f"consumer-off-{consumer_value}@example.com")
+    built = {"count": 0}
+
+    def build(*_args):
+        built["count"] += 1
+        return _completion_evidence_snapshot()
+
+    monkeypatch.setattr(
+        appmod.individual_model_snapshot, "build_individual_model_snapshot", build)
+    if consumer_value is not None:
+        monkeypatch.setenv("INDIVIDUAL_MODEL_CONSUMER", consumer_value)
+
+    events = _events(_post(client))
+
+    assert events[-1] == {"done": True}
+    assert built["count"] == 0
+    assert len(llm_calls) == 1
+    assert "REDACTED INDIVIDUAL MODEL CONTEXT" not in _system_content(llm_calls[-1])
+
+
+def test_consumer_renders_only_unknown_completion_freshness_through_chat(client, monkeypatch):
+    llm_calls = _mock_stream(monkeypatch)
+    _login(client, "consumer-freshness-unknown@example.com")
+    monkeypatch.setenv("INDIVIDUAL_MODEL_CONSUMER", "true")
+    monkeypatch.setattr(
+        appmod.individual_model_snapshot,
+        "build_individual_model_snapshot",
+        lambda *_: _completion_evidence_snapshot(),
+    )
+
+    events = _events(_post(client))
+    addendum = _individual_model_addendum(llm_calls[-1])
+
+    assert events[-1] == {"done": True}
+    assert "authoritative completed-session evidence freshness=unknown" in addendum
+    assert "trajectory=" not in addendum
+    assert "adherence" not in addendum.casefold()
+    assert "readiness" not in addendum.casefold()
+    assert "recovery" not in addendum.casefold()
+    assert "fatigue" not in addendum.casefold()
+    assert ("do not alter deterministic plans, progression, restrictions, safety, "
+            "or nutrition authority" in addendum)
+    for forbidden in (
+        "2026-09-02", "10:11:12", "private-user-id", "private-plan-id",
+        "private-execution-id", "private-session-id", "private-completion-id",
+    ):
+        assert forbidden not in addendum
+
+
+@pytest.mark.parametrize("source_freshness", ("current", "stale", "unsupported-value"))
+def test_consumer_downgrades_unsupported_completion_freshness_to_unknown(
+        client, monkeypatch, source_freshness):
+    llm_calls = _mock_stream(monkeypatch)
+    _login(client, f"consumer-freshness-{source_freshness}@example.com")
+    monkeypatch.setenv("INDIVIDUAL_MODEL_CONSUMER", "true")
+    monkeypatch.setattr(
+        appmod.individual_model_snapshot,
+        "build_individual_model_snapshot",
+        lambda *_: _completion_evidence_snapshot(source_freshness),
+    )
+
+    events = _events(_post(client))
+    addendum = _individual_model_addendum(llm_calls[-1])
+
+    assert events[-1] == {"done": True}
+    assert "authoritative completed-session evidence freshness=unknown" in addendum
+    assert f"freshness={source_freshness}" not in addendum
+    for forbidden in ("recent", "recently", "current", "stale", "lately",
+                      "today", "yesterday"):
+        assert forbidden not in addendum.casefold()
+    assert re.search(r"\bfresh\b", addendum, flags=re.IGNORECASE) is None
+
+
+@pytest.mark.parametrize("attempted_freshness", ("current", "stale", "unsupported-value"))
+def test_consumer_rejects_nonproduction_projection_freshness_before_llm(
+        client, monkeypatch, attempted_freshness):
+    llm_calls = _mock_stream(monkeypatch)
+    _login(client, f"consumer-projection-{attempted_freshness}@example.com")
+    monkeypatch.setenv("INDIVIDUAL_MODEL_CONSUMER", "true")
+    monkeypatch.setattr(
+        appmod.individual_model_snapshot,
+        "build_individual_model_snapshot",
+        lambda *_: _completion_evidence_snapshot(),
+    )
+    monkeypatch.setattr(
+        appmod.individual_model_projection,
+        "build_projection",
+        lambda *_: IndividualModelCoachingProjectionV1(
+            "strength", "beginner", "home", (), attempted_freshness, None, ()),
+    )
+
+    events = _events(_post(client))
+    system_content = _system_content(llm_calls[-1])
+
+    assert events[-1] == {"done": True}
+    assert "REDACTED INDIVIDUAL MODEL CONTEXT" not in system_content
+    assert f"freshness={attempted_freshness}" not in system_content
+
+
+@pytest.mark.parametrize("failure_point", ("snapshot", "projection", "render"))
+def test_consumer_failures_are_isolated_from_chat_and_sse(
+        client, monkeypatch, failure_point):
+    llm_calls = _mock_stream(monkeypatch)
+    _login(client, f"consumer-failure-{failure_point}@example.com")
+    monkeypatch.setenv("INDIVIDUAL_MODEL_CONSUMER", "true")
+    private_value = f"private-{failure_point}-failure"
+    assert not shadow.shadow_enabled()
+
+    def fail(*_args, **_kwargs):
+        raise RuntimeError(private_value)
+
+    if failure_point == "snapshot":
+        monkeypatch.setattr(
+            appmod.individual_model_snapshot, "build_individual_model_snapshot", fail)
+    elif failure_point == "projection":
+        monkeypatch.setattr(
+            appmod.individual_model_snapshot,
+            "build_individual_model_snapshot",
+            lambda *_: _completion_evidence_snapshot(),
+        )
+        monkeypatch.setattr(appmod.individual_model_projection, "build_projection", fail)
+    else:
+        monkeypatch.setattr(
+            appmod.individual_model_snapshot,
+            "build_individual_model_snapshot",
+            lambda *_: _completion_evidence_snapshot(),
+        )
+        monkeypatch.setattr(appmod.individual_model_projection, "render_prompt", fail)
+
+    response = _post(client)
+    events = _events(response)
+    serialized_output = response.get_data(as_text=True)
+    system_content = _system_content(llm_calls[-1])
+
+    assert events[-1] == {"done": True}
+    assert len(llm_calls) == 1
+    assert "REDACTED INDIVIDUAL MODEL CONTEXT" not in system_content
+    assert private_value not in serialized_output
+    assert private_value not in system_content
 
 
 def test_shadow_on_observes_redacted_presence_and_does_not_change_prompt(client, monkeypatch):
