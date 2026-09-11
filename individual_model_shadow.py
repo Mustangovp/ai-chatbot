@@ -70,7 +70,7 @@ def observe_projection(
             "equipment_present": int(projection.equipment_context is not None),
             "constraint_present": int(bool(projection.active_training_constraint_context)),
             "completed_session_evidence_present": int(
-                projection.authoritative_completed_session_evidence),
+                projection.authoritative_completed_session_evidence_freshness is not None),
             "trajectory_progressing": int(projection.trajectory_context == "progressing"),
             "trajectory_stable": int(projection.trajectory_context == "stable"),
             "nutrition_targets_present": int(bool(projection.nutrition_target_context)),

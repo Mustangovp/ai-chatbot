@@ -11,11 +11,12 @@ _LEVELS = frozenset({"beginner", "intermediate", "advanced"})
 _EQUIPMENT = frozenset({"home", "gym", "bodyweight", "dumbbell", "barbell", "cable", "mixed"})
 _CONSTRAINTS = frozenset({"vertical_push", "horizontal_push", "vertical_pull", "squat", "lunge", "hinge"})
 _NUTRITION_TARGETS = frozenset({"calories", "protein_g", "carbs_g", "fat_g"})
+_SUPPORTED_COMPLETION_EVIDENCE_FRESHNESS = frozenset({"unknown"})
 
 @dataclass(frozen=True)
 class IndividualModelCoachingProjectionV1:
     goal_context: str | None; experience_context: str | None; equipment_context: str | None
-    active_training_constraint_context: tuple[str, ...]; authoritative_completed_session_evidence: bool
+    active_training_constraint_context: tuple[str, ...]; authoritative_completed_session_evidence_freshness: str | None
     trajectory_context: str | None; nutrition_target_context: tuple[tuple[str, int | float], ...]
 
 
@@ -35,8 +36,9 @@ def validate_projection(
             or any(value not in _CONSTRAINTS
                    for value in projection.active_training_constraint_context)):
         raise ValueError("invalid training constraint context")
-    if type(projection.authoritative_completed_session_evidence) is not bool:
-        raise ValueError("invalid completed-session evidence context")
+    if projection.authoritative_completed_session_evidence_freshness not in (
+            None, *_SUPPORTED_COMPLETION_EVIDENCE_FRESHNESS):
+        raise ValueError("invalid completed-session evidence freshness")
     if projection.trajectory_context not in (None, "progressing", "stable"):
         raise ValueError("invalid trajectory context")
     if not isinstance(projection.nutrition_target_context, tuple):
@@ -61,16 +63,26 @@ def build_projection(snapshot: IndividualModelSnapshotV1) -> IndividualModelCoac
         profile.get("goal") if profile.get("goal") in _GOALS else None,
         level if level in _LEVELS else None, profile.get("equipment") if profile.get("equipment") in _EQUIPMENT else None,
         tuple(item["pattern"] for item in snapshot.constraints if item.get("pattern") in _CONSTRAINTS),
-        snapshot.training.get("latest_authoritative_completed_session_evidence") is True
-        if isinstance(snapshot.training, dict) else False,
+        _completion_evidence_freshness(snapshot.training),
         "progressing" if "progressing" in states else "stable" if "stable" in states else None, nutrition))
+
+
+def _completion_evidence_freshness(training: object) -> str | None:
+    if not isinstance(training, dict) or training.get(
+            "latest_authoritative_completed_session_evidence") is not True:
+        return None
+    freshness = training.get("latest_authoritative_completed_session_freshness")
+    # No current production policy exists. Unknown is the only safe runtime
+    # result even if an untrusted caller attempts to provide another enum value.
+    return freshness if freshness == "unknown" else "unknown"
 
 def render_prompt(projection: IndividualModelCoachingProjectionV1) -> str:
     projection = validate_projection(projection)
     fields = [f"{key}={value}" for key, value in (("goal", projection.goal_context), ("experience", projection.experience_context),
               ("equipment", projection.equipment_context), ("trajectory", projection.trajectory_context)) if value]
     if projection.active_training_constraint_context: fields.append("active movement exclusions=" + ",".join(projection.active_training_constraint_context))
-    if projection.authoritative_completed_session_evidence:
-        fields.append("authoritative completed-session evidence=true")
+    if projection.authoritative_completed_session_evidence_freshness is not None:
+        fields.append("authoritative completed-session evidence freshness=" +
+                      projection.authoritative_completed_session_evidence_freshness)
     if projection.nutrition_target_context: fields.append("authoritative nutrition targets=" + ",".join(f"{key}:{value}" for key, value in projection.nutrition_target_context))
     return "" if not fields else "[REDACTED INDIVIDUAL MODEL CONTEXT] " + "; ".join(fields) + ". Context only: do not alter deterministic plans, progression, restrictions, safety, or nutrition authority."

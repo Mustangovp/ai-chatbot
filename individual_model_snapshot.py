@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import Enum
 from typing import Any
 
 import db
@@ -12,6 +13,12 @@ from sqlalchemy.exc import SQLAlchemyError
 SCHEMA_VERSION = "individual-model-snapshot-v1"
 _PROFILE_FIELDS = ("goal", "level", "experience_level", "equipment")
 _HSE_KEYS = frozenset({"motivation", "confidence", "adherence"})
+
+
+class CompletionEvidenceFreshness(str, Enum):
+    CURRENT = "current"
+    STALE = "stale"
+    UNKNOWN = "unknown"
 _TABLE_COLUMNS = {
     "delivered_training_plans": frozenset({
         "id", "user_id", "plan_id", "plan_version", "lineage", "delivered_at",
@@ -54,10 +61,15 @@ class IndividualModelSnapshotV1:
     generated_at: datetime
 
 
-def build_individual_model_snapshot(user_id: str, *, now: datetime | None = None) -> IndividualModelSnapshotV1:
+def build_individual_model_snapshot(
+        user_id: str,
+        *,
+        evaluation_time: datetime | None = None,
+        now: datetime | None = None,
+) -> IndividualModelSnapshotV1:
     """Aggregate only the requesting account's persisted, typed authorities."""
     user_uuid = db._as_uuid(user_id)
-    current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    current = _evaluation_time(evaluation_time, now)
     try:
         profile = db.get_profile(user_uuid)
         constraint_rows = db.list_account_training_constraint_records(user_uuid)
@@ -71,7 +83,10 @@ def build_individual_model_snapshot(user_id: str, *, now: datetime | None = None
                         for row in constraint_rows)
     with db.engine.begin() as connection:
         plan = _latest_plan(connection, user_uuid)
-        training = _training_section(connection, user_uuid, plan)
+        training = _training_section(
+            connection, user_uuid, plan,
+            evaluation_time=current,
+        )
         progression = _state_rows(connection, db.exercise_progression_states, user_uuid, plan, "state")
         trajectory = _state_rows(connection, db.training_trajectory_states, user_uuid, plan, "trajectory_state")
         nutrition = _nutrition_section(connection, user_uuid)
@@ -100,7 +115,7 @@ def _latest_plan(connection, user_uuid):
         return None
 
 
-def _training_section(connection, user_uuid, plan):
+def _training_section(connection, user_uuid, plan, *, evaluation_time):
     if not plan or not _has_columns(connection, db.training_completions):
         return None
     try:
@@ -114,10 +129,66 @@ def _training_section(connection, user_uuid, plan):
         latest_execution_state = _latest_execution_state(connection, user_uuid)
     except SQLAlchemyError:
         return None
+    source_timestamp = _persisted_completion_timestamp(completion["completed_at"]) if completion else None
+    freshness = (_completion_evidence_freshness(
+        source_timestamp, evaluation_time=evaluation_time, policy=None)
+                 if completion else None)
     return {"authority": "persisted_training_lineage", "plan_id": plan["plan_id"],
             "plan_version": plan["plan_version"],
             "latest_execution_state": latest_execution_state,
-            "latest_authoritative_completed_session_evidence": completion is not None}
+            "latest_authoritative_completed_session_evidence": completion is not None,
+            "latest_authoritative_completed_session_occurred_at": source_timestamp,
+            "latest_authoritative_completed_session_freshness": freshness}
+
+
+def _evaluation_time(evaluation_time: object | None, legacy_now: object | None) -> datetime:
+    """Use caller-supplied UTC time when valid; wall clock stays at the boundary."""
+    supplied = evaluation_time if evaluation_time is not None else legacy_now
+    parsed = _utc_timestamp(supplied) if supplied is not None else None
+    return parsed if parsed is not None else datetime.now(timezone.utc)
+
+
+def _completion_evidence_freshness(
+        completion_timestamp: object,
+        *,
+        evaluation_time: object,
+        policy: object | None,
+) -> str:
+    """No product-wide policy exists, so completion freshness is always unknown."""
+    completed_at = _utc_timestamp(completion_timestamp)
+    evaluated_at = _utc_timestamp(evaluation_time)
+    if completed_at is None or evaluated_at is None:
+        return CompletionEvidenceFreshness.UNKNOWN.value
+    # A future policy must be an explicitly authorized product contract, not
+    # caller data. This slice intentionally supports no such policy.
+    if policy is not None:
+        return CompletionEvidenceFreshness.UNKNOWN.value
+    return CompletionEvidenceFreshness.UNKNOWN.value
+
+
+def _utc_timestamp(value: object) -> datetime | None:
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    else:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    try:
+        return parsed.astimezone(timezone.utc)
+    except (OverflowError, ValueError):
+        return None
+
+
+def _persisted_completion_timestamp(value: object) -> datetime | None:
+    """Restore SQLite's lost UTC metadata only for marker-backed writer output."""
+    if isinstance(value, datetime) and value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return _utc_timestamp(value)
 
 
 def _latest_execution_state(connection, user_uuid):

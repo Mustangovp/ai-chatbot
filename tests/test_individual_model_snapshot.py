@@ -1,11 +1,16 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import db
+import individual_model_snapshot as snapshot_module
 import pytest
 from sqlalchemy import create_engine, insert, select, text
 from individual_model_projection import build_projection, render_prompt
-from individual_model_snapshot import SCHEMA_VERSION, build_individual_model_snapshot
+from individual_model_snapshot import (
+    SCHEMA_VERSION,
+    CompletionEvidenceFreshness,
+    build_individual_model_snapshot,
+)
 from training_engine import build_training_plan, completion_projection, load_exercise_library
 from training_engine.lineage import delivered_plan_lineage
 
@@ -116,6 +121,8 @@ def test_snapshot_does_not_treat_an_unmarked_completion_id_as_completed_evidence
     snapshot = build_individual_model_snapshot(user)
 
     assert snapshot.training["latest_authoritative_completed_session_evidence"] is False
+    assert snapshot.training["latest_authoritative_completed_session_occurred_at"] is None
+    assert snapshot.training["latest_authoritative_completed_session_freshness"] is None
     assert "completion_id" not in snapshot.training
     assert "completed-session" not in render_prompt(build_projection(snapshot))
 
@@ -135,12 +142,62 @@ def test_snapshot_separates_latest_execution_from_verified_completed_evidence(mo
     monkeypatch.setattr("individual_model_snapshot.ingest_enabled", lambda: False)
     monkeypatch.setattr("individual_model_snapshot.audit_enabled", lambda: False)
 
-    snapshot = build_individual_model_snapshot(user)
+    evaluation_time = datetime(2026, 9, 3, tzinfo=timezone.utc)
+    snapshot = build_individual_model_snapshot(user, evaluation_time=evaluation_time)
 
     assert snapshot.training["latest_execution_state"] == "partial"
     assert snapshot.training["latest_authoritative_completed_session_evidence"] is True
-    assert "authoritative completed-session evidence=true" in render_prompt(
-        build_projection(snapshot))
+    assert snapshot.training["latest_authoritative_completed_session_occurred_at"] == datetime(
+        2026, 9, 2, 10, 0, tzinfo=timezone.utc)
+    assert snapshot.training["latest_authoritative_completed_session_freshness"] == "unknown"
+    prompt = render_prompt(build_projection(snapshot))
+    assert "authoritative completed-session evidence freshness=unknown" in prompt
+    assert "2026-09-02T10:00:00" not in prompt
+
+
+def test_completion_evidence_freshness_is_closed_and_evaluation_time_is_explicit(monkeypatch):
+    user = db.get_or_create_user("snapshot-freshness-evaluation@example.com")
+    plan = _plan()
+    db.persist_delivered_training_plan(user, delivered_plan_lineage(plan))
+    completion = _completed_payload(plan)
+    db.record_training_completion(user, _session(completion), completion)
+    monkeypatch.setattr("individual_model_snapshot.ingest_enabled", lambda: False)
+    monkeypatch.setattr("individual_model_snapshot.audit_enabled", lambda: False)
+    first_evaluation = datetime(2026, 9, 3, tzinfo=timezone.utc)
+    second_evaluation = datetime(2026, 10, 3, tzinfo=timezone.utc)
+
+    first = build_individual_model_snapshot(user, evaluation_time=first_evaluation)
+    second = build_individual_model_snapshot(user, evaluation_time=second_evaluation)
+
+    assert {state.value for state in CompletionEvidenceFreshness} == {
+        "current", "stale", "unknown"}
+    assert first.generated_at == first_evaluation
+    assert second.generated_at == second_evaluation
+    assert first.training["latest_authoritative_completed_session_freshness"] == "unknown"
+    assert second.training["latest_authoritative_completed_session_freshness"] == "unknown"
+
+
+@pytest.mark.parametrize("timestamp", (
+    None,
+    "not-a-timestamp",
+    datetime(2026, 9, 3, 10, 0),
+    datetime(2026, 9, 3, 12, 0, tzinfo=timezone.utc),
+))
+def test_missing_malformed_or_future_completion_timestamp_fails_closed(timestamp):
+    evaluation_time = datetime(2026, 9, 3, 10, 0, tzinfo=timezone.utc)
+
+    assert snapshot_module._completion_evidence_freshness(
+        timestamp, evaluation_time=evaluation_time, policy=None) == "unknown"
+
+
+def test_unsupported_completion_freshness_policy_fails_closed():
+    evaluation_time = datetime(2026, 9, 3, 10, 0, tzinfo=timezone.utc)
+
+    assert snapshot_module._completion_evidence_freshness(
+        evaluation_time - timedelta(minutes=1),
+        evaluation_time=evaluation_time,
+        policy=object(),
+    ) == "unknown"
 
 
 @pytest.mark.parametrize("state", ("partial", "skipped", "abandoned", "unknown"))

@@ -49,6 +49,7 @@ def _snapshot(**changes):
         training={
             "plan_id": "private-plan-id",
             "latest_authoritative_completed_session_evidence": True,
+            "latest_authoritative_completed_session_freshness": "unknown",
         },
         progression=(),
         trajectory=({
@@ -68,7 +69,7 @@ def _snapshot(**changes):
 
 
 def _empty_projection():
-    return IndividualModelCoachingProjectionV1(None, None, None, (), False, None, ())
+    return IndividualModelCoachingProjectionV1(None, None, None, (), None, None, ())
 
 
 def _mock_stream(monkeypatch):
@@ -286,6 +287,6 @@ def test_individual_model_shadow_admin_endpoint_is_hidden_and_aggregate_only(
 
 def test_projection_validator_rejects_closed_schema_escape():
     malformed = IndividualModelCoachingProjectionV1(
-        "private-goal", "beginner", "home", (), False, None, ())
+        "private-goal", "beginner", "home", (), None, None, ())
     with pytest.raises(ValueError):
         projection_module.validate_projection(malformed)
