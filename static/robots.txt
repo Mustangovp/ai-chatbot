@@ -2,6 +2,18 @@
 # Allow search engines to index the marketing landing page
 # Disallow the chat app (it's a private user interface, not for SEO)
 
+User-agent: AdsBot-Google
+Allow: /
+Disallow: /chat
+Disallow: /verify-token
+Disallow: /create-checkout-session
+
+User-agent: AdsBot-Google-Mobile
+Allow: /
+Disallow: /chat
+Disallow: /verify-token
+Disallow: /create-checkout-session
+
 User-agent: *
 Allow: /$
 Allow: /en
