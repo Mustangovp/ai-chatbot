@@ -26,10 +26,13 @@ class HumanLearningEngine:
     """Orchestrates extraction, learning, and timeline updates for the Human Model."""
     
     @staticmethod
-    def extract_facts(user_msg: str, assistant_reply: str) -> dict:
-        """Calls OpenAI to extract confirmed physical training facts from the exchange.
-        Returns a dict matching the schema. Fallback to keyword-based parsing if offline."""
-        if contains_forbidden_topics(user_msg) or contains_forbidden_topics(assistant_reply):
+    def extract_facts(user_msg: str, assistant_reply: str = "") -> dict:
+        """Extract only user-authored facts; assistant prose is never evidence.
+
+        ``assistant_reply`` remains accepted for existing callers, but is
+        deliberately excluded from extraction and persistence provenance.
+        """
+        if contains_forbidden_topics(user_msg):
             return {}
             
         api_key = os.getenv("OPENAI_API_KEY")
@@ -39,12 +42,12 @@ class HumanLearningEngine:
         try:
             client = OpenAI(api_key=api_key)
             prompt = f"""
-Analyze the following conversation segment between a fitness user and APEX (the AI coach).
-Extract only CONFIRMED physical training facts, habits, equipment, preferences, constraints, or pain points.
+Analyze only the following user-authored statement.
+Extract only facts the user explicitly states about their physical training, habits, equipment, preferences, constraints, or pain points.
 NEVER extract assumptions, guesses, temporary emotions, politics, religion, or relationship gossip.
+Assistant output is not evidence and is intentionally unavailable. Do not infer facts from coaching language.
 
 User: {user_msg}
-APEX: {assistant_reply}
 
 Return a valid JSON object matching this schema exactly:
 {{
@@ -113,10 +116,12 @@ Do not include any explanation or markdown formatting, just the raw JSON.
 
     @staticmethod
     def process_exchange(model, user_msg: str, assistant_reply: str):
-        """Processes a conversational exchange to update the Human Model with confirmed facts."""
-        if contains_forbidden_topics(user_msg) or contains_forbidden_topics(assistant_reply):
+        """Update the Human Model only from user-authored, source-valid facts."""
+        if contains_forbidden_topics(user_msg):
             return
             
+        # The rendered response may include optional model context or suggested
+        # language. It must never become confirmation evidence for durable memory.
         facts = HumanLearningEngine.extract_facts(user_msg, assistant_reply)
         
         for section in ["preferences", "habits", "constraints", "patterns"]:

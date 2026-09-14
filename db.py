@@ -266,6 +266,10 @@ training_completions = Table("training_completions", metadata,
     Column("delivered_plan_id", Uuid(as_uuid=True), ForeignKey("delivered_training_plans.id", ondelete="CASCADE"), nullable=False),
     Column("delivered_session_id", Uuid(as_uuid=True), ForeignKey("delivered_training_sessions.id", ondelete="CASCADE"), nullable=False),
     Column("workout_id", String(256), nullable=False),
+    # A normalized lineage row is authoritative only after server-side execution
+    # normalization has established this typed evidence marker.
+    Column("execution_schema", String(48), nullable=True),
+    Column("execution_state", String(16), nullable=True),
     Column("completion_percent", Integer, nullable=False),
     Column("completed_at", DateTime(timezone=True), nullable=False),
     _ts(name="recorded_at"),
@@ -474,6 +478,7 @@ _MIGRATIONS = [
     (19, lambda c: None), # deterministic progression event/state materializations
     (20, lambda c: None), # replay-derived training trajectory materialization
     (21, lambda c: _add_execution_evidence(c)),
+    (22, lambda c: _add_normalized_completion_evidence(c)),
 ]
 
 
@@ -485,6 +490,25 @@ def _add_execution_evidence(connection):
         connection.execute(text("ALTER TABLE workout_history ADD COLUMN execution_state VARCHAR(16)"))
     if "completion_evidence" not in columns:
         connection.execute(text("ALTER TABLE workout_history ADD COLUMN completion_evidence JSON"))
+
+
+def _add_normalized_completion_evidence(connection):
+    """Mark only server-normalized completed lineage as authoritative evidence.
+
+    Existing normalized rows predate observed-repetition proof. They remain
+    available in storage for compatibility, but are deliberately not promoted
+    to current completion evidence without this additive marker.
+    """
+    inspector = inspect(connection)
+    if not inspector.has_table("training_completions"):
+        return
+    columns = {column["name"] for column in inspector.get_columns("training_completions")}
+    if "execution_schema" not in columns:
+        connection.execute(text(
+            "ALTER TABLE training_completions ADD COLUMN execution_schema VARCHAR(48)"))
+    if "execution_state" not in columns:
+        connection.execute(text(
+            "ALTER TABLE training_completions ADD COLUMN execution_state VARCHAR(16)"))
 
 
 def _add_runtime_workout_blueprint(connection):
@@ -1100,10 +1124,15 @@ def list_training_completion_records(user_id, limit=60):
     This is an account-owned source; legacy ``workout_history`` remains a
     compatibility fallback for accounts that predate immutable lineage.
     """
+    from workout_execution import EXECUTION_SCHEMA, ExecutionState
+
     user_uuid = _as_uuid(user_id)
     with engine.begin() as c:
         rows = c.execute(select(training_completions).where(
             training_completions.c.user_id == user_uuid,
+            training_completions.c.execution_schema == EXECUTION_SCHEMA,
+            training_completions.c.execution_state == ExecutionState.COMPLETED.value,
+            training_completions.c.completion_percent == 100,
         ).order_by(training_completions.c.completed_at.desc()).limit(limit)).mappings().all()
         records = []
         for row in rows:
@@ -1123,12 +1152,15 @@ def list_training_completion_records(user_id, limit=60):
             payload = {
                 "workout_id": row["workout_id"], "plan_id": plan["plan_id"],
                 "plan_version": plan["plan_version"], "session_id": session["session_id"],
+                "execution_state": ExecutionState.COMPLETED.value,
                 "completion_timestamp": _aware(row["completed_at"]).isoformat(),
                 "exercises": [{
                     "prescription_id": item["prescription_id"],
                     "exercise_id": item["exercise_id"], "exercise_version": item["exercise_version"],
                     "completed_sets": item["completed_sets"],
                     "completed_repetitions": item["completed_repetitions"],
+                    "actual_repetitions": item["completed_repetitions"],
+                    "execution_state": ExecutionState.COMPLETED.value,
                     "completed_load": item["completed_load"], "completed_rpe": item["completed_rpe"],
                     "completed_rir": item["completed_rir"], "completed_effort": item["completed_effort"],
                 } for item in facts],
@@ -1155,10 +1187,6 @@ def record_training_completion(user_id, session, completion):
     session_id = _lineage_text(completion.get("session_id"), "session_id", maximum=512)
     workout_id = _lineage_text(completion.get("workout_id"), "workout_id", maximum=256)
     completed_at = _lineage_timestamp(completion.get("completion_timestamp"))
-    percentage = _lineage_percentage(session.get("completion"))
-    exercises = completion.get("exercises")
-    if not isinstance(exercises, list) or not exercises:
-        raise ValueError("training completion exercises are required")
     with engine.begin() as c:
         plan = c.execute(select(delivered_training_plans).where(
             delivered_training_plans.c.user_id == user_uuid,
@@ -1173,6 +1201,25 @@ def record_training_completion(user_id, session, completion):
         )).mappings().first()
         if not delivered_session:
             raise ValueError("unknown delivered training session")
+        from training_engine.lineage import plan_from_delivered_lineage
+        from workout_execution import EXECUTION_SCHEMA, ExecutionState, normalize_execution
+
+        try:
+            normalized = normalize_execution(
+                session, completion, plan=plan_from_delivered_lineage(plan["lineage"]))
+        except TypeError as error:
+            raise ValueError("invalid observed execution evidence") from error
+        if (normalized.get("execution_state") != ExecutionState.COMPLETED.value
+                or normalized.get("completion") != 100):
+            raise ValueError(
+                "normalized lineage requires fully observed completed execution")
+        execution_completion = normalized.get("workout_completion")
+        if not isinstance(execution_completion, dict):
+            raise ValueError("normalized lineage requires completion evidence")
+        exercises = execution_completion.get("exercises")
+        if not isinstance(exercises, list) or not exercises:
+            raise ValueError("training completion exercises are required")
+        percentage = normalized["completion"]
         expected_rows = c.execute(select(delivered_training_prescriptions).where(
             delivered_training_prescriptions.c.delivered_session_id == delivered_session["id"],
         )).mappings().all()
@@ -1208,6 +1255,7 @@ def record_training_completion(user_id, session, completion):
         c.execute(insert(training_completions).values(
             id=completion_uuid, user_id=user_uuid, delivered_plan_id=plan["id"],
             delivered_session_id=delivered_session["id"], workout_id=workout_id,
+            execution_schema=EXECUTION_SCHEMA, execution_state=ExecutionState.COMPLETED.value,
             completion_percent=percentage, completed_at=completed_at,
         ))
         for fact_index, fact in enumerate(facts, 1):
@@ -1218,17 +1266,14 @@ def record_training_completion(user_id, session, completion):
         _materialize_progression_from_lineage(c, user_uuid, plan, completion_uuid)
         _materialize_training_trajectory(c, user_uuid, plan)
         legacy_id = uuid.uuid4()
-        execution_facts = [{**fact, "actual_repetitions": fact["completed_repetitions"],
-                            "execution_state": "completed"} for fact in facts]
-        execution_completion = {**completion, "execution_state": "completed",
-                                "exercises": execution_facts}
+        execution_facts = execution_completion["exercises"]
         c.execute(insert(workout_history).values(
             id=legacy_id, user_id=user_uuid, type=session.get("type"),
             exercises=execution_facts, difficulty=session.get("diff"),
-            completion=percentage, execution_state="completed",
+            completion=percentage, execution_state=ExecutionState.COMPLETED.value,
             completion_evidence=execution_completion, source="app"))
-        memory_session = {**session, "execution_schema": "workout-execution-v1",
-                          "execution_state": "completed", "completion": percentage,
+        memory_session = {**session, "execution_schema": EXECUTION_SCHEMA,
+                          "execution_state": ExecutionState.COMPLETED.value, "completion": percentage,
                           "exercises": execution_facts,
                           "workout_completion": execution_completion}
         c.execute(insert(coach_memory).values(
@@ -1260,12 +1305,15 @@ def _materialize_progression_from_lineage(connection, user_uuid, plan_row, sourc
     from decimal import Decimal
     from training_engine import RecoverySnapshot, RecoveryState, advance_training_lifecycle, workout_completion_from_payload
     from training_engine.lineage import plan_from_delivered_lineage
+    from workout_execution import EXECUTION_SCHEMA, ExecutionState
 
     try:
         plan = plan_from_delivered_lineage(plan_row["lineage"])
         completions = connection.execute(select(training_completions).where(
             training_completions.c.user_id == user_uuid,
             training_completions.c.delivered_plan_id == plan_row["id"],
+            training_completions.c.execution_schema == EXECUTION_SCHEMA,
+            training_completions.c.execution_state == ExecutionState.COMPLETED.value,
             training_completions.c.completion_percent == 100,
         ).order_by(training_completions.c.completed_at.asc(), training_completions.c.id.asc())).mappings().all()
         if not completions:
@@ -1477,12 +1525,6 @@ def _lineage_timestamp(value):
     if parsed.tzinfo is None:
         raise ValueError("completion timestamp must be timezone-aware")
     return parsed.astimezone(_dt.timezone.utc)
-
-
-def _lineage_percentage(value):
-    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 100:
-        raise ValueError("completion percentage is invalid")
-    return value
 
 
 def _validated_completion_fact(value):

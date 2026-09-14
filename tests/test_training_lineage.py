@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import func, inspect, select
+from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine, func, inspect, select
 
 import db as store
 from training_engine import (
@@ -16,7 +16,6 @@ from training_engine import (
     load_exercise_library,
     workout_completion_from_payload,
 )
-from training_engine.cross_session import adapt_from_persisted_history
 from training_engine.lineage import delivered_plan_lineage
 from training_engine.training_trajectory import (
     CLASSIFIER_VERSION,
@@ -36,7 +35,8 @@ def _plan():
     return build_training_plan(recommendation_blueprint_id="lineage-v1", facts=_FACTS)
 
 
-def _completion(plan, *, workout_id="lineage-workout-1", sets=None, effort="easy"):
+def _completion(plan, *, workout_id="lineage-workout-1", sets=None, effort="easy",
+                execution_state="completed", observed=True):
     projection = completion_projection(plan, load_exercise_library())
     session = projection["sessions"][0]
     return {
@@ -44,6 +44,7 @@ def _completion(plan, *, workout_id="lineage-workout-1", sets=None, effort="easy
         "plan_id": plan.plan_id,
         "plan_version": plan.version,
         "session_id": session["session_id"],
+        "execution_state": execution_state,
         "completion_timestamp": "2026-09-02T10:00:00Z",
         "exercises": [{
             "prescription_id": item["prescription_id"],
@@ -51,6 +52,8 @@ def _completion(plan, *, workout_id="lineage-workout-1", sets=None, effort="easy
             "exercise_version": item["exercise_version"],
             "completed_sets": item["prescribed_sets"] if sets is None else sets,
             "completed_repetitions": item["rep_max"] if sets is None or sets > 0 else 0,
+            "actual_repetitions": (
+                item["rep_max"] if observed and (sets is None or sets > 0) else None),
             "completed_load": 20,
             "completed_rpe": 6,
             "completed_rir": 4,
@@ -61,6 +64,7 @@ def _completion(plan, *, workout_id="lineage-workout-1", sets=None, effort="easy
 
 def _session(completion, percentage=100):
     return {"type": "deterministic", "diff": "medium", "completion": percentage,
+            "execution_state": completion.get("execution_state", "unknown"),
             "exercises": {"workout_completion": completion}}
 
 
@@ -103,6 +107,22 @@ def test_v18_lineage_migration_is_additive_and_safe_to_rerun_for_legacy_accounts
         assert connection.execute(select(func.max(store.schema_version.c.version))).scalar_one() == store._MIGRATIONS[-1][0]
 
 
+def test_v22_normalized_completion_evidence_migration_is_additive_and_idempotent():
+    engine = create_engine("sqlite://")
+    legacy = MetaData()
+    Table("training_completions", legacy,
+          Column("id", String(36), primary_key=True),
+          Column("completion_percent", Integer, nullable=False))
+    legacy.create_all(engine)
+
+    with engine.begin() as connection:
+        store._add_normalized_completion_evidence(connection)
+        store._add_normalized_completion_evidence(connection)
+
+    columns = {column["name"] for column in inspect(engine).get_columns("training_completions")}
+    assert {"id", "completion_percent", "execution_schema", "execution_state"} <= columns
+
+
 def test_completion_requires_exact_owned_plan_session_and_prescription_lineage():
     owner = _user("lineage-a@example.com")
     other = _user("lineage-b@example.com")
@@ -117,8 +137,25 @@ def test_completion_requires_exact_owned_plan_session_and_prescription_lineage()
     assert len(records) == 1
     reloaded = records[0]["exercises"]["workout_completion"]
     assert reloaded["completion_timestamp"] == "2026-09-02T10:00:00+00:00"
-    assert {key: value for key, value in reloaded.items() if key != "completion_timestamp"} == {
-        key: value for key, value in completion.items() if key != "completion_timestamp"}
+    assert reloaded["execution_state"] == "completed"
+    assert [
+        (item["prescription_id"], item["actual_repetitions"], item["execution_state"])
+        for item in reloaded["exercises"]
+    ] == [
+        (item["prescription_id"], item["actual_repetitions"], "completed")
+        for item in completion["exercises"]
+    ]
+    with store.engine.begin() as connection:
+        lineage = connection.execute(select(
+            store.training_completions.c.execution_schema,
+            store.training_completions.c.execution_state,
+            store.training_completions.c.completion_percent,
+        )).mappings().one()
+    assert dict(lineage) == {
+        "execution_schema": "workout-execution-v1",
+        "execution_state": "completed",
+        "completion_percent": 100,
+    }
     assert len(store.list_workouts(owner)) == 1
     with pytest.raises(ValueError, match="unknown delivered training plan"):
         store.record_training_completion(other, _session(completion), completion)
@@ -141,7 +178,7 @@ def test_completion_rejects_exercise_identity_mismatch_and_duplicate_without_wri
     mismatch = deepcopy(completion)
     mismatch["exercises"][0]["exercise_id"] = "bodyweight.push_up"
 
-    with pytest.raises(ValueError, match="does not match"):
+    with pytest.raises(ValueError, match="identity mismatch"):
         store.record_training_completion(user, _session(mismatch), mismatch)
     assert store.list_training_completion_records(user) == []
 
@@ -151,19 +188,74 @@ def test_completion_rejects_exercise_identity_mismatch_and_duplicate_without_wri
     assert len(store.list_training_completion_records(user)) == 1
 
 
-def test_partial_completion_is_factual_only_and_never_becomes_a_missed_workout():
+@pytest.mark.parametrize(
+    ("state", "sets", "observed"),
+    (
+        ("partial", 1, True),
+        ("skipped", 0, True),
+        ("abandoned", 1, True),
+        ("unknown", None, False),
+    ),
+)
+def test_noncompleted_execution_never_creates_normalized_completion_or_progression(
+        state, sets, observed):
     user = _user("lineage-partial@example.com")
     plan = _plan()
     store.persist_delivered_training_plan(user, delivered_plan_lineage(plan))
-    completion = _completion(plan, sets=0, effort="incomplete")
+    completion = _completion(
+        plan, workout_id=f"lineage-{state}", sets=sets, effort="incomplete",
+        execution_state=state, observed=observed)
 
-    store.record_training_completion(user, _session(completion, percentage=50), completion)
-    records = store.list_training_completion_records(user)
+    with pytest.raises(ValueError, match="fully observed completed"):
+        store.record_training_completion(user, _session(completion, percentage=50), completion)
 
-    assert records[0]["completion"] == 50
-    assert records[0]["exercises"]["workout_completion"]["exercises"][0]["completed_sets"] == 0
-    assert adapt_from_persisted_history(plan, records).applied is False
-    assert "missed" not in repr(records).lower()
+    assert store.list_training_completion_records(user) == []
+    assert store.list_workouts(user) == []
+    with store.engine.begin() as connection:
+        assert connection.execute(select(func.count()).select_from(
+            store.training_progression_events)).scalar_one() == 0
+
+
+def test_missing_observed_repetitions_and_completion_id_shape_cannot_create_lineage():
+    user = _user("lineage-missing-observation@example.com")
+    plan = _plan()
+    store.persist_delivered_training_plan(user, delivered_plan_lineage(plan))
+    completion = _completion(
+        plan, workout_id="lineage-missing-observation", observed=False,
+        execution_state="completed")
+
+    with pytest.raises(ValueError, match="fully observed completed"):
+        store.record_training_completion(user, _session(completion), completion)
+
+    assert store.list_training_completion_records(user) == []
+    with store.engine.begin() as connection:
+        assert connection.execute(select(func.count()).select_from(
+            store.training_completions)).scalar_one() == 0
+
+
+@pytest.mark.parametrize(
+    ("state", "exercises"),
+    (
+        ("partial", [{"completed_sets": 1, "actual_repetitions": 8}]),
+        ("skipped", [{"completed_sets": 0, "actual_repetitions": None,
+                      "execution_state": "skipped"}]),
+        ("abandoned", []),
+        ("unknown", []),
+    ),
+)
+def test_noncompleted_execution_stays_typed_history_not_normalized_lineage(state, exercises):
+    user = _user(f"execution-history-{state}@example.com")
+
+    store.log_workout(user, {
+        "type": "deterministic",
+        "execution_state": state,
+        "completion": None,
+        "exercises": exercises,
+    })
+
+    history = store.list_workouts(user)
+    assert history[0]["execution_state"] == state
+    assert store.list_training_completion_records(user) == []
 
 
 def test_normalized_completion_reloads_to_the_same_deterministic_progression_evidence():

@@ -1,10 +1,82 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+from uuid import uuid4
 
 import db
-from sqlalchemy import create_engine, text
-from individual_model_snapshot import SCHEMA_VERSION, build_individual_model_snapshot
-from training_engine import build_training_plan
+import individual_model_snapshot as snapshot_module
+import nutrition_plan
+import pytest
+from sqlalchemy import create_engine, insert, select, text
+from individual_model_projection import build_projection, render_prompt
+from individual_model_snapshot import (
+    SCHEMA_VERSION,
+    CompletionEvidenceFreshness,
+    IndividualModelSnapshotUnavailable,
+    build_individual_model_snapshot,
+)
+from training_engine import build_training_plan, completion_projection, load_exercise_library
 from training_engine.lineage import delivered_plan_lineage
+from nutrition_validation import NutritionTargets
+
+
+def _plan():
+    return build_training_plan(recommendation_blueprint_id="snapshot-completion", facts={
+        "goal": "strength", "level": "intermediate", "equipment": "gym",
+    })
+
+
+def _completed_payload(plan):
+    session = completion_projection(plan, load_exercise_library())["sessions"][0]
+    return {
+        "workout_id": "snapshot-completed-workout",
+        "plan_id": plan.plan_id,
+        "plan_version": plan.version,
+        "session_id": session["session_id"],
+        "execution_state": "completed",
+        "completion_timestamp": "2026-09-02T10:00:00Z",
+        "exercises": [{
+            "prescription_id": item["prescription_id"],
+            "exercise_id": item["exercise_id"],
+            "exercise_version": item["exercise_version"],
+            "completed_sets": item["prescribed_sets"],
+            "completed_repetitions": item["rep_max"],
+            "actual_repetitions": item["rep_max"],
+            "completed_load": 20,
+            "completed_rpe": 6,
+            "completed_rir": 4,
+            "completed_effort": "easy",
+        } for item in session["exercises"]],
+    }
+
+
+def _session(payload):
+    return {
+        "type": "deterministic",
+        "diff": "medium",
+        "execution_state": payload["execution_state"],
+        "completion": 100,
+        "exercises": {"workout_completion": payload},
+    }
+
+
+def _persisted_nutrition_plan():
+    payload = {"meals": [
+        {"meal_type": meal_type, "foods": [{
+            "display_name": "Rice", "grams": "100", "protein_g": "20",
+            "carbs_g": "40", "fat_g": "20", "kcal": "420",
+            "measurement_state": "as_served",
+        }]}
+        for meal_type in ("breakfast", "lunch", "dinner")
+    ]}
+    return nutrition_plan.build_plan(
+        payload,
+        NutritionTargets(
+            kcal=Decimal("1260"), protein=Decimal("60"),
+            carbs=Decimal("120"), fat=Decimal("60")),
+        restrictions=(),
+        provenance={"test": "individual-model-snapshot"},
+        language="en",
+    )
 
 
 def test_snapshot_is_account_owned_and_contains_only_canonical_authorities(monkeypatch):
@@ -15,7 +87,7 @@ def test_snapshot_is_account_owned_and_contains_only_canonical_authorities(monke
     plan = build_training_plan(recommendation_blueprint_id="snapshot", facts={
         "goal": "strength", "level": "intermediate", "equipment": "gym", "recoveryFeel": "fresh"})
     db.persist_delivered_training_plan(user, delivered_plan_lineage(plan))
-    db.save_nutrition_plan(user, {"id": "nutrition-snapshot", "version": "v1", "targets": {"calories": 2000}})
+    db.save_nutrition_plan(user, nutrition_plan.to_record(_persisted_nutrition_plan()))
     db.save_profile(other, {"goal": "other"})
     monkeypatch.setattr("individual_model_snapshot.ingest_enabled", lambda: False)
     monkeypatch.setattr("individual_model_snapshot.audit_enabled", lambda: False)
@@ -27,11 +99,56 @@ def test_snapshot_is_account_owned_and_contains_only_canonical_authorities(monke
     assert snapshot.profile == {"goal": "strength", "level": "intermediate", "equipment": "gym"}
     assert snapshot.constraints[0]["pattern"] == "vertical_push"
     assert snapshot.training["plan_id"] == plan.plan_id
-    assert snapshot.nutrition == {"authority": "nutrition_plan", "plan_id": "nutrition-snapshot",
-                                  "version": "v1", "targets": {"calories": 2000}}
+    assert snapshot.nutrition == {
+        "authority": "nutrition_plan",
+        "targets": {
+            "calories": Decimal("1260"),
+            "protein_g": Decimal("60"),
+            "carbs_g": Decimal("120"),
+            "fat_g": Decimal("60"),
+        },
+    }
     assert snapshot.adherence == "unknown"
     assert snapshot.human_state is None
     assert "ignore" not in repr(snapshot)
+
+
+def test_snapshot_uses_real_persisted_plan_serialization_and_rejects_malformed_targets(monkeypatch):
+    user = db.get_or_create_user("snapshot-persisted-plan@example.com")
+    stored = nutrition_plan.to_record(_persisted_nutrition_plan())
+    db.save_nutrition_plan(user, stored)
+    monkeypatch.setattr("individual_model_snapshot.ingest_enabled", lambda: False)
+    monkeypatch.setattr("individual_model_snapshot.audit_enabled", lambda: False)
+
+    snapshot = build_individual_model_snapshot(user)
+
+    assert snapshot.nutrition == {
+        "authority": "nutrition_plan",
+        "targets": {
+            "calories": Decimal("1260"),
+            "protein_g": Decimal("60"),
+            "carbs_g": Decimal("120"),
+            "fat_g": Decimal("60"),
+        },
+    }
+
+    malformed_user = db.get_or_create_user("snapshot-malformed-plan@example.com")
+    malformed = nutrition_plan.to_record(_persisted_nutrition_plan())
+    malformed["targets"]["kcal"] = "not-a-number"
+    db.save_nutrition_plan(malformed_user, malformed)
+    assert build_individual_model_snapshot(malformed_user).nutrition is None
+
+
+def test_constraint_store_unavailability_fails_closed_instead_of_becoming_empty_context(monkeypatch):
+    user = db.get_or_create_user("snapshot-constraints-unavailable@example.com")
+    monkeypatch.setattr(
+        snapshot_module.db,
+        "list_account_training_constraints",
+        lambda *_args: (_ for _ in ()).throw(RuntimeError("private store failure")),
+    )
+
+    with pytest.raises(IndividualModelSnapshotUnavailable):
+        build_individual_model_snapshot(user)
 
 
 def test_snapshot_rebuild_is_read_only_and_does_not_merge_anonymous_or_hse_when_disabled(monkeypatch):
@@ -48,6 +165,137 @@ def test_snapshot_rebuild_is_read_only_and_does_not_merge_anonymous_or_hse_when_
     assert first == second
     assert db.get_profile(user) == before
     assert first.training is None and first.progression == () and first.trajectory == ()
+
+
+def test_snapshot_does_not_treat_an_unmarked_completion_id_as_completed_evidence(
+        monkeypatch):
+    user = db.get_or_create_user("snapshot-unmarked@example.com")
+    plan = _plan()
+    db.persist_delivered_training_plan(user, delivered_plan_lineage(plan))
+    with db.engine.begin() as connection:
+        stored_plan = connection.execute(select(db.delivered_training_plans).where(
+            db.delivered_training_plans.c.user_id == db._as_uuid(user),
+        )).mappings().one()
+        stored_session = connection.execute(select(db.delivered_training_sessions).where(
+            db.delivered_training_sessions.c.delivered_plan_id == stored_plan["id"],
+        ).order_by(db.delivered_training_sessions.c.session_index.asc()).limit(1)).mappings().one()
+        connection.execute(insert(db.training_completions).values(
+            id=uuid4(), user_id=db._as_uuid(user), delivered_plan_id=stored_plan["id"],
+            delivered_session_id=stored_session["id"], workout_id="id-is-not-evidence",
+            completion_percent=100, completed_at=datetime(2026, 9, 2, tzinfo=timezone.utc),
+        ))
+    monkeypatch.setattr("individual_model_snapshot.ingest_enabled", lambda: False)
+    monkeypatch.setattr("individual_model_snapshot.audit_enabled", lambda: False)
+
+    snapshot = build_individual_model_snapshot(user)
+
+    assert snapshot.training["latest_authoritative_completed_session_evidence"] is False
+    assert snapshot.training["latest_authoritative_completed_session_occurred_at"] is None
+    assert snapshot.training["latest_authoritative_completed_session_freshness"] is None
+    assert "completion_id" not in snapshot.training
+    assert "completed-session" not in render_prompt(build_projection(snapshot))
+
+
+def test_snapshot_separates_latest_execution_from_verified_completed_evidence(monkeypatch):
+    user = db.get_or_create_user("snapshot-execution-state@example.com")
+    plan = _plan()
+    db.persist_delivered_training_plan(user, delivered_plan_lineage(plan))
+    completion = _completed_payload(plan)
+    db.record_training_completion(user, _session(completion), completion)
+    db.log_workout(user, {
+        "type": "deterministic",
+        "execution_state": "partial",
+        "completion": 50,
+        "exercises": [{"completed_sets": 1, "actual_repetitions": 8}],
+    })
+    monkeypatch.setattr("individual_model_snapshot.ingest_enabled", lambda: False)
+    monkeypatch.setattr("individual_model_snapshot.audit_enabled", lambda: False)
+
+    evaluation_time = datetime(2026, 9, 3, tzinfo=timezone.utc)
+    snapshot = build_individual_model_snapshot(user, evaluation_time=evaluation_time)
+
+    assert snapshot.training["latest_execution_state"] == "partial"
+    assert snapshot.training["latest_authoritative_completed_session_evidence"] is True
+    assert snapshot.training["latest_authoritative_completed_session_occurred_at"] == datetime(
+        2026, 9, 2, 10, 0, tzinfo=timezone.utc)
+    assert snapshot.training["latest_authoritative_completed_session_freshness"] == "unknown"
+    prompt = render_prompt(build_projection(snapshot))
+    assert "authoritative completed-session evidence freshness=unknown" in prompt
+    assert "2026-09-02T10:00:00" not in prompt
+
+
+def test_completion_evidence_freshness_is_closed_and_evaluation_time_is_explicit(monkeypatch):
+    user = db.get_or_create_user("snapshot-freshness-evaluation@example.com")
+    plan = _plan()
+    db.persist_delivered_training_plan(user, delivered_plan_lineage(plan))
+    completion = _completed_payload(plan)
+    db.record_training_completion(user, _session(completion), completion)
+    monkeypatch.setattr("individual_model_snapshot.ingest_enabled", lambda: False)
+    monkeypatch.setattr("individual_model_snapshot.audit_enabled", lambda: False)
+    first_evaluation = datetime(2026, 9, 3, tzinfo=timezone.utc)
+    second_evaluation = datetime(2026, 10, 3, tzinfo=timezone.utc)
+
+    first = build_individual_model_snapshot(user, evaluation_time=first_evaluation)
+    second = build_individual_model_snapshot(user, evaluation_time=second_evaluation)
+
+    assert {state.value for state in CompletionEvidenceFreshness} == {
+        "current", "stale", "unknown"}
+    assert first.generated_at == first_evaluation
+    assert second.generated_at == second_evaluation
+    assert first.training["latest_authoritative_completed_session_freshness"] == "unknown"
+    assert second.training["latest_authoritative_completed_session_freshness"] == "unknown"
+
+
+@pytest.mark.parametrize("timestamp", (
+    None,
+    "not-a-timestamp",
+    datetime(2026, 9, 3, 10, 0),
+    datetime(2026, 9, 3, 12, 0, tzinfo=timezone.utc),
+))
+def test_missing_malformed_or_future_completion_timestamp_fails_closed(timestamp):
+    evaluation_time = datetime(2026, 9, 3, 10, 0, tzinfo=timezone.utc)
+
+    assert snapshot_module._completion_evidence_freshness(
+        timestamp, evaluation_time=evaluation_time, policy=None) == "unknown"
+
+
+def test_unsupported_completion_freshness_policy_fails_closed():
+    evaluation_time = datetime(2026, 9, 3, 10, 0, tzinfo=timezone.utc)
+
+    assert snapshot_module._completion_evidence_freshness(
+        evaluation_time - timedelta(minutes=1),
+        evaluation_time=evaluation_time,
+        policy=object(),
+    ) == "unknown"
+
+
+@pytest.mark.parametrize("state", ("partial", "skipped", "abandoned", "unknown"))
+def test_noncompleted_execution_states_never_become_completed_snapshot_evidence(
+        monkeypatch, state):
+    user = db.get_or_create_user(f"snapshot-{state}@example.com")
+    plan = _plan()
+    db.persist_delivered_training_plan(user, delivered_plan_lineage(plan))
+    exercises = {
+        "partial": [{"completed_sets": 1, "actual_repetitions": 8}],
+        "skipped": [{"completed_sets": 0, "actual_repetitions": None,
+                     "execution_state": "skipped"}],
+        "abandoned": [],
+        "unknown": [],
+    }[state]
+    db.log_workout(user, {
+        "type": "deterministic",
+        "execution_state": state,
+        "completion": None,
+        "exercises": exercises,
+    })
+    monkeypatch.setattr("individual_model_snapshot.ingest_enabled", lambda: False)
+    monkeypatch.setattr("individual_model_snapshot.audit_enabled", lambda: False)
+
+    snapshot = build_individual_model_snapshot(user)
+
+    assert snapshot.training["latest_execution_state"] == state
+    assert snapshot.training["latest_authoritative_completed_session_evidence"] is False
+    assert "completed-session" not in render_prompt(build_projection(snapshot))
 
 
 def test_snapshot_omits_legacy_trajectory_schema_without_query_failure(monkeypatch):

@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
-from typing import Callable
+from typing import Callable, TypeVar
 
 from individual_model_projection import (
     IndividualModelCoachingProjectionV1,
@@ -14,6 +14,20 @@ from individual_model_projection import (
 
 FLAG = "INDIVIDUAL_MODEL_SHADOW"
 MAX_LATENCY_MS = 60_000
+# Optional context cannot delay the established chat path indefinitely. A timed-out
+# worker retains the one-slot gate until it exits, making later requests fail closed.
+OPTIONAL_CONTEXT_TIMEOUT_MS = 250
+_Result = TypeVar("_Result")
+
+
+class OptionalContextTimeout(RuntimeError):
+    pass
+
+
+class OptionalContextBusy(RuntimeError):
+    pass
+
+
 COUNTERS = (
     "eligible",
     "none",
@@ -22,13 +36,15 @@ COUNTERS = (
     "experience_present",
     "equipment_present",
     "constraint_present",
-    "recent_completion_present",
-    "trajectory_progressing",
-    "trajectory_stable",
+    "completed_session_evidence_present",
+    "prescribed_increase_observed",
+    "prescribed_maintain_observed",
+    "trajectory_insufficient_evidence",
     "nutrition_targets_present",
     "latency_max_ms",
 )
 _lock = threading.Lock()
+_optional_work_gate = threading.BoundedSemaphore(value=1)
 _telemetry = {counter: 0 for counter in COUNTERS}
 _logger = logging.getLogger("apex.individual_model_shadow")
 
@@ -36,6 +52,49 @@ _logger = logging.getLogger("apex.individual_model_shadow")
 def shadow_enabled(getenv: Callable[[str, str], str] = os.getenv) -> bool:
     """Fail closed unless the narrow shadow flag is exactly true."""
     return str(getenv(FLAG, "false")).strip().lower() == "true"
+
+
+def run_optional_context(
+        work: Callable[[], _Result],
+        *,
+        timeout_ms: int | float | None = None,
+) -> _Result:
+    """Run optional snapshot work with a real request-path wait budget.
+
+    The worker is daemonized because it is non-authoritative. A timed-out task
+    may finish later, but it cannot block SSE and it holds the single gate so
+    no request fan-out or competing stale context can accumulate.
+    """
+    if not callable(work):
+        raise ValueError("invalid optional context work")
+    try:
+        timeout_seconds = max(0, float(
+            OPTIONAL_CONTEXT_TIMEOUT_MS if timeout_ms is None else timeout_ms)) / 1000
+    except (TypeError, ValueError, OverflowError):
+        raise ValueError("invalid optional context timeout") from None
+    if not _optional_work_gate.acquire(blocking=False):
+        raise OptionalContextBusy("optional_context_busy")
+    completed = threading.Event()
+    outcome: dict[str, object] = {}
+
+    def _run():
+        try:
+            outcome["result"] = work()
+        except Exception as error:
+            outcome["error"] = error
+        finally:
+            completed.set()
+            _optional_work_gate.release()
+
+    threading.Thread(target=_run, name="individual-model-context", daemon=True).start()
+    if not completed.wait(timeout_seconds):
+        raise OptionalContextTimeout("optional_context_timeout")
+    error = outcome.get("error")
+    if isinstance(error, Exception):
+        raise error
+    if "result" not in outcome:
+        raise RuntimeError("optional_context_missing_result")
+    return outcome["result"]  # type: ignore[return-value]
 
 
 def _bounded_latency(value: int | float) -> int:
@@ -69,10 +128,14 @@ def observe_projection(
             "experience_present": int(projection.experience_context is not None),
             "equipment_present": int(projection.equipment_context is not None),
             "constraint_present": int(bool(projection.active_training_constraint_context)),
-            "recent_completion_present": int(
-                projection.completed_recent_authoritative_session),
-            "trajectory_progressing": int(projection.trajectory_context == "progressing"),
-            "trajectory_stable": int(projection.trajectory_context == "stable"),
+            "completed_session_evidence_present": int(
+                projection.authoritative_completed_session_evidence_freshness is not None),
+            "prescribed_increase_observed": int(
+                projection.trajectory_context == "increase_was_prescribed"),
+            "prescribed_maintain_observed": int(
+                projection.trajectory_context == "maintain_was_prescribed"),
+            "trajectory_insufficient_evidence": int(
+                projection.trajectory_context == "insufficient_evidence"),
             "nutrition_targets_present": int(bool(projection.nutrition_target_context)),
         }
         if any(changes.values()):

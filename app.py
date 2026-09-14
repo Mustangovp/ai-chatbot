@@ -2965,6 +2965,7 @@ def chat():
         _retired_account_constraints = ()
         _account_constraints_unavailable = False
         _constraint_write_failed = False
+        _constraint_load = None
         if chat_uid:
             db_profile = store.get_profile(chat_uid)
             if db_profile:
@@ -3902,8 +3903,32 @@ def chat():
                 or _individual_model_shadow_for_request):
             _individual_model_started = time.perf_counter()
             try:
-                _projection = individual_model_projection.build_projection(
-                    individual_model_snapshot.build_individual_model_snapshot(chat_uid))
+                _individual_model_evaluation_time = _dt.datetime.now(_dt.timezone.utc)
+
+                def _build_individual_model_projection():
+                    _request_authority = individual_model_projection.build_request_authority(
+                        constraint_store_available=not _account_constraints_unavailable,
+                        active_training_constraints=(
+                            _constraint_load.patterns if _constraint_load is not None else ()),
+                        current_nutrition_targets=nutrition_delivery_targets,
+                        nutrition_authority_resolved=(
+                            nutrition_delivery_targets is not None
+                            or nutrition_request_full_day
+                            or nutrition_response_guard
+                            or _revised_nutrition_plan is not None),
+                    )
+                    _snapshot = individual_model_snapshot.build_individual_model_snapshot(
+                        chat_uid,
+                        evaluation_time=_individual_model_evaluation_time,
+                    )
+                    return individual_model_projection.build_projection(
+                        _snapshot,
+                        request_authority=_request_authority,
+                    )
+
+                _projection = individual_model_shadow.run_optional_context(
+                    _build_individual_model_projection,
+                )
             except Exception as _individual_model_error:
                 if _individual_model_shadow_for_request:
                     individual_model_shadow.observe_failure(
