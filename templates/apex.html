@@ -5,6 +5,27 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>APEX — Your living AI coach</title>
 <meta name="robots" content="noindex">
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+try{
+  if(localStorage.getItem('apexOwner')==='1'){
+    window['ga-disable-G-B3WLGXE2XM']=true;
+  }
+}catch(e){}
+gtag('consent','default',{
+  'analytics_storage':'denied','ad_storage':'denied',
+  'ad_user_data':'denied','ad_personalization':'denied'
+});
+try{
+  if(localStorage.getItem('apexConsent')==='granted'){
+    gtag('consent','update',{'analytics_storage':'granted','ad_storage':'granted','ad_user_data':'granted','ad_personalization':'granted'});
+  }
+}catch(e){}
+gtag('js',new Date());
+gtag('config','G-B3WLGXE2XM');
+</script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-B3WLGXE2XM"></script>
 <link rel="icon" href="/static/logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -3027,7 +3048,7 @@ async function runChatExchange(x,body){
   };
   ChatLifecycle.waiting(x);kick();
   try{
-    const res=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',signal:x.controller.signal,body:JSON.stringify(body)});
+    const res=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json','X-APEX-Activation-Confirmation':'1'},credentials:'same-origin',signal:x.controller.signal,body:JSON.stringify(body)});
     if(!res.ok)throw new Error('chat_http_'+res.status);
     const ct=res.headers.get('content-type')||'';
     if(ct.indexOf('text/event-stream')!==-1){
@@ -3038,6 +3059,7 @@ async function runChatExchange(x,body){
           let o;try{o=JSON.parse(line.slice(5).trim());}catch(e){throw new Error('malformed_sse');}
           kick();
           if(o.medical_hold){activateMedicalHold();}
+          if(o.activation){emitFreeActivationAnalytics(o.activation);}
           if(o.t){
             ChatLifecycle.content(x,o.t);paintBatch++;
             if(paintBatch>=STREAM_PAINT_BATCH){await ChatLifecycle.schedulePaint(x);paintBatch=0;}
@@ -3063,6 +3085,20 @@ async function runChatExchange(x,body){
       ChatLifecycle.fail(x,null,x.full?CHAT_STATES.INTERRUPTED:CHAT_STATES.FAILED);
   }
   finally{if(x.watchdog)clearTimeout(x.watchdog);}
+}
+function emitFreeActivationAnalytics(activation){
+  if(!activation||activation.event!=='apex_free_activation')return;
+  if(!['training','coaching'].includes(activation.activation_type))return;
+  if(typeof activation.authenticated!=='boolean')return;
+  try{
+    if(typeof window.gtag==='function'){
+      window.gtag('event','apex_free_activation',{
+        activation_type:activation.activation_type,
+        authenticated:activation.authenticated,
+        locale:activation.locale==='en'?'en':'bg'
+      });
+    }
+  }catch(_){}
 }
 function afterReply(text,speechText=''){
   const m=memLoad();

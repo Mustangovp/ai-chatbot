@@ -122,6 +122,19 @@ free_usage = Table("free_usage", metadata,
     UniqueConstraint("subject_type", "subject_id", name="uq_free_subject"),
 )
 
+# One server-authoritative first-value record per stable account or anonymous
+# device. The application only writes validated `training` / `coaching` values;
+# this table intentionally carries no prompt, profile, or delivered content.
+free_activations = Table("free_activations", metadata,
+    _uuid_col(),
+    Column("user_id", Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE")),
+    Column("device_id", String(32)),
+    Column("activation_type", String(16), nullable=False),
+    Column("activated_at", DateTime(timezone=True), server_default=func.now(), nullable=False),
+    UniqueConstraint("user_id", name="uq_free_activation_user"),
+    UniqueConstraint("device_id", name="uq_free_activation_device"),
+)
+
 profiles = Table("profiles", metadata,
     _uuid_col(),
     Column("user_id", Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True),
@@ -474,6 +487,7 @@ _MIGRATIONS = [
     (19, lambda c: None), # deterministic progression event/state materializations
     (20, lambda c: None), # replay-derived training trajectory materialization
     (21, lambda c: _add_execution_evidence(c)),
+    (22, lambda c: None), # first-value activation ledger (created by create_all)
 ]
 
 
@@ -785,6 +799,107 @@ def free_usage_refund(subject_type, subject_id):
         )
         if row and (row["count"] or 0) > 0:
             c.execute(update(free_usage).where(free_usage.c.id == row["id"]).values(count=row["count"] - 1))
+
+
+# ── FREE first-value activation (server-authoritative) ──────────────────────
+_FREE_ACTIVATION_TYPES = frozenset(("training", "coaching"))
+
+
+def _activation_device_id(value):
+    """Accept only the server-issued UUID4-hex device cookie format."""
+    candidate = str(value or "").lower()
+    if len(candidate) != 32 or any(char not in "0123456789abcdef" for char in candidate):
+        return None
+    return candidate
+
+
+def _activation_row(connection, column, identity, *, lock=False):
+    statement = select(free_activations).where(column == identity)
+    if lock and not IS_SQLITE:
+        statement = statement.with_for_update()
+    return connection.execute(statement).mappings().first()
+
+
+def claim_free_activation(*, user_id=None, device_id=None, activation_type):
+    """Atomically persist a user's first delivered personalized value.
+
+    Authenticated callers are deduplicated by account. Anonymous callers use
+    only the existing server-issued device cookie. When the same anonymous
+    device later authenticates, its record is linked to the account rather than
+    counted again. Every race is resolved by the database unique constraints.
+    """
+    if activation_type not in _FREE_ACTIVATION_TYPES:
+        raise ValueError("unsupported free activation type")
+    try:
+        account_id = _as_uuid(user_id) if user_id else None
+    except (TypeError, ValueError, AttributeError):
+        account_id = None
+    stable_device_id = _activation_device_id(device_id)
+    if account_id is None and stable_device_id is None:
+        return {"created": False}
+
+    for _attempt in range(4):
+        try:
+            with engine.begin() as connection:
+                if account_id is not None:
+                    account_row = _activation_row(
+                        connection, free_activations.c.user_id, account_id, lock=True)
+                    if account_row is not None:
+                        return {"created": False}
+
+                device_row = None
+                if stable_device_id is not None:
+                    device_row = _activation_row(
+                        connection, free_activations.c.device_id, stable_device_id, lock=True)
+                    if device_row is not None:
+                        if account_id is None or device_row["user_id"] == account_id:
+                            return {"created": False}
+                        if device_row["user_id"] is None:
+                            connection.execute(
+                                update(free_activations)
+                                .where(free_activations.c.id == device_row["id"])
+                                .values(user_id=account_id)
+                            )
+                            return {"created": False}
+                        # This device is already bound to a different account.
+                        # Do not cross-link identities; the authenticated account
+                        # may still receive its own first-value record below.
+                        stable_device_id = None
+
+                connection.execute(insert(free_activations).values(
+                    id=uuid.uuid4(),
+                    user_id=account_id,
+                    device_id=stable_device_id,
+                    activation_type=activation_type,
+                    activated_at=_now(),
+                ))
+                return {"created": True, "activation_type": activation_type}
+        except (IntegrityError, OperationalError):
+            # A concurrent first-value request won the unique-key race or held
+            # the row lock. Retry through the read/reconciliation path.
+            continue
+    # Activation analytics must never make the product path fail. A later valid
+    # delivery can retry the write if a transient database outage clears.
+    return {"created": False}
+
+
+def get_free_activation(*, user_id=None, device_id=None):
+    """Return minimal persisted first-value evidence for internal inspection."""
+    try:
+        account_id = _as_uuid(user_id) if user_id else None
+    except (TypeError, ValueError, AttributeError):
+        account_id = None
+    stable_device_id = _activation_device_id(device_id)
+    with engine.begin() as connection:
+        row = None
+        if account_id is not None:
+            row = _activation_row(connection, free_activations.c.user_id, account_id)
+        if row is None and stable_device_id is not None:
+            device_row = _activation_row(connection, free_activations.c.device_id, stable_device_id)
+            if device_row is not None and (
+                    account_id is None or device_row["user_id"] in (None, account_id)):
+                row = device_row
+    return dict(row) if row is not None else None
 
 def _quota(count, limit, window_seconds, start, allowed=True):
     reset_in = max(0, int(window_seconds - (_now() - _aware(start)).total_seconds()))

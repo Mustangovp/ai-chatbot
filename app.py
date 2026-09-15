@@ -32,6 +32,7 @@ stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 # Runs on Postgres in production (DATABASE_URL) and SQLite locally.
 # ═══════════════════════════════════════════════════════════
 import db as store
+import free_activation
 import personality
 import context_builder
 import individual_model_projection
@@ -3999,10 +4000,15 @@ def chat():
 
         # Captured for post-stream persistence (no request context inside generator).
         persist_uid = chat_uid
+        persist_device_id = g.device_id
         persist_user_msg = user_message
         persist_lang = lang
         persist_profile = profile if isinstance(profile, dict) else {}
         persist_conversation = history if isinstance(history, list) else []  # recent window (Addendum 02 A2-1)
+        # This header only requests the browser-safe confirmation event. It is
+        # never part of activation truth: the ledger is written either way.
+        activation_confirmation_requested = (
+            request.headers.get("X-APEX-Activation-Confirmation") == "1")
 
         def _persist_reply(reply_text, authoritative_plan=None):
             """Store the exchange to the account so the coach remembers it across
@@ -4026,6 +4032,50 @@ def chat():
                 print(f"[chat] persist failed: {_pe}")
             # M0: exchange evidence — account-only (persist_uid is non-None past the guard above).
             athlete_store.observe(persist_uid, "exchange", {})
+
+        def _record_free_activation(activation_type, *, structured_delivery):
+            """Claim first value after the corresponding content SSE was emitted.
+
+            This is intentionally beneath the deterministic delivery/safety path:
+            it cannot select a plan, alter a reply, or turn generic streamed text
+            into a conversion. Any ledger or analytics failure is isolated from
+            the already-delivered product response.
+            """
+            qualification = free_activation.qualify_delivered_value(
+                activation_type=activation_type,
+                recommendation_outcome=getattr(_recommendation_plan, "outcome", None),
+                profile_completeness=getattr(_recommendation_plan, "profile_completeness", None),
+                structured_delivery=structured_delivery,
+                safety_controlled=bool(
+                    _controlled_reply is not None
+                    or _constraint_delivery_blocked
+                    or (_medical_hold and _medical_hold.get("status") == "ACTIVE_MEDICAL_HOLD")
+                ),
+            )
+            if qualification is None:
+                return None
+            try:
+                claimed = store.claim_free_activation(
+                    user_id=persist_uid,
+                    device_id=persist_device_id,
+                    activation_type=qualification.activation_type.value,
+                )
+            except Exception as activation_error:
+                print("[free-activation] persistence failed: "
+                      f"{type(activation_error).__name__}")
+                return None
+            if not claimed.get("created") or not activation_confirmation_requested:
+                return None
+            try:
+                return free_activation.analytics_payload(
+                    qualification,
+                    authenticated=bool(persist_uid),
+                    locale=persist_lang,
+                )
+            except Exception as analytics_error:
+                print("[free-activation] confirmation failed: "
+                      f"{type(analytics_error).__name__}")
+                return None
 
         def _shadow_log():
             """Schedule isolated shadow work after authoritative content is fixed."""
@@ -4371,6 +4421,12 @@ def chat():
                     if speech_event:
                         yield sse(speech_event)
                     _persist_reply(reply_text)
+                    activation_event = _record_free_activation(
+                        free_activation.ActivationType.TRAINING,
+                        structured_delivery=(training_completion is not None),
+                    )
+                    if activation_event is not None:
+                        yield sse({"activation": activation_event})
                     _update_learning_engine(chat_uid, user_message, reply_text, profile)
                     _log_analytics(_t_start)
                     _ingest_state()
@@ -4395,12 +4451,14 @@ def chat():
                             yield sse({"t": delta})
                 _bump_plans_today()  # honest landing counter: +1 real AI plan
                 reply_text = "".join(full)
+                coaching_delivery = False
                 if _recommendation_blueprint is not None:
                     try:
                         explanations = recommendation_renderer.verified_explanations(
                             reply_text, _recommendation_blueprint)
                         reply_text = recommendation_renderer.render_delivery(
                             _recommendation_blueprint, explanations, lang)
+                        coaching_delivery = True
                     except Exception as recommendation_error:
                         print(f"[recommendation] delivery rejected: {recommendation_error}")
                         reply_text = decision_engine.controlled_response(
@@ -4419,6 +4477,12 @@ def chat():
                 if speech_event:
                     yield sse(speech_event)
                 _persist_reply(reply_text)
+                activation_event = _record_free_activation(
+                    free_activation.ActivationType.COACHING,
+                    structured_delivery=coaching_delivery,
+                )
+                if activation_event is not None:
+                    yield sse({"activation": activation_event})
                 _update_learning_engine(chat_uid, user_message, reply_text, profile)
                 _log_analytics(_t_start)   # M5 Observatory
                 _ingest_state()      # BUILD-001 Human State (HSE_INGEST off by default)
