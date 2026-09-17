@@ -2400,8 +2400,10 @@ def test_training_engine_active_delivers_only_deterministic_training_plan(client
     assert captured["system"].endswith("}")
     assert captured["response_format"] == {"type": "json_object"}
     assert captured["stream"] is None
-    assert len(events) == 3 and events[-1] == {"done": True}
+    assert events[-1] == {"done": True}
     assert events[1]["training_completion"]["plan_id"]
+    assert events[2]["activation_candidate"]["activation_type"] == "training"
+    assert isinstance(events[2]["activation_candidate"]["token"], str)
     assert "Goblet Squat" in events[0]["t"]
     assert "RPE" in events[0]["t"] and "tempo" in events[0]["t"]
     assert "Keep every rep controlled." in events[0]["t"]

@@ -1,4 +1,9 @@
-"""Closed contract for APEX's first meaningful FREE product value."""
+"""Closed contract for APEX's first meaningful FREE product value.
+
+The server decides whether a result is eligible. A separately issued, opaque
+candidate is later confirmed by the browser only after that result has been
+presented. Eligibility is deliberately not product activation truth.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -13,40 +18,97 @@ class ActivationType(str, Enum):
     COACHING = "coaching"
 
 
+class DeliveryClass(str, Enum):
+    """Closed delivery outcomes relevant to first-value measurement."""
+
+    NORMAL = "normal_verified"
+    CONTROLLED_SAFETY = "controlled_safety"
+    RENDER_REJECTED = "render_rejected"
+    GENERATION_FALLBACK = "generation_fallback"
+    EXPLANATION_FALLBACK = "explanation_fallback"
+    DEGRADED = "degraded"
+
+
 @dataclass(frozen=True)
 class ActivationQualification:
-    """A server-resolved, delivered result eligible for first-value activation."""
+    """A server-resolved result eligible for a presentation candidate."""
 
     activation_type: ActivationType
 
 
-def qualify_delivered_value(
+def qualify_server_eligibility(
         *,
         activation_type: object,
         recommendation_outcome: object,
         profile_completeness: object,
-        structured_delivery: bool,
+        delivery_class: object,
         safety_controlled: bool,
+        training_delivery_verified: bool = False,
+        coaching_value_verified: bool = False,
 ) -> ActivationQualification | None:
-    """Fail closed unless an approved recommendation was actually delivered.
+    """Fail closed unless an approved result is eligible for presentation.
 
-    A plan ID, a chat submission, or general streamed text is intentionally not
-    evidence of first product value. The deterministic recommendation outcome
-    proves that server-resolved context was sufficient; the caller supplies the
-    delivery proof only after the corresponding renderer has completed.
+    A plan ID, chat submission, completion metadata, or streamed text is not
+    first-value evidence. This function authorizes only a server-issued
+    candidate. Product activation is created later by the server after a
+    browser confirms its verified presentation.
     """
     try:
         kind = ActivationType(_enum_value(activation_type))
+        delivery = DeliveryClass(_enum_value(delivery_class))
     except (TypeError, ValueError):
         return None
     if (
             _enum_value(recommendation_outcome) != "recommend"
             or _enum_value(profile_completeness) != "sufficient"
-            or structured_delivery is not True
+            or delivery is not DeliveryClass.NORMAL
             or safety_controlled is not False
     ):
         return None
+    if kind is ActivationType.TRAINING and training_delivery_verified is not True:
+        return None
+    if kind is ActivationType.COACHING and coaching_value_verified is not True:
+        return None
     return ActivationQualification(kind)
+
+
+def verified_training_delivery(value: object) -> bool:
+    """Validate a structured exercise contract before issuing a candidate.
+
+    This deliberately proves only server eligibility. The browser still has to
+    render and verify matching exercise cards before activation is recorded.
+    """
+    if not isinstance(value, dict):
+        return False
+    sessions = value.get("sessions")
+    if not isinstance(sessions, list) or not sessions:
+        return False
+    for session in sessions:
+        exercises = session.get("exercises") if isinstance(session, dict) else None
+        if not isinstance(exercises, list) or not exercises:
+            return False
+        for exercise in exercises:
+            if not isinstance(exercise, dict):
+                return False
+            if not all(isinstance(exercise.get(key), str) and exercise[key].strip()
+                       for key in ("prescription_id", "exercise_id", "exercise_version", "display_name")):
+                return False
+    return True
+
+
+def verified_coaching_value(explanations: object) -> bool:
+    """Require actual authoritative explanatory value, not blueprint metadata."""
+    if not isinstance(explanations, (list, tuple)):
+        return False
+    for explanation in explanations:
+        if not isinstance(explanation, dict):
+            continue
+        claim = explanation.get("claim")
+        because = explanation.get("because")
+        if (isinstance(claim, str) and claim.strip()
+                and isinstance(because, str) and because.strip()):
+            return True
+    return False
 
 
 def analytics_payload(

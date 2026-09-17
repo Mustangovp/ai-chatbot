@@ -5,27 +5,40 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>APEX — Your living AI coach</title>
 <meta name="robots" content="noindex">
+<meta name="referrer" content="origin">
 <script>
 window.dataLayer = window.dataLayer || [];
 function gtag(){dataLayer.push(arguments);}
-try{
-  if(localStorage.getItem('apexOwner')==='1'){
-    window['ga-disable-G-B3WLGXE2XM']=true;
-  }
-}catch(e){}
+function apexStorageGet(key){try{return window.localStorage.getItem(key);}catch(_){return null;}}
+function apexStorageSet(key,value){try{window.localStorage.setItem(key,value);return true;}catch(_){return false;}}
+function apexStorageRemove(key){try{window.localStorage.removeItem(key);return true;}catch(_){return false;}}
+function apexOwnerAnalyticsExcluded(){
+  return /(?:^|;\s*)apexOwner=true(?:;|$)/.test(document.cookie||'')||
+    ['1','true'].includes(apexStorageGet('apexOwner'));
+}
+function apexAnalyticsSafeReferrer(value){
+  try{const parsed=new URL(value);return parsed.origin+parsed.pathname;}catch(_){return '';}
+}
+const apexAnalyticsPageLocation=location.origin+location.pathname;
+const apexAnalyticsPageReferrer=apexAnalyticsSafeReferrer(document.referrer);
+if(apexOwnerAnalyticsExcluded()){
+  window['ga-disable-G-B3WLGXE2XM']=true;
+}
 gtag('consent','default',{
   'analytics_storage':'denied','ad_storage':'denied',
   'ad_user_data':'denied','ad_personalization':'denied'
 });
-try{
-  if(localStorage.getItem('apexConsent')==='granted'){
-    gtag('consent','update',{'analytics_storage':'granted','ad_storage':'granted','ad_user_data':'granted','ad_personalization':'granted'});
-  }
-}catch(e){}
+if(apexStorageGet('apexConsent')==='granted'){
+  gtag('consent','update',{'analytics_storage':'granted','ad_storage':'granted','ad_user_data':'granted','ad_personalization':'granted'});
+}
+window.__apexAnalyticsReady=false;
 gtag('js',new Date());
-gtag('config','G-B3WLGXE2XM');
+gtag('config','G-B3WLGXE2XM',{
+  page_location:apexAnalyticsPageLocation,
+  page_referrer:apexAnalyticsPageReferrer
+});
 </script>
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-B3WLGXE2XM"></script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-B3WLGXE2XM" onload="window.__apexAnalyticsReady=true;window.dispatchEvent(new Event('apexAnalyticsReady'))"></script>
 <link rel="icon" href="/static/logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -757,8 +770,8 @@ const OWNED_STORAGE_KEYS=Object.freeze(['apexProfile','apexHistory','apexWorkout
 const ACTIVE_OWNER_KEY='apexActiveDataOwnerV1',ANON_OWNER_KEY='apexAnonymousOwnerV1';
 const newOwnerId=()=>{try{return crypto.randomUUID();}catch(e){return Date.now().toString(36)+Math.random().toString(36).slice(2);}};
 function anonymousOwnerId(rotate=false){
-  let id=rotate?'':localStorage.getItem(ANON_OWNER_KEY);
-  if(!id){id=newOwnerId();localStorage.setItem(ANON_OWNER_KEY,id);}
+  let id=rotate?'':apexStorageGet(ANON_OWNER_KEY);
+  if(!id){id=newOwnerId();apexStorageSet(ANON_OWNER_KEY,id);}
   return id;
 }
 let DATA_OWNER={kind:'anonymous',id:anonymousOwnerId()};
@@ -767,12 +780,12 @@ function ownedStorageKey(key,owner=DATA_OWNER){
   if(!OWNED_STORAGE_KEYS.includes(key))throw new Error('unowned_storage_key');
   return 'apexOwnedV1:'+dataOwnerToken(owner)+':'+key;
 }
-function ownedStorageGet(key,owner=DATA_OWNER){return localStorage.getItem(ownedStorageKey(key,owner));}
-function ownedStorageSet(key,value,owner=DATA_OWNER){localStorage.setItem(ownedStorageKey(key,owner),value);}
-function ownedStorageRemove(key){localStorage.removeItem(ownedStorageKey(key));}
+function ownedStorageGet(key,owner=DATA_OWNER){return apexStorageGet(ownedStorageKey(key,owner));}
+function ownedStorageSet(key,value,owner=DATA_OWNER){return apexStorageSet(ownedStorageKey(key,owner),value);}
+function ownedStorageRemove(key){return apexStorageRemove(ownedStorageKey(key));}
 function activateDataOwner(kind,id){
   DATA_OWNER={kind,id:String(id)};
-  localStorage.setItem(ACTIVE_OWNER_KEY,dataOwnerToken());
+  apexStorageSet(ACTIVE_OWNER_KEY,dataOwnerToken());
 }
 function rotateAnonymousOwner(){
   const id=anonymousOwnerId(true);activateDataOwner('anonymous',id);return id;
@@ -780,9 +793,9 @@ function rotateAnonymousOwner(){
 function claimLegacyDataAsAnonymous(){
   const anonymous={kind:'anonymous',id:DATA_OWNER.id};
   OWNED_STORAGE_KEYS.forEach(key=>{
-    const legacy=localStorage.getItem(key);
+    const legacy=apexStorageGet(key);
     if(legacy!==null&&ownedStorageGet(key,anonymous)===null)ownedStorageSet(key,legacy,anonymous);
-    localStorage.removeItem(key);
+    apexStorageRemove(key);
   });
 }
 claimLegacyDataAsAnonymous();
@@ -1488,7 +1501,7 @@ const T={
     priv:{title:'Поверителност и безопасност',b:'<h4>Твоите данни</h4><p>Профилът, паметта и историята ти се съхраняват локално в браузъра ти. Треньорският контекст се изпраща до AI само за да генерира плановете ти.</p><h4>Медицинска безопасност</h4><p>APEX е треньорски инструмент. Не диагностицира, не предписва и не замества медицински специалисти. При болка, симптоми или заболявания се консултирай с лекар.</p><h4>Никога не се споделя</h4><p>Данните ти никога не се продават или споделят с трети страни.</p>'},
     about:{title:'За APEX',b:'<p><strong>APEX PULSE PRO</strong> е жива AI биологична операционна система — личен треньор, който чете физиологията ти и адаптира всеки план за теб.</p><h4>Какво прави</h4><ul><li>Персонализирани тренировки и хранене</li><li>Треньорство спрямо възстановяването</li><li>Постоянна треньорска памет</li></ul><p style="color:var(--faint);margin-top:12px">Версия 3.3 · Твоят връх. Твоят пулс.</p>'}}
 };
-let lang=(localStorage.getItem('apexLang')||'en').toLowerCase(); if(lang!=='bg'&&lang!=='en')lang='en';
+let lang=(apexStorageGet('apexLang')||'en').toLowerCase(); if(lang!=='bg'&&lang!=='en')lang='en';
 function tr(){return T[lang];}
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -1572,7 +1585,7 @@ function applyLang(){
   applyReadout();
 }
 function toggleLang(){
-  lang=lang==='en'?'bg':'en';localStorage.setItem('apexLang',lang);
+  lang=lang==='en'?'bg':'en';apexStorageSet('apexLang',lang);
   const profile=pfLoad();profile.language=lang;ownedStorageSet('apexProfile',JSON.stringify(profile));accountSaveProfile(profile);
   applyLang();renderTrainingConstraints(ACTIVE_TRAINING_CONSTRAINTS);if(consultOn)resetGreeting();
 }
@@ -1639,7 +1652,7 @@ function openProfile(jump){
   set('pf-meds',p.medications);set('pf-supps',p.supplements);set('pf-injuries',p.injuries);
   set('pf-surgeries',p.surgeries);set('pf-limits',p.limitations);set('pf-notes',p.notes);
   renderTrainingConstraints(ACTIVE_TRAINING_CONSTRAINTS);
-  document.getElementById('cancel-sub').style.display=localStorage.getItem('apexToken')?'block':'none';
+  document.getElementById('cancel-sub').style.display=apexStorageGet('apexToken')?'block':'none';
   wizGo(jump||0);
   document.getElementById('profile-modal').classList.add('on');
 }
@@ -1671,7 +1684,7 @@ function saveProfile(){
 }
 function cancelSub(){ doWithdraw(tr().sub.confirmCancel); }
 function doWithdraw(confirmMsg){
-  const token=localStorage.getItem('apexToken')||'';
+  const token=apexStorageGet('apexToken')||'';
   if(!token && !SESSION.authenticated){toast(tr().sub.free);return;}
   if(!confirm(confirmMsg))return;
   fetch('/withdraw',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({token,lang})})
@@ -1819,13 +1832,13 @@ async function verifyAccessToken(token){
 async function bootstrapAccessToken(){
   const q=new URLSearchParams(location.search);
   const urlToken=q.get('token');
-  const storedToken=localStorage.getItem('apexToken')||'';
+  const storedToken=apexStorageGet('apexToken')||'';
   const token=urlToken||storedToken;
   const access=await verifyAccessToken(token);
   if(access){
-    localStorage.setItem('apexToken',token);
+    apexStorageSet('apexToken',token);
   }else if(!urlToken&&storedToken){
-    localStorage.removeItem('apexToken');
+    apexStorageRemove('apexToken');
   }
   if(urlToken!==null){
     q.delete('token');
@@ -1836,7 +1849,7 @@ async function bootstrapAccessToken(){
 }
 async function loadSession(tokenAccess){
   if(tokenAccess===undefined){
-    tokenAccess=await verifyAccessToken(localStorage.getItem('apexToken')||'');
+    tokenAccess=await verifyAccessToken(apexStorageGet('apexToken')||'');
   }
   try{
     const r=await fetch('/auth/me',{credentials:'same-origin'});
@@ -1857,7 +1870,7 @@ async function loadSession(tokenAccess){
     const savedProfile=pfLoad();
     const savedLanguage=String((savedProfile.language||savedProfile.lang||'')).toLowerCase();
     if(savedLanguage==='bg'||savedLanguage==='en'){
-      lang=savedLanguage;localStorage.setItem('apexLang',lang);applyLang();
+      lang=savedLanguage;apexStorageSet('apexLang',lang);applyLang();
     }
   }
   const restoredProfile=pfLoad();
@@ -1970,7 +1983,7 @@ async function sendMagicLink(){
 async function logout(){
   try{ await fetch('/auth/logout',{method:'POST',credentials:'same-origin'}); }catch(e){}
   SESSION={authenticated:false,plan:'free',status:'free',email:null};
-  localStorage.removeItem('apexToken'); rotateAnonymousOwner(); buildMenu(); closePanel(); toast(tr().auth.loggedOut);
+  apexStorageRemove('apexToken'); rotateAnonymousOwner(); buildMenu(); closePanel(); toast(tr().auth.loggedOut);
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -2882,12 +2895,14 @@ const ChatLifecycle={
       x=this.current;this.transition(x,CHAT_STATES.SENDING);x.attempt++;
       Object.assign(x,{options,controller:new AbortController(),typing:null,full:'',speechText:'',
         done:false,closed:false,follow:feedNearBottom(),watchdog:null,reader:null,pendingText:'',
-        paintHandle:null,paintPromise:null,paintResolve:null,streamLineNode:null,streamSuppressed:false});
+        paintHandle:null,paintPromise:null,paintResolve:null,streamLineNode:null,streamSuppressed:false,
+        activationCandidate:null,trainingCompletion:null});
     }else{
       x={id:'chat-'+(++this.sequence),state:CHAT_STATES.IDLE,attempt:1,message,options,
         priorHistory,controller:new AbortController(),typing:null,assistantBody:null,full:'',speechText:'',
         done:false,closed:false,follow:feedNearBottom(),watchdog:null,reader:null,pendingText:'',
-        paintHandle:null,paintPromise:null,paintResolve:null,streamLineNode:null,streamSuppressed:false};
+        paintHandle:null,paintPromise:null,paintResolve:null,streamLineNode:null,streamSuppressed:false,
+        activationCandidate:null,trainingCompletion:null};
       this.current=x;this.transition(x,CHAT_STATES.SENDING);
       if(!options.sessionStart){appendUser(message);saveHistory('user',message);}
     }
@@ -2957,6 +2972,7 @@ const ChatLifecycle={
     if(event.training_completion&&Array.isArray(event.training_completion.sessions)){
       pendingTrainingCompletion=event.training_completion;
       pendingCompletionSessions=event.training_completion.sessions.slice();
+      x.trainingCompletion=event.training_completion;
     }
     if(event.speech_text)x.speechText=event.speech_text;
   },
@@ -3021,7 +3037,7 @@ async function send(options={}){
   }
   const priorHistory=getHistory(),x=ChatLifecycle.begin(val,options,priorHistory);if(!x)return;
   inp.value='';pendingTrainingCompletion=null;pendingCompletionSessions=[];
-  const token=localStorage.getItem('apexToken')||'';
+  const token=apexStorageGet('apexToken')||'';
   const body={message:val,lang:lang};
   body.conversation_id=activeWorkoutConversationId();
   if(options.voice===true)body.voice=true;
@@ -3048,7 +3064,7 @@ async function runChatExchange(x,body){
   };
   ChatLifecycle.waiting(x);kick();
   try{
-    const res=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json','X-APEX-Activation-Confirmation':'1'},credentials:'same-origin',signal:x.controller.signal,body:JSON.stringify(body)});
+    const res=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',signal:x.controller.signal,body:JSON.stringify(body)});
     if(!res.ok)throw new Error('chat_http_'+res.status);
     const ct=res.headers.get('content-type')||'';
     if(ct.indexOf('text/event-stream')!==-1){
@@ -3059,7 +3075,7 @@ async function runChatExchange(x,body){
           let o;try{o=JSON.parse(line.slice(5).trim());}catch(e){throw new Error('malformed_sse');}
           kick();
           if(o.medical_hold){activateMedicalHold();}
-          if(o.activation){emitFreeActivationAnalytics(o.activation);}
+          if(o.activation_candidate)x.activationCandidate=o.activation_candidate;
           if(o.t){
             ChatLifecycle.content(x,o.t);paintBatch++;
             if(paintBatch>=STREAM_PAINT_BATCH){await ChatLifecycle.schedulePaint(x);paintBatch=0;}
@@ -3072,7 +3088,10 @@ async function runChatExchange(x,body){
         if(streamFailure||x.done){try{await reader.cancel();}catch(_){}break;}
       }
       if(streamFailure)ChatLifecycle.fail(x,streamFailure,x.full?CHAT_STATES.INTERRUPTED:CHAT_STATES.FAILED);
-      else if(x.done){ChatLifecycle.complete(x);refreshCoreAfterPersistedTurn();}
+      else if(x.done){
+        if(ChatLifecycle.complete(x))void confirmFreeActivationPresentation(x);
+        refreshCoreAfterPersistedTurn();
+      }
       else ChatLifecycle.fail(x,null,x.full?CHAT_STATES.INTERRUPTED:CHAT_STATES.FAILED);
     } else {
       const data=await res.json();
@@ -3086,20 +3105,89 @@ async function runChatExchange(x,body){
   }
   finally{if(x.watchdog)clearTimeout(x.watchdog);}
 }
-function emitFreeActivationAnalytics(activation){
-  if(!activation||activation.event!=='apex_free_activation')return;
-  if(!['training','coaching'].includes(activation.activation_type))return;
-  if(typeof activation.authenticated!=='boolean')return;
-  try{
-    if(typeof window.gtag==='function'){
-      window.gtag('event','apex_free_activation',{
-        activation_type:activation.activation_type,
-        authenticated:activation.authenticated,
-        locale:activation.locale==='en'?'en':'bg'
-      });
-    }
-  }catch(_){}
+let freeActivationDeliveryInFlight=false;
+function freeActivationOwnerExcluded(){return apexOwnerAnalyticsExcluded();}
+function freeActivationConsentGranted(){return apexStorageGet('apexConsent')==='granted';}
+function freeActivationCandidateIsValid(candidate){
+  return !!candidate&&['training','coaching'].includes(candidate.activation_type)&&
+    typeof candidate.token==='string'&&candidate.token.length>=24&&candidate.token.length<=256;
 }
+function renderedTrainingActivation(x){
+  const completion=x&&x.trainingCompletion;
+  const expected=completion&&Array.isArray(completion.sessions)?completion.sessions.flatMap(session=>
+    Array.isArray(session.exercises)?session.exercises:[]):[];
+  const cards=x&&x.assistantBody?x.assistantBody.querySelectorAll('.workout-exercise-card'):[];
+  if(!expected.length||cards.length!==expected.length)return false;
+  const renderedIds=new Set(Array.from(cards).map(card=>card.dataset.exerciseId));
+  const instructions=window.ApexExerciseInstructions;
+  return !!instructions&&expected.every(exercise=>{
+    if(typeof exercise.display_name!=='string')return false;
+    const record=instructions.find(exercise.display_name);
+    return !!record&&renderedIds.has(record.canonical_id);
+  });
+}
+function renderedCoachingActivation(x){
+  return !!(x&&x.assistantBody&&x.assistantBody.textContent.trim()&&
+    !x.assistantBody.querySelector('.workout-protocol'));
+}
+async function freeActivationPost(path,body){
+  try{
+    const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},
+      credentials:'same-origin',body:JSON.stringify(body||{})});
+    return response.ok?await response.json():null;
+  }catch(_){return null;}
+}
+async function confirmFreeActivationPresentation(x){
+  const candidate=x&&x.activationCandidate;
+  if(!freeActivationCandidateIsValid(candidate)||freeActivationOwnerExcluded())return;
+  const rendered=candidate.activation_type==='training'
+    ?renderedTrainingActivation(x):renderedCoachingActivation(x);
+  if(!rendered)return;
+  const confirmation=await freeActivationPost('/api/free-activation/confirm',{candidate:candidate.token});
+  if(confirmation&&confirmation.ok===true)void maybeDeliverFreeActivationAnalytics();
+}
+function validFreeActivationDelivery(delivery){
+  const event=delivery&&delivery.event;
+  return !!delivery&&typeof delivery.token==='string'&&delivery.token.length>=24&&
+    event&&event.event==='apex_free_activation'&&['training','coaching'].includes(event.activation_type)&&
+    typeof event.authenticated==='boolean'&&['bg','en'].includes(event.locale);
+}
+async function maybeDeliverFreeActivationAnalytics(){
+  if(freeActivationDeliveryInFlight||freeActivationOwnerExcluded()||!freeActivationConsentGranted()||
+      window.__apexAnalyticsReady!==true||typeof window.gtag!=='function')return;
+  freeActivationDeliveryInFlight=true;
+  let delivery=null;
+  try{
+    const response=await freeActivationPost('/api/free-activation/delivery',{});
+    delivery=response&&response.delivery;
+    if(!validFreeActivationDelivery(delivery)){
+      if(delivery&&typeof delivery.token==='string'){
+        await freeActivationPost('/api/free-activation/delivery/release',{token:delivery.token});
+      }
+      return;
+    }
+    try{
+      window.gtag('event',delivery.event.event,{
+        activation_type:delivery.event.activation_type,
+        authenticated:delivery.event.authenticated,
+        locale:delivery.event.locale
+      });
+    }catch(_){
+      await freeActivationPost('/api/free-activation/delivery/release',{token:delivery.token});
+      return;
+    }
+    await freeActivationPost('/api/free-activation/delivery/ack',{token:delivery.token});
+  }catch(_){
+    if(delivery&&typeof delivery.token==='string'){
+      await freeActivationPost('/api/free-activation/delivery/release',{token:delivery.token});
+    }
+  }finally{freeActivationDeliveryInFlight=false;}
+}
+window.addEventListener('apexAnalyticsReady',()=>{void maybeDeliverFreeActivationAnalytics();});
+window.addEventListener('storage',event=>{
+  if(event.key==='apexConsent'&&event.newValue==='granted')void maybeDeliverFreeActivationAnalytics();
+});
+window.apexAnalyticsConsentChanged=()=>{void maybeDeliverFreeActivationAnalytics();};
 function afterReply(text,speechText=''){
   const m=memLoad();
   if(/ккал|kcal|калории|protein|протеин/i.test(text)&&/\|/.test(text)){m.lastNutritionAt=Date.now();witness('modelChanged');}
@@ -3192,8 +3280,8 @@ const VoiceReg = {
     {id:'alpha', tts:'ash',   label:{bg:'Coach Alpha — енергичен', en:'Coach Alpha — energetic'}},
     {id:'calm',  tts:'alloy', label:{bg:'Coach Calm — спокоен',    en:'Coach Calm — calm'}}
   ],
-  current(){ const v=localStorage.getItem('apexVoice'); return this.catalog.some(x=>x.id===v)?v:this.catalog[0].id; },
-  set(id){ if(this.catalog.some(x=>x.id===id)) localStorage.setItem('apexVoice',id); },
+  current(){ const v=apexStorageGet('apexVoice'); return this.catalog.some(x=>x.id===v)?v:this.catalog[0].id; },
+  set(id){ if(this.catalog.some(x=>x.id===id)) apexStorageSet('apexVoice',id); },
   ttsId(){ const c=this.catalog.find(x=>x.id===this.current()); return c?c.tts:'alloy'; }
 };
 
@@ -3233,7 +3321,7 @@ const Voice = {
     const daypart=h<5?'night':h<12?'morning':h<18?'afternoon':'evening';
     const body={session_start:true,lang:lang,daypart:daypart,history:(typeof getHistory==='function'?getHistory():[])};
     try{ const p=pfLoad(); if(p&&Object.keys(p).length)body.profile=p; }catch(_){}
-    const token=localStorage.getItem('apexToken')||''; if(token)body.token=token;
+    const token=apexStorageGet('apexToken')||''; if(token)body.token=token;
     const x=ChatLifecycle.begin('',{voice:true,sessionStart:true},body.history);
     if(!x){this.set('ERROR');return;}
     await runChatExchange(x,body);
@@ -3357,7 +3445,7 @@ const GOAL_FROM_LANDING={burn:'fat_loss',zero:'general',growth:'muscle_gain',bui
 function applyIntent(){
   const q=new URLSearchParams(location.search);
   // language
-  const ul=q.get('lang'); if(ul==='bg'||ul==='en'){lang=ul;localStorage.setItem('apexLang',lang);}
+  const ul=q.get('lang'); if(ul==='bg'||ul==='en'){lang=ul;apexStorageSet('apexLang',lang);}
   // goal from landing goal-cards → pre-seed profile goal
   const g=q.get('goal'); if(g&&GOAL_FROM_LANDING[g]){const p=pfLoad();if(!p.goal){p.goal=GOAL_FROM_LANDING[g];ownedStorageSet('apexProfile',JSON.stringify(p));}}
   // Stripe return → poll for token (payment flow preserved)
@@ -3372,7 +3460,7 @@ function applyIntent(){
 function pollToken(sid){
   let tries=0;const iv=setInterval(()=>{tries++;
     fetch('/poll-token?session_id='+encodeURIComponent(sid)).then(r=>r.json()).then(d=>{
-      if(d.ready&&d.token){localStorage.setItem('apexToken',d.token);clearInterval(iv);toast(lang==='bg'?'Достъпът е активиран ✓':'Access unlocked ✓');document.getElementById('cancel-sub').style.display='block';}
+      if(d.ready&&d.token){apexStorageSet('apexToken',d.token);clearInterval(iv);toast(lang==='bg'?'Достъпът е активиран ✓':'Access unlocked ✓');document.getElementById('cancel-sub').style.display='block';}
       else if(tries>20)clearInterval(iv);
     }).catch(()=>{if(tries>20)clearInterval(iv);});
   },1500);
@@ -3401,17 +3489,17 @@ async function startApp(){
     witness('contact',orgNorm(e));
   },{passive:true});
   // Absence and return are facts; goodbye and welcome are the model's readings.
-  const seen=()=>{try{localStorage.setItem('apexLastSeen',String(Date.now()));}catch(e){}};
+  const seen=()=>{apexStorageSet('apexLastSeen',String(Date.now()));};
   document.addEventListener('visibilitychange',()=>{
     witness('visibility',{hidden:document.hidden});
     if(document.hidden)seen();
-    else{const gap=Date.now()-(+localStorage.getItem('apexLastSeen')||Date.now());
+    else{const gap=Date.now()-(+apexStorageGet('apexLastSeen')||Date.now());
       if(gap>30*60000)witness('returned',{days:gap/864e5});}
   });
   window.addEventListener('pagehide',seen);
   setInterval(seen,60000);
   try{ // arriving after a real absence: found resting, then the reunion registers
-    const last=+localStorage.getItem('apexLastSeen')||0;
+    const last=+apexStorageGet('apexLastSeen')||0;
     if(last&&Date.now()-last>6*3600e3){
       core.athlete.presence=0.02;          // initial condition: no one was here
       core.presence.base='resting';
@@ -3465,6 +3553,7 @@ async function startApp(){
     else if(intent.seedQ){if(hasProfile)setTimeout(()=>enterConsult(intent.seedQ),400);}
     else if(intent.intent==='consult'||landingGoal){if(hasProfile)setTimeout(()=>enterConsult(landingGoal?planSeed[landingGoal]:''),400);}
   });
+  void maybeDeliverFreeActivationAnalytics();
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',startApp,{once:true});
 else startApp();

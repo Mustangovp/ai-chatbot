@@ -1595,6 +1595,102 @@ def app_chat():
     return render_template("apex.html")
 
 
+def _free_activation_request_token(key):
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return None
+    value = data.get(key)
+    return value if isinstance(value, str) else None
+
+
+def _free_activation_owner_mode():
+    """Use the existing server-owned marker; never trust a browser assertion."""
+    return request.cookies.get("apexOwner") == "true"
+
+
+@app.route("/api/free-activation/confirm", methods=["POST"])
+def confirm_free_activation():
+    """Confirm a server-issued candidate only after browser presentation."""
+    try:
+        result = store.confirm_free_activation_candidate(
+            token=_free_activation_request_token("candidate"),
+            user_id=(g.user["id"] if g.get("user") else None),
+            device_id=g.device_id,
+            owner=_free_activation_owner_mode(),
+        )
+        return jsonify({"ok": bool(result.get("confirmed"))})
+    except Exception as confirmation_error:
+        print("[free-activation] confirmation failed: "
+              f"{type(confirmation_error).__name__}")
+        return jsonify({"ok": False})
+
+
+@app.route("/api/free-activation/delivery", methods=["POST"])
+def claim_free_activation_delivery():
+    """Lease one consent-gated browser analytics delivery without product impact."""
+    if _free_activation_owner_mode():
+        return jsonify({"delivery": None})
+    lease = None
+    try:
+        lease = store.claim_free_activation_analytics_delivery(
+            user_id=(g.user["id"] if g.get("user") else None),
+            device_id=g.device_id,
+        )
+        if lease is None:
+            return jsonify({"delivery": None})
+        qualification = free_activation.ActivationQualification(
+            free_activation.ActivationType(lease["activation_type"]))
+        event = free_activation.analytics_payload(
+            qualification,
+            authenticated=bool(lease["authenticated"]),
+            locale=lease["locale"],
+        )
+        return jsonify({"delivery": {"token": lease["token"], "event": event}})
+    except Exception as delivery_error:
+        if lease is not None:
+            try:
+                store.release_free_activation_analytics_delivery(
+                    token=lease["token"],
+                    user_id=(g.user["id"] if g.get("user") else None),
+                    device_id=g.device_id,
+                )
+            except Exception:
+                pass
+        print("[free-activation] analytics delivery failed: "
+              f"{type(delivery_error).__name__}")
+        return jsonify({"delivery": None})
+
+
+@app.route("/api/free-activation/delivery/ack", methods=["POST"])
+def acknowledge_free_activation_delivery():
+    try:
+        acknowledged = store.acknowledge_free_activation_analytics_delivery(
+            token=_free_activation_request_token("token"),
+            user_id=(g.user["id"] if g.get("user") else None),
+            device_id=g.device_id,
+        )
+        return jsonify({"ok": bool(acknowledged)})
+    except Exception as acknowledgement_error:
+        print("[free-activation] analytics acknowledgement failed: "
+              f"{type(acknowledgement_error).__name__}")
+        return jsonify({"ok": False})
+
+
+@app.route("/api/free-activation/delivery/release", methods=["POST"])
+def release_free_activation_delivery():
+    try:
+        released = store.release_free_activation_analytics_delivery(
+            token=_free_activation_request_token("token"),
+            user_id=(g.user["id"] if g.get("user") else None),
+            device_id=g.device_id,
+        )
+        return jsonify({"ok": bool(released)})
+    except Exception as release_error:
+        print("[free-activation] analytics release failed: "
+              f"{type(release_error).__name__}")
+        return jsonify({"ok": False})
+
+
 # ═══════════════════════════════════════════════════════════
 # AUTH — passwordless magic-link. Email is the canonical identity.
 # ═══════════════════════════════════════════════════════════
@@ -4005,11 +4101,6 @@ def chat():
         persist_lang = lang
         persist_profile = profile if isinstance(profile, dict) else {}
         persist_conversation = history if isinstance(history, list) else []  # recent window (Addendum 02 A2-1)
-        # This header only requests the browser-safe confirmation event. It is
-        # never part of activation truth: the ledger is written either way.
-        activation_confirmation_requested = (
-            request.headers.get("X-APEX-Activation-Confirmation") == "1")
-
         def _persist_reply(reply_text, authoritative_plan=None):
             """Store the exchange to the account so the coach remembers it across
             devices; save any nutrition plan to nutrition_history."""
@@ -4033,48 +4124,43 @@ def chat():
             # M0: exchange evidence — account-only (persist_uid is non-None past the guard above).
             athlete_store.observe(persist_uid, "exchange", {})
 
-        def _record_free_activation(activation_type, *, structured_delivery):
-            """Claim first value after the corresponding content SSE was emitted.
+        def _issue_free_activation_candidate(
+                activation_type, *, delivery_class, training_completion=None,
+                coaching_explanations=()):
+            """Issue a short-lived candidate after server eligibility only.
 
-            This is intentionally beneath the deterministic delivery/safety path:
-            it cannot select a plan, alter a reply, or turn generic streamed text
-            into a conversion. Any ledger or analytics failure is isolated from
-            the already-delivered product response.
+            Product activation is intentionally not claimed here. The browser can
+            later confirm that this exact opaque candidate rendered successfully;
+            that separate boundary prevents a server-side generation result from
+            becoming a conversion when its presentation was rejected or absent.
             """
-            qualification = free_activation.qualify_delivered_value(
+            qualification = free_activation.qualify_server_eligibility(
                 activation_type=activation_type,
                 recommendation_outcome=getattr(_recommendation_plan, "outcome", None),
                 profile_completeness=getattr(_recommendation_plan, "profile_completeness", None),
-                structured_delivery=structured_delivery,
+                delivery_class=delivery_class,
                 safety_controlled=bool(
                     _controlled_reply is not None
                     or _constraint_delivery_blocked
                     or (_medical_hold and _medical_hold.get("status") == "ACTIVE_MEDICAL_HOLD")
                 ),
+                training_delivery_verified=free_activation.verified_training_delivery(
+                    training_completion),
+                coaching_value_verified=free_activation.verified_coaching_value(
+                    coaching_explanations),
             )
             if qualification is None:
                 return None
             try:
-                claimed = store.claim_free_activation(
+                return store.issue_free_activation_candidate(
                     user_id=persist_uid,
                     device_id=persist_device_id,
                     activation_type=qualification.activation_type.value,
-                )
-            except Exception as activation_error:
-                print("[free-activation] persistence failed: "
-                      f"{type(activation_error).__name__}")
-                return None
-            if not claimed.get("created") or not activation_confirmation_requested:
-                return None
-            try:
-                return free_activation.analytics_payload(
-                    qualification,
-                    authenticated=bool(persist_uid),
                     locale=persist_lang,
                 )
-            except Exception as analytics_error:
-                print("[free-activation] confirmation failed: "
-                      f"{type(analytics_error).__name__}")
+            except Exception as activation_error:
+                print("[free-activation] candidate failed: "
+                      f"{type(activation_error).__name__}")
                 return None
 
         def _shadow_log():
@@ -4363,6 +4449,7 @@ def chat():
                     # object. Explanation delivery is never allowed to suppress
                     # an already validated deterministic training plan.
                     training_completion = None
+                    training_delivery_class = free_activation.DeliveryClass.RENDER_REJECTED
                     try:
                         if chat_uid:
                             try:
@@ -4401,6 +4488,10 @@ def chat():
                         if not explanations:
                             explanations = training_renderer.default_explanations(
                                 _training_plan_blueprint, lang)
+                            training_delivery_class = (
+                                free_activation.DeliveryClass.EXPLANATION_FALLBACK)
+                        else:
+                            training_delivery_class = free_activation.DeliveryClass.NORMAL
                         reply_text = training_renderer.render_delivery(
                             _training_plan_blueprint, load_exercise_library(), explanations, lang)
                         if _combined_coaching_request:
@@ -4421,12 +4512,13 @@ def chat():
                     if speech_event:
                         yield sse(speech_event)
                     _persist_reply(reply_text)
-                    activation_event = _record_free_activation(
+                    activation_candidate = _issue_free_activation_candidate(
                         free_activation.ActivationType.TRAINING,
-                        structured_delivery=(training_completion is not None),
+                        delivery_class=training_delivery_class,
+                        training_completion=training_completion,
                     )
-                    if activation_event is not None:
-                        yield sse({"activation": activation_event})
+                    if activation_candidate is not None:
+                        yield sse({"activation_candidate": activation_candidate})
                     _update_learning_engine(chat_uid, user_message, reply_text, profile)
                     _log_analytics(_t_start)
                     _ingest_state()
@@ -4451,14 +4543,15 @@ def chat():
                             yield sse({"t": delta})
                 _bump_plans_today()  # honest landing counter: +1 real AI plan
                 reply_text = "".join(full)
-                coaching_delivery = False
+                coaching_explanations = ()
+                coaching_delivery_class = free_activation.DeliveryClass.RENDER_REJECTED
                 if _recommendation_blueprint is not None:
                     try:
-                        explanations = recommendation_renderer.verified_explanations(
+                        coaching_explanations = recommendation_renderer.verified_explanations(
                             reply_text, _recommendation_blueprint)
                         reply_text = recommendation_renderer.render_delivery(
-                            _recommendation_blueprint, explanations, lang)
-                        coaching_delivery = True
+                            _recommendation_blueprint, coaching_explanations, lang)
+                        coaching_delivery_class = free_activation.DeliveryClass.NORMAL
                     except Exception as recommendation_error:
                         print(f"[recommendation] delivery rejected: {recommendation_error}")
                         reply_text = decision_engine.controlled_response(
@@ -4477,12 +4570,13 @@ def chat():
                 if speech_event:
                     yield sse(speech_event)
                 _persist_reply(reply_text)
-                activation_event = _record_free_activation(
+                activation_candidate = _issue_free_activation_candidate(
                     free_activation.ActivationType.COACHING,
-                    structured_delivery=coaching_delivery,
+                    delivery_class=coaching_delivery_class,
+                    coaching_explanations=coaching_explanations,
                 )
-                if activation_event is not None:
-                    yield sse({"activation": activation_event})
+                if activation_candidate is not None:
+                    yield sse({"activation_candidate": activation_candidate})
                 _update_learning_engine(chat_uid, user_message, reply_text, profile)
                 _log_analytics(_t_start)   # M5 Observatory
                 _ingest_state()      # BUILD-001 Human State (HSE_INGEST off by default)

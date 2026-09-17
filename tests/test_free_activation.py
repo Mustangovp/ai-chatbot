@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import concurrent.futures
+import datetime as dt
 import json
 import uuid
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import create_engine, func, inspect, select, text, update
 
 import app as appmod
 import db as store
@@ -67,10 +68,10 @@ def _profile(**extra):
     return profile
 
 
-def _stub_chat(monkeypatch, *, stream_text="ok"):
+def _stub_chat(monkeypatch, *, explanations=("Keep the prescribed form controlled.",), stream_text="ok"):
     def fake_create(**kwargs):
         if kwargs.get("response_format"):
-            return _StructuredCompletion({"explanations": []})
+            return _StructuredCompletion({"explanations": list(explanations)})
 
         def stream():
             yield _Chunk(stream_text)
@@ -84,21 +85,30 @@ def _activation_events(events):
     return [event["activation"] for event in events if "activation" in event]
 
 
+def _candidate_events(events):
+    return [event["activation_candidate"] for event in events if "activation_candidate" in event]
+
+
 def _device_id(client):
     cookie = client.get_cookie(appmod.DEVICE_COOKIE)
     assert cookie is not None
     return cookie.value
 
 
-def _qualifying_training(client, monkeypatch, *, headers=True):
-    _stub_chat(monkeypatch)
+def _qualifying_training(client, monkeypatch, *, explanations=("Keep the prescribed form controlled.",)):
+    _stub_chat(monkeypatch, explanations=explanations)
     response = client.post(
         "/chat",
-        headers={"X-APEX-Activation-Confirmation": "1"} if headers else {},
         json={"message": "Build a workout", "lang": "en", "profile": _profile()},
     )
     assert response.status_code == 200
     return _events(response)
+
+
+def _confirm(client, candidate):
+    response = client.post("/api/free-activation/confirm", json={"candidate": candidate["token"]})
+    assert response.status_code == 200
+    return response.get_json()
 
 
 def _workout_blueprint():
@@ -110,13 +120,14 @@ def _workout_blueprint():
     )
 
 
-def test_activation_qualification_is_closed_to_resolved_delivered_value():
-    qualifying = free_activation.qualify_delivered_value(
+def test_activation_qualification_is_closed_to_normal_verified_delivery():
+    qualifying = free_activation.qualify_server_eligibility(
         activation_type="training",
         recommendation_outcome=recommendation_planning.RecommendationOutcome.RECOMMEND,
         profile_completeness=recommendation_planning.ProfileCompleteness.SUFFICIENT,
-        structured_delivery=True,
+        delivery_class=free_activation.DeliveryClass.NORMAL,
         safety_controlled=False,
+        training_delivery_verified=True,
     )
 
     assert qualifying is not None
@@ -124,19 +135,29 @@ def test_activation_qualification_is_closed_to_resolved_delivered_value():
     for invalid in (
         {"recommendation_outcome": "clarify"},
         {"profile_completeness": "incomplete"},
-        {"structured_delivery": False},
         {"safety_controlled": True},
         {"activation_type": "nutrition"},
+        {"delivery_class": free_activation.DeliveryClass.RENDER_REJECTED},
+        {"delivery_class": free_activation.DeliveryClass.GENERATION_FALLBACK},
+        {"delivery_class": free_activation.DeliveryClass.EXPLANATION_FALLBACK},
+        {"training_delivery_verified": False},
     ):
         args = {
-            "activation_type": "coaching",
+            "activation_type": "training",
             "recommendation_outcome": "recommend",
             "profile_completeness": "sufficient",
-            "structured_delivery": True,
+            "delivery_class": free_activation.DeliveryClass.NORMAL,
             "safety_controlled": False,
+            "training_delivery_verified": True,
         }
         args.update(invalid)
-        assert free_activation.qualify_delivered_value(**args) is None
+        assert free_activation.qualify_server_eligibility(**args) is None
+
+    assert free_activation.qualify_server_eligibility(
+        activation_type="coaching", recommendation_outcome="recommend",
+        profile_completeness="sufficient", delivery_class="normal_verified",
+        safety_controlled=False, coaching_value_verified=False,
+    ) is None
 
 
 def test_analytics_payload_is_minimal_and_never_carries_identity_or_content():
@@ -216,7 +237,7 @@ def test_load_or_profile_only_never_activates(client):
 def test_generic_or_failed_generation_never_activates(client, monkeypatch):
     _stub_chat(monkeypatch)
     generic = client.post(
-        "/chat", headers={"X-APEX-Activation-Confirmation": "1"},
+        "/chat",
         json={"message": "hello", "lang": "en", "profile": _profile()},
     )
     device_id = _device_id(client)
@@ -229,7 +250,7 @@ def test_generic_or_failed_generation_never_activates(client, monkeypatch):
 
     monkeypatch.setattr(appmod.client.chat.completions, "create", fail_create)
     failed = client.post(
-        "/chat", headers={"X-APEX-Activation-Confirmation": "1"},
+        "/chat",
         json={"message": "hello", "lang": "en", "profile": _profile()},
     )
 
@@ -237,25 +258,25 @@ def test_generic_or_failed_generation_never_activates(client, monkeypatch):
     assert store.get_free_activation(device_id=device_id) is None
 
 
-def test_first_personalized_training_delivery_creates_one_anonymous_activation(client, monkeypatch):
+def test_first_personalized_training_requires_browser_presentation_confirmation(client, monkeypatch):
     events = _qualifying_training(client, monkeypatch)
-    activation_events = _activation_events(events)
+    candidates = _candidate_events(events)
     device_id = _device_id(client)
-    record = store.get_free_activation(device_id=device_id)
 
-    assert len(activation_events) == 1
-    assert activation_events[0] == {
-        "event": "apex_free_activation",
-        "activation_type": "training",
-        "authenticated": False,
-        "locale": "en",
-    }
+    assert len(candidates) == 1
+    assert candidates[0]["activation_type"] == "training"
+    assert _activation_events(events) == []
+    assert store.get_free_activation(device_id=device_id) is None
+    assert _confirm(client, candidates[0]) == {"ok": True}
+    record = store.get_free_activation(device_id=device_id)
     assert record["activation_type"] == "training"
     assert record["activated_at"] is not None
+    assert record["analytics_state"] == "pending"
     assert any("training_completion" in event for event in events)
 
     replay = _qualifying_training(client, monkeypatch)
-    assert _activation_events(replay) == []
+    replay_candidate = _candidate_events(replay)[0]
+    assert _confirm(client, replay_candidate) == {"ok": True}
     with store.engine.begin() as connection:
         assert connection.execute(
             select(func.count()).select_from(store.free_activations)
@@ -268,38 +289,42 @@ def test_first_personalized_training_delivery_uses_authenticated_identity(client
     client.set_cookie(appmod.SESSION_COOKIE, store.create_session(user_id))
 
     events = _qualifying_training(client, monkeypatch)
-    activation_events = _activation_events(events)
+    candidates = _candidate_events(events)
 
-    assert activation_events == [{
-        "event": "apex_free_activation",
-        "activation_type": "training",
-        "authenticated": True,
-        "locale": "en",
-    }]
+    assert len(candidates) == 1
+    assert _confirm(client, candidates[0]) == {"ok": True}
     assert store.get_free_activation(user_id=user_id)["activation_type"] == "training"
 
 
 def test_structured_personalized_coaching_delivery_can_be_the_first_activation(client, monkeypatch):
     blueprint = _workout_blueprint()
+    blueprint = WorkoutBlueprint(
+        goal=blueprint.goal, difficulty=blueprint.difficulty,
+        mobility_requirement=blueprint.mobility_requirement,
+        joint_impact=blueprint.joint_impact, balance_demand=blueprint.balance_demand,
+        equipment=blueprint.equipment, session_minutes=blueprint.session_minutes,
+        exercise_families=blueprint.exercise_families,
+        contraindications=blueprint.contraindications,
+        rotation_anchor=blueprint.rotation_anchor, meal_diversity=blueprint.meal_diversity,
+        explanations=[("Use dumbbells", "They match your equipment.")],
+    )
     monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "false")
     monkeypatch.setenv("RECOMMENDATION_ENGINE_ACTIVE", "true")
     monkeypatch.setattr(appmod.recommendation_architect, "design", lambda *_args, **_kwargs: blueprint)
     _stub_chat(monkeypatch, stream_text=json.dumps({
-        "blueprint": to_dict(blueprint), "explanations": [],
+        "blueprint": to_dict(blueprint), "explanations": to_dict(blueprint)["explanations"],
     }))
 
     response = client.post(
-        "/chat", headers={"X-APEX-Activation-Confirmation": "1"},
+        "/chat",
         json={"message": "Build a workout", "lang": "en", "profile": _profile()},
     )
     events = _events(response)
 
-    assert _activation_events(events) == [{
-        "event": "apex_free_activation",
-        "activation_type": "coaching",
-        "authenticated": False,
-        "locale": "en",
-    }]
+    candidates = _candidate_events(events)
+    assert len(candidates) == 1
+    assert candidates[0]["activation_type"] == "coaching"
+    assert _confirm(client, candidates[0]) == {"ok": True}
     assert store.get_free_activation(device_id=_device_id(client))["activation_type"] == "coaching"
 
 
@@ -308,7 +333,7 @@ def test_medical_boundary_never_creates_an_activation(client, monkeypatch):
         appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
 
     response = client.post(
-        "/chat", headers={"X-APEX-Activation-Confirmation": "1"},
+        "/chat",
         json={
             "message": "My chest feels tight and I feel dizzy. Build a workout.",
             "lang": "en", "profile": _profile(),
@@ -319,7 +344,7 @@ def test_medical_boundary_never_creates_an_activation(client, monkeypatch):
     assert store.get_free_activation(device_id=_device_id(client)) is None
 
 
-def test_analytics_confirmation_failure_never_breaks_delivery_or_activation_truth(client, monkeypatch):
+def test_analytics_delivery_failure_never_breaks_product_activation_truth(client, monkeypatch):
     _stub_chat(monkeypatch)
 
     def fail_analytics(*_args, **_kwargs):
@@ -327,14 +352,148 @@ def test_analytics_confirmation_failure_never_breaks_delivery_or_activation_trut
 
     monkeypatch.setattr(free_activation, "analytics_payload", fail_analytics)
     events = _qualifying_training(client, monkeypatch)
+    candidate = _candidate_events(events)[0]
 
     assert events[-1] == {"done": True}
     assert _activation_events(events) == []
-    assert store.get_free_activation(device_id=_device_id(client))["activation_type"] == "training"
+    assert _confirm(client, candidate) == {"ok": True}
+    delivery = client.post("/api/free-activation/delivery", json={})
+    assert delivery.get_json() == {"delivery": None}
+    assert store.get_free_activation(device_id=_device_id(client))["analytics_state"] == "pending"
 
 
-def test_server_truth_is_persisted_without_a_browser_confirmation_request(client, monkeypatch):
-    events = _qualifying_training(client, monkeypatch, headers=False)
+def test_server_eligibility_without_browser_confirmation_is_not_product_truth(client, monkeypatch):
+    events = _qualifying_training(client, monkeypatch)
 
     assert _activation_events(events) == []
-    assert store.get_free_activation(device_id=_device_id(client))["activation_type"] == "training"
+    assert len(_candidate_events(events)) == 1
+    assert store.get_free_activation(device_id=_device_id(client)) is None
+
+
+def test_owner_marker_excludes_candidate_confirmation(client, monkeypatch):
+    candidate = _candidate_events(_qualifying_training(client, monkeypatch))[0]
+    client.set_cookie("apexOwner", "true")
+
+    assert _confirm(client, candidate) == {"ok": False}
+    assert store.get_free_activation(device_id=_device_id(client)) is None
+
+
+def test_cross_account_candidate_and_expired_candidate_fail_closed(client, monkeypatch):
+    first = store.get_or_create_user("activation-first@example.com")
+    second = store.get_or_create_user("activation-second@example.com")
+    client.set_cookie(appmod.SESSION_COOKIE, store.create_session(first))
+    candidate = _candidate_events(_qualifying_training(client, monkeypatch))[0]
+
+    client.set_cookie(appmod.SESSION_COOKIE, store.create_session(second))
+    assert _confirm(client, candidate) == {"ok": False}
+    with store.engine.begin() as connection:
+        connection.execute(update(store.free_activation_candidates).where(
+            store.free_activation_candidates.c.token_hash == store._hash(candidate["token"])
+        ).values(expires_at=dt.datetime.now(dt.timezone.utc) - dt.timedelta(seconds=1)))
+    client.set_cookie(appmod.SESSION_COOKIE, store.create_session(first))
+    assert _confirm(client, candidate) == {"ok": False}
+    assert store.get_free_activation(user_id=first) is None
+
+
+def test_account_device_reconciliation_never_cross_links_or_recounts():
+    device_id = uuid.uuid4().hex
+    first = store.get_or_create_user("activation-device-first@example.com")
+    second = store.get_or_create_user("activation-device-second@example.com")
+
+    assert store.claim_free_activation(user_id=first, device_id=device_id, activation_type="training")["created"]
+    assert store.claim_free_activation(user_id=second, device_id=device_id, activation_type="coaching")["created"]
+    assert store.claim_free_activation(device_id=device_id, activation_type="coaching") == {"created": False}
+    first_record = store.get_free_activation(user_id=first)
+    second_record = store.get_free_activation(user_id=second)
+    assert first_record["device_id"] == device_id
+    assert second_record["device_id"] is None
+
+
+def test_concurrent_candidate_confirmations_create_one_activation_record():
+    device_id = uuid.uuid4().hex
+    candidates = [store.issue_free_activation_candidate(
+        device_id=device_id, activation_type="training", locale="en") for _ in range(8)]
+
+    def confirm(candidate):
+        return store.confirm_free_activation_candidate(token=candidate["token"], device_id=device_id)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(confirm, candidates))
+    with store.engine.begin() as connection:
+        count = connection.execute(select(func.count()).select_from(store.free_activations)).scalar_one()
+
+    assert sum(result.get("created") is True for result in results) == 1
+    assert count == 1
+
+
+def test_analytics_delivery_uses_a_lease_and_acknowledgement_for_dedupe():
+    device_id = uuid.uuid4().hex
+    candidate = store.issue_free_activation_candidate(
+        device_id=device_id, activation_type="training", locale="en")
+    assert store.confirm_free_activation_candidate(token=candidate["token"], device_id=device_id)["created"]
+
+    first = store.claim_free_activation_analytics_delivery(device_id=device_id)
+    assert first and first["activation_type"] == "training"
+    assert store.claim_free_activation_analytics_delivery(device_id=device_id) is None
+    assert store.release_free_activation_analytics_delivery(token=first["token"], device_id=device_id) is True
+    retry = store.claim_free_activation_analytics_delivery(device_id=device_id)
+    assert retry and retry["token"] != first["token"]
+    assert store.acknowledge_free_activation_analytics_delivery(token=retry["token"], device_id=device_id) is True
+    assert store.claim_free_activation_analytics_delivery(device_id=device_id) is None
+    assert store.get_free_activation(device_id=device_id)["analytics_state"] == "delivered"
+
+
+def test_public_templates_are_identical_for_browser_googlebot_and_adsbot(client):
+    for path in ("/", "/en", "/app"):
+        browser = client.get(path, headers={"User-Agent": "APEX Browser"})
+        adsbot = client.get(path, headers={"User-Agent": "AdsBot-Google"})
+        googlebot = client.get(path, headers={"User-Agent": "Googlebot"})
+        assert browser.status_code == adsbot.status_code == googlebot.status_code == 200
+        assert browser.get_data() == adsbot.get_data() == googlebot.get_data()
+
+
+def test_fresh_database_applies_real_activation_migration(monkeypatch):
+    engine = create_engine("sqlite://", future=True)
+    monkeypatch.setattr(store, "engine", engine)
+
+    store.run_migrations()
+    names = set(inspect(engine).get_table_names())
+    with engine.begin() as connection:
+        versions = {row[0] for row in connection.execute(select(store.schema_version.c.version))}
+
+    assert {"free_activations", "free_activation_candidates"} <= names
+    assert {22, 23} <= versions
+
+
+def test_legacy_activation_table_is_upgraded_with_required_ledger_columns(monkeypatch):
+    engine = create_engine("sqlite://", future=True)
+    with engine.begin() as connection:
+        connection.execute(text("CREATE TABLE schema_version (version INTEGER PRIMARY KEY, applied_at DATETIME)"))
+        connection.execute(text(
+            "CREATE TABLE free_activations (id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(36), "
+            "device_id VARCHAR(32), activation_type VARCHAR(16) NOT NULL, activated_at DATETIME NOT NULL)"))
+        for version in range(1, 22):
+            connection.execute(text("INSERT INTO schema_version (version) VALUES (:version)"), {"version": version})
+    monkeypatch.setattr(store, "engine", engine)
+
+    store.run_migrations()
+    columns = {column["name"] for column in inspect(engine).get_columns("free_activations")}
+    indexes = {index["name"] for index in inspect(engine).get_indexes("free_activations")}
+
+    assert {"locale", "analytics_state", "analytics_token_hash", "analytics_lease_expires_at", "analytics_delivered_at"} <= columns
+    assert {"ix_free_activation_user_unique", "ix_free_activation_device_unique"} <= indexes
+
+
+def test_activation_migration_failure_is_not_recorded(monkeypatch):
+    engine = create_engine("sqlite://", future=True)
+    monkeypatch.setattr(store, "engine", engine)
+
+    def fail(_connection):
+        raise RuntimeError("activation schema unavailable")
+
+    monkeypatch.setattr(store, "_MIGRATIONS", [(22, fail)])
+    with pytest.raises(RuntimeError, match="activation schema unavailable"):
+        store.run_migrations()
+    with engine.begin() as connection:
+        versions = {row[0] for row in connection.execute(select(store.schema_version.c.version))}
+    assert 22 not in versions

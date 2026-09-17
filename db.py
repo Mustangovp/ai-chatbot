@@ -130,9 +130,31 @@ free_activations = Table("free_activations", metadata,
     Column("user_id", Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE")),
     Column("device_id", String(32)),
     Column("activation_type", String(16), nullable=False),
+    Column("locale", String(2), nullable=False, server_default="bg"),
     Column("activated_at", DateTime(timezone=True), server_default=func.now(), nullable=False),
+    # Product truth is independent from browser analytics delivery. No GA/client
+    # identifier or delivered product content is retained here.
+    Column("analytics_state", String(16), nullable=False, server_default="pending"),
+    Column("analytics_token_hash", String(64)),
+    Column("analytics_lease_expires_at", DateTime(timezone=True)),
+    Column("analytics_delivered_at", DateTime(timezone=True)),
     UniqueConstraint("user_id", name="uq_free_activation_user"),
     UniqueConstraint("device_id", name="uq_free_activation_device"),
+)
+
+# A server-issued opaque candidate authorizes one presentation confirmation. The
+# raw token never reaches persistence and contains no account or result data.
+free_activation_candidates = Table("free_activation_candidates", metadata,
+    _uuid_col(),
+    Column("token_hash", String(64), nullable=False, unique=True),
+    Column("user_id", Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE")),
+    Column("device_id", String(32)),
+    Column("activation_type", String(16), nullable=False),
+    Column("locale", String(2), nullable=False),
+    Column("expires_at", DateTime(timezone=True), nullable=False),
+    Column("confirmed_at", DateTime(timezone=True)),
+    Column("created_at", DateTime(timezone=True), server_default=func.now(), nullable=False),
+    Index("ix_free_activation_candidate_expires", "expires_at"),
 )
 
 profiles = Table("profiles", metadata,
@@ -487,7 +509,10 @@ _MIGRATIONS = [
     (19, lambda c: None), # deterministic progression event/state materializations
     (20, lambda c: None), # replay-derived training trajectory materialization
     (21, lambda c: _add_execution_evidence(c)),
-    (22, lambda c: None), # first-value activation ledger (created by create_all)
+    (22, lambda c: _ensure_free_activation_schema(c)),
+    # v23 repairs databases where the prior no-op v22 was recorded after a
+    # partial create_all failure. It is intentionally the same idempotent check.
+    (23, lambda c: _ensure_free_activation_schema(c)),
 ]
 
 
@@ -499,6 +524,71 @@ def _add_execution_evidence(connection):
         connection.execute(text("ALTER TABLE workout_history ADD COLUMN execution_state VARCHAR(16)"))
     if "completion_evidence" not in columns:
         connection.execute(text("ALTER TABLE workout_history ADD COLUMN completion_evidence JSON"))
+
+
+def _ensure_free_activation_schema(connection):
+    """Create and verify the activation ledger before recording its migration.
+
+    `create_all(checkfirst=True)` does not repair a partially created legacy
+    table. This migration therefore creates the two tables explicitly, adds the
+    additive ledger columns when needed, and verifies named unique-index
+    behaviour. Any failure is intentionally allowed to abort the migration.
+    """
+    inspector = inspect(connection)
+    if not inspector.has_table("free_activations"):
+        free_activations.create(connection, checkfirst=True)
+    if not inspector.has_table("free_activation_candidates"):
+        free_activation_candidates.create(connection, checkfirst=True)
+
+    inspector = inspect(connection)
+    if not inspector.has_table("free_activations"):
+        raise RuntimeError("free_activations table missing after creation")
+    existing = {column["name"] for column in inspector.get_columns("free_activations")}
+    timestamp_type = "TIMESTAMP WITH TIME ZONE" if connection.dialect.name == "postgresql" else "DATETIME"
+    additions = (
+        ("locale", "VARCHAR(2) NOT NULL DEFAULT 'bg'"),
+        ("analytics_state", "VARCHAR(16) NOT NULL DEFAULT 'pending'"),
+        ("analytics_token_hash", "VARCHAR(64)"),
+        ("analytics_lease_expires_at", timestamp_type),
+        ("analytics_delivered_at", timestamp_type),
+    )
+    for name, definition in additions:
+        if name not in existing:
+            connection.execute(text(f"ALTER TABLE free_activations ADD COLUMN {name} {definition}"))
+
+    # Use explicit named unique indexes in addition to metadata's constraints so
+    # an upgraded legacy table has the same race-safe identity behaviour.
+    connection.execute(text(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_free_activation_user_unique "
+        "ON free_activations (user_id)"))
+    connection.execute(text(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_free_activation_device_unique "
+        "ON free_activations (device_id)"))
+    connection.execute(text(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_free_activation_candidate_token_unique "
+        "ON free_activation_candidates (token_hash)"))
+
+    inspector = inspect(connection)
+    activation_columns = {column["name"] for column in inspector.get_columns("free_activations")}
+    candidate_columns = {column["name"] for column in inspector.get_columns("free_activation_candidates")}
+    required_activation = {
+        "id", "user_id", "device_id", "activation_type", "locale", "activated_at",
+        "analytics_state", "analytics_token_hash", "analytics_lease_expires_at", "analytics_delivered_at",
+    }
+    required_candidate = {
+        "id", "token_hash", "user_id", "device_id", "activation_type", "locale",
+        "expires_at", "confirmed_at", "created_at",
+    }
+    if not required_activation <= activation_columns:
+        raise RuntimeError("free_activations required columns missing")
+    if not required_candidate <= candidate_columns:
+        raise RuntimeError("free_activation_candidates required columns missing")
+    activation_indexes = {index["name"] for index in inspector.get_indexes("free_activations")}
+    candidate_indexes = {index["name"] for index in inspector.get_indexes("free_activation_candidates")}
+    if not {"ix_free_activation_user_unique", "ix_free_activation_device_unique"} <= activation_indexes:
+        raise RuntimeError("free_activations unique identity indexes missing")
+    if "ix_free_activation_candidate_token_unique" not in candidate_indexes:
+        raise RuntimeError("free_activation_candidates token index missing")
 
 
 def _add_runtime_workout_blueprint(connection):
@@ -803,6 +893,31 @@ def free_usage_refund(subject_type, subject_id):
 
 # ── FREE first-value activation (server-authoritative) ──────────────────────
 _FREE_ACTIVATION_TYPES = frozenset(("training", "coaching"))
+_FREE_ACTIVATION_STATES = frozenset(("pending", "claimed", "delivered"))
+_FREE_ACTIVATION_CANDIDATE_TTL = _dt.timedelta(minutes=15)
+_FREE_ACTIVATION_DELIVERY_LEASE = _dt.timedelta(minutes=5)
+
+
+def _activation_account_id(value):
+    try:
+        return _as_uuid(value) if value else None
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
+def _activation_locale(value):
+    return "en" if value == "en" else "bg"
+
+
+def _activation_token(value):
+    if not isinstance(value, str) or not 24 <= len(value) <= 256:
+        return None
+    return value
+
+
+def _activation_token_hash(value):
+    token = _activation_token(value)
+    return _hash(token) if token is not None else None
 
 
 def _activation_device_id(value):
@@ -813,6 +928,15 @@ def _activation_device_id(value):
     return candidate
 
 
+def _activation_timestamp(value):
+    """Normalize SQLite's naive DateTime materialization to the UTC ledger clock."""
+    if not isinstance(value, _dt.datetime):
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=_dt.timezone.utc)
+    return value.astimezone(_dt.timezone.utc)
+
+
 def _activation_row(connection, column, identity, *, lock=False):
     statement = select(free_activations).where(column == identity)
     if lock and not IS_SQLITE:
@@ -820,20 +944,97 @@ def _activation_row(connection, column, identity, *, lock=False):
     return connection.execute(statement).mappings().first()
 
 
-def claim_free_activation(*, user_id=None, device_id=None, activation_type):
-    """Atomically persist a user's first delivered personalized value.
+def _candidate_row(connection, token_hash, *, lock=False):
+    statement = select(free_activation_candidates).where(
+        free_activation_candidates.c.token_hash == token_hash)
+    if lock and not IS_SQLITE:
+        statement = statement.with_for_update()
+    return connection.execute(statement).mappings().first()
 
-    Authenticated callers are deduplicated by account. Anonymous callers use
-    only the existing server-issued device cookie. When the same anonymous
-    device later authenticates, its record is linked to the account rather than
-    counted again. Every race is resolved by the database unique constraints.
+
+def _candidate_identity_matches(row, account_id, stable_device_id):
+    if row["device_id"] != stable_device_id:
+        return False
+    candidate_account = row["user_id"]
+    return candidate_account is None or candidate_account == account_id
+
+
+def _resolve_free_activation(connection, account_id, stable_device_id, *, reconcile):
+    """Find an owned first-value record and optionally attach an anonymous row.
+
+    The conditional update is the actual reconciliation authority. It prevents a
+    SQLite read-then-write race from attaching one anonymous device to two users.
+    The sentinel asks the caller to retry after a competing transaction wins.
     """
+    if account_id is not None:
+        account_row = _activation_row(
+            connection, free_activations.c.user_id, account_id, lock=True)
+        if account_row is not None:
+            return dict(account_row)
+    device_row = None
+    if stable_device_id is not None:
+        device_row = _activation_row(
+            connection, free_activations.c.device_id, stable_device_id, lock=True)
+    if device_row is None:
+        return None
+    device_row = dict(device_row)
+    bound_account = device_row["user_id"]
+    if account_id is None or bound_account == account_id:
+        return device_row
+    if bound_account is not None:
+        # A device previously bound to another account is never cross-linked.
+        return None
+    if not reconcile:
+        return device_row
+    result = connection.execute(
+        update(free_activations).where(
+            free_activations.c.id == device_row["id"],
+            free_activations.c.user_id.is_(None),
+        ).values(user_id=account_id)
+    )
+    if result.rowcount != 1:
+        return "retry"
+    return dict(_activation_row(connection, free_activations.c.id, device_row["id"], lock=True))
+
+
+def _claim_free_activation_in_transaction(
+        connection, *, account_id, stable_device_id, activation_type, locale):
+    existing = _resolve_free_activation(
+        connection, account_id, stable_device_id, reconcile=True)
+    if existing == "retry":
+        return {"retry": True}
+    if existing is not None:
+        return {"created": False, "record": existing}
+
+    device_for_insert = stable_device_id
+    if account_id is not None and stable_device_id is not None:
+        device_row = _activation_row(
+            connection, free_activations.c.device_id, stable_device_id, lock=True)
+        if device_row is not None and device_row["user_id"] not in (None, account_id):
+            # Preserve the existing device/account binding. A different account
+            # can still receive its own first activation, without a device link.
+            device_for_insert = None
+
+    activation_id = uuid.uuid4()
+    now = _now()
+    connection.execute(insert(free_activations).values(
+        id=activation_id,
+        user_id=account_id,
+        device_id=device_for_insert,
+        activation_type=activation_type,
+        locale=locale,
+        activated_at=now,
+        analytics_state="pending",
+    ))
+    record = dict(_activation_row(connection, free_activations.c.id, activation_id, lock=True))
+    return {"created": True, "record": record}
+
+
+def claim_free_activation(*, user_id=None, device_id=None, activation_type, locale="bg"):
+    """Atomically persist a confirmed product activation for an owned identity."""
     if activation_type not in _FREE_ACTIVATION_TYPES:
         raise ValueError("unsupported free activation type")
-    try:
-        account_id = _as_uuid(user_id) if user_id else None
-    except (TypeError, ValueError, AttributeError):
-        account_id = None
+    account_id = _activation_account_id(user_id)
     stable_device_id = _activation_device_id(device_id)
     if account_id is None and stable_device_id is None:
         return {"created": False}
@@ -841,65 +1042,213 @@ def claim_free_activation(*, user_id=None, device_id=None, activation_type):
     for _attempt in range(4):
         try:
             with engine.begin() as connection:
-                if account_id is not None:
-                    account_row = _activation_row(
-                        connection, free_activations.c.user_id, account_id, lock=True)
-                    if account_row is not None:
-                        return {"created": False}
-
-                device_row = None
-                if stable_device_id is not None:
-                    device_row = _activation_row(
-                        connection, free_activations.c.device_id, stable_device_id, lock=True)
-                    if device_row is not None:
-                        if account_id is None or device_row["user_id"] == account_id:
-                            return {"created": False}
-                        if device_row["user_id"] is None:
-                            connection.execute(
-                                update(free_activations)
-                                .where(free_activations.c.id == device_row["id"])
-                                .values(user_id=account_id)
-                            )
-                            return {"created": False}
-                        # This device is already bound to a different account.
-                        # Do not cross-link identities; the authenticated account
-                        # may still receive its own first-value record below.
-                        stable_device_id = None
-
-                connection.execute(insert(free_activations).values(
-                    id=uuid.uuid4(),
-                    user_id=account_id,
-                    device_id=stable_device_id,
+                outcome = _claim_free_activation_in_transaction(
+                    connection,
+                    account_id=account_id,
+                    stable_device_id=stable_device_id,
                     activation_type=activation_type,
-                    activated_at=_now(),
-                ))
+                    locale=_activation_locale(locale),
+                )
+            if outcome.get("retry"):
+                continue
+            if outcome["created"]:
                 return {"created": True, "activation_type": activation_type}
+            return {"created": False}
         except (IntegrityError, OperationalError):
-            # A concurrent first-value request won the unique-key race or held
-            # the row lock. Retry through the read/reconciliation path.
+            # A concurrent first insert or conditional reconciliation won.
             continue
-    # Activation analytics must never make the product path fail. A later valid
-    # delivery can retry the write if a transient database outage clears.
     return {"created": False}
+
+
+def issue_free_activation_candidate(*, user_id=None, device_id=None, activation_type, locale):
+    """Persist a short-lived opaque candidate for one server-eligible result."""
+    if activation_type not in _FREE_ACTIVATION_TYPES:
+        raise ValueError("unsupported free activation type")
+    account_id = _activation_account_id(user_id)
+    stable_device_id = _activation_device_id(device_id)
+    if account_id is None and stable_device_id is None:
+        return None
+    token = secrets.token_urlsafe(32)
+    now = _now()
+    with engine.begin() as connection:
+        connection.execute(insert(free_activation_candidates).values(
+            id=uuid.uuid4(),
+            token_hash=_hash(token),
+            user_id=account_id,
+            device_id=stable_device_id,
+            activation_type=activation_type,
+            locale=_activation_locale(locale),
+            expires_at=now + _FREE_ACTIVATION_CANDIDATE_TTL,
+            created_at=now,
+        ))
+    return {"token": token, "activation_type": activation_type, "locale": _activation_locale(locale)}
+
+
+def confirm_free_activation_candidate(*, token, user_id=None, device_id=None, owner=False):
+    """Consume one candidate after browser-side verified presentation.
+
+    Client input is only an opaque server token. It cannot provide a type,
+    identity, result, or analytics state to manufacture activation truth.
+    """
+    token_hash = _activation_token_hash(token)
+    account_id = _activation_account_id(user_id)
+    stable_device_id = _activation_device_id(device_id)
+    if token_hash is None or stable_device_id is None or type(owner) is not bool:
+        return {"confirmed": False}
+    for _attempt in range(4):
+        try:
+            with engine.begin() as connection:
+                candidate = _candidate_row(connection, token_hash, lock=True)
+                now = _now()
+                expires_at = _activation_timestamp(
+                    candidate["expires_at"] if candidate is not None else None)
+                if (candidate is None or candidate["confirmed_at"] is not None
+                        or expires_at is None or expires_at <= now
+                        or not _candidate_identity_matches(candidate, account_id, stable_device_id)):
+                    return {"confirmed": False}
+                if owner:
+                    connection.execute(update(free_activation_candidates).where(
+                        free_activation_candidates.c.id == candidate["id"],
+                        free_activation_candidates.c.confirmed_at.is_(None),
+                    ).values(confirmed_at=now))
+                    return {"confirmed": False, "owner_excluded": True}
+                outcome = _claim_free_activation_in_transaction(
+                    connection,
+                    account_id=account_id,
+                    stable_device_id=stable_device_id,
+                    activation_type=candidate["activation_type"],
+                    locale=candidate["locale"],
+                )
+                if outcome.get("retry"):
+                    continue
+                connection.execute(update(free_activation_candidates).where(
+                    free_activation_candidates.c.id == candidate["id"],
+                    free_activation_candidates.c.confirmed_at.is_(None),
+                ).values(confirmed_at=now))
+                record = outcome["record"]
+                return {
+                    "confirmed": True,
+                    "created": outcome["created"],
+                    "analytics_pending": record.get("analytics_state") == "pending",
+                }
+        except (IntegrityError, OperationalError):
+            continue
+    return {"confirmed": False}
+
+
+def _free_activation_for_identity(connection, account_id, stable_device_id):
+    resolved = _resolve_free_activation(
+        connection, account_id, stable_device_id, reconcile=True)
+    return None if resolved == "retry" else resolved
+
+
+def claim_free_activation_analytics_delivery(*, user_id=None, device_id=None):
+    """Lease one pending product activation for a browser analytics attempt."""
+    account_id = _activation_account_id(user_id)
+    stable_device_id = _activation_device_id(device_id)
+    if account_id is None and stable_device_id is None:
+        return None
+    for _attempt in range(4):
+        try:
+            with engine.begin() as connection:
+                record = _free_activation_for_identity(connection, account_id, stable_device_id)
+                if record is None:
+                    return None
+                if record.get("analytics_state") == "delivered":
+                    return None
+                now = _now()
+                lease = _activation_timestamp(record.get("analytics_lease_expires_at"))
+                reclaimable = record.get("analytics_state") == "pending" or (
+                    record.get("analytics_state") == "claimed" and (lease is None or lease <= now))
+                if not reclaimable:
+                    return None
+                token = secrets.token_urlsafe(32)
+                result = connection.execute(update(free_activations).where(
+                    free_activations.c.id == record["id"],
+                    ((free_activations.c.analytics_state == "pending") |
+                     ((free_activations.c.analytics_state == "claimed") &
+                      ((free_activations.c.analytics_lease_expires_at.is_(None)) |
+                       (free_activations.c.analytics_lease_expires_at <= now)))),
+                ).values(
+                    analytics_state="claimed",
+                    analytics_token_hash=_hash(token),
+                    analytics_lease_expires_at=now + _FREE_ACTIVATION_DELIVERY_LEASE,
+                ))
+                if result.rowcount != 1:
+                    continue
+                return {
+                    "token": token,
+                    "activation_type": record["activation_type"],
+                    "authenticated": record.get("user_id") is not None,
+                    "locale": _activation_locale(record.get("locale")),
+                }
+        except (IntegrityError, OperationalError):
+            continue
+    return None
+
+
+def acknowledge_free_activation_analytics_delivery(*, token, user_id=None, device_id=None):
+    """Mark an already leased client event delivered exactly once."""
+    token_hash = _activation_token_hash(token)
+    account_id = _activation_account_id(user_id)
+    stable_device_id = _activation_device_id(device_id)
+    if token_hash is None or stable_device_id is None:
+        return False
+    with engine.begin() as connection:
+        record = _free_activation_for_identity(connection, account_id, stable_device_id)
+        if record is None:
+            return False
+        result = connection.execute(update(free_activations).where(
+            free_activations.c.id == record["id"],
+            free_activations.c.analytics_state == "claimed",
+            free_activations.c.analytics_token_hash == token_hash,
+        ).values(
+            analytics_state="delivered",
+            analytics_token_hash=None,
+            analytics_lease_expires_at=None,
+            analytics_delivered_at=_now(),
+        ))
+        return result.rowcount == 1
+
+
+def release_free_activation_analytics_delivery(*, token, user_id=None, device_id=None):
+    """Return an unsent leased event to pending when gtag was unavailable."""
+    token_hash = _activation_token_hash(token)
+    account_id = _activation_account_id(user_id)
+    stable_device_id = _activation_device_id(device_id)
+    if token_hash is None or stable_device_id is None:
+        return False
+    with engine.begin() as connection:
+        record = _free_activation_for_identity(connection, account_id, stable_device_id)
+        if record is None:
+            return False
+        result = connection.execute(update(free_activations).where(
+            free_activations.c.id == record["id"],
+            free_activations.c.analytics_state == "claimed",
+            free_activations.c.analytics_token_hash == token_hash,
+        ).values(
+            analytics_state="pending",
+            analytics_token_hash=None,
+            analytics_lease_expires_at=None,
+        ))
+        return result.rowcount == 1
 
 
 def get_free_activation(*, user_id=None, device_id=None):
     """Return minimal persisted first-value evidence for internal inspection."""
-    try:
-        account_id = _as_uuid(user_id) if user_id else None
-    except (TypeError, ValueError, AttributeError):
-        account_id = None
+    account_id = _activation_account_id(user_id)
     stable_device_id = _activation_device_id(device_id)
-    with engine.begin() as connection:
-        row = None
-        if account_id is not None:
-            row = _activation_row(connection, free_activations.c.user_id, account_id)
-        if row is None and stable_device_id is not None:
-            device_row = _activation_row(connection, free_activations.c.device_id, stable_device_id)
-            if device_row is not None and (
-                    account_id is None or device_row["user_id"] in (None, account_id)):
-                row = device_row
-    return dict(row) if row is not None else None
+    for _attempt in range(4):
+        try:
+            with engine.begin() as connection:
+                row = _resolve_free_activation(
+                    connection, account_id, stable_device_id, reconcile=True)
+            if row == "retry":
+                continue
+            return dict(row) if row is not None else None
+        except (IntegrityError, OperationalError):
+            continue
+    return None
 
 def _quota(count, limit, window_seconds, start, allowed=True):
     reset_in = max(0, int(window_seconds - (_now() - _aware(start)).total_seconds()))
