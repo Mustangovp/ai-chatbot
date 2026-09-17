@@ -19,6 +19,16 @@ function apexOwnerAnalyticsExcluded(){
 function apexAnalyticsSafeReferrer(value){
   try{const parsed=new URL(value);return parsed.origin+parsed.pathname;}catch(_){return '';}
 }
+function apexAnalyticsConsentUpdate(granted){
+  return granted
+    ?{'analytics_storage':'granted','ad_storage':'granted','ad_user_data':'granted','ad_personalization':'granted'}
+    :{'analytics_storage':'denied','ad_storage':'denied','ad_user_data':'denied','ad_personalization':'denied'};
+}
+function apexSyncAnalyticsConsent(){
+  const granted=apexStorageGet('apexConsent')==='granted';
+  try{window.gtag('consent','update',apexAnalyticsConsentUpdate(granted));}catch(_){}
+  return granted;
+}
 const apexAnalyticsPageLocation=location.origin+location.pathname;
 const apexAnalyticsPageReferrer=apexAnalyticsSafeReferrer(document.referrer);
 if(apexOwnerAnalyticsExcluded()){
@@ -29,7 +39,7 @@ gtag('consent','default',{
   'ad_user_data':'denied','ad_personalization':'denied'
 });
 if(apexStorageGet('apexConsent')==='granted'){
-  gtag('consent','update',{'analytics_storage':'granted','ad_storage':'granted','ad_user_data':'granted','ad_personalization':'granted'});
+  apexSyncAnalyticsConsent();
 }
 window.__apexAnalyticsReady=false;
 gtag('js',new Date());
@@ -3106,6 +3116,7 @@ async function runChatExchange(x,body){
   finally{if(x.watchdog)clearTimeout(x.watchdog);}
 }
 let freeActivationDeliveryInFlight=false;
+const FREE_ACTIVATION_CALLBACK_TIMEOUT_MS=4000;
 function freeActivationOwnerExcluded(){return apexOwnerAnalyticsExcluded();}
 function freeActivationConsentGranted(){return apexStorageGet('apexConsent')==='granted';}
 function freeActivationCandidateIsValid(candidate){
@@ -3152,6 +3163,43 @@ function validFreeActivationDelivery(delivery){
     event&&event.event==='apex_free_activation'&&['training','coaching'].includes(event.activation_type)&&
     typeof event.authenticated==='boolean'&&['bg','en'].includes(event.locale);
 }
+function releaseFreeActivationDelivery(token){
+  return freeActivationPost('/api/free-activation/delivery/release',{token});
+}
+function sendFreeActivationAnalyticsEvent(delivery){
+  let settled=false;
+  let timeoutId=null;
+  const release=()=>{
+    if(settled)return;
+    settled=true;
+    if(timeoutId!==null)clearTimeout(timeoutId);
+    void releaseFreeActivationDelivery(delivery.token);
+  };
+  const callback=()=>{
+    if(settled)return;
+    settled=true;
+    if(timeoutId!==null)clearTimeout(timeoutId);
+    // This callback is only a browser-observable gtag checkpoint. The server
+    // records it as such; it is never represented as proof of Google receipt.
+    void freeActivationPost('/api/free-activation/delivery/ack',{token:delivery.token})
+      .then(result=>{if(!result||result.ok!==true)void releaseFreeActivationDelivery(delivery.token);});
+  };
+  // Consent is read again after lease acquisition and immediately before the
+  // event call, so a revocation cannot emit an in-flight activation event.
+  if(!freeActivationConsentGranted()||!apexSyncAnalyticsConsent()||!freeActivationConsentGranted()){
+    release();
+    return;
+  }
+  timeoutId=setTimeout(release,FREE_ACTIVATION_CALLBACK_TIMEOUT_MS);
+  try{
+    window.gtag('event',delivery.event.event,{
+      activation_type:delivery.event.activation_type,
+      authenticated:delivery.event.authenticated,
+      locale:delivery.event.locale,
+      event_callback:callback
+    });
+  }catch(_){release();}
+}
 async function maybeDeliverFreeActivationAnalytics(){
   if(freeActivationDeliveryInFlight||freeActivationOwnerExcluded()||!freeActivationConsentGranted()||
       window.__apexAnalyticsReady!==true||typeof window.gtag!=='function')return;
@@ -3162,32 +3210,24 @@ async function maybeDeliverFreeActivationAnalytics(){
     delivery=response&&response.delivery;
     if(!validFreeActivationDelivery(delivery)){
       if(delivery&&typeof delivery.token==='string'){
-        await freeActivationPost('/api/free-activation/delivery/release',{token:delivery.token});
+        await releaseFreeActivationDelivery(delivery.token);
       }
       return;
     }
-    try{
-      window.gtag('event',delivery.event.event,{
-        activation_type:delivery.event.activation_type,
-        authenticated:delivery.event.authenticated,
-        locale:delivery.event.locale
-      });
-    }catch(_){
-      await freeActivationPost('/api/free-activation/delivery/release',{token:delivery.token});
-      return;
-    }
-    await freeActivationPost('/api/free-activation/delivery/ack',{token:delivery.token});
+    sendFreeActivationAnalyticsEvent(delivery);
   }catch(_){
     if(delivery&&typeof delivery.token==='string'){
-      await freeActivationPost('/api/free-activation/delivery/release',{token:delivery.token});
+      await releaseFreeActivationDelivery(delivery.token);
     }
   }finally{freeActivationDeliveryInFlight=false;}
 }
 window.addEventListener('apexAnalyticsReady',()=>{void maybeDeliverFreeActivationAnalytics();});
 window.addEventListener('storage',event=>{
-  if(event.key==='apexConsent'&&event.newValue==='granted')void maybeDeliverFreeActivationAnalytics();
+  if(event.key==='apexConsent'&&apexSyncAnalyticsConsent())void maybeDeliverFreeActivationAnalytics();
 });
-window.apexAnalyticsConsentChanged=()=>{void maybeDeliverFreeActivationAnalytics();};
+window.apexAnalyticsConsentChanged=()=>{
+  if(apexSyncAnalyticsConsent())void maybeDeliverFreeActivationAnalytics();
+};
 function afterReply(text,speechText=''){
   const m=memLoad();
   if(/ккал|kcal|калории|protein|протеин/i.test(text)&&/\|/.test(text)){m.lastNutritionAt=Date.now();witness('modelChanged');}

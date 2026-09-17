@@ -8,7 +8,12 @@ test.describe('authoritative FREE activation analytics', () => {
         age: '30', height: '180', weight: '80', recoveryFeel: 'fresh',
       }));
       window.__freeActivationEvents = [];
-      window.gtag = (...args) => window.__freeActivationEvents.push(args);
+      window.gtag = (...args) => {
+        window.__freeActivationEvents.push(args);
+        if (args[0] === 'event' && typeof args[2]?.event_callback === 'function') {
+          queueMicrotask(() => args[2].event_callback());
+        }
+      };
       window.__apexAnalyticsReady = true;
       if (typeof enterConsult === 'function') enterConsult('');
       document.getElementById('profile-modal')?.classList.remove('on');
@@ -71,11 +76,145 @@ test.describe('authoritative FREE activation analytics', () => {
     expect(deliveries).toHaveLength(1);
     expect(confirmations[0]).toEqual({ candidate: 'candidate-token-for-confirmation-1234567890' });
     expect(acknowledgements[0]).toEqual({ token: 'delivery-token-for-acknowledgement-123456' });
-    expect(await page.evaluate(() => window.__freeActivationEvents)).toEqual([
-      ['event', 'apex_free_activation', {
-        activation_type: 'coaching', authenticated: false, locale: 'en',
-      }],
-    ]);
+    expect(await page.evaluate(() => window.__freeActivationEvents
+      .filter(args => args[0] === 'event')
+      .map(args => ({
+        name: args[1],
+        payload: {
+          activation_type: args[2].activation_type,
+          authenticated: args[2].authenticated,
+          locale: args[2].locale,
+          callback: typeof args[2].event_callback,
+        },
+      })))).toEqual([{
+      name: 'apex_free_activation',
+      payload: {
+        activation_type: 'coaching', authenticated: false, locale: 'en', callback: 'function',
+      },
+    }]);
+    const events = await page.evaluate(() => window.__freeActivationEvents);
+    const grantedConsent = events.findIndex(args =>
+      args[0] === 'consent' && args[1] === 'update' && args[2].analytics_storage === 'granted');
+    const activationEvent = events.findIndex(args => args[0] === 'event');
+    expect(grantedConsent).toBeGreaterThanOrEqual(0);
+    expect(grantedConsent).toBeLessThan(activationEvent);
+  });
+
+  test('rechecks revoked consent after delivery lease and emits no activation event', async ({ page }) => {
+    const releases = [];
+    await page.route('**/gtag/js*', route => route.fulfill({ status: 200, body: '' }));
+    await page.route('**/api/free-activation/delivery', async route => {
+      await page.evaluate(() => {
+        localStorage.setItem('apexConsent', 'denied');
+        window.apexAnalyticsConsentChanged();
+      });
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ delivery: { token: 'delivery-token-revoked-before-emit-123456', event: {
+          event: 'apex_free_activation', activation_type: 'training', authenticated: false, locale: 'en',
+        } } }),
+      });
+    });
+    await page.route('**/api/free-activation/delivery/release', async route => {
+      releases.push(route.request().postDataJSON());
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
+    });
+
+    await page.goto('/app?lang=en');
+    await prepare(page);
+    await page.evaluate(() => {
+      localStorage.setItem('apexConsent', 'granted');
+      window.apexAnalyticsConsentChanged();
+    });
+
+    await expect.poll(() => releases.length).toBe(1);
+    expect(releases[0]).toEqual({ token: 'delivery-token-revoked-before-emit-123456' });
+    expect(await page.evaluate(() => window.__freeActivationEvents
+      .filter(args => args[0] === 'event'))).toEqual([]);
+  });
+
+  test('gtag exceptions and missing callbacks release delivery without breaking the app', async ({ page }) => {
+    const releases = [];
+    const deliveries = [];
+    await page.route('**/gtag/js*', route => route.fulfill({ status: 200, body: '' }));
+    await page.route('**/api/free-activation/delivery', async route => {
+      deliveries.push(route.request().postDataJSON());
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ delivery: { token: 'delivery-token-gtag-throws-123456789', event: {
+          event: 'apex_free_activation', activation_type: 'training', authenticated: false, locale: 'en',
+        } } }),
+      });
+    });
+    await page.route('**/api/free-activation/delivery/release', async route => {
+      releases.push(route.request().postDataJSON());
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
+    });
+
+    await page.goto('/app?lang=en');
+    await prepare(page);
+    await page.evaluate(() => {
+      window.gtag = (...args) => {
+        window.__freeActivationEvents.push(args);
+        if (args[0] === 'event') throw new Error('gtag unavailable');
+      };
+      localStorage.setItem('apexConsent', 'granted');
+      window.apexAnalyticsConsentChanged();
+    });
+
+    await expect.poll(() => releases.length).toBe(1);
+    expect(deliveries).toHaveLength(1);
+    expect(await page.locator('#stage')).toBeVisible();
+  });
+
+  test('callback timeout and acknowledgement failure use the recoverable release path', async ({ page }) => {
+    const releases = [];
+    const acknowledgements = [];
+    let deliveryCount = 0;
+    await page.route('**/gtag/js*', route => route.fulfill({ status: 200, body: '' }));
+    await page.route('**/api/free-activation/delivery', async route => {
+      deliveryCount += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ delivery: { token: `delivery-token-timeout-${deliveryCount}-123456789`, event: {
+          event: 'apex_free_activation', activation_type: 'training', authenticated: false, locale: 'en',
+        } } }),
+      });
+    });
+    await page.route('**/api/free-activation/delivery/ack', async route => {
+      acknowledgements.push(route.request().postDataJSON());
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":false}' });
+    });
+    await page.route('**/api/free-activation/delivery/release', async route => {
+      releases.push(route.request().postDataJSON());
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
+    });
+
+    await page.goto('/app?lang=en');
+    await prepare(page);
+    await page.evaluate(() => {
+      // The first event never calls the callback, modelling a page that stays
+      // open while the provider callback is unavailable.
+      window.gtag = (...args) => window.__freeActivationEvents.push(args);
+      localStorage.setItem('apexConsent', 'granted');
+      window.apexAnalyticsConsentChanged();
+    });
+    await expect.poll(() => releases.length, { timeout: 6000 }).toBe(1);
+    expect(acknowledgements).toHaveLength(0);
+
+    await page.evaluate(() => {
+      window.gtag = (...args) => {
+        window.__freeActivationEvents.push(args);
+        if (args[0] === 'event') queueMicrotask(() => args[2].event_callback());
+      };
+      void window.maybeDeliverFreeActivationAnalytics();
+    });
+    await expect.poll(() => acknowledgements.length).toBe(1);
+    await expect.poll(() => releases.length).toBe(2);
+    expect(deliveryCount).toBe(2);
   });
 
   test('does not confirm a training candidate when the exercise cards did not render', async ({ page }) => {

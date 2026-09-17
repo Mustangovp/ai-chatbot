@@ -204,6 +204,49 @@ def test_authenticated_ledger_deduplicates_by_account_even_when_device_changes()
     assert store.get_free_activation(user_id=user_id)["activation_type"] == "training"
 
 
+def test_existing_account_suppresses_anonymous_device_measurement_on_login():
+    """A second device may not retain a separate acquisition delivery lease."""
+    user_id = store.get_or_create_user("activation-suppress@example.com")
+    account_device = uuid.uuid4().hex
+    anonymous_device = uuid.uuid4().hex
+
+    assert store.claim_free_activation(
+        user_id=user_id, device_id=account_device, activation_type="training")["created"]
+    account_lease = store.claim_free_activation_analytics_delivery(
+        user_id=user_id, device_id=account_device)
+    assert account_lease is not None
+    assert store.acknowledge_free_activation_analytics_delivery(
+        token=account_lease["token"], user_id=user_id, device_id=account_device)
+
+    assert store.claim_free_activation(
+        device_id=anonymous_device, activation_type="coaching")["created"]
+    assert store.get_free_activation(user_id=user_id, device_id=anonymous_device)["user_id"]
+
+    with store.engine.begin() as connection:
+        duplicate = connection.execute(select(store.free_activations).where(
+            store.free_activations.c.device_id == anonymous_device)).mappings().one()
+    assert duplicate["user_id"] is None
+    assert duplicate["analytics_state"] == "suppressed"
+    assert store.claim_free_activation_analytics_delivery(
+        user_id=user_id, device_id=anonymous_device) is None
+    # Logging out on the same device cannot restart anonymous acquisition.
+    assert store.claim_free_activation(
+        device_id=anonymous_device, activation_type="training") == {"created": False}
+    assert store.claim_free_activation_analytics_delivery(device_id=anonymous_device) is None
+
+
+def test_account_bound_device_cannot_restart_anonymous_activation_after_logout():
+    user_id = store.get_or_create_user("activation-logout@example.com")
+    device_id = uuid.uuid4().hex
+
+    assert store.claim_free_activation(
+        user_id=user_id, device_id=device_id, activation_type="training")["created"]
+    assert store.claim_free_activation(
+        device_id=device_id, activation_type="coaching") == {"created": False}
+    record = store.get_free_activation(device_id=device_id)
+    assert str(record["user_id"]) == user_id
+
+
 def test_concurrent_duplicate_claims_persist_exactly_one_first_activation():
     device_id = uuid.uuid4().hex
 
@@ -426,7 +469,35 @@ def test_concurrent_candidate_confirmations_create_one_activation_record():
     assert count == 1
 
 
-def test_analytics_delivery_uses_a_lease_and_acknowledgement_for_dedupe():
+def test_one_candidate_token_confirms_exactly_once_under_concurrency():
+    device_id = uuid.uuid4().hex
+    candidate = store.issue_free_activation_candidate(
+        device_id=device_id, activation_type="training", locale="en")
+
+    def confirm_once(_index):
+        return store.confirm_free_activation_candidate(
+            token=candidate["token"], device_id=device_id)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(confirm_once, range(8)))
+
+    assert sum(result.get("confirmed") is True for result in results) == 1
+    assert store.confirm_free_activation_candidate(
+        token=candidate["token"], device_id=device_id) == {"confirmed": False}
+    with store.engine.begin() as connection:
+        count = connection.execute(
+            select(func.count()).select_from(store.free_activations)).scalar_one()
+    assert count == 1
+
+
+def test_forged_candidate_token_is_never_confirmation_authority():
+    device_id = uuid.uuid4().hex
+    assert store.confirm_free_activation_candidate(
+        token="f" * 32, device_id=device_id) == {"confirmed": False}
+    assert store.get_free_activation(device_id=device_id) is None
+
+
+def test_analytics_delivery_uses_one_lease_and_callback_checkpoint_for_dedupe():
     device_id = uuid.uuid4().hex
     candidate = store.issue_free_activation_candidate(
         device_id=device_id, activation_type="training", locale="en")
@@ -440,7 +511,45 @@ def test_analytics_delivery_uses_a_lease_and_acknowledgement_for_dedupe():
     assert retry and retry["token"] != first["token"]
     assert store.acknowledge_free_activation_analytics_delivery(token=retry["token"], device_id=device_id) is True
     assert store.claim_free_activation_analytics_delivery(device_id=device_id) is None
-    assert store.get_free_activation(device_id=device_id)["analytics_state"] == "delivered"
+    record = store.get_free_activation(device_id=device_id)
+    assert record["analytics_state"] == "callback_completed"
+    assert record["analytics_delivered_at"] is not None
+
+
+def test_analytics_delivery_retry_and_lease_recovery_are_bounded():
+    device_id = uuid.uuid4().hex
+    candidate = store.issue_free_activation_candidate(
+        device_id=device_id, activation_type="training", locale="en")
+    assert store.confirm_free_activation_candidate(token=candidate["token"], device_id=device_id)["created"]
+
+    first = store.claim_free_activation_analytics_delivery(device_id=device_id)
+    assert first is not None
+    # A browser close before callback leaves a lease that may be reclaimed once.
+    with store.engine.begin() as connection:
+        connection.execute(update(store.free_activations).where(
+            store.free_activations.c.device_id == device_id).values(
+            analytics_lease_expires_at=dt.datetime.now(dt.timezone.utc) - dt.timedelta(seconds=1)))
+    second = store.claim_free_activation_analytics_delivery(device_id=device_id)
+    assert second is not None and second["token"] != first["token"]
+    assert store.release_free_activation_analytics_delivery(
+        token=second["token"], device_id=device_id) is True
+    record = store.get_free_activation(device_id=device_id)
+    assert record["analytics_state"] == "exhausted"
+    assert record["analytics_attempt_count"] == store._FREE_ACTIVATION_MAX_DELIVERY_ATTEMPTS
+    assert store.claim_free_activation_analytics_delivery(device_id=device_id) is None
+
+
+def test_concurrent_analytics_delivery_claims_hold_one_active_lease():
+    device_id = uuid.uuid4().hex
+    candidate = store.issue_free_activation_candidate(
+        device_id=device_id, activation_type="training", locale="en")
+    assert store.confirm_free_activation_candidate(token=candidate["token"], device_id=device_id)["created"]
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        leases = list(pool.map(
+            lambda _index: store.claim_free_activation_analytics_delivery(device_id=device_id), range(8)))
+
+    assert sum(lease is not None for lease in leases) == 1
 
 
 def test_public_templates_are_identical_for_browser_googlebot_and_adsbot(client):
@@ -450,6 +559,49 @@ def test_public_templates_are_identical_for_browser_googlebot_and_adsbot(client)
         googlebot = client.get(path, headers={"User-Agent": "Googlebot"})
         assert browser.status_code == adsbot.status_code == googlebot.status_code == 200
         assert browser.get_data() == adsbot.get_data() == googlebot.get_data()
+
+
+def _legacy_activation_engine(monkeypatch, *, user_index_sql, omit_activation_type=False):
+    """Build a v22/v23-marked SQLite ledger with a controllable index defect."""
+    engine = create_engine("sqlite://", future=True)
+    activation_type = "" if omit_activation_type else ", activation_type VARCHAR(16) NOT NULL"
+    with engine.begin() as connection:
+        connection.execute(text(
+            "CREATE TABLE schema_version (version INTEGER PRIMARY KEY, applied_at DATETIME)"))
+        connection.execute(text(
+            "CREATE TABLE free_activations (id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(36), "
+            f"device_id VARCHAR(32){activation_type}, activated_at DATETIME NOT NULL)"))
+        connection.execute(text(
+            "CREATE TABLE free_activation_candidates (id VARCHAR(36) PRIMARY KEY, "
+            "token_hash VARCHAR(64) NOT NULL, user_id VARCHAR(36), device_id VARCHAR(32), "
+            "activation_type VARCHAR(16) NOT NULL, locale VARCHAR(2) NOT NULL, "
+            "expires_at DATETIME NOT NULL, confirmed_at DATETIME, created_at DATETIME NOT NULL)"))
+        connection.execute(text(user_index_sql))
+        connection.execute(text(
+            "CREATE UNIQUE INDEX ix_free_activation_device_unique ON free_activations (device_id)"))
+        connection.execute(text(
+            "CREATE UNIQUE INDEX ix_free_activation_candidate_token_unique "
+            "ON free_activation_candidates (token_hash)"))
+        for version in range(1, 24):
+            connection.execute(text("INSERT INTO schema_version (version) VALUES (:version)"),
+                               {"version": version})
+    monkeypatch.setattr(store, "engine", engine)
+    return engine
+
+
+def _index(engine, table_name, name):
+    return next(index for index in inspect(engine).get_indexes(table_name)
+                if index["name"] == name)
+
+
+def _assert_exact_unique_index(engine, table_name, name, column):
+    index = _index(engine, table_name, name)
+    assert bool(index["unique"])
+    assert index["column_names"] == [column]
+    assert not any(
+        key.endswith("_where") and value is not None
+        for key, value in (index.get("dialect_options") or {}).items()
+    )
 
 
 def test_fresh_database_applies_real_activation_migration(monkeypatch):
@@ -462,26 +614,57 @@ def test_fresh_database_applies_real_activation_migration(monkeypatch):
         versions = {row[0] for row in connection.execute(select(store.schema_version.c.version))}
 
     assert {"free_activations", "free_activation_candidates"} <= names
-    assert {22, 23} <= versions
+    assert {22, 23, 24} <= versions
 
 
 def test_legacy_activation_table_is_upgraded_with_required_ledger_columns(monkeypatch):
-    engine = create_engine("sqlite://", future=True)
-    with engine.begin() as connection:
-        connection.execute(text("CREATE TABLE schema_version (version INTEGER PRIMARY KEY, applied_at DATETIME)"))
-        connection.execute(text(
-            "CREATE TABLE free_activations (id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(36), "
-            "device_id VARCHAR(32), activation_type VARCHAR(16) NOT NULL, activated_at DATETIME NOT NULL)"))
-        for version in range(1, 22):
-            connection.execute(text("INSERT INTO schema_version (version) VALUES (:version)"), {"version": version})
-    monkeypatch.setattr(store, "engine", engine)
+    engine = _legacy_activation_engine(
+        monkeypatch,
+        user_index_sql=(
+            "CREATE UNIQUE INDEX ix_free_activation_user_unique ON free_activations (user_id)"),
+    )
 
     store.run_migrations()
     columns = {column["name"] for column in inspect(engine).get_columns("free_activations")}
-    indexes = {index["name"] for index in inspect(engine).get_indexes("free_activations")}
 
-    assert {"locale", "analytics_state", "analytics_token_hash", "analytics_lease_expires_at", "analytics_delivered_at"} <= columns
-    assert {"ix_free_activation_user_unique", "ix_free_activation_device_unique"} <= indexes
+    assert {
+        "locale", "analytics_state", "analytics_token_hash", "analytics_lease_expires_at",
+        "analytics_attempt_count", "analytics_first_attempt_at", "analytics_delivered_at",
+    } <= columns
+    _assert_exact_unique_index(
+        engine, "free_activations", "ix_free_activation_user_unique", "user_id")
+
+
+@pytest.mark.parametrize("user_index_sql", (
+    "CREATE INDEX ix_free_activation_user_unique ON free_activations (user_id)",
+    "CREATE UNIQUE INDEX ix_free_activation_user_unique ON free_activations (device_id)",
+    "CREATE UNIQUE INDEX ix_free_activation_user_unique ON free_activations (user_id) WHERE user_id IS NOT NULL",
+))
+def test_marked_v22_schema_repairs_nonunique_or_wrong_column_identity_index(monkeypatch, user_index_sql):
+    engine = _legacy_activation_engine(monkeypatch, user_index_sql=user_index_sql)
+
+    store.run_migrations()
+
+    _assert_exact_unique_index(
+        engine, "free_activations", "ix_free_activation_user_unique", "user_id")
+    with engine.begin() as connection:
+        versions = {row[0] for row in connection.execute(select(store.schema_version.c.version))}
+    assert 24 in versions
+
+
+def test_marked_v22_partial_schema_fails_before_v24_is_recorded(monkeypatch):
+    engine = _legacy_activation_engine(
+        monkeypatch,
+        user_index_sql=(
+            "CREATE UNIQUE INDEX ix_free_activation_user_unique ON free_activations (user_id)"),
+        omit_activation_type=True,
+    )
+
+    with pytest.raises(RuntimeError, match="required columns missing"):
+        store.run_migrations()
+    with engine.begin() as connection:
+        versions = {row[0] for row in connection.execute(select(store.schema_version.c.version))}
+    assert 24 not in versions
 
 
 def test_activation_migration_failure_is_not_recorded(monkeypatch):

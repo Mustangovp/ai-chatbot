@@ -137,6 +137,11 @@ free_activations = Table("free_activations", metadata,
     Column("analytics_state", String(16), nullable=False, server_default="pending"),
     Column("analytics_token_hash", String(64)),
     Column("analytics_lease_expires_at", DateTime(timezone=True)),
+    # These fields record only bounded local delivery checkpoints. In
+    # particular, callback completion is never treated as proof that Google
+    # received an event.
+    Column("analytics_attempt_count", Integer, nullable=False, server_default="0"),
+    Column("analytics_first_attempt_at", DateTime(timezone=True)),
     Column("analytics_delivered_at", DateTime(timezone=True)),
     UniqueConstraint("user_id", name="uq_free_activation_user"),
     UniqueConstraint("device_id", name="uq_free_activation_device"),
@@ -513,6 +518,10 @@ _MIGRATIONS = [
     # v23 repairs databases where the prior no-op v22 was recorded after a
     # partial create_all failure. It is intentionally the same idempotent check.
     (23, lambda c: _ensure_free_activation_schema(c)),
+    # v24 verifies the actual unique-index definitions (not only their names)
+    # and adds bounded analytics-delivery ledger fields to pre-existing v22/v23
+    # databases.
+    (24, lambda c: _ensure_free_activation_schema(c)),
 ]
 
 
@@ -524,6 +533,43 @@ def _add_execution_evidence(connection):
         connection.execute(text("ALTER TABLE workout_history ADD COLUMN execution_state VARCHAR(16)"))
     if "completion_evidence" not in columns:
         connection.execute(text("ALTER TABLE workout_history ADD COLUMN completion_evidence JSON"))
+
+
+def _free_activation_index_matches(connection, table_name, index_name, column_name):
+    """Return whether one named index is the required non-partial unique key."""
+    for index in inspect(connection).get_indexes(table_name):
+        if index.get("name") != index_name:
+            continue
+        options = index.get("dialect_options") or {}
+        partial = any(key.endswith("_where") and value is not None
+                      for key, value in options.items())
+        return (
+            bool(index.get("unique"))
+            and list(index.get("column_names") or ()) == [column_name]
+            and not partial
+        )
+    return False
+
+
+def _ensure_free_activation_unique_index(connection, table_name, index_name, column_name):
+    """Repair one explicit identity index or fail before recording migration.
+
+    The names are internal constants rather than caller input. If an existing
+    same-named index has the wrong shape, dropping and recreating it is safe
+    only when the database accepts the DDL; otherwise the migration aborts and
+    its version is not recorded.
+    """
+    if _free_activation_index_matches(connection, table_name, index_name, column_name):
+        return
+
+    existing = next((index for index in inspect(connection).get_indexes(table_name)
+                     if index.get("name") == index_name), None)
+    if existing is not None:
+        connection.execute(text(f"DROP INDEX IF EXISTS {index_name}"))
+    connection.execute(text(
+        f"CREATE UNIQUE INDEX {index_name} ON {table_name} ({column_name})"))
+    if not _free_activation_index_matches(connection, table_name, index_name, column_name):
+        raise RuntimeError(f"{table_name} index {index_name} is not the required unique key")
 
 
 def _ensure_free_activation_schema(connection):
@@ -550,30 +596,31 @@ def _ensure_free_activation_schema(connection):
         ("analytics_state", "VARCHAR(16) NOT NULL DEFAULT 'pending'"),
         ("analytics_token_hash", "VARCHAR(64)"),
         ("analytics_lease_expires_at", timestamp_type),
+        ("analytics_attempt_count", "INTEGER NOT NULL DEFAULT 0"),
+        ("analytics_first_attempt_at", timestamp_type),
         ("analytics_delivered_at", timestamp_type),
     )
     for name, definition in additions:
         if name not in existing:
             connection.execute(text(f"ALTER TABLE free_activations ADD COLUMN {name} {definition}"))
 
-    # Use explicit named unique indexes in addition to metadata's constraints so
-    # an upgraded legacy table has the same race-safe identity behaviour.
-    connection.execute(text(
-        "CREATE UNIQUE INDEX IF NOT EXISTS ix_free_activation_user_unique "
-        "ON free_activations (user_id)"))
-    connection.execute(text(
-        "CREATE UNIQUE INDEX IF NOT EXISTS ix_free_activation_device_unique "
-        "ON free_activations (device_id)"))
-    connection.execute(text(
-        "CREATE UNIQUE INDEX IF NOT EXISTS ix_free_activation_candidate_token_unique "
-        "ON free_activation_candidates (token_hash)"))
+    # A name-only check accepts a non-unique, partial, or wrong-column index.
+    # Verify and repair the exact race-safe identity keys instead.
+    _ensure_free_activation_unique_index(
+        connection, "free_activations", "ix_free_activation_user_unique", "user_id")
+    _ensure_free_activation_unique_index(
+        connection, "free_activations", "ix_free_activation_device_unique", "device_id")
+    _ensure_free_activation_unique_index(
+        connection, "free_activation_candidates",
+        "ix_free_activation_candidate_token_unique", "token_hash")
 
     inspector = inspect(connection)
     activation_columns = {column["name"] for column in inspector.get_columns("free_activations")}
     candidate_columns = {column["name"] for column in inspector.get_columns("free_activation_candidates")}
     required_activation = {
         "id", "user_id", "device_id", "activation_type", "locale", "activated_at",
-        "analytics_state", "analytics_token_hash", "analytics_lease_expires_at", "analytics_delivered_at",
+        "analytics_state", "analytics_token_hash", "analytics_lease_expires_at",
+        "analytics_attempt_count", "analytics_first_attempt_at", "analytics_delivered_at",
     }
     required_candidate = {
         "id", "token_hash", "user_id", "device_id", "activation_type", "locale",
@@ -583,12 +630,16 @@ def _ensure_free_activation_schema(connection):
         raise RuntimeError("free_activations required columns missing")
     if not required_candidate <= candidate_columns:
         raise RuntimeError("free_activation_candidates required columns missing")
-    activation_indexes = {index["name"] for index in inspector.get_indexes("free_activations")}
-    candidate_indexes = {index["name"] for index in inspector.get_indexes("free_activation_candidates")}
-    if not {"ix_free_activation_user_unique", "ix_free_activation_device_unique"} <= activation_indexes:
-        raise RuntimeError("free_activations unique identity indexes missing")
-    if "ix_free_activation_candidate_token_unique" not in candidate_indexes:
-        raise RuntimeError("free_activation_candidates token index missing")
+    if not _free_activation_index_matches(
+            connection, "free_activations", "ix_free_activation_user_unique", "user_id"):
+        raise RuntimeError("free_activations user identity index missing or invalid")
+    if not _free_activation_index_matches(
+            connection, "free_activations", "ix_free_activation_device_unique", "device_id"):
+        raise RuntimeError("free_activations device identity index missing or invalid")
+    if not _free_activation_index_matches(
+            connection, "free_activation_candidates",
+            "ix_free_activation_candidate_token_unique", "token_hash"):
+        raise RuntimeError("free_activation_candidates token index missing or invalid")
 
 
 def _add_runtime_workout_blueprint(connection):
@@ -893,9 +944,22 @@ def free_usage_refund(subject_type, subject_id):
 
 # ── FREE first-value activation (server-authoritative) ──────────────────────
 _FREE_ACTIVATION_TYPES = frozenset(("training", "coaching"))
-_FREE_ACTIVATION_STATES = frozenset(("pending", "claimed", "delivered"))
+_FREE_ACTIVATION_STATES = frozenset((
+    "pending", "claimed", "callback_completed", "exhausted", "suppressed",
+    # Legacy rows written before the callback-only checkpoint was introduced.
+    "delivered",
+))
 _FREE_ACTIVATION_CANDIDATE_TTL = _dt.timedelta(minutes=15)
-_FREE_ACTIVATION_DELIVERY_LEASE = _dt.timedelta(minutes=5)
+# Browser analytics is intentionally best-effort. The ledger permits one active
+# lease and at most two browser send attempts inside this 15-minute window. It
+# does not claim external provider receipt or unbounded at-least-once delivery.
+_FREE_ACTIVATION_DELIVERY_LEASE = _dt.timedelta(minutes=2)
+_FREE_ACTIVATION_DELIVERY_RETRY_WINDOW = _dt.timedelta(minutes=15)
+_FREE_ACTIVATION_MAX_DELIVERY_ATTEMPTS = 2
+
+
+class _RetryFreeActivationTransaction(Exception):
+    """Roll back a compare-and-swap transaction before retrying it."""
 
 
 def _activation_account_id(value):
@@ -959,6 +1023,44 @@ def _candidate_identity_matches(row, account_id, stable_device_id):
     return candidate_account is None or candidate_account == account_id
 
 
+def _analytics_attempt_count(record):
+    value = record.get("analytics_attempt_count")
+    return value if isinstance(value, int) and value >= 0 else 0
+
+
+def _analytics_retry_available(record, now):
+    """Whether this local ledger may make another browser send attempt."""
+    attempts = _analytics_attempt_count(record)
+    first_attempt = _activation_timestamp(record.get("analytics_first_attempt_at"))
+    if attempts >= _FREE_ACTIVATION_MAX_DELIVERY_ATTEMPTS:
+        return False
+    if first_attempt is None:
+        return True
+    return first_attempt <= now <= first_attempt + _FREE_ACTIVATION_DELIVERY_RETRY_WINDOW
+
+
+def _analytics_terminal_state(record):
+    return record.get("analytics_state") in {
+        "callback_completed", "delivered", "exhausted", "suppressed",
+    }
+
+
+def _suppress_duplicate_device_measurement(connection, device_row):
+    """Keep duplicate device product evidence but remove measurement eligibility."""
+    if device_row.get("analytics_state") == "suppressed":
+        return True
+    result = connection.execute(update(free_activations).where(
+        free_activations.c.id == device_row["id"],
+        free_activations.c.user_id.is_(None),
+        free_activations.c.analytics_state != "suppressed",
+    ).values(
+        analytics_state="suppressed",
+        analytics_token_hash=None,
+        analytics_lease_expires_at=None,
+    ))
+    return result.rowcount == 1
+
+
 def _resolve_free_activation(connection, account_id, stable_device_id, *, reconcile):
     """Find an owned first-value record and optionally attach an anonymous row.
 
@@ -966,26 +1068,38 @@ def _resolve_free_activation(connection, account_id, stable_device_id, *, reconc
     SQLite read-then-write race from attaching one anonymous device to two users.
     The sentinel asks the caller to retry after a competing transaction wins.
     """
+    account_row = None
     if account_id is not None:
         account_row = _activation_row(
             connection, free_activations.c.user_id, account_id, lock=True)
         if account_row is not None:
-            return dict(account_row)
+            account_row = dict(account_row)
     device_row = None
     if stable_device_id is not None:
         device_row = _activation_row(
             connection, free_activations.c.device_id, stable_device_id, lock=True)
     if device_row is None:
-        return None
+        return account_row
     device_row = dict(device_row)
     bound_account = device_row["user_id"]
-    if account_id is None or bound_account == account_id:
+    if account_id is None:
         return device_row
+    if bound_account == account_id:
+        return account_row or device_row
     if bound_account is not None:
         # A device previously bound to another account is never cross-linked.
-        return None
+        return account_row
     if not reconcile:
-        return device_row
+        return account_row or device_row
+
+    if account_row is not None:
+        # Reconcile before returning the account record. This prevents an
+        # independently pending anonymous device activation from surviving an
+        # account login and later emitting a duplicate acquisition event.
+        if not _suppress_duplicate_device_measurement(connection, device_row):
+            return "retry"
+        return account_row
+
     result = connection.execute(
         update(free_activations).where(
             free_activations.c.id == device_row["id"],
@@ -1106,11 +1220,16 @@ def confirm_free_activation_candidate(*, token, user_id=None, device_id=None, ow
                         or expires_at is None or expires_at <= now
                         or not _candidate_identity_matches(candidate, account_id, stable_device_id)):
                     return {"confirmed": False}
+                consumed = connection.execute(update(free_activation_candidates).where(
+                    free_activation_candidates.c.id == candidate["id"],
+                    free_activation_candidates.c.confirmed_at.is_(None),
+                    free_activation_candidates.c.expires_at > now,
+                ).values(confirmed_at=now))
+                # The confirmation token itself is the single-use authority;
+                # product-ledger dedupe alone is not enough for replay safety.
+                if consumed.rowcount != 1:
+                    return {"confirmed": False}
                 if owner:
-                    connection.execute(update(free_activation_candidates).where(
-                        free_activation_candidates.c.id == candidate["id"],
-                        free_activation_candidates.c.confirmed_at.is_(None),
-                    ).values(confirmed_at=now))
                     return {"confirmed": False, "owner_excluded": True}
                 outcome = _claim_free_activation_in_transaction(
                     connection,
@@ -1120,17 +1239,18 @@ def confirm_free_activation_candidate(*, token, user_id=None, device_id=None, ow
                     locale=candidate["locale"],
                 )
                 if outcome.get("retry"):
-                    continue
-                connection.execute(update(free_activation_candidates).where(
-                    free_activation_candidates.c.id == candidate["id"],
-                    free_activation_candidates.c.confirmed_at.is_(None),
-                ).values(confirmed_at=now))
+                    # Do not commit candidate consumption if its coupled product
+                    # reconciliation lost a race. The outer retry gets a fresh
+                    # compare-and-swap transaction.
+                    raise _RetryFreeActivationTransaction()
                 record = outcome["record"]
                 return {
                     "confirmed": True,
                     "created": outcome["created"],
                     "analytics_pending": record.get("analytics_state") == "pending",
                 }
+        except _RetryFreeActivationTransaction:
+            continue
         except (IntegrityError, OperationalError):
             continue
     return {"confirmed": False}
@@ -1142,8 +1262,34 @@ def _free_activation_for_identity(connection, account_id, stable_device_id):
     return None if resolved == "retry" else resolved
 
 
+def _exhaust_free_activation_analytics_delivery(connection, record):
+    """Close a local analytics ledger after its finite retry policy ends."""
+    connection.execute(update(free_activations).where(
+        free_activations.c.id == record["id"],
+        free_activations.c.analytics_state.in_(("pending", "claimed")),
+    ).values(
+        analytics_state="exhausted",
+        analytics_token_hash=None,
+        analytics_lease_expires_at=None,
+    ))
+
+
+def _free_activation_lease_is_reclaimable(record, now):
+    state = record.get("analytics_state")
+    if state == "pending":
+        return True
+    if state != "claimed":
+        return False
+    lease = _activation_timestamp(record.get("analytics_lease_expires_at"))
+    return lease is None or lease <= now
+
+
 def claim_free_activation_analytics_delivery(*, user_id=None, device_id=None):
-    """Lease one pending product activation for a browser analytics attempt."""
+    """Lease one bounded, browser-side analytics send attempt.
+
+    This records no claim of external provider receipt. A later callback-only
+    acknowledgement moves the record to its local completed checkpoint.
+    """
     account_id = _activation_account_id(user_id)
     stable_device_id = _activation_device_id(device_id)
     if account_id is None and stable_device_id is None:
@@ -1154,15 +1300,17 @@ def claim_free_activation_analytics_delivery(*, user_id=None, device_id=None):
                 record = _free_activation_for_identity(connection, account_id, stable_device_id)
                 if record is None:
                     return None
-                if record.get("analytics_state") == "delivered":
+                if _analytics_terminal_state(record):
                     return None
                 now = _now()
-                lease = _activation_timestamp(record.get("analytics_lease_expires_at"))
-                reclaimable = record.get("analytics_state") == "pending" or (
-                    record.get("analytics_state") == "claimed" and (lease is None or lease <= now))
-                if not reclaimable:
+                if not _free_activation_lease_is_reclaimable(record, now):
+                    return None
+                if not _analytics_retry_available(record, now):
+                    _exhaust_free_activation_analytics_delivery(connection, record)
                     return None
                 token = secrets.token_urlsafe(32)
+                attempt_count = _analytics_attempt_count(record)
+                first_attempt = _activation_timestamp(record.get("analytics_first_attempt_at")) or now
                 result = connection.execute(update(free_activations).where(
                     free_activations.c.id == record["id"],
                     ((free_activations.c.analytics_state == "pending") |
@@ -1173,6 +1321,8 @@ def claim_free_activation_analytics_delivery(*, user_id=None, device_id=None):
                     analytics_state="claimed",
                     analytics_token_hash=_hash(token),
                     analytics_lease_expires_at=now + _FREE_ACTIVATION_DELIVERY_LEASE,
+                    analytics_attempt_count=attempt_count + 1,
+                    analytics_first_attempt_at=first_attempt,
                 ))
                 if result.rowcount != 1:
                     continue
@@ -1188,7 +1338,7 @@ def claim_free_activation_analytics_delivery(*, user_id=None, device_id=None):
 
 
 def acknowledge_free_activation_analytics_delivery(*, token, user_id=None, device_id=None):
-    """Mark an already leased client event delivered exactly once."""
+    """Record a browser callback checkpoint, never external provider receipt."""
     token_hash = _activation_token_hash(token)
     account_id = _activation_account_id(user_id)
     stable_device_id = _activation_device_id(device_id)
@@ -1203,16 +1353,18 @@ def acknowledge_free_activation_analytics_delivery(*, token, user_id=None, devic
             free_activations.c.analytics_state == "claimed",
             free_activations.c.analytics_token_hash == token_hash,
         ).values(
-            analytics_state="delivered",
+            analytics_state="callback_completed",
             analytics_token_hash=None,
             analytics_lease_expires_at=None,
+            # Compatibility timestamp for pre-v24 internal inspection only.
+            # It denotes the same local callback checkpoint, not Google receipt.
             analytics_delivered_at=_now(),
         ))
         return result.rowcount == 1
 
 
 def release_free_activation_analytics_delivery(*, token, user_id=None, device_id=None):
-    """Return an unsent leased event to pending when gtag was unavailable."""
+    """Release a failed browser attempt into the finite retry policy."""
     token_hash = _activation_token_hash(token)
     account_id = _activation_account_id(user_id)
     stable_device_id = _activation_device_id(device_id)
@@ -1222,12 +1374,14 @@ def release_free_activation_analytics_delivery(*, token, user_id=None, device_id
         record = _free_activation_for_identity(connection, account_id, stable_device_id)
         if record is None:
             return False
+        now = _now()
+        next_state = "pending" if _analytics_retry_available(record, now) else "exhausted"
         result = connection.execute(update(free_activations).where(
             free_activations.c.id == record["id"],
             free_activations.c.analytics_state == "claimed",
             free_activations.c.analytics_token_hash == token_hash,
         ).values(
-            analytics_state="pending",
+            analytics_state=next_state,
             analytics_token_hash=None,
             analytics_lease_expires_at=None,
         ))

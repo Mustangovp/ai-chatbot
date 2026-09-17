@@ -25,6 +25,27 @@ test.describe('landing paid access pause', () => {
   }
 });
 
+test.describe('landing consent synchronization', () => {
+  for (const route of ['/', '/en']) {
+    test(`${route} immediately sends denied consent on revocation`, async ({ page }) => {
+      await page.goto(route);
+      const update = await page.evaluate(() => {
+        window.dataLayer = [];
+        window.gtag = (...args) => window.dataLayer.push(args);
+        window.setConsent(false);
+        return window.dataLayer.at(-1);
+      });
+
+      expect(update).toEqual(['consent', 'update', {
+        analytics_storage: 'denied',
+        ad_storage: 'denied',
+        ad_user_data: 'denied',
+        ad_personalization: 'denied',
+      }]);
+    });
+  }
+});
+
 test.describe('landing mobile hero hierarchy', () => {
   for (const route of ['/', '/en']) {
     test(`${route} keeps the goal action and directory badges contained on mobile`, async ({ page }) => {

@@ -748,9 +748,9 @@ function showCookieBar(force){
 }
 function setConsent(granted){
   try{localStorage.setItem('apexConsent',granted?'granted':'denied');}catch(e){}
-  if(granted){
-    gtag('consent','update',{'analytics_storage':'granted','ad_storage':'granted','ad_user_data':'granted','ad_personalization':'granted'});
-  }
+  gtag('consent','update',granted
+    ?{'analytics_storage':'granted','ad_storage':'granted','ad_user_data':'granted','ad_personalization':'granted'}
+    :{'analytics_storage':'denied','ad_storage':'denied','ad_user_data':'denied','ad_personalization':'denied'});
   document.getElementById('cookiebar').classList.remove('show');
 }
 showCookieBar(false);
