@@ -496,6 +496,14 @@ def _set_session_cookie(resp, session_id):
                     httponly=True, samesite="Lax", secure=COOKIE_SECURE)
 
 
+def _create_reconciled_session(user_id):
+    """Associate an existing first activation before minting a browser session."""
+    if not store.reconcile_free_activation_authentication(
+            user_id=user_id, device_id=g.device_id):
+        return None
+    return store.create_session(user_id)
+
+
 def _current_plan_status():
     """Server-authoritative plan+status. DB subscription for logged-in users;
     signed token only as a legacy fallback for users who paid before accounts."""
@@ -1743,7 +1751,13 @@ def auth_verify():
         print(f"[auth] verify failed: {e}")
     if not uid:
         return redirect("/app?auth=invalid")
-    sid = store.create_session(uid)
+    try:
+        sid = _create_reconciled_session(uid)
+    except Exception as auth_error:
+        print(f"[auth] activation reconciliation failed: {type(auth_error).__name__}")
+        sid = None
+    if not sid:
+        return redirect("/app?auth=unavailable")
     resp = make_response(redirect("/app?auth=ok"))
     _set_session_cookie(resp, sid)
     return resp
@@ -4849,13 +4863,18 @@ def _poll_success(token, uid):
     """Return the legacy token AND — if we resolved an account — log the browser in
     by minting a real session cookie, so the purchase flow is one continuous path."""
     body = {'ready': True, 'token': token, 'authenticated': bool(uid)}
-    resp = make_response(jsonify(body))
+    sid = None
     if uid:
         try:
-            sid = store.create_session(uid)
-            _set_session_cookie(resp, sid)
+            sid = _create_reconciled_session(uid)
+            if not sid:
+                body['authenticated'] = False
         except Exception as e:
             print(f'[poll-token] session mint failed: {e}')
+            body['authenticated'] = False
+    resp = make_response(jsonify(body))
+    if sid:
+        _set_session_cookie(resp, sid)
     return resp
 
 

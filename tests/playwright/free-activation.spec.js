@@ -166,7 +166,7 @@ test.describe('authoritative FREE activation analytics', () => {
 
     await expect.poll(() => releases.length).toBe(1);
     expect(deliveries).toHaveLength(1);
-    expect(await page.locator('#stage')).toBeVisible();
+    await expect(page.locator('#stage')).toBeVisible();
   });
 
   test('callback timeout and acknowledgement failure use the recoverable release path', async ({ page }) => {

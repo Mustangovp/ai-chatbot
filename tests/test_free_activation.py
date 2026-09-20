@@ -95,6 +95,22 @@ def _device_id(client):
     return cookie.value
 
 
+def _activation_device_link(device_id):
+    with store.engine.begin() as connection:
+        row = connection.execute(select(store.free_activation_device_links).where(
+            store.free_activation_device_links.c.device_id == device_id)).mappings().first()
+    return dict(row) if row is not None else None
+
+
+def _verify_login(client, user_id, device_id):
+    client.set_cookie(appmod.DEVICE_COOKIE, device_id)
+    token = store.create_login_token(user_id)
+    response = client.get(f"/auth/verify?token={token}", follow_redirects=False)
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/app?auth=ok"
+    return response
+
+
 def _qualifying_training(client, monkeypatch, *, explanations=("Keep the prescribed form controlled.",)):
     _stub_chat(monkeypatch, explanations=explanations)
     response = client.post(
@@ -245,6 +261,90 @@ def test_account_bound_device_cannot_restart_anonymous_activation_after_logout()
         device_id=device_id, activation_type="coaching") == {"created": False}
     record = store.get_free_activation(device_id=device_id)
     assert str(record["user_id"]) == user_id
+
+
+def test_auth_verify_durably_reconciles_anonymous_activation_before_session(client):
+    user_id = store.get_or_create_user("activation-auth-transition@example.com")
+    device_id = uuid.uuid4().hex
+
+    assert store.claim_free_activation(
+        device_id=device_id, activation_type="training")["created"]
+    _verify_login(client, user_id, device_id)
+
+    record = store.get_free_activation(user_id=user_id, device_id=device_id)
+    link = _activation_device_link(device_id)
+    assert str(record["user_id"]) == user_id
+    assert link is not None and str(link["user_id"]) == user_id
+
+    assert client.post("/auth/logout").get_json() == {"ok": True}
+    assert store.claim_free_activation(
+        device_id=device_id, activation_type="coaching") == {"created": False}
+    assert store.issue_free_activation_candidate(
+        device_id=device_id, activation_type="coaching", locale="en") is None
+    assert store.claim_free_activation_analytics_delivery(device_id=device_id) is None
+
+
+def test_auth_verify_suppresses_second_anonymous_device_before_logout(client):
+    user_id = store.get_or_create_user("activation-second-device-login@example.com")
+    account_device = uuid.uuid4().hex
+    duplicate_device = uuid.uuid4().hex
+
+    assert store.claim_free_activation(
+        user_id=user_id, device_id=account_device, activation_type="training")["created"]
+    assert store.claim_free_activation(
+        device_id=duplicate_device, activation_type="coaching")["created"]
+
+    _verify_login(client, user_id, duplicate_device)
+    with store.engine.begin() as connection:
+        duplicate = connection.execute(select(store.free_activations).where(
+            store.free_activations.c.device_id == duplicate_device)).mappings().one()
+    link = _activation_device_link(duplicate_device)
+    assert duplicate["user_id"] is None
+    assert duplicate["analytics_state"] == "suppressed"
+    assert link is not None and str(link["user_id"]) == user_id
+
+    assert client.post("/auth/logout").get_json() == {"ok": True}
+    assert store.claim_free_activation(
+        device_id=duplicate_device, activation_type="training") == {"created": False}
+    assert store.claim_free_activation_analytics_delivery(device_id=duplicate_device) is None
+
+
+def test_auth_verify_marks_new_device_for_an_already_activated_account(client):
+    user_id = store.get_or_create_user("activation-new-device-login@example.com")
+    activated_device = uuid.uuid4().hex
+    new_device = uuid.uuid4().hex
+
+    assert store.claim_free_activation(
+        user_id=user_id, device_id=activated_device, activation_type="training")["created"]
+    _verify_login(client, user_id, new_device)
+
+    link = _activation_device_link(new_device)
+    assert link is not None and str(link["user_id"]) == user_id
+    assert client.post("/auth/logout").get_json() == {"ok": True}
+    assert store.claim_free_activation(
+        device_id=new_device, activation_type="coaching") == {"created": False}
+    assert store.issue_free_activation_candidate(
+        device_id=new_device, activation_type="coaching", locale="en") is None
+
+
+def test_auth_verify_never_cross_links_a_device_between_accounts(client):
+    first_user = store.get_or_create_user("activation-device-account-a@example.com")
+    second_user = store.get_or_create_user("activation-device-account-b@example.com")
+    device_id = uuid.uuid4().hex
+
+    assert store.claim_free_activation(
+        user_id=first_user, device_id=device_id, activation_type="training")["created"]
+    _verify_login(client, first_user, device_id)
+    _verify_login(client, second_user, device_id)
+
+    link = _activation_device_link(device_id)
+    assert link is not None and str(link["user_id"]) == first_user
+    second = store.claim_free_activation(
+        user_id=second_user, device_id=device_id, activation_type="coaching")
+    assert second["created"] is True
+    second_record = store.get_free_activation(user_id=second_user, device_id=device_id)
+    assert second_record["device_id"] is None
+    assert str(_activation_device_link(device_id)["user_id"]) == first_user
 
 
 def test_concurrent_duplicate_claims_persist_exactly_one_first_activation():
@@ -552,6 +652,122 @@ def test_concurrent_analytics_delivery_claims_hold_one_active_lease():
     assert sum(lease is not None for lease in leases) == 1
 
 
+def test_concurrent_first_delivery_lease_is_atomic_and_sets_one_true_t0(monkeypatch):
+    device_id = uuid.uuid4().hex
+    t0 = dt.datetime(2030, 1, 1, tzinfo=dt.timezone.utc)
+    monkeypatch.setattr(store, "_now", lambda: t0)
+    candidate = store.issue_free_activation_candidate(
+        device_id=device_id, activation_type="training", locale="en")
+    assert store.confirm_free_activation_candidate(token=candidate["token"], device_id=device_id)["created"]
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        leases = list(pool.map(
+            lambda _index: store.claim_free_activation_analytics_delivery(device_id=device_id), range(2)))
+
+    assert sum(lease is not None for lease in leases) == 1
+    record = store.get_free_activation(device_id=device_id)
+    assert record["analytics_attempt_count"] == 1
+    assert store._activation_timestamp(record["analytics_first_attempt_at"]) == t0
+
+
+def test_concurrent_expired_retry_lease_is_atomic_and_cannot_reset_t0(monkeypatch):
+    device_id = uuid.uuid4().hex
+    t0 = dt.datetime(2030, 1, 1, tzinfo=dt.timezone.utc)
+    now = [t0]
+    monkeypatch.setattr(store, "_now", lambda: now[0])
+    candidate = store.issue_free_activation_candidate(
+        device_id=device_id, activation_type="training", locale="en")
+    assert store.confirm_free_activation_candidate(token=candidate["token"], device_id=device_id)["created"]
+    first = store.claim_free_activation_analytics_delivery(device_id=device_id)
+    assert first is not None
+
+    now[0] = t0 + dt.timedelta(minutes=1)
+    with store.engine.begin() as connection:
+        connection.execute(update(store.free_activations).where(
+            store.free_activations.c.device_id == device_id).values(
+            analytics_lease_expires_at=now[0] - dt.timedelta(seconds=1)))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        leases = list(pool.map(
+            lambda _index: store.claim_free_activation_analytics_delivery(device_id=device_id), range(2)))
+
+    assert sum(lease is not None for lease in leases) == 1
+    record = store.get_free_activation(device_id=device_id)
+    assert record["analytics_attempt_count"] == 2
+    assert store._activation_timestamp(record["analytics_first_attempt_at"]) == t0
+
+
+def test_delivery_retry_budget_blocks_a_third_lease(monkeypatch):
+    device_id = uuid.uuid4().hex
+    t0 = dt.datetime(2030, 1, 1, tzinfo=dt.timezone.utc)
+    monkeypatch.setattr(store, "_now", lambda: t0)
+    candidate = store.issue_free_activation_candidate(
+        device_id=device_id, activation_type="training", locale="en")
+    assert store.confirm_free_activation_candidate(token=candidate["token"], device_id=device_id)["created"]
+
+    first = store.claim_free_activation_analytics_delivery(device_id=device_id)
+    assert first is not None
+    assert store.release_free_activation_analytics_delivery(token=first["token"], device_id=device_id)
+    second = store.claim_free_activation_analytics_delivery(device_id=device_id)
+    assert second is not None
+    assert store.release_free_activation_analytics_delivery(token=second["token"], device_id=device_id)
+
+    record = store.get_free_activation(device_id=device_id)
+    assert record["analytics_attempt_count"] == store._FREE_ACTIVATION_MAX_DELIVERY_ATTEMPTS
+    assert record["analytics_state"] == "exhausted"
+    assert store.claim_free_activation_analytics_delivery(device_id=device_id) is None
+
+
+def test_delivery_retry_window_cannot_be_reopened_after_true_t0(monkeypatch):
+    device_id = uuid.uuid4().hex
+    t0 = dt.datetime(2030, 1, 1, tzinfo=dt.timezone.utc)
+    now = [t0]
+    monkeypatch.setattr(store, "_now", lambda: now[0])
+    candidate = store.issue_free_activation_candidate(
+        device_id=device_id, activation_type="training", locale="en")
+    assert store.confirm_free_activation_candidate(token=candidate["token"], device_id=device_id)["created"]
+    first = store.claim_free_activation_analytics_delivery(device_id=device_id)
+    assert first is not None
+    assert store.release_free_activation_analytics_delivery(token=first["token"], device_id=device_id)
+
+    now[0] = t0 + dt.timedelta(minutes=16)
+    assert store.claim_free_activation_analytics_delivery(device_id=device_id) is None
+    record = store.get_free_activation(device_id=device_id)
+    assert record["analytics_state"] == "exhausted"
+    assert record["analytics_attempt_count"] == 1
+    assert store._activation_timestamp(record["analytics_first_attempt_at"]) == t0
+
+
+def test_acknowledgement_release_race_cannot_exceed_delivery_budget(monkeypatch):
+    device_id = uuid.uuid4().hex
+    t0 = dt.datetime(2030, 1, 1, tzinfo=dt.timezone.utc)
+    monkeypatch.setattr(store, "_now", lambda: t0)
+    candidate = store.issue_free_activation_candidate(
+        device_id=device_id, activation_type="training", locale="en")
+    assert store.confirm_free_activation_candidate(token=candidate["token"], device_id=device_id)["created"]
+    first = store.claim_free_activation_analytics_delivery(device_id=device_id)
+    assert first is not None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(lambda fn: fn(), (
+            lambda: store.acknowledge_free_activation_analytics_delivery(
+                token=first["token"], device_id=device_id),
+            lambda: store.release_free_activation_analytics_delivery(
+                token=first["token"], device_id=device_id),
+        )))
+
+    assert sum(bool(outcome) for outcome in outcomes) == 1
+    record = store.get_free_activation(device_id=device_id)
+    assert record["analytics_attempt_count"] == 1
+    if record["analytics_state"] == "pending":
+        second = store.claim_free_activation_analytics_delivery(device_id=device_id)
+        assert second is not None
+        assert store.release_free_activation_analytics_delivery(
+            token=second["token"], device_id=device_id)
+    assert store.claim_free_activation_analytics_delivery(device_id=device_id) is None
+    record = store.get_free_activation(device_id=device_id)
+    assert record["analytics_attempt_count"] <= store._FREE_ACTIVATION_MAX_DELIVERY_ATTEMPTS
+
+
 def test_public_templates_are_identical_for_browser_googlebot_and_adsbot(client):
     for path in ("/", "/en", "/app"):
         browser = client.get(path, headers={"User-Agent": "APEX Browser"})
@@ -613,8 +829,10 @@ def test_fresh_database_applies_real_activation_migration(monkeypatch):
     with engine.begin() as connection:
         versions = {row[0] for row in connection.execute(select(store.schema_version.c.version))}
 
-    assert {"free_activations", "free_activation_candidates"} <= names
-    assert {22, 23, 24} <= versions
+    assert {
+        "free_activations", "free_activation_candidates", "free_activation_device_links",
+    } <= names
+    assert {22, 23, 24, 25} <= versions
 
 
 def test_legacy_activation_table_is_upgraded_with_required_ledger_columns(monkeypatch):

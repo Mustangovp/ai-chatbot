@@ -44,7 +44,8 @@ _CLEAN_ORDER = (
     "delivered_training_sessions", "delivered_training_plans",
     "brain_events", "brain_decisions", "athlete_models", "conversations", "workout_history",
     "nutrition_history", "coach_memory", "account_training_constraints", "subscriptions", "auth_identities",
-    "login_tokens", "sessions", "payments", "free_activation_candidates", "free_activations", "free_usage", "users",
+    "login_tokens", "sessions", "payments", "free_activation_candidates",
+    "free_activation_device_links", "free_activations", "free_usage", "users",
 )
 
 
