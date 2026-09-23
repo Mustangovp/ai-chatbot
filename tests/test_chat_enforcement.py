@@ -2207,6 +2207,7 @@ def test_chat_context_builder_keeps_personality_and_profile_inputs_raw(client, c
     assert seen["personality"]["workouts"] == []
     assert seen["personality"]["conversation"] == history
     assert seen["profile"] == profile
+    response.get_data()
 
 
 def test_first_contact_uses_one_authoritative_context_snapshot(client, monkeypatch):
@@ -2218,8 +2219,9 @@ def test_first_contact_uses_one_authoritative_context_snapshot(client, monkeypat
         return original(**kwargs)
 
     monkeypatch.setattr(appmod.context_builder, "build_context", wrapped)
-    client.post("/chat", json={"message": "hello", "lang": "en", "first_contact": True})
+    response = client.post("/chat", json={"message": "hello", "lang": "en", "first_contact": True})
     assert len(calls) == 1
+    response.get_data()
 
 
 # Phase B1: the decision engine is shadow-only. It is computed beside the
