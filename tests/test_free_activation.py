@@ -7,7 +7,7 @@ import json
 import uuid
 
 import pytest
-from sqlalchemy import create_engine, func, inspect, select, text, update
+from sqlalchemy import String, create_engine, func, inspect, select, text, update
 
 import app as appmod
 import db as store
@@ -616,6 +616,25 @@ def test_analytics_delivery_uses_one_lease_and_callback_checkpoint_for_dedupe():
     assert record["analytics_delivered_at"] is not None
 
 
+def test_callback_acknowledgement_is_terminal_and_a_refresh_cannot_reclaim_delivery(client):
+    client.get("/app")
+    device_id = _device_id(client)
+    candidate = store.issue_free_activation_candidate(
+        device_id=device_id, activation_type="training", locale="en")
+    assert _confirm(client, candidate) == {"ok": True}
+
+    delivery = client.post("/api/free-activation/delivery").get_json()["delivery"]
+    assert delivery is not None
+    acknowledged = client.post(
+        "/api/free-activation/delivery/ack", json={"token": delivery["token"]})
+    assert acknowledged.get_json() == {"ok": True}
+
+    refreshed = client.post("/api/free-activation/delivery").get_json()
+    assert refreshed == {"delivery": None}
+    record = store.get_free_activation(device_id=device_id)
+    assert record["analytics_state"] == "callback_completed"
+
+
 def test_analytics_delivery_retry_and_lease_recovery_are_bounded():
     device_id = uuid.uuid4().hex
     candidate = store.issue_free_activation_candidate(
@@ -805,6 +824,37 @@ def _legacy_activation_engine(monkeypatch, *, user_index_sql, omit_activation_ty
     return engine
 
 
+def _legacy_v25_analytics_width_engine(monkeypatch):
+    """Build a recorded v25 SQLite ledger with the production-era width."""
+    engine = create_engine("sqlite://", future=True)
+    activation_id = uuid.uuid4().hex
+    with engine.begin() as connection:
+        connection.execute(text(
+            "CREATE TABLE schema_version (version INTEGER PRIMARY KEY, applied_at DATETIME)"))
+        connection.execute(text(
+            "CREATE TABLE free_activations ("
+            "id VARCHAR(36) PRIMARY KEY, user_id VARCHAR(36), device_id VARCHAR(32), "
+            "activation_type VARCHAR(16) NOT NULL, locale VARCHAR(2) NOT NULL DEFAULT 'bg', "
+            "activated_at DATETIME NOT NULL, "
+            "analytics_state VARCHAR(16) NOT NULL DEFAULT 'pending', "
+            "analytics_token_hash VARCHAR(64), analytics_lease_expires_at DATETIME, "
+            "analytics_attempt_count INTEGER NOT NULL DEFAULT 0, "
+            "analytics_first_attempt_at DATETIME, analytics_delivered_at DATETIME)"))
+        connection.execute(text(
+            "INSERT INTO free_activations "
+            "(id, device_id, activation_type, locale, activated_at, analytics_state) "
+            "VALUES (:id, :device_id, 'training', 'en', :activated_at, 'pending')"), {
+                "id": activation_id,
+                "device_id": "legacy-width-device",
+                "activated_at": dt.datetime(2030, 1, 1, tzinfo=dt.timezone.utc),
+            })
+        for version in range(1, 26):
+            connection.execute(text("INSERT INTO schema_version (version) VALUES (:version)"),
+                               {"version": version})
+    monkeypatch.setattr(store, "engine", engine)
+    return engine, activation_id
+
+
 def _index(engine, table_name, name):
     return next(index for index in inspect(engine).get_indexes(table_name)
                 if index["name"] == name)
@@ -832,7 +882,123 @@ def test_fresh_database_applies_real_activation_migration(monkeypatch):
     assert {
         "free_activations", "free_activation_candidates", "free_activation_device_links",
     } <= names
-    assert {22, 23, 24, 25} <= versions
+    analytics_state = next(column for column in inspect(engine).get_columns("free_activations")
+                           if column["name"] == "analytics_state")
+    assert getattr(analytics_state["type"], "length", None) == 32
+    assert {22, 23, 24, 25, 26} <= versions
+
+
+def test_v26_keeps_legacy_sqlite_data_and_allows_callback_completed(monkeypatch):
+    engine, activation_id = _legacy_v25_analytics_width_engine(monkeypatch)
+
+    store.run_migrations()
+    store.run_migrations()
+
+    analytics_state = next(column for column in inspect(engine).get_columns("free_activations")
+                           if column["name"] == "analytics_state")
+    # SQLite does not enforce VARCHAR length, so v26 must not rebuild a table
+    # just to alter its advisory declaration.
+    assert getattr(analytics_state["type"], "length", None) == 16
+    with engine.begin() as connection:
+        assert connection.execute(text(
+            "SELECT analytics_state FROM free_activations WHERE id = :id"),
+            {"id": activation_id}).scalar_one() == "pending"
+        connection.execute(text(
+            "UPDATE free_activations SET analytics_state = 'callback_completed' "
+            "WHERE id = :id"), {"id": activation_id})
+        versions = {row[0] for row in connection.execute(select(store.schema_version.c.version))}
+        assert connection.execute(text(
+            "SELECT analytics_state FROM free_activations WHERE id = :id"),
+            {"id": activation_id}).scalar_one() == "callback_completed"
+    assert 26 in versions
+
+
+def test_v26_postgres_widens_legacy_width_and_preserves_column_contract(monkeypatch):
+    class _Inspector:
+        width = 16
+
+        def has_table(self, name):
+            return name == "free_activations"
+
+        def get_columns(self, name):
+            assert name == "free_activations"
+            return [{
+                "name": "analytics_state",
+                "type": String(self.width),
+                "nullable": False,
+                "default": "'pending'::character varying",
+            }]
+
+    inspector = _Inspector()
+
+    class _Connection:
+        dialect = type("Dialect", (), {"name": "postgresql"})()
+
+        def __init__(self):
+            self.statements = []
+
+        def execute(self, statement):
+            sql = str(statement)
+            self.statements.append(sql)
+            if sql == ("ALTER TABLE free_activations "
+                       "ALTER COLUMN analytics_state TYPE VARCHAR(32)"):
+                inspector.width = 32
+
+    connection = _Connection()
+    monkeypatch.setattr(store, "inspect", lambda _connection: inspector)
+
+    store._ensure_free_activation_analytics_state_width(connection)
+
+    assert connection.statements == [
+        "ALTER TABLE free_activations ALTER COLUMN analytics_state TYPE VARCHAR(32)",
+    ]
+    assert inspector.width == 32
+
+
+def test_v26_postgres_refuses_to_record_success_when_width_stays_short(monkeypatch):
+    class _Inspector:
+        def has_table(self, name):
+            return name == "free_activations"
+
+        def get_columns(self, name):
+            assert name == "free_activations"
+            return [{
+                "name": "analytics_state",
+                "type": String(16),
+                "nullable": False,
+                "default": "'pending'::character varying",
+            }]
+
+    class _Connection:
+        dialect = type("Dialect", (), {"name": "postgresql"})()
+
+        def execute(self, _statement):
+            # Simulate a backend that rejected the type change or reported the
+            # old schema afterwards. The migration must not claim success.
+            return None
+
+    monkeypatch.setattr(store, "inspect", lambda _connection: _Inspector())
+    with pytest.raises(RuntimeError, match="width is below 32"):
+        store._ensure_free_activation_analytics_state_width(_Connection())
+
+
+def test_v26_upgrade_failure_is_not_recorded(monkeypatch):
+    engine = create_engine("sqlite://", future=True)
+    with engine.begin() as connection:
+        connection.execute(text(
+            "CREATE TABLE free_activations (id VARCHAR(36) PRIMARY KEY)"))
+    store.metadata.create_all(engine, checkfirst=True)
+    with engine.begin() as connection:
+        for version in range(1, 26):
+            connection.execute(text("INSERT INTO schema_version (version) VALUES (:version)"),
+                               {"version": version})
+    monkeypatch.setattr(store, "engine", engine)
+
+    with pytest.raises(RuntimeError, match="analytics_state missing before v26"):
+        store.run_migrations()
+    with engine.begin() as connection:
+        versions = {row[0] for row in connection.execute(select(store.schema_version.c.version))}
+    assert 26 not in versions
 
 
 def test_legacy_activation_table_is_upgraded_with_required_ledger_columns(monkeypatch):

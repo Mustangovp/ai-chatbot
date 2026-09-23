@@ -135,7 +135,7 @@ free_activations = Table("free_activations", metadata,
     Column("activated_at", DateTime(timezone=True), server_default=func.now(), nullable=False),
     # Product truth is independent from browser analytics delivery. No GA/client
     # identifier or delivered product content is retained here.
-    Column("analytics_state", String(16), nullable=False, server_default="pending"),
+    Column("analytics_state", String(32), nullable=False, server_default="pending"),
     Column("analytics_token_hash", String(64)),
     Column("analytics_lease_expires_at", DateTime(timezone=True)),
     # These fields record only bounded local delivery checkpoints. In
@@ -538,6 +538,10 @@ _MIGRATIONS = [
     # to prevent an authenticated device becoming a new anonymous acquisition
     # after logout.
     (25, lambda c: _ensure_free_activation_device_link_schema(c)),
+    # v26 widens the bounded analytics checkpoint state for PostgreSQL. The
+    # historical v22-v24 path remains additive; this step repairs already
+    # recorded production ledgers without dropping data.
+    (26, lambda c: _ensure_free_activation_analytics_state_width(c)),
 ]
 
 
@@ -609,7 +613,7 @@ def _ensure_free_activation_schema(connection):
     timestamp_type = "TIMESTAMP WITH TIME ZONE" if connection.dialect.name == "postgresql" else "DATETIME"
     additions = (
         ("locale", "VARCHAR(2) NOT NULL DEFAULT 'bg'"),
-        ("analytics_state", "VARCHAR(16) NOT NULL DEFAULT 'pending'"),
+        ("analytics_state", "VARCHAR(32) NOT NULL DEFAULT 'pending'"),
         ("analytics_token_hash", "VARCHAR(64)"),
         ("analytics_lease_expires_at", timestamp_type),
         ("analytics_attempt_count", "INTEGER NOT NULL DEFAULT 0"),
@@ -673,6 +677,53 @@ def _ensure_free_activation_device_link_schema(connection):
     primary_key = inspector.get_pk_constraint("free_activation_device_links")
     if primary_key.get("constrained_columns") != ["device_id"]:
         raise RuntimeError("free_activation_device_links device identity key missing or invalid")
+
+
+def _free_activation_analytics_state_column(connection):
+    columns = inspect(connection).get_columns("free_activations")
+    return next((column for column in columns if column["name"] == "analytics_state"), None)
+
+
+def _ensure_free_activation_analytics_state_width(connection):
+    """Widen the PostgreSQL delivery checkpoint without changing its meaning.
+
+    SQLite accepts longer strings for legacy ``VARCHAR(16)`` declarations, so
+    rebuilding its table would add migration risk without changing runtime
+    behaviour. PostgreSQL enforces the bound and must be widened before an ACK
+    can persist the local ``callback_completed`` checkpoint.
+    """
+    inspector = inspect(connection)
+    if not inspector.has_table("free_activations"):
+        raise RuntimeError("free_activations missing before v26")
+
+    column = _free_activation_analytics_state_column(connection)
+    if column is None:
+        raise RuntimeError("free_activations.analytics_state missing before v26")
+
+    if connection.dialect.name == "sqlite":
+        # SQLite's VARCHAR length is advisory. Keep legacy tables intact while
+        # fresh schemas use the canonical String(32) declaration above.
+        return
+    if connection.dialect.name != "postgresql":
+        raise RuntimeError("unsupported free_activations analytics_state dialect")
+
+    original_nullable = column.get("nullable")
+    original_default = column.get("default")
+    length = getattr(column["type"], "length", None)
+    if not isinstance(length, int) or length < 32:
+        # PostgreSQL preserves values, the existing default, and nullability
+        # when widening VARCHAR with ALTER COLUMN TYPE.
+        connection.execute(text(
+            "ALTER TABLE free_activations "
+            "ALTER COLUMN analytics_state TYPE VARCHAR(32)"))
+
+    verified = _free_activation_analytics_state_column(connection)
+    verified_length = getattr(verified["type"], "length", None) if verified else None
+    if not isinstance(verified_length, int) or verified_length < 32:
+        raise RuntimeError("free_activations.analytics_state width is below 32 after v26")
+    if (verified.get("nullable") != original_nullable
+            or verified.get("default") != original_default):
+        raise RuntimeError("free_activations.analytics_state contract changed during v26")
 
 
 def _add_runtime_workout_blueprint(connection):
