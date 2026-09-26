@@ -2466,6 +2466,10 @@ function localizedTime(value){
   return raw.replace(/секунди?/ig,'seconds').replace(/минути?/ig,'minutes');
 }
 function workoutPrescription(exercise){
+  if(exercise.completion){
+    const item=exercise.completion;
+    return{type:'repetitions',value:item.rep_min+'-'+item.rep_max};
+  }
   const canonical=exercise.instruction_record||(window.ApexExerciseInstructions&&window.ApexExerciseInstructions.find(exercise.name));
   if(canonical){
     const type=canonical.prescription_type,raw=String(exercise.reps||'').trim();
@@ -2490,12 +2494,27 @@ function parseExercises(header,body){
   const iRest=colIndex(header,[/пауза|почивка|rest/]);
   const iNote=colIndex(header,[/бележка|note|защо|замяна/]);
   const ex=[];ex.unsupported=[];
+  const canonicalSession=pendingCompletionSessions[0];
   body.forEach(r=>{
     const name=(r[iName]||'').trim(); if(!name||/общо|total/i.test(name))return;
-    const record=window.ApexExerciseInstructions&&window.ApexExerciseInstructions.find(name);
+    const item=canonicalSession&&canonicalSession.exercises&&canonicalSession.exercises[ex.length];
+    if(canonicalSession&&(!item||item.display_name!==name||
+       !Number.isInteger(item.prescribed_sets)||item.prescribed_sets<1||
+       !Number.isInteger(item.rep_min)||!Number.isInteger(item.rep_max)||
+       item.rep_min<1||item.rep_max<item.rep_min||
+       !Number.isInteger(item.rest_seconds)||item.rest_seconds<0)){
+      ex.unsupported.push(name);return;
+    }
+    const record=window.ApexExerciseInstructions&&
+      (item?window.ApexExerciseInstructions.findByExerciseId(item.exercise_id):null)||
+      (window.ApexExerciseInstructions&&window.ApexExerciseInstructions.find(name));
     if(!record){ex.unsupported.push(name);return;}
-    const exercise={name:window.ApexExerciseInstructions.display(record,lang),contract_display_name:name,canonical_id:record.canonical_id,instruction_record:record,sets:iSets>-1?(r[iSets]||'3'):'3',reps:iReps>-1?(r[iReps]||'10'):'10',
-      rest:iRest>-1?(r[iRest]||'60'):'60',note:iNote>-1?(r[iNote]||''):''};
+    const exercise={name:window.ApexExerciseInstructions.display(record,lang),contract_display_name:name,canonical_id:record.canonical_id,instruction_record:record,
+      sets:item?String(item.prescribed_sets):(iSets>-1?(r[iSets]||'3'):'3'),
+      reps:item?(item.rep_min+'-'+item.rep_max):(iReps>-1?(r[iReps]||'10'):'10'),
+      rest:item?String(item.rest_seconds):(iRest>-1?(r[iRest]||'60'):'60'),
+      note:iNote>-1?(r[iNote]||''):''};
+    if(item)exercise.completion=Object.assign({},item);
     const prescription=workoutPrescription(exercise);
     if(prescription.type==='duration'||prescription.type==='duration_per_side')exercise.reps=prescription.value;
     ex.push(exercise);

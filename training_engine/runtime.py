@@ -18,7 +18,7 @@ from .construction import (
     TrainingStructurePolicy,
 )
 from .models import Difficulty, Equipment, MovementPattern
-from .mixed_modal import SessionFormat
+from .mixed_modal import SessionFormat, declared_knee_limitation
 from .health_restrictions import (
     UnsupportedHealthRestrictionError,
     project_explicit_health_restrictions,
@@ -141,7 +141,8 @@ def build_training_plan(*, recommendation_blueprint_id: str, facts: Mapping[str,
         raise TrainingRuntimeError("training selection rejected: " + ",".join(selection.rejection_reasons))
     return TrainingPlanConstructionEngine.construct(
         selection.blueprint, selected_library, _structure_policy(
-            goal, level, split, recovery, policy=policy, mixed_modal=mixed_modal),
+            goal, level, split, recovery, policy=policy, mixed_modal=mixed_modal,
+            knee_limitation=(mixed_modal is not None and declared_knee_limitation(profile))),
     )
 
 
@@ -277,7 +278,8 @@ def _policy_for_constraints(goal: TrainingGoal, split: TrainingSplit,
 
 def _structure_policy(goal: TrainingGoal, level: Difficulty, split: TrainingSplit,
                       recovery: RecoveryAssumption, *, policy: TrainingGoalPolicy | None = None,
-                      mixed_modal: SessionFormat | None = None) -> TrainingStructurePolicy:
+                      mixed_modal: SessionFormat | None = None,
+                      knee_limitation: bool = False) -> TrainingStructurePolicy:
     base_sets = 3 if goal is TrainingGoal.MUSCLE_GAIN else 2
     if mixed_modal is not None:
         base_sets = min(base_sets, 2)
@@ -297,8 +299,12 @@ def _structure_policy(goal: TrainingGoal, level: Difficulty, split: TrainingSpli
         PrescriptionRule(pattern, base_sets if pattern not in {MovementPattern.CORE_ANTI_EXTENSION,
                                                                MovementPattern.MONOSTRUCTURAL} else
                          (base_sets if pattern is MovementPattern.MONOSTRUCTURAL else max(1, base_sets - 1)),
-                         40 if pattern is MovementPattern.MONOSTRUCTURAL else rep_min,
-                         60 if pattern is MovementPattern.MONOSTRUCTURAL else rep_max,
+                         (16 if mixed_modal in {SessionFormat.EMOM, SessionFormat.INTERVALS} else 40)
+                         if pattern is MovementPattern.MONOSTRUCTURAL else rep_min,
+                         (24 if mixed_modal in {SessionFormat.EMOM, SessionFormat.INTERVALS} else 60)
+                         if pattern is MovementPattern.MONOSTRUCTURAL else
+                         min(rep_max, 8) if knee_limitation and pattern in {
+                             MovementPattern.SQUAT, MovementPattern.LUNGE} else rep_max,
                          rpe, rir, rest if mixed_modal is not None else
                          rest if pattern not in {MovementPattern.CORE_ANTI_EXTENSION,
                                                  MovementPattern.MONOSTRUCTURAL} else 45,

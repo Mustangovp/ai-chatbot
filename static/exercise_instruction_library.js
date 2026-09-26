@@ -95,12 +95,20 @@
     return match ? match.item : null;
   }
 
+  function findByExerciseId(value) {
+    const id = String(value || '');
+    if (!/^[a-z_]+\.[a-z_]+$/.test(id)) return null;
+    const key = normalize(id.split('.')[1]);
+    const matches = catalog.filter((item) => item.aliases.some((alias) => normalize(alias) === key));
+    return matches.length === 1 ? matches[0] : null;
+  }
+
   function display(recordValue, language) {
     return language === 'en' ? recordValue.display_name_en : recordValue.display_name_bg;
   }
 
   global.ApexExerciseInstructions = Object.freeze({
-    find, display, normalize, records: Object.freeze(catalog),
+    find, findByExerciseId, display, normalize, records: Object.freeze(catalog),
     require(value) { const item = find(value); if (!item) throw new Error('unsupported exercise'); return item; }
   });
 })(window);

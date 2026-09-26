@@ -15,6 +15,7 @@ from training_engine import (
 from training_engine import renderer
 from training_engine.completion import completion_projection
 from training_engine.followups import conversation_plan_from_record, serialize_conversation_plan
+from training_engine.followups import apply_followup, parse_workout_followup, state_for
 from training_engine.lineage import delivered_plan_lineage, plan_from_delivered_lineage
 from training_engine.longitudinal import context_from_persisted_history
 from training_engine.cross_session import adapt_from_persisted_history
@@ -282,3 +283,118 @@ def test_real_chat_account_constraint_survives_crossfit_delivery(chat_client):
     assert not any(item["exercise_id"] == "dumbbell.overhead_press" for item in completion["sessions"][0]["exercises"])
     assert completion["sessions"][0]["mixed_modal"]["format"] == "rounds_reps"
     assert "Active movement exclusions" in events[0]["t"]
+
+
+def test_wod_harder_followup_uses_authoritative_plan_and_preserves_constraint(chat_client, monkeypatch):
+    user_id = store.get_or_create_user("crossfit-harder-followup@example.com")
+    store.save_profile(user_id, {**PROFILE, "equipment": "gym"})
+    store.add_account_training_constraints(user_id, ["vertical_push"])
+    chat_client.set_cookie(appmod.SESSION_COOKIE, store.create_session(user_id))
+    conversation_id = "crossfit-harder-followup"
+    first = _events(chat_client.post("/chat", json={"message": "Give me a CrossFit workout", "lang": "en",
+                                                   "conversation_id": conversation_id}))
+    assert any("training_completion" in event for event in first)
+    assert parse_workout_followup("Make the WOD harder") is not None
+    monkeypatch.setattr(appmod.client.chat.completions, "create",
+                        lambda **kwargs: pytest.fail("WOD follow-up must not use model exercise authority"))
+    second = _events(chat_client.post("/chat", json={"message": "Make the WOD harder", "lang": "en",
+                                                    "conversation_id": conversation_id}))
+    assert second[-1] == {"done": True}
+    assert any("training_completion" in event for event in second) or "couldn't safely" in second[0].get("t", "")
+    for event in second:
+        completion = event.get("training_completion")
+        if completion:
+            assert all(item["exercise_id"] not in {"dumbbell.overhead_press", "dumbbell.seated_press"}
+                       for item in completion["sessions"][0]["exercises"])
+
+
+def test_repeat_rebuilds_current_recovery_instead_of_replaying_stale_plan():
+    fresh = _plan({**PROFILE, "equipment": "gym"}, message="Give me a CrossFit For Time workout")
+    followup = parse_workout_followup("repeat the workout")
+    repeated = apply_followup(
+        followup=followup, previous=state_for(fresh), recommendation_blueprint_id="repeat-test",
+        facts={**PROFILE, "equipment": "gym", "recoveryFeel": "poor"})
+    assert repeated != fresh
+    assert all(item.sets <= 1 and item.target_rpe <= 6 for item in repeated.sessions[0].prescriptions)
+    assert all(session.mixed_modal is None for session in repeated.sessions)
+
+
+def test_real_chat_repeat_uses_current_recovery(chat_client):
+    user_id = store.get_or_create_user("crossfit-repeat-recovery@example.com")
+    profile = {**PROFILE, "equipment": "gym"}
+    store.save_profile(user_id, profile)
+    chat_client.set_cookie(appmod.SESSION_COOKIE, store.create_session(user_id))
+    conversation_id = "crossfit-repeat-recovery"
+    first = _events(chat_client.post("/chat", json={
+        "message": "Give me a CrossFit For Time workout", "lang": "en",
+        "conversation_id": conversation_id}))
+    fresh = next(event["training_completion"] for event in first if "training_completion" in event)
+    assert fresh["sessions"][0]["mixed_modal"]["format"] == "for_time"
+    store.save_profile(user_id, {**profile, "recoveryFeel": "poor"})
+    store.add_account_training_constraints(user_id, ["vertical_push"])
+    second = _events(chat_client.post("/chat", json={
+        "message": "repeat the workout", "lang": "en", "conversation_id": conversation_id}))
+    assert second[-1] == {"done": True}
+    recovery_plan = next(event["training_completion"] for event in second if "training_completion" in event)
+    assert recovery_plan["sessions"][0]["mixed_modal"]["format"] == "intervals"
+    assert sum(item["prescribed_sets"] for item in recovery_plan["sessions"][0]["exercises"]) < sum(
+        item["prescribed_sets"] for item in fresh["sessions"][0]["exercises"])
+    assert not any(item["exercise_id"] in {"dumbbell.overhead_press", "dumbbell.seated_press"}
+                   for item in recovery_plan["sessions"][0]["exercises"])
+
+
+@pytest.mark.parametrize("format_name", tuple(SessionFormat))
+def test_timed_doses_fit_and_duration_has_one_authority(format_name):
+    profile = {**PROFILE, "equipment": "gym"}
+    plan = _plan(profile, message=f"Give me a CrossFit {format_name.value.replace('_', ' ')} workout")
+    session = plan.sessions[0]
+    assert session.estimated_duration_minutes == session.mixed_modal.time_cap_minutes
+    delivered = renderer.render_delivery(plan, load_exercise_library(), (), "en")
+    assert f"Session 1 · {session.mixed_modal.time_cap_minutes} min" in delivered
+    if format_name in {SessionFormat.EMOM, SessionFormat.INTERVALS}:
+        work_seconds = session.mixed_modal.work_seconds or 60
+        for item in session.prescriptions:
+            tempo_seconds = sum(int(part) for part in item.tempo.split("-"))
+            assert item.rep_max * tempo_seconds <= work_seconds
+
+
+def test_existing_impossible_timed_dose_is_rejected_before_delivery():
+    plan = build_training_plan(recommendation_blueprint_id="unsafe-timing-test", facts=PROFILE,
+                               mixed_modal=SessionFormat.AMRAP)
+    request = parse_mixed_modal_request("Build an EMOM workout")
+    with pytest.raises(MixedModalPlanningError, match="timed work window"):
+        structure_mixed_modal_plan(plan, request=request, facts=PROFILE,
+                                   library=load_exercise_library())
+
+
+def test_knee_limitation_scales_knee_dominant_volume_without_banning_low_risk_work():
+    baseline = _plan(PROFILE)
+    limited_profile = {**PROFILE, "injuries": "knee limitation"}
+    limited = _plan(limited_profile, message="Give me a CrossFit workout with high-rep squats")
+    base_squat = next(item for item in baseline.sessions[0].prescriptions
+                      if item.movement_pattern is MovementPattern.SQUAT)
+    knee_squat = next(item for item in limited.sessions[0].prescriptions
+                      if item.movement_pattern is MovementPattern.SQUAT)
+    assert knee_squat.sets * knee_squat.rep_max < base_squat.sets * base_squat.rep_max
+    assert any(item.movement_pattern is MovementPattern.MONOSTRUCTURAL
+               for item in limited.sessions[0].prescriptions)
+    for baseline_item, limited_item in zip(baseline.sessions[0].prescriptions,
+                                           limited.sessions[0].prescriptions):
+        if limited_item.movement_pattern not in {MovementPattern.SQUAT, MovementPattern.LUNGE}:
+            assert limited_item.rep_max == baseline_item.rep_max
+
+
+def test_negated_knee_limitation_does_not_change_squat_dose():
+    baseline = _plan(PROFILE)
+    clear = _plan({**PROFILE, "injuries": "no knee pain"})
+    assert [item.rep_max for item in clear.sessions[0].prescriptions] == [
+        item.rep_max for item in baseline.sessions[0].prescriptions]
+
+
+@pytest.mark.parametrize("message", (
+    "Give me a strength workout, not CrossFit or EMOM",
+    "Give me strength training, no EMOM",
+    "I don't want an AMRAP, give me a strength workout",
+))
+def test_negated_crossfit_format_does_not_activate_mixed_modal(message):
+    assert parse_mixed_modal_request(message) is None

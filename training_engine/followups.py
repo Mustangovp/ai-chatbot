@@ -66,7 +66,8 @@ _ALT = (
     "different workout", "another workout", "give me another workout", "change the workout", "not this one",
 )
 _HARDER = ("направи я по-трудна", "по-тежка тренировка", "увеличи трудността",
-           "make it harder", "harder workout", "increase difficulty")
+           "make it harder", "harder workout", "increase difficulty",
+           "make the wod harder", "harder wod", "направи wod-а по-труден")
 _EASIER = ("направи я по-лесна", "намали трудността", "make it easier", "easier workout")
 _NO_SQUATS = ("без клекове", "не искам клекове", "махни клековете",
               "no squats", "without squats", "remove squats")
@@ -229,7 +230,8 @@ def apply_followup(*, followup: WorkoutFollowUp, previous: WorkoutConversationSt
                    advisory_preferred_exercise_ids: tuple[str, ...] = (),
                    external_excluded_movement_patterns: frozenset[MovementPattern] = frozenset()) -> TrainingPlanBlueprintV2:
     """Return a validated revised plan or fail without mutating the prior state."""
-    if followup.operation is WorkoutFollowUpOperation.REPEAT_PREVIOUS:
+    if (followup.operation is WorkoutFollowUpOperation.REPEAT_PREVIOUS
+            and previous.plan.sessions[0].mixed_modal is None):
         return previous.plan
     if followup.operation is WorkoutFollowUpOperation.UNKNOWN_EXERCISE:
         raise TrainingRuntimeError("unknown requested exercise")
@@ -260,6 +262,8 @@ def apply_followup(*, followup: WorkoutFollowUp, previous: WorkoutConversationSt
         if _materially_different(previous.plan, candidate):
             return candidate
         raise TrainingRuntimeError("no safe materially different workout is available")
+    if followup.operation is WorkoutFollowUpOperation.REPEAT_PREVIOUS:
+        return build_training_plan(**kwargs)
     if followup.operation in (WorkoutFollowUpOperation.INCREASE_DIFFICULTY,
                                WorkoutFollowUpOperation.DECREASE_DIFFICULTY):
         current = _difficulty(facts.get("level") or facts.get("experience_level"))

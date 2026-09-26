@@ -3077,7 +3077,9 @@ def chat():
             if _workout_followup.requires_previous and _previous_workout is None:
                 _followup_reply = followup_message("previous workout is required", lang)
             elif (_workout_followup.operation.value == "repeat_previous" and
-                  _workout_is_stale(_workout_scope)):
+                  _workout_is_stale(_workout_scope) and
+                  (_previous_workout is None or
+                   _previous_workout.plan.sessions[0].mixed_modal is None)):
                 _followup_reply = (
                     "A new restriction has been recorded, so I can't repeat the earlier workout. Ask me to build a new one."
                     if lang == "en" else

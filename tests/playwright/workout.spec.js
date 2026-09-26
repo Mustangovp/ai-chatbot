@@ -401,6 +401,38 @@ test.describe('APEX approved app shell — UX regression', () => {
     expect(posted.workout_completion.exercises[0]).toMatchObject({ completed_rpe: null, completed_rir: null });
   });
 
+  test('canonical mixed-modal dose and identity survive BG/EN card rendering', async ({ page }) => {
+    const rendered = await page.evaluate(() => {
+      const rows = [
+        { locale: 'bg', name: 'Маршируване на място', header: '| Упражнение | Серии | Повторения | Почивка |' },
+        { locale: 'en', name: 'March in Place', header: '| Exercise | Sets | Reps | Rest |' }
+      ];
+      return rows.map(({ locale, name, header }) => {
+        lang = locale;
+        const session = { session_id: 'mixed-session', session_index: 1, exercises: [{
+          prescription_id: 'mixed-prescription', exercise_id: 'bodyweight.march_in_place',
+          exercise_version: '1.0.0', display_name: name, prescribed_sets: 1,
+          rep_min: 16, rep_max: 24, rest_seconds: 0
+        }] };
+        pendingTrainingCompletion = { plan_id: 'mixed-plan', plan_version: 'v2', sessions: [session] };
+        pendingCompletionSessions = [session];
+        const el = appendCoach();
+        el.innerHTML = renderMarkdown([header, '| --- | --- | --- | --- |',
+          `| ${name} | 1 | 16-24 | 0 |`].join('\n'));
+        const card = el.querySelector('.workout-exercise-card');
+        return { card: card?.textContent || '', id: card?.dataset.exerciseId || '',
+          completion: Boolean(pendingWorkouts['mixed-session']?.[0]?.completion) };
+      });
+    });
+    for (const result of rendered) {
+      expect(result.id).toBe('marching_in_place');
+      expect(result.card).toMatch(/16.24/);
+      expect(result.card).toMatch(/повт|reps/);
+      expect(result.card).not.toMatch(/20.40|20-40/);
+      expect(result.completion).toBe(true);
+    }
+  });
+
   test('WO-2A: RPE-only effort reaches the immutable completion payload', async ({ page }) => {
     const posted = await page.evaluate(async () => {
       const projection = { plan_id: 'plan-effort', plan_version: 'v2', sessions: [{

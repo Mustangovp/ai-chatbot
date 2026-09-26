@@ -124,15 +124,32 @@ _STYLE_TERMS = ("crossfit", "cross-fit", "кросфит", "metcon", "метко
                 "mixed-modal", "mixed modal", "wod")
 
 
+def declared_knee_limitation(facts: Mapping[str, object]) -> bool:
+    """Recognize an explicit declared limitation, not a guessed diagnosis."""
+    health = " ".join(str(facts.get(key) or "") for key in
+                      ("injuries", "healthNotes", "trainingRestrictions", "medicalRestrictions"))
+    text = health.casefold()
+    return any(not _negated_term(text, match.start()) for match in re.finditer(
+        r"\b(?:knee (?:limitation|pain|injury)|колян\w* (?:болк\w*|травм\w*|ограничен\w*))\b", text))
+
+
+def _negated_term(text: str, start: int) -> bool:
+    prefix = text[max(0, start - 48):start]
+    clause = re.split(r"[,;.!?]", prefix)[-1]
+    return bool(re.search(r"(?:\b(?:not|no|without|don't want|do not want|не|без)\b(?:\s+\w+){0,3}\s*|\bnot\s+\w+\s+or\s+)$", clause))
+
+
 def parse_mixed_modal_request(message: object) -> MixedModalRequest | None:
     """Classify an explicit training format, never a user's claimed skill level."""
     text = re.sub(r"\s+", " ", str(message or "").casefold()).strip()
     if not text:
         return None
-    style = any(term in text for term in _STYLE_TERMS)
+    def requested(term: str) -> bool:
+        return any(not _negated_term(text, match.start()) for match in
+                   re.finditer(r"(?<!\w)" + re.escape(term) + r"(?!\w)", text))
+    style = any(requested(term) for term in _STYLE_TERMS)
     explicit_format = next((kind for kind, terms in _FORMAT_TERMS
-                            if any(re.search(r"(?<!\w)" + re.escape(term) + r"(?!\w)", text)
-                                   for term in terms)), None)
+                            if any(requested(term) for term in terms)), None)
     if not style and explicit_format is None:
         return None
     return MixedModalRequest(
@@ -154,9 +171,7 @@ def structure_mixed_modal_plan(
         raise MixedModalPlanningError("mixed-modal request and training plan are required")
     # An explicit knee/box-jump concern cannot be translated into a safe movement
     # exclusion by this layer. Let the user/medical boundary establish one first.
-    health = " ".join(str(facts.get(key) or "") for key in
-                      ("injuries", "healthNotes", "trainingRestrictions", "medicalRestrictions"))
-    if request.requested_box_jumps and (request.knee_concern or re.search(r"\b(?:knee|knees|колян\w*)\b", health.casefold())):
+    if request.requested_box_jumps and (request.knee_concern or declared_knee_limitation(facts)):
         raise MixedModalPlanningError("box-jump request with a knee limitation needs an explicit movement boundary")
     if all(session.mixed_modal is not None for session in plan.sessions):
         if (any(session.mixed_modal.format is not request.format for session in plan.sessions)
@@ -214,8 +229,19 @@ def structure_mixed_modal_plan(
             rest = 90 if limited else 60
             cap = (prescribed_sets * (60 + rest) + 59) // 60
         else:
-            cap = session.estimated_duration_minutes + (2 if kind is SessionFormat.FOR_TIME else 0)
-        cap = max(5, min(60, cap))
+            upper_seconds = 30 * max(0, len(session.prescriptions) - 1)
+            upper_seconds += sum(item.sets * item.rep_max * sum(int(phase) for phase in item.tempo.split("-"))
+                                 + max(0, item.sets - 1) * item.rest_seconds
+                                 for item in session.prescriptions)
+            cap = (upper_seconds + 59) // 60
+        if kind in {SessionFormat.EMOM, SessionFormat.INTERVALS}:
+            for item in session.prescriptions:
+                work_seconds = 60
+                if item.rep_max * sum(int(phase) for phase in item.tempo.split("-")) > work_seconds:
+                    raise MixedModalPlanningError("prescribed station dose exceeds the timed work window")
+        cap = max(5, cap)
+        if cap > 60:
+            raise MixedModalPlanningError("mixed-modal session exceeds the supported duration")
         structure = MixedModalStructure(
             version="mixed-modal-session-v1", format=kind, time_cap_minutes=cap,
             modalities=tuple(modalities), reason_codes=tuple(reasons),
@@ -225,7 +251,7 @@ def structure_mixed_modal_plan(
             strength_exercise_id=(session.prescriptions[0].exercise_id
                                   if kind is SessionFormat.STRENGTH_METCON else None),
         )
-        sessions.append(replace(session, mixed_modal=structure))
+        sessions.append(replace(session, estimated_duration_minutes=cap, mixed_modal=structure))
     signature = ";".join(
         f"{s.mixed_modal.format.value}:{s.mixed_modal.time_cap_minutes}:"
         f"{','.join(s.mixed_modal.reason_codes)}" for s in sessions)

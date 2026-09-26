@@ -194,6 +194,8 @@ class TrainingSessionBlueprint:
         if self.mixed_modal is not None:
             if not isinstance(self.mixed_modal, MixedModalStructure):
                 raise ValueError("invalid mixed-modal structure")
+            if self.estimated_duration_minutes != self.mixed_modal.time_cap_minutes:
+                raise ValueError("mixed-modal duration must match the authoritative session duration")
             if (self.mixed_modal.strength_exercise_id is not None
                     and self.mixed_modal.strength_exercise_id not in
                     {item.exercise_id for item in self.prescriptions}):

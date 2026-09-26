@@ -252,7 +252,7 @@ test.describe('authoritative FREE activation analytics', () => {
       contentType: 'text/event-stream',
       body: [
         'data: {"t":"| Exercise | Sets | Reps | Rest | Note |\\n| --- | --- | --- | --- | --- |\\n| Goblet Squat | 3 | 8-12 | 60 sec | Controlled tempo |"}\n\n',
-        'data: {"training_completion":{"sessions":[{"exercises":[{"prescription_id":"p1","exercise_id":"dumbbell.goblet_squat","exercise_version":"v1","display_name":"Goblet Squat"}]}]}}\n\n',
+        'data: {"training_completion":{"sessions":[{"exercises":[{"prescription_id":"p1","exercise_id":"dumbbell.goblet_squat","exercise_version":"v1","display_name":"Goblet Squat","prescribed_sets":3,"rep_min":8,"rep_max":12,"rest_seconds":60}]}]}}\n\n',
         'data: {"activation_candidate":{"token":"candidate-token-for-training-success-123456789","activation_type":"training","locale":"en"}}\n\n',
         'data: {"done":true}\n\n',
       ].join(''),
