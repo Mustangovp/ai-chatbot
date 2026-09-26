@@ -110,7 +110,7 @@ class TrainingLifecycleOrchestrator:
     @classmethod
     def revise(cls, parent: TrainingPlanBlueprintV2, event: TrainingLifecycleEvent, *,
                library: ExerciseLibrary | None = None) -> PlanRevision:
-        selected_library = library or load_exercise_library()
+        selected_library = library or load_exercise_library(parent.exercise_library_version)
         cls._validate(parent, event, selected_library)
         decisions = {(item.exercise_id, item.exercise_version): item for item in event.progression.decisions}
         states = {(item.exercise_id, item.exercise_version): item for item in event.progress_states}

@@ -7,6 +7,7 @@ to prompt-generated planning.
 from __future__ import annotations
 
 from decimal import Decimal
+from dataclasses import replace
 from typing import Any, Mapping
 
 from .construction import (
@@ -17,6 +18,7 @@ from .construction import (
     TrainingStructurePolicy,
 )
 from .models import Difficulty, Equipment, MovementPattern
+from .mixed_modal import SessionFormat
 from .health_restrictions import (
     UnsupportedHealthRestrictionError,
     project_explicit_health_restrictions,
@@ -81,7 +83,8 @@ def build_training_plan(*, recommendation_blueprint_id: str, facts: Mapping[str,
                         deprioritized_exercise_ids: frozenset[str] = frozenset(),
                         session_sequence_index: int = 0,
                         advisory_preferred_exercise_ids: tuple[str, ...] = (),
-                        level_override: Difficulty | None = None) -> TrainingPlanBlueprintV2:
+                        level_override: Difficulty | None = None,
+                        mixed_modal: SessionFormat | None = None) -> TrainingPlanBlueprintV2:
     """Build one deterministic weekly plan or fail without producing a partial plan."""
     profile = dict(facts)
     locked = dict(locked_preferences or {})
@@ -90,9 +93,19 @@ def build_training_plan(*, recommendation_blueprint_id: str, facts: Mapping[str,
     level = level_override or _level(profile.get("level") or profile.get("experience_level"))
     if not isinstance(level, Difficulty):
         raise TrainingRuntimeError("training level override is invalid")
+    if mixed_modal is not None and not isinstance(mixed_modal, SessionFormat):
+        raise TrainingRuntimeError("mixed-modal format is invalid")
+    if mixed_modal is not None and level is Difficulty.ADVANCED:
+        # General experience does not establish proficiency in complex mixed-modal skills.
+        level = Difficulty.INTERMEDIATE
     split = _split(requested_split if requested_split is not None
                    else profile.get("training_split") or profile.get("split"))
+    if mixed_modal is not None:
+        split = TrainingSplit.FULL_BODY
     equipment = _equipment(locked.get("equipment") or profile.get("equipment"))
+    recovery = _recovery(profile)
+    if mixed_modal is SessionFormat.FOR_TIME and recovery is RecoveryAssumption.LIMITED:
+        mixed_modal = SessionFormat.INTERVALS
     selected_library = library or load_exercise_library()
     base_safety = _safety(profile, locked, selected_library)
     safety = TrainingSafetyConstraints(
@@ -101,6 +114,14 @@ def build_training_plan(*, recommendation_blueprint_id: str, facts: Mapping[str,
         excluded_training_tags=base_safety.excluded_training_tags,
     )
     policy = _policy_for_constraints(goal, split, safety, session_sequence_index)
+    if mixed_modal is not None:
+        groups = tuple((*session, MovementPattern.MONOSTRUCTURAL)
+                       for session in policy.session_patterns)
+        policy = replace(
+            policy, version=policy.version + ":mixed-modal-v1",
+            required_patterns=tuple(pattern for session in groups for pattern in session),
+            session_patterns=groups,
+        )
     selection = TrainingSelectionEngine.select(
         selected_library,
         TrainingSelectionRequest(
@@ -120,7 +141,7 @@ def build_training_plan(*, recommendation_blueprint_id: str, facts: Mapping[str,
         raise TrainingRuntimeError("training selection rejected: " + ",".join(selection.rejection_reasons))
     return TrainingPlanConstructionEngine.construct(
         selection.blueprint, selected_library, _structure_policy(
-            goal, level, split, _recovery(profile), policy=policy),
+            goal, level, split, recovery, policy=policy, mixed_modal=mixed_modal),
     )
 
 
@@ -255,34 +276,55 @@ def _policy_for_constraints(goal: TrainingGoal, split: TrainingSplit,
 
 
 def _structure_policy(goal: TrainingGoal, level: Difficulty, split: TrainingSplit,
-                      recovery: RecoveryAssumption, *, policy: TrainingGoalPolicy | None = None) -> TrainingStructurePolicy:
+                      recovery: RecoveryAssumption, *, policy: TrainingGoalPolicy | None = None,
+                      mixed_modal: SessionFormat | None = None) -> TrainingStructurePolicy:
     base_sets = 3 if goal is TrainingGoal.MUSCLE_GAIN else 2
+    if mixed_modal is not None:
+        base_sets = min(base_sets, 2)
     if recovery is RecoveryAssumption.LIMITED:
         base_sets = max(1, base_sets - 1)
     rep_min, rep_max = ((8, 12) if goal is TrainingGoal.MUSCLE_GAIN else (10, 15)
                         if goal is TrainingGoal.FAT_LOSS else (8, 12))
+    if mixed_modal is not None:
+        rep_min, rep_max = 6, 10
     rpe = Decimal("7") if recovery is RecoveryAssumption.FRESH else Decimal("6")
     rir = 10 - int(rpe)
     rest = 90 if goal is TrainingGoal.MUSCLE_GAIN else 60
+    if mixed_modal is not None:
+        rest = ((90 if recovery is RecoveryAssumption.LIMITED else 60)
+                if mixed_modal in {SessionFormat.INTERVALS, SessionFormat.STRENGTH_METCON} else 0)
     rules = tuple(
-        PrescriptionRule(pattern, base_sets if pattern is not MovementPattern.CORE_ANTI_EXTENSION else max(1, base_sets - 1),
-                         rep_min, rep_max, rpe, rir, rest if pattern is not MovementPattern.CORE_ANTI_EXTENSION else 45,
+        PrescriptionRule(pattern, base_sets if pattern not in {MovementPattern.CORE_ANTI_EXTENSION,
+                                                               MovementPattern.MONOSTRUCTURAL} else
+                         (base_sets if pattern is MovementPattern.MONOSTRUCTURAL else max(1, base_sets - 1)),
+                         40 if pattern is MovementPattern.MONOSTRUCTURAL else rep_min,
+                         60 if pattern is MovementPattern.MONOSTRUCTURAL else rep_max,
+                         rpe, rir, rest if mixed_modal is not None else
+                         rest if pattern not in {MovementPattern.CORE_ANTI_EXTENSION,
+                                                 MovementPattern.MONOSTRUCTURAL} else 45,
+                         ("2-0-1-0" if pattern is not MovementPattern.MONOSTRUCTURAL else "1-0-1-0")
+                         if mixed_modal is not None else
                          "3-1-1-0" if pattern is not MovementPattern.CORE_ANTI_EXTENSION else "2-1-2-0",
+                         1 if pattern is MovementPattern.MONOSTRUCTURAL else
+                         3 if mixed_modal is not None else
                          4 if pattern is not MovementPattern.CORE_ANTI_EXTENSION else 3,
-                         Decimal("2") if pattern is not MovementPattern.CORE_ANTI_EXTENSION else Decimal("1"))
+                         Decimal("1") if pattern in {MovementPattern.CORE_ANTI_EXTENSION,
+                                                     MovementPattern.MONOSTRUCTURAL} else Decimal("2"))
         for pattern in (policy or training_goal_policy(goal, split)).required_patterns
     )
     requested_sessions = {TrainingSplit.FULL_BODY: 2, TrainingSplit.UPPER_LOWER: 2,
                           TrainingSplit.PUSH_PULL_LEGS: 3}[split]
     sessions = 1 if recovery is RecoveryAssumption.LIMITED else requested_sessions
     return TrainingStructurePolicy(
-        version=f"training-structure-policy-v1:{goal.value}:{level.value}:{split.value}:{recovery.value}",
+        version=f"training-structure-policy-v1:{goal.value}:{level.value}:{split.value}:{recovery.value}"
+                + (f":mixed-modal:{mixed_modal.value}" if mixed_modal is not None else ""),
         goal=goal, experience_level=level, training_split=split, recovery=recovery, sessions_per_week=sessions,
         session_patterns=(policy or training_goal_policy(goal, split)).session_patterns,
         movement_order=(MovementPattern.SQUAT, MovementPattern.LUNGE,
                         MovementPattern.HORIZONTAL_PUSH, MovementPattern.HORIZONTAL_PULL,
                         MovementPattern.VERTICAL_PUSH, MovementPattern.HINGE,
-                        MovementPattern.CORE_ANTI_EXTENSION),
+                        MovementPattern.CORE_ANTI_EXTENSION,
+                        MovementPattern.MONOSTRUCTURAL),
         prescription_rules=rules, max_session_duration_minutes=60,
         max_session_fatigue_units=Decimal("30"), max_weekly_sets_per_primary_muscle=12,
         max_push_pull_set_difference=0, max_lower_body_set_difference=0, transition_seconds=30,

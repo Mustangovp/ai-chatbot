@@ -89,6 +89,7 @@ EXERCISE_SHOULDER_LOAD: dict[str, frozenset] = {
 
     # ── Row family ─────────────────────────────────────────────────────────────
     "table_row":             _ROW_CONSTRAINTS,
+    "march_in_place":        _SAFE_LOWER_BODY,
     "inverted_row":          _ROW_CONSTRAINTS | frozenset({"hand_supported_bodyweight"}),
     "one_arm_dumbbell_row":  _ROW_CONSTRAINTS,
     "dumbbell_row":          _ROW_CONSTRAINTS,

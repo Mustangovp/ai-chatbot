@@ -14,6 +14,7 @@ from typing import Any, Mapping
 
 from .construction import TrainingPlanBlueprintV2
 from .completion import workout_completion_from_payload
+from .registry import load_exercise_library
 from .lifecycle import PlanRevision, TrainingLifecycleEvent, TrainingLifecycleOrchestrator
 from .progression import (
     DEFAULT_PROGRESSION_POLICY,
@@ -64,6 +65,7 @@ def advance_training_lifecycle(*, plan: TrainingPlanBlueprintV2,
         raise ValueError("workout evidence does not belong to the parent training plan")
     if any(not item.completed for item in workouts):
         raise ValueError("lifecycle runtime accepts completed workouts only")
+    library = load_exercise_library(plan.exercise_library_version)
 
     events: tuple[ProgressionEvent, ...] = ()
     latest_progression = None
@@ -77,6 +79,7 @@ def advance_training_lifecycle(*, plan: TrainingPlanBlueprintV2,
             progression_history=prior_decisions,
             progress_states=prior_states,
             policy=policy,
+            library=library,
         )
         events = events + tuple(ProgressionEvent(workout.workout_id, decision)
                                 for decision in latest_progression.decisions)
@@ -93,7 +96,7 @@ def advance_training_lifecycle(*, plan: TrainingPlanBlueprintV2,
         progress_states=latest_states,
         state_policy_version=policy.version,
     )
-    revision = TrainingLifecycleOrchestrator.revise(plan, event)
+    revision = TrainingLifecycleOrchestrator.revise(plan, event, library=library)
     return LifecycleRuntimeResult(latest_progression, latest_states, revision, history)
 
 

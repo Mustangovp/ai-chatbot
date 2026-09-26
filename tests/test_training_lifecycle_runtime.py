@@ -86,6 +86,18 @@ def test_runtime_replays_multiple_weeks_and_preserves_revision_traceability():
     )
 
 
+def test_pre_mixed_modal_library_plan_still_replays_against_its_recorded_catalog():
+    plan = build_training_plan(
+        recommendation_blueprint_id="legacy-catalog-plan",
+        facts={"goal": "strength", "level": "intermediate", "equipment": "gym",
+               "recoveryFeel": "fresh"},
+        library=load_exercise_library("1.2.0"),
+    )
+    result = advance_training_lifecycle(
+        plan=plan, workouts=(_workout(plan, 0),), recovery=_recovery())
+    assert result.revision.revised_plan.exercise_library_version == "1.2.0"
+
+
 def test_every_selectable_exercise_has_a_governed_rotation_outcome():
     library = load_exercise_library()
     for exercise in library.exercises:

@@ -10,6 +10,7 @@ from .construction import (
     TrainingSessionBlueprint,
 )
 from .models import MovementPattern
+from .mixed_modal import MixedModalStructure
 from .selection import TrainingSplit
 
 
@@ -43,6 +44,7 @@ def delivered_plan_lineage(plan: TrainingPlanBlueprintV2) -> dict[str, Any]:
             "session_index": session.session_index,
             "selection_blueprint_id": session.selection_blueprint_id,
             "estimated_duration_minutes": session.estimated_duration_minutes,
+            "mixed_modal": session.mixed_modal.to_record() if session.mixed_modal is not None else None,
             "prescriptions": prescriptions,
         })
     return {
@@ -75,10 +77,16 @@ def plan_from_delivered_lineage(lineage: dict[str, Any]) -> TrainingPlanBlueprin
         raise ValueError("delivered training lineage is invalid")
     metadata = lineage["metadata"]
     try:
+        if any(session.get("mixed_modal") is not None
+               and MixedModalStructure.from_record(session["mixed_modal"]) is None
+               for session in lineage["sessions"]):
+            raise ValueError("invalid mixed-modal lineage")
         sessions = tuple(TrainingSessionBlueprint(
             session_id=str(session["session_id"]), session_index=int(session["session_index"]),
             selection_blueprint_id=str(session["selection_blueprint_id"]),
             estimated_duration_minutes=int(session["estimated_duration_minutes"]),
+            mixed_modal=(MixedModalStructure.from_record(session["mixed_modal"])
+                         if session.get("mixed_modal") is not None else None),
             prescriptions=tuple(ExercisePrescription(
                 exercise_id=str(item["exercise_id"]), exercise_version=str(item["exercise_version"]),
                 movement_pattern=MovementPattern(str(item["movement_pattern"])), sets=int(item["sets"]),

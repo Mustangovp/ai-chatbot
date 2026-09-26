@@ -14,6 +14,7 @@ from .construction import (ExercisePrescription, MuscleGroupVolume,
 from .models import Difficulty, MovementPattern
 from .selection import TrainingSplit
 from .registry import ExerciseLibrary, load_exercise_library
+from .mixed_modal import MixedModalStructure
 from .runtime import TrainingRuntimeError, build_training_plan
 
 
@@ -136,6 +137,7 @@ def serialize_conversation_plan(plan: TrainingPlanBlueprintV2) -> dict[str, obje
             "session_id": session.session_id, "session_index": session.session_index,
             "selection_blueprint_id": session.selection_blueprint_id,
             "estimated_duration_minutes": session.estimated_duration_minutes,
+            "mixed_modal": session.mixed_modal.to_record() if session.mixed_modal is not None else None,
             "prescriptions": [{
                 "exercise_id": item.exercise_id, "exercise_version": item.exercise_version,
                 "movement_pattern": item.movement_pattern.value, "sets": item.sets,
@@ -156,10 +158,16 @@ def conversation_plan_from_record(record: object) -> WorkoutConversationState | 
     if not isinstance(record, Mapping):
         return None
     try:
+        if any(session.get("mixed_modal") is not None
+               and MixedModalStructure.from_record(session["mixed_modal"]) is None
+               for session in record["sessions"]):
+            return None
         sessions = tuple(TrainingSessionBlueprint(
             session_id=str(session["session_id"]), session_index=int(session["session_index"]),
             selection_blueprint_id=str(session["selection_blueprint_id"]),
             estimated_duration_minutes=int(session["estimated_duration_minutes"]),
+            mixed_modal=(MixedModalStructure.from_record(session["mixed_modal"])
+                         if session.get("mixed_modal") is not None else None),
             prescriptions=tuple(ExercisePrescription(
                 exercise_id=str(item["exercise_id"]), exercise_version=str(item["exercise_version"]),
                 movement_pattern=MovementPattern(str(item["movement_pattern"])), sets=int(item["sets"]),
@@ -235,6 +243,8 @@ def apply_followup(*, followup: WorkoutFollowUp, previous: WorkoutConversationSt
         "excluded_movement_patterns": (followup.excluded_patterns |
                                         frozenset(external_excluded_movement_patterns)),
         "advisory_preferred_exercise_ids": advisory_preferred_exercise_ids,
+        "mixed_modal": (previous.plan.sessions[0].mixed_modal.format
+                        if previous.plan.sessions[0].mixed_modal is not None else None),
     }
     if followup.operation is WorkoutFollowUpOperation.ALTERNATIVE:
         candidate = build_training_plan(**kwargs, deprioritized_exercise_ids=frozenset(previous.exercise_ids))

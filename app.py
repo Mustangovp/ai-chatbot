@@ -50,6 +50,8 @@ from knowledge import KnowledgeResolver, load_default_registry
 from recommend import architect as recommendation_architect, engine as recommendation_planning, renderer as recommendation_renderer
 from training_engine import (
     MovementPattern,
+    MixedModalPlanningError,
+    MixedModalRequest,
     TrainingSplit,
     TrainingRuntimeError,
     apply_followup,
@@ -58,10 +60,12 @@ from training_engine import (
     followup_message,
     load_exercise_library,
     parse_workout_followup,
+    parse_mixed_modal_request,
     conversation_plan_from_record,
     recovery_from_payload,
     state_for,
     serialize_conversation_plan,
+    structure_mixed_modal_plan,
     validate_workout_completion_payload,
     workout_result_from_payload,
 )
@@ -2245,6 +2249,8 @@ _RECOMMENDATION_PLANNER = recommendation_planning.RecommendationEngine(
 _WORKOUT_REQUEST_TERMS = (
     "workout", "exercise routine", "training plan", "warm-up", "warmup",
     "тренировка", "тренировъчен план", "загрявка", "раздвижване",
+    "crossfit", "cross-fit", "кросфит", "amrap", "emom", "for time", "metcon", "wod",
+    "mixed-modal", "mixed modal", "intervals", "interval session", "rounds and reps",
 )
 _WORKOUT_REQUEST_PREFIXES = (
     "give me", "build", "make me", "create", "i want", "i need", "plan ",
@@ -2344,7 +2350,8 @@ def _plan_coaching_request(snapshot, intent, history, lang):
 def _active_training_plan(snapshot, planning_blueprint, *, followup=None, previous_workout=None,
                           advisory_signals=None, brain_excluded_movement_patterns=frozenset(),
                           fitness_excluded_movement_patterns=frozenset(), recovering=False,
-                          rebuild_missing_followup=False, longitudinal_records=()):
+                          rebuild_missing_followup=False, longitudinal_records=(),
+                          mixed_modal=None):
     """Build the deterministic workout artifact from verified request facts only."""
     if (snapshot.intent != "workout" or planning_blueprint is None
             or planning_blueprint.outcome is not recommendation_planning.RecommendationOutcome.RECOMMEND):
@@ -2378,6 +2385,7 @@ def _active_training_plan(snapshot, planning_blueprint, *, followup=None, previo
                 excluded_movement_patterns=all_excluded_patterns,
                 advisory_preferred_exercise_ids=getattr(
                     advisory_signals, "preferred_exercise_ids", ()),
+                mixed_modal=mixed_modal,
             )
             previous_workout = state_for(baseline)
         return apply_followup(
@@ -2400,6 +2408,7 @@ def _active_training_plan(snapshot, planning_blueprint, *, followup=None, previo
         session_sequence_index=(longitudinal_context.next_session_index
                                 if longitudinal_context is not None else 0),
         advisory_preferred_exercise_ids=getattr(advisory_signals, "preferred_exercise_ids", ()),
+        mixed_modal=mixed_modal,
     )
 
 
@@ -3055,6 +3064,12 @@ def chat():
         _workout_scope = _workout_conversation_scope(data, chat_uid, g.device_id)
         _workout_followup = parse_workout_followup(user_message)
         _previous_workout = _last_workout_for(_workout_scope)
+        _mixed_modal_request = parse_mixed_modal_request(user_message)
+        if (_mixed_modal_request is None and _workout_followup is not None
+                and _previous_workout is not None
+                and _previous_workout.plan.sessions[0].mixed_modal is not None):
+            _mixed_modal_request = MixedModalRequest(
+                _previous_workout.plan.sessions[0].mixed_modal.format)
         _prior_workout_decision = _conversation_workout_decision(_workout_scope)
         _followup_reply = None
         _followup_failure_reply = None
@@ -3386,6 +3401,7 @@ def chat():
                             _snapshot, _recommendation_plan,
                             followup=_workout_followup, previous_workout=_previous_workout,
                             rebuild_missing_followup=_restricted_followup_rebuild,
+                            mixed_modal=(_mixed_modal_request.format if _mixed_modal_request is not None else None),
                             **({"advisory_signals": _training_advisory_signals}
                                if _training_advisory_signals is not None else {}),
                             **({"brain_excluded_movement_patterns": _brain_enforcement_exclusions}
@@ -3396,6 +3412,7 @@ def chat():
                         _training_plan_blueprint = _active_training_plan(
                             _snapshot, _recommendation_plan,
                             longitudinal_records=pers_workouts,
+                            mixed_modal=(_mixed_modal_request.format if _mixed_modal_request is not None else None),
                             **({"advisory_signals": _training_advisory_signals}
                                if _training_advisory_signals is not None else {}),
                             **({"brain_excluded_movement_patterns": _brain_enforcement_exclusions}
@@ -3595,6 +3612,7 @@ def chat():
                     _training_plan_blueprint = _active_training_plan(
                         _snapshot, _recommendation_plan,
                         longitudinal_records=pers_workouts,
+                        mixed_modal=(_mixed_modal_request.format if _mixed_modal_request is not None else None),
                         **({"advisory_signals": _training_advisory_signals}
                            if _training_advisory_signals is not None else {}),
                         **({"brain_excluded_movement_patterns": _brain_enforcement_exclusions}
@@ -3929,6 +3947,35 @@ def chat():
                     _training_plan_blueprint = _candidate_adaptation.plan
                     _shoulder_safety_validation = _candidate_shoulder_validation
                     _cross_session_adaptation = _candidate_adaptation
+
+        if _training_plan_blueprint is not None and _mixed_modal_request is not None:
+            try:
+                _verified_facts = {key: fact.value for key, fact in _snapshot.profile.items()}
+                _mixed_constraints = (
+                    project_explicit_health_restrictions(profile).excluded_movement_patterns
+                    | frozenset(_brain_enforcement_exclusions)
+                    | frozenset(_fitness_training_kwargs.get("fitness_excluded_movement_patterns", frozenset()))
+                )
+                _mixed_history = context_from_persisted_history(
+                    pers_workouts, library=load_exercise_library(),
+                    split=_training_plan_blueprint.training_split)
+                _training_plan_blueprint = structure_mixed_modal_plan(
+                    _training_plan_blueprint, request=_mixed_modal_request,
+                    facts=_verified_facts, library=load_exercise_library(),
+                    excluded_patterns=_mixed_constraints,
+                    completed_history=bool(_mixed_history.source_completion_count),
+                )
+            except (MixedModalPlanningError, ValueError) as _mixed_error:
+                print(f"[training-engine] mixed-modal structure rejected: {type(_mixed_error).__name__}")
+                _training_plan_blueprint = None
+                _training_engine_failure = "training_engine_mixed_modal_safety"
+                _controlled_reply = (
+                    "I can't safely build that mixed-modal session from the verified movements and limitations. "
+                    "Please clarify the movement restriction or available equipment."
+                    if lang == "en" else
+                    "Не мога безопасно да съставя тази смесена тренировка с потвърдените движения и ограничения. "
+                    "Уточни ограничението за движение или наличното оборудване."
+                )
 
         if _health_scope.scope is HealthSafetyScope.DECLARED_HEALTH_CONTEXT:
             system_content = system_content + "\n\n" + declared_context_prompt(lang)
@@ -4486,26 +4533,31 @@ def chat():
                                     split=_training_plan_blueprint.training_split)
                                 if chat_uid and _workout_followup is None else None),
                         )
-                        try:
-                            completion = client.chat.completions.create(
-                                model=model_to_use,
-                                messages=messages,
-                                max_tokens=max_tokens,
-                                response_format={"type": "json_object"},
-                            )
-                            _bump_plans_today()
-                            raw_explanations = completion.choices[0].message.content or ""
-                            explanations = training_renderer.verified_explanations(raw_explanations)
-                        except Exception as explanation_error:
-                            print(f"[training-engine] explanation fallback: {type(explanation_error).__name__}")
+                        if _training_plan_blueprint.sessions[0].mixed_modal is not None:
+                            # Its format, dose, and rationale are closed plan data;
+                            # a model explanation cannot become another authority.
                             explanations = ()
-                        if not explanations:
-                            explanations = training_renderer.default_explanations(
-                                _training_plan_blueprint, lang)
-                            training_delivery_class = (
-                                free_activation.DeliveryClass.EXPLANATION_FALLBACK)
-                        else:
                             training_delivery_class = free_activation.DeliveryClass.NORMAL
+                        else:
+                            try:
+                                completion = client.chat.completions.create(
+                                    model=model_to_use,
+                                    messages=messages,
+                                    max_tokens=max_tokens,
+                                    response_format={"type": "json_object"},
+                                )
+                                _bump_plans_today()
+                                raw_explanations = completion.choices[0].message.content or ""
+                                explanations = training_renderer.verified_explanations(raw_explanations)
+                            except Exception as explanation_error:
+                                print(f"[training-engine] explanation fallback: {type(explanation_error).__name__}")
+                                explanations = ()
+                            if not explanations:
+                                explanations = training_renderer.default_explanations(
+                                    _training_plan_blueprint, lang)
+                                training_delivery_class = free_activation.DeliveryClass.EXPLANATION_FALLBACK
+                            else:
+                                training_delivery_class = free_activation.DeliveryClass.NORMAL
                         reply_text = training_renderer.render_delivery(
                             _training_plan_blueprint, load_exercise_library(), explanations, lang)
                         if _combined_coaching_request:

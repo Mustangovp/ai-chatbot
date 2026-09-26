@@ -19,6 +19,7 @@ class MovementPattern(str, Enum):
     VERTICAL_PUSH = "vertical_push"
     VERTICAL_PULL = "vertical_pull"
     CORE_ANTI_EXTENSION = "core_anti_extension"
+    MONOSTRUCTURAL = "monostructural"
 
 
 class Equipment(str, Enum):

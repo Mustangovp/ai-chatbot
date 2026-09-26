@@ -230,7 +230,7 @@ class ProgressionEngine:
                  progress_states: tuple["ExerciseProgressState", ...] = (),
                  policy: ProgressionPolicy = DEFAULT_PROGRESSION_POLICY,
                  library: ExerciseLibrary | None = None) -> ProgressionBlueprint:
-        selected_library = library or load_exercise_library()
+        selected_library = library or load_exercise_library(plan.exercise_library_version)
         prescriptions = cls._validate_inputs(plan, workout_history, recovery, progression_history, progress_states, policy,
                                              selected_library)
         states = {(item.exercise_id, item.exercise_version): item for item in progress_states}

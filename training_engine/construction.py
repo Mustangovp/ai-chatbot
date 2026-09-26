@@ -12,6 +12,7 @@ from enum import Enum
 import re
 
 from .models import Difficulty, MovementPattern
+from .mixed_modal import MixedModalStructure
 from .registry import ExerciseLibrary
 from .selection import ExerciseSelectionBlueprint, TrainingGoal, TrainingSplit
 
@@ -177,6 +178,7 @@ class TrainingSessionBlueprint:
     selection_blueprint_id: str
     estimated_duration_minutes: int
     prescriptions: tuple[ExercisePrescription, ...]
+    mixed_modal: MixedModalStructure | None = None
 
     def __post_init__(self) -> None:
         if not self.session_id or not self.selection_blueprint_id:
@@ -189,6 +191,13 @@ class TrainingSessionBlueprint:
             raise ValueError("session requires prescriptions")
         if len({item.exercise_id for item in self.prescriptions}) != len(self.prescriptions):
             raise ValueError("session contains duplicate exercise prescriptions")
+        if self.mixed_modal is not None:
+            if not isinstance(self.mixed_modal, MixedModalStructure):
+                raise ValueError("invalid mixed-modal structure")
+            if (self.mixed_modal.strength_exercise_id is not None
+                    and self.mixed_modal.strength_exercise_id not in
+                    {item.exercise_id for item in self.prescriptions}):
+                raise ValueError("mixed-modal strength movement is not prescribed")
 
 
 @dataclass(frozen=True)

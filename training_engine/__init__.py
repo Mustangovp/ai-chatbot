@@ -39,6 +39,10 @@ from .construction import (
     TrainingStructurePolicy,
 )
 from .runtime import TrainingRuntimeError, build_training_plan
+from .mixed_modal import (
+    MixedModalPlanningError, MixedModalRequest, MixedModalStructure,
+    SessionFormat, TrainingModality, parse_mixed_modal_request, structure_mixed_modal_plan,
+)
 from .followups import (
     WorkoutFollowUp, WorkoutFollowUpOperation, WorkoutConversationState,
     apply_followup, blueprint_hash, conversation_plan_from_record, followup_message,
@@ -100,6 +104,8 @@ __all__ = [
     "TrainingConstructionError", "TrainingPlanBlueprintV2", "TrainingPlanConstructionEngine",
     "TrainingSessionBlueprint", "TrainingStructurePolicy",
     "TrainingRuntimeError", "build_training_plan",
+    "MixedModalPlanningError", "MixedModalRequest", "MixedModalStructure",
+    "SessionFormat", "TrainingModality", "parse_mixed_modal_request", "structure_mixed_modal_plan",
     "WorkoutFollowUp", "WorkoutFollowUpOperation", "WorkoutConversationState",
     "apply_followup", "blueprint_hash", "conversation_plan_from_record", "followup_message",
     "parse_workout_followup", "serialize_conversation_plan", "state_for",

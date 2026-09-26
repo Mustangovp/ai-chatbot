@@ -20,7 +20,7 @@ from .models import (
 )
 
 
-EXERCISE_LIBRARY_VERSION = "1.2.0"
+EXERCISE_LIBRARY_VERSION = "1.3.0"
 
 
 @dataclass(frozen=True)
@@ -201,12 +201,21 @@ _EXERCISES = (
     _exercise("band.pallof_press", "Resistance-Band Pallof Press", ("core",), ("obliques", "shoulders"),
               MovementPattern.CORE_ANTI_EXTENSION, frozenset({Equipment.RESISTANCE_BAND}), Difficulty.BEGINNER,
               ("core", "home"), ("Use a secure anchor and resist rotation without holding your breath.",)),
+    _exercise("bodyweight.march_in_place", "March in Place", ("calves",), ("glutes", "core"),
+              MovementPattern.MONOSTRUCTURAL, frozenset({Equipment.BODYWEIGHT}), Difficulty.BEGINNER,
+              ("monostructural", "conditioning", "home"),
+              ("Use a comfortable pace; stop if the movement is painful.",)),
 )
 
 
 _DEFAULT_LIBRARY = ExerciseLibrary(EXERCISE_LIBRARY_VERSION, _EXERCISES)
+_LEGACY_LIBRARY = ExerciseLibrary("1.2.0", _EXERCISES[:-1])
 
 
-def load_exercise_library() -> ExerciseLibrary:
-    """Return the immutable built-in knowledge registry without side effects."""
-    return _DEFAULT_LIBRARY
+def load_exercise_library(version: str | None = None) -> ExerciseLibrary:
+    """Resolve the recorded catalog version for immutable plan replay."""
+    if version is None or version == EXERCISE_LIBRARY_VERSION:
+        return _DEFAULT_LIBRARY
+    if version == _LEGACY_LIBRARY.version:
+        return _LEGACY_LIBRARY
+    raise ValueError("unknown exercise library version")

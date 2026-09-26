@@ -494,7 +494,7 @@ def test_longitudinal_rationale_is_bounded_and_invalid_history_is_ignored():
 
 def test_expanded_exercise_library_has_unique_ids_and_final_shoulder_index_coverage():
     library = load_exercise_library()
-    assert len(library.exercises) == 30
+    assert len(library.exercises) == 31
     assert len({(item.exercise_id, item.version) for item in library.exercises}) == len(library.exercises)
     for exercise in library.exercises:
         candidates = (exercise.exercise_id, exercise.exercise_id.replace(".", "_"),
