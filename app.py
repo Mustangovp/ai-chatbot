@@ -71,6 +71,7 @@ from training_engine import (
 )
 from training_engine import renderer as training_renderer
 from training_engine.runtime import validate_training_plan_constraints
+from training_engine.followups import active_workout_modification
 from training_engine.rationale import build_recommendation_rationale
 from training_engine.cross_session import adapt_from_persisted_history
 from training_engine.longitudinal import context_from_persisted_history
@@ -85,11 +86,13 @@ from training_engine.health_restrictions import (
     fitness_limitation_from_history,
     fitness_limitation_from_profile,
     is_recovering_light_session_request,
+    knee_load_caution_transition,
     knee_load_limited_patterns,
     limitation_excluded_patterns,
     migrate_temporary_fitness_restrictions,
     project_explicit_health_restrictions,
     remove_cleared_clinician_restrictions,
+    set_knee_load_caution,
     transition_fitness_limitation,
 )
 from brain.runtime_assets import expert_consensus, persona_matcher
@@ -280,7 +283,7 @@ def _record_conversation_health_restrictions(scope, restrictions):
 
 def _replace_conversation_health_restrictions(scope, restrictions):
     if scope is None:
-        return
+        return False
     normalized = tuple(str(item).strip() for item in restrictions if str(item).strip())
     with _workout_conversation_lock:
         if normalized:
@@ -291,8 +294,10 @@ def _replace_conversation_health_restrictions(scope, restrictions):
     try:
         store.update_conversation_runtime_state(
             *scope, health_restrictions=list(normalized), workout_stale=True)
+        return True
     except Exception as error:
         print(f"[chat] conversation restriction state unavailable: {type(error).__name__}")
+        return False
 
 
 def _conversation_fitness_limitation(scope):
@@ -412,6 +417,30 @@ def _merge_account_training_constraints(profile, patterns):
     )
     updated["healthRestrictions"] = list(dict.fromkeys((*existing_values, *projected)))
     return updated
+
+
+def _save_chat_profile(user_id, profile):
+    """Do not persist account-store exclusions merely projected for this chat turn."""
+    candidate = dict(profile or {})
+    current = candidate.get("healthRestrictions")
+    if current:
+        projected = {
+            _ACCOUNT_TRAINING_CONSTRAINT_TEXT[pattern]
+            for pattern in _account_training_constraint_patterns(user_id)
+            if pattern in _ACCOUNT_TRAINING_CONSTRAINT_TEXT
+        }
+        if projected:
+            saved = store.get_profile(user_id)
+            prior = saved.get("healthRestrictions") or ()
+            prior_values = set((prior,) if isinstance(prior, str) else prior)
+            current_values = (current,) if isinstance(current, str) else current
+            retained = [item for item in current_values
+                        if item not in projected or item in prior_values]
+            if retained:
+                candidate["healthRestrictions"] = retained
+            else:
+                candidate.pop("healthRestrictions", None)
+    store.save_profile(user_id, candidate)
 
 
 def _persist_account_training_constraints(user_id, restrictions):
@@ -2096,7 +2125,7 @@ def _update_learning_engine(uid, user_msg, assistant_reply, current_profile):
         current_profile[k] = v
     if uid:
         try:
-            store.save_profile(uid, current_profile)
+            _save_chat_profile(uid, current_profile)
         except Exception as e:
             print(f"[learning] save_profile failed: {e}")
 
@@ -3068,6 +3097,8 @@ def chat():
                                      else ("device", g.device_id or _client_ip()))
         _workout_scope = _workout_conversation_scope(data, chat_uid, g.device_id)
         _previous_workout = _last_workout_for(_workout_scope)
+        _active_workout_mutation = active_workout_modification(
+            user_message, previous=_previous_workout)
         _workout_followup = parse_workout_followup(
             user_message, previous=_previous_workout)
         _mixed_modal_request = parse_mixed_modal_request(user_message)
@@ -3195,6 +3226,32 @@ def chat():
             _scoped_health_restrictions = _scoped_remaining
         _legacy_fitness_migrated = _legacy_fitness_limitation is not None
 
+        _knee_caution_transition = knee_load_caution_transition(user_message)
+        _knee_caution_changed = False
+        if _knee_caution_transition is not None:
+            _had_knee_caution = bool(knee_load_limited_patterns(profile))
+            if _knee_caution_transition or _had_knee_caution:
+                profile = dict(profile or {})
+                _knee_caution_changed = _knee_caution_transition != _had_knee_caution
+                profile["healthRestrictions"] = list(set_knee_load_caution(
+                    profile.get("healthRestrictions"), active=_knee_caution_transition))
+                if _workout_scope is not None:
+                    _scoped_health_restrictions = set_knee_load_caution(
+                        _scoped_health_restrictions, active=_knee_caution_transition)
+                    if not _replace_conversation_health_restrictions(
+                            _workout_scope, _scoped_health_restrictions) and not chat_uid:
+                        _constraint_write_failed = True
+                if chat_uid:
+                    try:
+                        saved_profile = dict(store.get_profile(chat_uid))
+                        saved_profile["healthRestrictions"] = list(set_knee_load_caution(
+                            saved_profile.get("healthRestrictions"),
+                            active=_knee_caution_transition))
+                        store.save_profile(chat_uid, saved_profile)
+                    except Exception as error:
+                        print(f"[chat] account load caution write unavailable: {type(error).__name__}")
+                        _constraint_write_failed = True
+
         _fitness_limitation = (
             fitness_limitation_from_profile(profile)
             if isinstance(profile, dict) else None
@@ -3275,6 +3332,11 @@ def chat():
                     _restriction_controlled_reply = _explicit_health_restriction_acknowledgement(lang)
         if (_retired_account_constraints and not _restriction_turn_requests_workout(user_message)):
             _restriction_controlled_reply = _account_training_constraint_retirement_reply(lang)
+        if (_knee_caution_changed and not _restriction_turn_requests_workout(user_message)):
+            _restriction_controlled_reply = (
+                "I've updated your knee load caution. Future workouts will follow the current safety checks."
+                if lang == "en" else
+                "Актуализирах ограничението за натоварване на коляното. Бъдещите тренировки ще следват текущите проверки за безопасност.")
         if (_fitness_limitation_changed and _fitness_limitation is not None
                 and not _restriction_turn_requests_workout(user_message)):
             _restriction_controlled_reply = _fitness_limitation_reply(
@@ -3284,7 +3346,7 @@ def chat():
             _restriction_controlled_reply = _clinician_clearance_reply(lang)
         if (chat_uid and (_fitness_limitation_changed or _legacy_fitness_migrated
                           or _clinician_clearance_changed)):
-            store.save_profile(chat_uid, profile)
+            _save_chat_profile(chat_uid, profile)
         _new_medical_hold = _medical_hold_from_message(
             user_message, conversation=history, profile=profile)
         if _new_medical_hold is not None:
@@ -3295,7 +3357,7 @@ def chat():
             _medical_hold = _new_medical_hold
             _record_conversation_medical_hold(_workout_scope, _new_medical_hold)
             if chat_uid:
-                store.save_profile(chat_uid, profile)
+                _save_chat_profile(chat_uid, profile)
 
         # A restricted workout follow-up may land on a different production
         # worker than the original plan. Rebuild the same safe deterministic
@@ -3719,7 +3781,7 @@ def chat():
             
             # 5. Memory: Write confirmed profile facts to store (logged-in accounts)
             if chat_uid:
-                try: store.save_profile(chat_uid, profile)
+                try: _save_chat_profile(chat_uid, profile)
                 except Exception: pass
         else:
             try:
@@ -4004,6 +4066,11 @@ def chat():
 
         if (_workout_followup is not None and _workout_followup.requires_previous
                 and _training_plan_blueprint is None and _controlled_reply is None):
+            _controlled_reply = followup_message("workout change unavailable", lang)
+        if (_previous_workout is not None and _training_plan_blueprint is None
+                and _controlled_reply is None
+                and (_active_workout_mutation is not None
+                     or _explicit_workout_request(user_message))):
             _controlled_reply = followup_message("workout change unavailable", lang)
 
         if _health_scope.scope is HealthSafetyScope.DECLARED_HEALTH_CONTEXT:

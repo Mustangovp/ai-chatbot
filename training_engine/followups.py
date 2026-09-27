@@ -80,7 +80,8 @@ _TRAINING_MODIFIER = re.compile(
     r"\b(?:intens\w*|difficult\w*|harder|easier|load|volume|effort|reps|sets|"
     r"интензивн\w*|трудн\w*|тежест\w*|обем\w*|серии|повторен\w*)\b")
 _NON_TRAINING_CONTEXT = re.compile(
-    r"\b(?:nutrition|meal|food|calor\w*|macro\w*|хран\w*|калор\w*|макро\w*)\b")
+    r"\b(?:nutrition|meal|food|calor\w*|macro\w*|timeout|latency|"
+    r"хран\w*|калор\w*|макро\w*)\b")
 _CHANGE_ACTION = re.compile(
     r"\b(?:make|increase|raise|boost|progress|scale|decrease|reduce|lower|ease|adjust|change|"
     r"направи|увеличи|вдигни|намали|облекчи|промени|адаптирай|скалирай)\b")
@@ -91,10 +92,75 @@ _DECREASE_DIRECTION = re.compile(
     r"\b(?:easier|less\s+(?:difficult|intense|hard)|decrease|reduce|lower|ease|"
     r"по[- ]?лесн\w*|по[- ]?лек\w*|намали|облекчи)\b")
 _AMBIGUOUS_CHANGE = re.compile(r"\b(?:scale|adjust|change|скалирай|адаптирай|промени)\b")
+_ACTIVE_MUTATION_ACTION = re.compile(
+    r"\b(?:make|push|bump|scale|progress|regress|adjust|change|modify|repeat|"
+    r"increase|raise|boost|decrease|reduce|lower|ease|"
+    r"направи|увеличи|вдигни|намали|облекчи|промени|адаптирай|скалирай|"
+    r"повтори|повиши)\b")
+_ACTIVE_MUTATION_TARGET = re.compile(
+    r"\b(?:workload|volume|intensity|load|difficulty|effort|reps|sets|"
+    r"workout|wod|session|training|plan|this|it|"
+    r"натоварван\w*|обем\w*|интензивн\w*|трудност\w*|тежест\w*|"
+    r"тренировк\w*|сеси\w*|план\w*|серии|повторен\w*|това|я)\b")
+_ACTIVE_COMPARATIVE_TARGET = re.compile(
+    r"\b(?:(?:more|less|higher|lower)\s+"
+    r"(?:volume|workload|load|reps|sets|intensity|difficulty|effort)|"
+    r"по[- ]?(?:голям\w*|малко)\s+"
+    r"(?:обем\w*|повторен\w*|серии|натоварван\w*|интензивн\w*|тежест\w*))\b")
+_ACTIVE_INCREASE = re.compile(
+    r"\b(?:harder|tougher|nastier|more\s+intense|increase|raise|boost|bump|"
+    r"progress|push|scale\s+(?:this|it)?\s*up|"
+    r"(?:more|higher)\s+(?:volume|workload|load|reps|sets|intensity|difficulty|effort)|"
+    r"по[- ]?голям\w*\s+(?:обем\w*|повторен\w*|серии|натоварван\w*|интензивн\w*|тежест\w*)|"
+    r"по[- ]?трудн\w*|по[- ]?тежк\w*|увеличи|вдигни|повиши|"
+    r"натоварван\w*\s+нагоре)\b")
+_ACTIVE_DECREASE = re.compile(
+    r"\b(?:easier|lighter|less\s+(?:difficult|intense|hard)|decrease|reduce|lower|ease|"
+    r"regress|scale\s+(?:this|it)?\s*down|"
+    r"(?:less|lower)\s+(?:volume|workload|load|reps|sets|intensity|difficulty|effort)|"
+    r"по[- ]?малко\s+(?:обем\w*|повторен\w*|серии|натоварван\w*|интензивн\w*|тежест\w*)|"
+    r"по[- ]?лесн\w*|по[- ]?лек\w*|намали|облекчи)\b")
+_ACTIVE_NEGATION = re.compile(r"\b(?:don['’]t|do\s+not|not|never|no|не|недей)\b")
+_ACTIVE_SHORT_DIRECTION = re.compile(
+    r"^(?:harder|tougher|nastier|easier|lighter|по[- ]?трудн\w*|по[- ]?лесн\w*|"
+    r"натоварван\w*\s+нагоре)"
+    r"(?:[,!?. ]+(?:please|моля))?[,!?. ]*$")
+_NEW_WORKOUT_REQUEST = re.compile(
+    r"^(?:give me|build|make me|create|дай ми|направи ми|създай)\b")
 
 
 def _normalized(value: object) -> str:
     return _NORMALIZE.sub(" ", str(value or "").casefold().strip())
+
+
+def active_workout_modification(
+        message: object, *, previous: WorkoutConversationState | None
+) -> WorkoutFollowUp | None:
+    """Typed mutation of an active blueprint; no user-facing referent is required."""
+    if previous is None:
+        return None
+    text = _normalized(message)
+    if not text or (_NEW_WORKOUT_REQUEST.search(text) and _WORKOUT_REFERENT.search(text)
+                    and not re.search(r"\b(?:this|that|it|това|тази|я)\b", text)):
+        return None
+    if _NON_TRAINING_CONTEXT.search(text) and not _WORKOUT_REFERENT.search(text):
+        return None
+    increase = bool(_ACTIVE_INCREASE.search(text))
+    decrease = bool(_ACTIVE_DECREASE.search(text))
+    has_action = bool(_ACTIVE_MUTATION_ACTION.search(text))
+    has_target = bool(_ACTIVE_MUTATION_TARGET.search(text))
+    has_comparison = bool(_ACTIVE_COMPARATIVE_TARGET.search(text))
+    if not ((has_action and (has_target or increase or decrease))
+            or has_comparison or _ACTIVE_SHORT_DIRECTION.fullmatch(text)):
+        return None
+    if _ACTIVE_NEGATION.search(text):
+        operation = WorkoutFollowUpOperation.UNSUPPORTED_CHANGE
+    elif increase != decrease:
+        operation = (WorkoutFollowUpOperation.INCREASE_DIFFICULTY if increase else
+                     WorkoutFollowUpOperation.DECREASE_DIFFICULTY)
+    else:
+        operation = WorkoutFollowUpOperation.UNSUPPORTED_CHANGE
+    return WorkoutFollowUp(operation)
 
 
 def parse_workout_followup(
@@ -104,6 +170,10 @@ def parse_workout_followup(
     text = _normalized(message)
     if not text:
         return None
+    if previous is not None and _ACTIVE_NEGATION.search(text):
+        negated_change = active_workout_modification(text, previous=previous)
+        if negated_change is not None:
+            return negated_change
     if any(phrase in text for phrase in _ALT):
         return WorkoutFollowUp(WorkoutFollowUpOperation.ALTERNATIVE)
     if any(phrase in text for phrase in _HARDER):
@@ -115,6 +185,9 @@ def parse_workout_followup(
                                excluded_patterns=frozenset({MovementPattern.SQUAT}))
     if any(phrase in text for phrase in _REPEAT):
         return WorkoutFollowUp(WorkoutFollowUpOperation.REPEAT_PREVIOUS)
+    active_change = active_workout_modification(text, previous=previous)
+    if active_change is not None:
+        return active_change
     contextual_referent = (
         bool(_WORKOUT_REFERENT.search(text))
         or (previous is not None and bool(_PLAN_OR_SESSION_REFERENT.search(text))

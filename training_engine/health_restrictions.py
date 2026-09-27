@@ -157,8 +157,8 @@ def _values(value: object) -> tuple[str, ...]:
 
 _KNEE_TERM = r"(?:knees?|колян\w*)"
 _KNEE_LIMITATION_TERM = (
-    r"(?:limitation|pain|injur\w*|hurt\w*|stress\w*|strain\w*|"
-    r"проблем\w*|болк\w*|боли|ограничен\w*|ограничение|травм\w*|натовар\w*)"
+    r"(?:limitation|pain|problem|injur\w*|hurt\w*|stress\w*|strain\w*|protect|"
+    r"проблем\w*|болк\w*|боли|пази|ограничен\w*|ограничение|травм\w*|натовар\w*)"
 )
 _KNEE_DECLARATION = re.compile(
     rf"\b(?:{_KNEE_TERM}(?:\W+\w+){{0,4}}\W+{_KNEE_LIMITATION_TERM}|"
@@ -170,6 +170,32 @@ _KNEE_CLEARED = re.compile(
     r"\b(?:нямам|няма|без)\s+(?:\w+\s+){0,2}(?:болк\w*|проблем\w*|ограничен\w*)\b|"
     r"\bне\s+ме\s+боли\s+колян\w*\b"
 )
+_KNEE_EXPLICIT_CLEARANCE = re.compile(
+    r"\b(?:my\s+knee\s+is\s+fine\s+now|knee\s+pain\s+is\s+gone|"
+    r"remove\s+my\s+knee\s+(?:caution|limitation)|no\s+longer\s+(?:have\s+)?knee\s+pain|"
+    r"коляното\s+ми\s+е\s+добре|вече\s+нямам\s+болк\w*\s+в\s+коляното|"
+    r"премахни\s+ограничението\s+за\s+коляното)\b"
+)
+_KNEE_CAUTION_ACTIVE = "training_load_caution:knee:active"
+_KNEE_CAUTION_CLEARED = "training_load_caution:knee:cleared"
+_KNEE_CAUTION_MARKERS = frozenset({_KNEE_CAUTION_ACTIVE, _KNEE_CAUTION_CLEARED})
+
+
+def knee_load_caution_transition(message: object) -> bool | None:
+    """Return an explicit user-owned functional caution transition, not a diagnosis."""
+    text = str(message or "").casefold().strip()
+    if not text or is_clinician_statement(text):
+        return None
+    if _KNEE_EXPLICIT_CLEARANCE.search(text) or _KNEE_CLEARED.search(text):
+        return False
+    return True if _KNEE_DECLARATION.search(text) else None
+
+
+def set_knee_load_caution(restrictions: object, *, active: bool) -> tuple[str, ...]:
+    """Replace only the closed knee load-caution marker in an existing restriction field."""
+    kept = tuple(item for item in _values(restrictions) if item not in _KNEE_CAUTION_MARKERS)
+    marker = _KNEE_CAUTION_ACTIVE if active else _KNEE_CAUTION_CLEARED
+    return (*kept, marker)
 
 
 def knee_load_limited_patterns(
@@ -180,9 +206,21 @@ def knee_load_limited_patterns(
     This is not a diagnosis or hard exclusion. Ambiguous movement restrictions
     still go through the existing fail-closed health restriction projection.
     """
-    values = [str(message or "")]
+    transition = knee_load_caution_transition(message)
+    if transition is False:
+        return frozenset()
+    if transition is True:
+        return frozenset({MovementPattern.SQUAT, MovementPattern.LUNGE})
+    values = []
     if isinstance(profile, Mapping):
-        for field in ("injuries", "healthNotes", "trainingRestrictions", "medicalRestrictions"):
+        markers = set(_values(profile.get("healthRestrictions"))) | set(
+            _values(profile.get("trainingRestrictions")))
+        if _KNEE_CAUTION_CLEARED in markers:
+            return frozenset()
+        if _KNEE_CAUTION_ACTIVE in markers:
+            return frozenset({MovementPattern.SQUAT, MovementPattern.LUNGE})
+        for field in ("injuries", "healthNotes", "healthRestrictions",
+                      "trainingRestrictions", "medicalRestrictions"):
             values.extend(_values(profile.get(field)))
     for value in values:
         for clause in re.split(r"[,;.!?]|\b(?:but|но|обаче)\b", value.casefold()):
@@ -356,6 +394,8 @@ def project_explicit_health_restrictions(profile: Mapping[str, object]) -> Healt
     restrictions = []
     for field in _RESTRICTION_FIELDS:
         for restriction in _values(profile.get(field)):
+            if restriction in _KNEE_CAUTION_MARKERS:
+                continue
             text = restriction.casefold()
             declared_by_authority = field in {"clinicianRestrictions", "medicalRestrictions"}
             explicitly_limited = any(marker in text for marker in _DIRECT_RESTRICTION_MARKERS)

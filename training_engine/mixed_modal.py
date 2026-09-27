@@ -10,6 +10,7 @@ from dataclasses import dataclass, replace
 from enum import Enum
 from hashlib import sha256
 import re
+import unicodedata
 from typing import Mapping, TYPE_CHECKING
 
 from .models import Difficulty, Equipment, MovementPattern
@@ -131,7 +132,16 @@ def declared_knee_limitation(facts: Mapping[str, object]) -> bool:
 
 
 _NEGATION = re.compile(r"\b(?:not|no|without|don't|do\s+not|neither|nor|не|без|нито)\b")
-_CLAUSE_BOUNDARY = re.compile(r"[,;.!?]|\b(?:but|however|но|обаче)\b")
+_CLAUSE_BOUNDARY = re.compile(
+    r"[;.!?]|\b(?:but|however|но|обаче)\b|"
+    r",\s*(?=(?:give\s+me|make\s+me|build|create|i\s+want|i\s+need|"
+    r"дай\s+ми|направи\s+ми|искам|планирай)\b)")
+
+
+def _normalized_intent(message: object) -> str:
+    text = unicodedata.normalize("NFKC", str(message or ""))
+    text = text.translate(str.maketrans({"\u2018": "'", "\u2019": "'", "\u02bc": "'"}))
+    return re.sub(r"\s+", " ", text.casefold()).strip()
 
 
 def _requested_term(text: str, term: str) -> bool:
@@ -146,7 +156,7 @@ def _requested_term(text: str, term: str) -> bool:
 
 def parse_mixed_modal_request(message: object) -> MixedModalRequest | None:
     """Classify an explicit training format, never a user's claimed skill level."""
-    text = re.sub(r"\s+", " ", str(message or "").casefold()).strip()
+    text = _normalized_intent(message)
     if not text:
         return None
     def requested(term: str) -> bool:
