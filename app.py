@@ -70,6 +70,7 @@ from training_engine import (
     workout_result_from_payload,
 )
 from training_engine import renderer as training_renderer
+from training_engine.runtime import validate_training_plan_constraints
 from training_engine.rationale import build_recommendation_rationale
 from training_engine.cross_session import adapt_from_persisted_history
 from training_engine.longitudinal import context_from_persisted_history
@@ -84,6 +85,7 @@ from training_engine.health_restrictions import (
     fitness_limitation_from_history,
     fitness_limitation_from_profile,
     is_recovering_light_session_request,
+    knee_load_limited_patterns,
     limitation_excluded_patterns,
     migrate_temporary_fitness_restrictions,
     project_explicit_health_restrictions,
@@ -2351,7 +2353,7 @@ def _active_training_plan(snapshot, planning_blueprint, *, followup=None, previo
                           advisory_signals=None, brain_excluded_movement_patterns=frozenset(),
                           fitness_excluded_movement_patterns=frozenset(), recovering=False,
                           rebuild_missing_followup=False, longitudinal_records=(),
-                          mixed_modal=None):
+                          mixed_modal=None, load_limited_patterns=frozenset()):
     """Build the deterministic workout artifact from verified request facts only."""
     if (snapshot.intent != "workout" or planning_blueprint is None
             or planning_blueprint.outcome is not recommendation_planning.RecommendationOutcome.RECOMMEND):
@@ -2386,6 +2388,7 @@ def _active_training_plan(snapshot, planning_blueprint, *, followup=None, previo
                 advisory_preferred_exercise_ids=getattr(
                     advisory_signals, "preferred_exercise_ids", ()),
                 mixed_modal=mixed_modal,
+                load_limited_patterns=load_limited_patterns,
             )
             previous_workout = state_for(baseline)
         return apply_followup(
@@ -2396,6 +2399,7 @@ def _active_training_plan(snapshot, planning_blueprint, *, followup=None, previo
             locked_preferences=snapshot.locked_preferences.as_dict(),
             advisory_preferred_exercise_ids=getattr(advisory_signals, "preferred_exercise_ids", ()),
             external_excluded_movement_patterns=all_excluded_patterns,
+            load_limited_patterns=load_limited_patterns,
         )
     return build_training_plan(
         recommendation_blueprint_id=planning_blueprint.blueprint_id,
@@ -2409,6 +2413,7 @@ def _active_training_plan(snapshot, planning_blueprint, *, followup=None, previo
                                 if longitudinal_context is not None else 0),
         advisory_preferred_exercise_ids=getattr(advisory_signals, "preferred_exercise_ids", ()),
         mixed_modal=mixed_modal,
+        load_limited_patterns=load_limited_patterns,
     )
 
 
@@ -3062,12 +3067,23 @@ def chat():
         persist_analytics_subject = (("user", str(g.user["id"])) if g.get("user")
                                      else ("device", g.device_id or _client_ip()))
         _workout_scope = _workout_conversation_scope(data, chat_uid, g.device_id)
-        _workout_followup = parse_workout_followup(user_message)
         _previous_workout = _last_workout_for(_workout_scope)
+        _workout_followup = parse_workout_followup(
+            user_message, previous=_previous_workout)
         _mixed_modal_request = parse_mixed_modal_request(user_message)
-        if (_mixed_modal_request is None and _workout_followup is not None
-                and _previous_workout is not None
-                and _previous_workout.plan.sessions[0].mixed_modal is not None):
+        if (_workout_followup is not None and _previous_workout is not None
+                and _previous_workout.plan.sessions[0].mixed_modal is not None
+                and _workout_followup.operation.value in {
+                    "increase_difficulty", "decrease_difficulty", "repeat_previous"}):
+            _mixed_modal_request = MixedModalRequest(
+                _previous_workout.plan.sessions[0].mixed_modal.format,
+                requested_box_jumps=(_mixed_modal_request.requested_box_jumps
+                                     if _mixed_modal_request is not None else False),
+                knee_concern=(_mixed_modal_request.knee_concern
+                              if _mixed_modal_request is not None else False))
+        elif (_mixed_modal_request is None and _workout_followup is not None
+              and _previous_workout is not None
+              and _previous_workout.plan.sessions[0].mixed_modal is not None):
             _mixed_modal_request = MixedModalRequest(
                 _previous_workout.plan.sessions[0].mixed_modal.format)
         _prior_workout_decision = _conversation_workout_decision(_workout_scope)
@@ -3087,6 +3103,8 @@ def chat():
                 )
             elif _workout_followup.operation.value == "unknown_exercise":
                 _followup_reply = followup_message("unknown requested exercise", lang)
+            elif _workout_followup.operation.value == "unsupported_change":
+                _followup_reply = followup_message("unsupported workout change", lang)
         pers_workouts = []
         pers_nutrition_plans = []
         _account_constraint_retirement_intent = explicit_user_constraint_clearance_patterns(user_message)
@@ -3202,6 +3220,8 @@ def chat():
             "recovering": (_fitness_limitation is not None and
                            _fitness_limitation.state is FitnessLimitationState.RECOVERING),
         } if _fitness_excluded_movement_patterns else {})
+        _load_limited_patterns = knee_load_limited_patterns(
+            profile if isinstance(profile, dict) else None, message=user_message)
 
         # A clinician restriction changes only after an explicit clinician
         # clearance for the same typed movement family.
@@ -3404,6 +3424,7 @@ def chat():
                             followup=_workout_followup, previous_workout=_previous_workout,
                             rebuild_missing_followup=_restricted_followup_rebuild,
                             mixed_modal=(_mixed_modal_request.format if _mixed_modal_request is not None else None),
+                            load_limited_patterns=_load_limited_patterns,
                             **({"advisory_signals": _training_advisory_signals}
                                if _training_advisory_signals is not None else {}),
                             **({"brain_excluded_movement_patterns": _brain_enforcement_exclusions}
@@ -3415,6 +3436,7 @@ def chat():
                             _snapshot, _recommendation_plan,
                             longitudinal_records=pers_workouts,
                             mixed_modal=(_mixed_modal_request.format if _mixed_modal_request is not None else None),
+                            load_limited_patterns=_load_limited_patterns,
                             **({"advisory_signals": _training_advisory_signals}
                                if _training_advisory_signals is not None else {}),
                             **({"brain_excluded_movement_patterns": _brain_enforcement_exclusions}
@@ -3615,6 +3637,7 @@ def chat():
                         _snapshot, _recommendation_plan,
                         longitudinal_records=pers_workouts,
                         mixed_modal=(_mixed_modal_request.format if _mixed_modal_request is not None else None),
+                        load_limited_patterns=_load_limited_patterns,
                         **({"advisory_signals": _training_advisory_signals}
                            if _training_advisory_signals is not None else {}),
                         **({"brain_excluded_movement_patterns": _brain_enforcement_exclusions}
@@ -3978,6 +4001,10 @@ def chat():
                     "Не мога безопасно да съставя тази смесена тренировка с потвърдените движения и ограничения. "
                     "Уточни ограничението за движение или наличното оборудване."
                 )
+
+        if (_workout_followup is not None and _workout_followup.requires_previous
+                and _training_plan_blueprint is None and _controlled_reply is None):
+            _controlled_reply = followup_message("workout change unavailable", lang)
 
         if _health_scope.scope is HealthSafetyScope.DECLARED_HEALTH_CONTEXT:
             system_content = system_content + "\n\n" + declared_context_prompt(lang)
@@ -4514,6 +4541,13 @@ def chat():
                     training_completion = None
                     training_delivery_class = free_activation.DeliveryClass.RENDER_REJECTED
                     try:
+                        validate_training_plan_constraints(
+                            _training_plan_blueprint,
+                            profile if isinstance(profile, dict) else {},
+                            _snapshot.locked_preferences.as_dict(),
+                            frozenset(_brain_enforcement_exclusions)
+                            | frozenset(_fitness_excluded_movement_patterns),
+                        )
                         if chat_uid:
                             try:
                                 store.persist_delivered_training_plan(

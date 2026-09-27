@@ -18,9 +18,10 @@ from .construction import (
     TrainingStructurePolicy,
 )
 from .models import Difficulty, Equipment, MovementPattern
-from .mixed_modal import SessionFormat, declared_knee_limitation
+from .mixed_modal import SessionFormat
 from .health_restrictions import (
     UnsupportedHealthRestrictionError,
+    knee_load_limited_patterns,
     project_explicit_health_restrictions,
 )
 from .registry import ExerciseLibrary, load_exercise_library
@@ -84,7 +85,8 @@ def build_training_plan(*, recommendation_blueprint_id: str, facts: Mapping[str,
                         session_sequence_index: int = 0,
                         advisory_preferred_exercise_ids: tuple[str, ...] = (),
                         level_override: Difficulty | None = None,
-                        mixed_modal: SessionFormat | None = None) -> TrainingPlanBlueprintV2:
+                        mixed_modal: SessionFormat | None = None,
+                        load_limited_patterns: frozenset[MovementPattern] = frozenset()) -> TrainingPlanBlueprintV2:
     """Build one deterministic weekly plan or fail without producing a partial plan."""
     profile = dict(facts)
     locked = dict(locked_preferences or {})
@@ -95,6 +97,9 @@ def build_training_plan(*, recommendation_blueprint_id: str, facts: Mapping[str,
         raise TrainingRuntimeError("training level override is invalid")
     if mixed_modal is not None and not isinstance(mixed_modal, SessionFormat):
         raise TrainingRuntimeError("mixed-modal format is invalid")
+    if not isinstance(load_limited_patterns, frozenset) or not load_limited_patterns <= {
+            MovementPattern.SQUAT, MovementPattern.LUNGE}:
+        raise TrainingRuntimeError("unsupported movement load limitation")
     if mixed_modal is not None and level is Difficulty.ADVANCED:
         # General experience does not establish proficiency in complex mixed-modal skills.
         level = Difficulty.INTERMEDIATE
@@ -142,8 +147,32 @@ def build_training_plan(*, recommendation_blueprint_id: str, facts: Mapping[str,
     return TrainingPlanConstructionEngine.construct(
         selection.blueprint, selected_library, _structure_policy(
             goal, level, split, recovery, policy=policy, mixed_modal=mixed_modal,
-            knee_limitation=(mixed_modal is not None and declared_knee_limitation(profile))),
+            load_limited_patterns=(knee_load_limited_patterns(profile) | load_limited_patterns
+                                   if mixed_modal is not None else frozenset())),
     )
+
+
+def validate_training_plan_constraints(
+        plan: TrainingPlanBlueprintV2, facts: Mapping[str, Any],
+        locked_preferences: Mapping[str, tuple[str, ...]] | None = None,
+        external_excluded_movement_patterns: frozenset[MovementPattern] = frozenset(),
+) -> None:
+    """Recheck the delivered artifact against the same typed selector exclusions."""
+    profile = dict(facts)
+    locked = dict(locked_preferences or {})
+    _reject_unreviewed_safety_constraints(profile, locked)
+    library = load_exercise_library(plan.exercise_library_version)
+    safety = _safety(profile, locked, library)
+    excluded_patterns = (safety.excluded_movement_patterns
+                         | frozenset(external_excluded_movement_patterns))
+    for session in plan.sessions:
+        for item in session.prescriptions:
+            exercise = library.require(item.exercise_id, item.exercise_version)
+            if (item.exercise_id in safety.excluded_exercise_ids
+                    or item.movement_pattern != exercise.movement_pattern
+                    or item.movement_pattern in excluded_patterns
+                    or any(tag in safety.excluded_training_tags for tag in exercise.training_tags)):
+                raise TrainingRuntimeError("active training constraint entered delivery")
 
 
 def _goal(value: object) -> TrainingGoal:
@@ -279,7 +308,7 @@ def _policy_for_constraints(goal: TrainingGoal, split: TrainingSplit,
 def _structure_policy(goal: TrainingGoal, level: Difficulty, split: TrainingSplit,
                       recovery: RecoveryAssumption, *, policy: TrainingGoalPolicy | None = None,
                       mixed_modal: SessionFormat | None = None,
-                      knee_limitation: bool = False) -> TrainingStructurePolicy:
+                      load_limited_patterns: frozenset[MovementPattern] = frozenset()) -> TrainingStructurePolicy:
     base_sets = 3 if goal is TrainingGoal.MUSCLE_GAIN else 2
     if mixed_modal is not None:
         base_sets = min(base_sets, 2)
@@ -303,8 +332,7 @@ def _structure_policy(goal: TrainingGoal, level: Difficulty, split: TrainingSpli
                          if pattern is MovementPattern.MONOSTRUCTURAL else rep_min,
                          (24 if mixed_modal in {SessionFormat.EMOM, SessionFormat.INTERVALS} else 60)
                          if pattern is MovementPattern.MONOSTRUCTURAL else
-                         min(rep_max, 8) if knee_limitation and pattern in {
-                             MovementPattern.SQUAT, MovementPattern.LUNGE} else rep_max,
+                         min(rep_max, 8) if pattern in load_limited_patterns else rep_max,
                          rpe, rir, rest if mixed_modal is not None else
                          rest if pattern not in {MovementPattern.CORE_ANTI_EXTENSION,
                                                  MovementPattern.MONOSTRUCTURAL} else 45,

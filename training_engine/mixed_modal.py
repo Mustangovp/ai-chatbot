@@ -13,6 +13,7 @@ import re
 from typing import Mapping, TYPE_CHECKING
 
 from .models import Difficulty, Equipment, MovementPattern
+from .health_restrictions import knee_load_limited_patterns
 from .registry import ExerciseLibrary
 
 if TYPE_CHECKING:
@@ -126,17 +127,21 @@ _STYLE_TERMS = ("crossfit", "cross-fit", "кросфит", "metcon", "метко
 
 def declared_knee_limitation(facts: Mapping[str, object]) -> bool:
     """Recognize an explicit declared limitation, not a guessed diagnosis."""
-    health = " ".join(str(facts.get(key) or "") for key in
-                      ("injuries", "healthNotes", "trainingRestrictions", "medicalRestrictions"))
-    text = health.casefold()
-    return any(not _negated_term(text, match.start()) for match in re.finditer(
-        r"\b(?:knee (?:limitation|pain|injury)|колян\w* (?:болк\w*|травм\w*|ограничен\w*))\b", text))
+    return bool(knee_load_limited_patterns(facts))
 
 
-def _negated_term(text: str, start: int) -> bool:
-    prefix = text[max(0, start - 48):start]
-    clause = re.split(r"[,;.!?]", prefix)[-1]
-    return bool(re.search(r"(?:\b(?:not|no|without|don't want|do not want|не|без)\b(?:\s+\w+){0,3}\s*|\bnot\s+\w+\s+or\s+)$", clause))
+_NEGATION = re.compile(r"\b(?:not|no|without|don't|do\s+not|neither|nor|не|без|нито)\b")
+_CLAUSE_BOUNDARY = re.compile(r"[,;.!?]|\b(?:but|however|но|обаче)\b")
+
+
+def _requested_term(text: str, term: str) -> bool:
+    # A negative clause covers coordinated terms ("not CrossFit or EMOM").
+    # A later affirmative clause can select its own format independently.
+    for clause in _CLAUSE_BOUNDARY.split(text):
+        for match in re.finditer(r"(?<!\w)" + re.escape(term) + r"(?!\w)", clause):
+            if not _NEGATION.search(clause[:match.start()]):
+                return True
+    return False
 
 
 def parse_mixed_modal_request(message: object) -> MixedModalRequest | None:
@@ -145,8 +150,7 @@ def parse_mixed_modal_request(message: object) -> MixedModalRequest | None:
     if not text:
         return None
     def requested(term: str) -> bool:
-        return any(not _negated_term(text, match.start()) for match in
-                   re.finditer(r"(?<!\w)" + re.escape(term) + r"(?!\w)", text))
+        return _requested_term(text, term)
     style = any(requested(term) for term in _STYLE_TERMS)
     explicit_format = next((kind for kind, terms in _FORMAT_TERMS
                             if any(requested(term) for term in terms)), None)
@@ -157,7 +161,7 @@ def parse_mixed_modal_request(message: object) -> MixedModalRequest | None:
         requested_olympic=bool(re.search(r"\b(?:snatch(?:es)?|clean(?:s|\s+and\s+jerk)?|jerk|олимпийск\w*|изхвърляне|изтласкване)\b", text)),
         requested_box_jumps=bool(re.search(r"\b(?:box jumps?|скокове? на кутия)\b", text)),
         requested_monostructural=bool(re.search(r"\b(?:row(?:ing|er)?|run(?:ning)?|bike|cycling|гребане|бягане|колело)\b", text)),
-        knee_concern=bool(re.search(r"\b(?:knee|knees|колян\w*)\b", text)),
+        knee_concern=bool(knee_load_limited_patterns(message=text)),
     )
 
 

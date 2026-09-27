@@ -14,7 +14,7 @@ from .construction import (ExercisePrescription, MuscleGroupVolume,
 from .models import Difficulty, MovementPattern
 from .selection import TrainingSplit
 from .registry import ExerciseLibrary, load_exercise_library
-from .mixed_modal import MixedModalStructure
+from .mixed_modal import MixedModalStructure, parse_mixed_modal_request
 from .runtime import TrainingRuntimeError, build_training_plan
 
 
@@ -30,6 +30,7 @@ class WorkoutFollowUpOperation(str, Enum):
     CHANGE_EQUIPMENT = "change_equipment"
     REPEAT_PREVIOUS = "repeat_previous"
     UNKNOWN_EXERCISE = "unknown_exercise"
+    UNSUPPORTED_CHANGE = "unsupported_change"
 
 
 @dataclass(frozen=True)
@@ -73,13 +74,32 @@ _NO_SQUATS = ("без клекове", "не искам клекове", "мах
               "no squats", "without squats", "remove squats")
 _REPEAT = ("повтори тренировката", "повтори я", "repeat previous", "repeat the workout")
 _WORKOUT_WORDS = ("workout", "training", "exercise", "трениров", "упражнен")
+_WORKOUT_REFERENT = re.compile(r"\b(?:wod(?:-[а-я]+)?|workout|тренировк\w*)\b")
+_PLAN_OR_SESSION_REFERENT = re.compile(r"\b(?:session|plan|сеси\w*|план\w*)\b")
+_TRAINING_MODIFIER = re.compile(
+    r"\b(?:intens\w*|difficult\w*|harder|easier|load|volume|effort|reps|sets|"
+    r"интензивн\w*|трудн\w*|тежест\w*|обем\w*|серии|повторен\w*)\b")
+_NON_TRAINING_CONTEXT = re.compile(
+    r"\b(?:nutrition|meal|food|calor\w*|macro\w*|хран\w*|калор\w*|макро\w*)\b")
+_CHANGE_ACTION = re.compile(
+    r"\b(?:make|increase|raise|boost|progress|scale|decrease|reduce|lower|ease|adjust|change|"
+    r"направи|увеличи|вдигни|намали|облекчи|промени|адаптирай|скалирай)\b")
+_INCREASE_DIRECTION = re.compile(
+    r"\b(?:harder|more\s+(?:difficult|intense)|increase|raise|boost|progress|"
+    r"по[- ]?трудн\w*|по[- ]?тежк\w*|увеличи|вдигни)\b")
+_DECREASE_DIRECTION = re.compile(
+    r"\b(?:easier|less\s+(?:difficult|intense|hard)|decrease|reduce|lower|ease|"
+    r"по[- ]?лесн\w*|по[- ]?лек\w*|намали|облекчи)\b")
+_AMBIGUOUS_CHANGE = re.compile(r"\b(?:scale|adjust|change|скалирай|адаптирай|промени)\b")
 
 
 def _normalized(value: object) -> str:
     return _NORMALIZE.sub(" ", str(value or "").casefold().strip())
 
 
-def parse_workout_followup(message: object) -> WorkoutFollowUp | None:
+def parse_workout_followup(
+        message: object, *, previous: WorkoutConversationState | None = None
+) -> WorkoutFollowUp | None:
     """Resolve only closed operation phrases; ordinary chat remains untouched."""
     text = _normalized(message)
     if not text:
@@ -95,6 +115,25 @@ def parse_workout_followup(message: object) -> WorkoutFollowUp | None:
                                excluded_patterns=frozenset({MovementPattern.SQUAT}))
     if any(phrase in text for phrase in _REPEAT):
         return WorkoutFollowUp(WorkoutFollowUpOperation.REPEAT_PREVIOUS)
+    contextual_referent = (
+        bool(_WORKOUT_REFERENT.search(text))
+        or (previous is not None and bool(_PLAN_OR_SESSION_REFERENT.search(text))
+            and bool(_TRAINING_MODIFIER.search(text))
+            and not _NON_TRAINING_CONTEXT.search(text))
+    )
+    if contextual_referent and _CHANGE_ACTION.search(text):
+        increase = bool(_INCREASE_DIRECTION.search(text))
+        decrease = bool(_DECREASE_DIRECTION.search(text))
+        if increase != decrease:
+            return WorkoutFollowUp(WorkoutFollowUpOperation.INCREASE_DIFFICULTY if increase else
+                                   WorkoutFollowUpOperation.DECREASE_DIFFICULTY)
+        if _AMBIGUOUS_CHANGE.search(text):
+            return WorkoutFollowUp(WorkoutFollowUpOperation.UNSUPPORTED_CHANGE)
+    if (text.startswith(("give me ", "build ", "make me ", "create ", "дай ми ", "направи ми "))
+            and parse_mixed_modal_request(text) is not None):
+        # A new structured mixed-modal request may name a supported movement;
+        # it is not a request to revise a previous blueprint by free text.
+        return None
     explicit_exercise_change = (
         text.startswith((
             "include ", "add ", "replace ", "use ", "do not include ", "don't include ",
@@ -228,13 +267,16 @@ def apply_followup(*, followup: WorkoutFollowUp, previous: WorkoutConversationSt
                    locked_preferences: Mapping[str, tuple[str, ...]] | None = None,
                    library: ExerciseLibrary | None = None,
                    advisory_preferred_exercise_ids: tuple[str, ...] = (),
-                   external_excluded_movement_patterns: frozenset[MovementPattern] = frozenset()) -> TrainingPlanBlueprintV2:
+                   external_excluded_movement_patterns: frozenset[MovementPattern] = frozenset(),
+                   load_limited_patterns: frozenset[MovementPattern] = frozenset()) -> TrainingPlanBlueprintV2:
     """Return a validated revised plan or fail without mutating the prior state."""
     if (followup.operation is WorkoutFollowUpOperation.REPEAT_PREVIOUS
             and previous.plan.sessions[0].mixed_modal is None):
         return previous.plan
     if followup.operation is WorkoutFollowUpOperation.UNKNOWN_EXERCISE:
         raise TrainingRuntimeError("unknown requested exercise")
+    if followup.operation is WorkoutFollowUpOperation.UNSUPPORTED_CHANGE:
+        raise TrainingRuntimeError("unsupported workout change")
     selected_library = library or load_exercise_library()
     kwargs = {
         "recommendation_blueprint_id": recommendation_blueprint_id + ":followup:" + followup.operation.value,
@@ -245,6 +287,7 @@ def apply_followup(*, followup: WorkoutFollowUp, previous: WorkoutConversationSt
         "excluded_movement_patterns": (followup.excluded_patterns |
                                         frozenset(external_excluded_movement_patterns)),
         "advisory_preferred_exercise_ids": advisory_preferred_exercise_ids,
+        "load_limited_patterns": load_limited_patterns,
         "mixed_modal": (previous.plan.sessions[0].mixed_modal.format
                         if previous.plan.sessions[0].mixed_modal is not None else None),
     }
@@ -290,6 +333,8 @@ def followup_message(error: Exception | str, lang: str) -> str:
     english = str(lang).lower() == "en"
     if "unknown requested exercise" in reason:
         return ("I couldn't match that exercise to the approved exercise library. Name a supported exercise or ask for a workout.") if english else ("Не мога да свържа това упражнение с одобрената библиотека. Посочи поддържано упражнение или поискай тренировка.")
+    if "unsupported workout change" in reason:
+        return ("Tell me whether to make the workout harder or easier.") if english else ("Посочи дали да направя тренировката по-трудна или по-лесна.")
     if "previous" in reason:
         return "Generate a workout first, then I can change it." if english else "Първо генерирай тренировка, после мога да я променя."
     return ("I couldn't safely make that workout change with your current profile and equipment.") if english else ("Не мога безопасно да направя тази промяна с текущия ти профил и наличното оборудване.")

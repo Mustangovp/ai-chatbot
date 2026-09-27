@@ -1,6 +1,7 @@
 """Mixed-modal format, safety, and delivery contracts over the real training engine."""
 import json
 from datetime import datetime, timezone
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
@@ -8,14 +9,16 @@ import pytest
 import app as appmod
 import db as store
 from training_engine import (
-    Difficulty, MixedModalPlanningError, MovementPattern, SessionFormat,
+    Difficulty, MixedModalPlanningError, MovementPattern, SessionFormat, TrainingRuntimeError,
     TrainingModality, build_training_plan, load_exercise_library,
     parse_mixed_modal_request, structure_mixed_modal_plan,
 )
 from training_engine import renderer
+from training_engine.runtime import validate_training_plan_constraints
 from training_engine.completion import completion_projection
 from training_engine.followups import conversation_plan_from_record, serialize_conversation_plan
 from training_engine.followups import apply_followup, parse_workout_followup, state_for
+from training_engine.health_restrictions import knee_load_limited_patterns
 from training_engine.lineage import delivered_plan_lineage, plan_from_delivered_lineage
 from training_engine.longitudinal import context_from_persisted_history
 from training_engine.cross_session import adapt_from_persisted_history
@@ -308,6 +311,80 @@ def test_wod_harder_followup_uses_authoritative_plan_and_preserves_constraint(ch
                        for item in completion["sessions"][0]["exercises"])
 
 
+@pytest.mark.parametrize("message", (
+    "Make this WOD harder", "Make my WOD harder", "Increase the WOD intensity",
+    "Make the workout more difficult", "Направи тази WOD тренировка по-трудна",
+    "Увеличи интензивността на тренировката",
+))
+def test_contextual_wod_change_never_falls_to_unsafe_model(chat_client, monkeypatch, message):
+    user_id = store.get_or_create_user("crossfit-context-followup@example.com")
+    store.save_profile(user_id, {**PROFILE, "equipment": "gym"})
+    store.add_account_training_constraints(user_id, ["vertical_push"])
+    chat_client.set_cookie(appmod.SESSION_COOKIE, store.create_session(user_id))
+    conversation_id = "crossfit-context-followup"
+    first = _events(chat_client.post("/chat", json={
+        "message": "Give me a CrossFit workout", "lang": "en", "conversation_id": conversation_id}))
+    assert any("training_completion" in event for event in first)
+
+    def unsafe_model(**kwargs):
+        if kwargs.get("stream"):
+            return [SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(
+                content="Do overhead presses and thrusters."))])]
+        pytest.fail("mixed-modal follow-up must not ask the model for a prescription")
+
+    monkeypatch.setattr(appmod.client.chat.completions, "create", unsafe_model)
+    events = _events(chat_client.post("/chat", json={
+        "message": message, "lang": "en", "conversation_id": conversation_id}))
+    assert events[-1] == {"done": True}
+    assert all("overhead presses and thrusters" not in event.get("t", "").lower()
+               for event in events)
+    for event in events:
+        if "training_completion" in event:
+            assert all(load_exercise_library().require(item["exercise_id"]).movement_pattern
+                       is not MovementPattern.VERTICAL_PUSH
+                       for session in event["training_completion"]["sessions"]
+                       for item in session["exercises"])
+
+
+def test_final_mixed_modal_delivery_rejects_constraint_violating_plan(chat_client, monkeypatch):
+    user_id = store.get_or_create_user("crossfit-final-boundary@example.com")
+    store.save_profile(user_id, {**PROFILE, "equipment": "gym"})
+    store.add_account_training_constraints(user_id, ["vertical_push"])
+    chat_client.set_cookie(appmod.SESSION_COOKIE, store.create_session(user_id))
+    conversation_id = "crossfit-final-boundary"
+    first = _events(chat_client.post("/chat", json={
+        "message": "Give me a CrossFit workout", "lang": "en", "conversation_id": conversation_id}))
+    assert any("training_completion" in event for event in first)
+    original = appmod.structure_mixed_modal_plan
+
+    def unsafe_structure(plan, **kwargs):
+        structured = original(plan, **kwargs)
+        session = structured.sessions[0]
+        overhead = load_exercise_library().require("dumbbell.overhead_press")
+        prescriptions = (replace(session.prescriptions[0], exercise_id=overhead.exercise_id,
+                                 exercise_version=overhead.version,
+                                 movement_pattern=MovementPattern.VERTICAL_PUSH),
+                         *session.prescriptions[1:])
+        return replace(structured, sessions=(replace(session, prescriptions=prescriptions),
+                                             *structured.sessions[1:]))
+
+    monkeypatch.setattr(appmod, "structure_mixed_modal_plan", unsafe_structure)
+    monkeypatch.setattr(appmod.client.chat.completions, "create",
+                        lambda **kwargs: pytest.fail("unsafe plan must not reach model delivery"))
+    events = _events(chat_client.post("/chat", json={
+        "message": "Make this WOD harder", "lang": "en", "conversation_id": conversation_id}))
+    assert events[-1] == {"done": True}
+    assert not any("training_completion" in event for event in events)
+
+
+def test_delivery_rechecks_locked_exercise_identity_not_only_movement_family():
+    plan = _plan(PROFILE)
+    excluded = plan.sessions[0].prescriptions[0].exercise_id
+    with pytest.raises(TrainingRuntimeError, match="active training constraint"):
+        validate_training_plan_constraints(
+            plan, PROFILE, {"exercise_exclusions": (excluded,)})
+
+
 def test_repeat_rebuilds_current_recovery_instead_of_replaying_stale_plan():
     fresh = _plan({**PROFILE, "equipment": "gym"}, message="Give me a CrossFit For Time workout")
     followup = parse_workout_followup("repeat the workout")
@@ -389,6 +466,118 @@ def test_negated_knee_limitation_does_not_change_squat_dose():
     clear = _plan({**PROFILE, "injuries": "no knee pain"})
     assert [item.rep_max for item in clear.sessions[0].prescriptions] == [
         item.rep_max for item in baseline.sessions[0].prescriptions]
+
+
+@pytest.mark.parametrize("wording", (
+    "knee limitation", "knee pain", "my knee hurts", "avoid stressing my knee",
+    "проблем с коляното", "болка в коляното", "боли ме коляното", "ограничение в коляното",
+))
+def test_current_and_saved_knee_wording_share_bounded_movement_caution(wording):
+    expected = frozenset({MovementPattern.SQUAT, MovementPattern.LUNGE})
+    assert knee_load_limited_patterns(message=wording) == expected
+    assert knee_load_limited_patterns(profile={"healthNotes": wording}) == expected
+    assert knee_load_limited_patterns(profile={"injuries": wording}) == expected
+
+
+@pytest.mark.parametrize(("message", "lang"), (
+    ("Give me a CrossFit workout with high-rep squats; my knee hurts", "en"),
+    ("Дай ми кросфит тренировка с много клекове; боли ме коляното", "bg"),
+))
+def test_current_turn_knee_limitation_scales_squat_without_banning_low_risk_work(
+        chat_client, message, lang):
+    events = _events(chat_client.post("/chat", json={
+        "message": message, "lang": lang, "profile": PROFILE}))
+    completion = next((event["training_completion"] for event in events
+                       if "training_completion" in event), None)
+    assert completion is not None, events
+    exercises = completion["sessions"][0]["exercises"]
+    assert any(load_exercise_library().require(item["exercise_id"]).movement_pattern
+               is MovementPattern.SQUAT and item["rep_max"] <= 8 for item in exercises)
+    assert any(load_exercise_library().require(item["exercise_id"]).movement_pattern
+               is MovementPattern.MONOSTRUCTURAL for item in exercises)
+
+
+def test_newly_saved_bulgarian_knee_limitation_revalidates_repeat(chat_client):
+    user_id = store.get_or_create_user("crossfit-knee-repeat@example.com")
+    profile = {**PROFILE, "equipment": "gym"}
+    store.save_profile(user_id, profile)
+    chat_client.set_cookie(appmod.SESSION_COOKIE, store.create_session(user_id))
+    conversation_id = "crossfit-knee-repeat"
+    first = _events(chat_client.post("/chat", json={
+        "message": "Дай ми кросфит тренировка", "lang": "bg", "conversation_id": conversation_id}))
+    baseline = next(event["training_completion"] for event in first if "training_completion" in event)
+    store.save_profile(user_id, {**profile, "healthNotes": "Болка в коляното"})
+    second = _events(chat_client.post("/chat", json={
+        "message": "повтори тренировката", "lang": "bg", "conversation_id": conversation_id}))
+    repeated = next(event["training_completion"] for event in second if "training_completion" in event)
+    def squat_dose(result):
+        return max(item["rep_max"] for item in result["sessions"][0]["exercises"]
+                   if load_exercise_library().require(item["exercise_id"]).movement_pattern
+                   is MovementPattern.SQUAT)
+    assert squat_dose(repeated) < squat_dose(baseline)
+
+
+@pytest.mark.parametrize(("level", "followup"), (
+    ("beginner", "Make this WOD harder"),
+    ("intermediate", "Make this WOD easier"),
+))
+def test_newly_saved_knee_limitation_revalidates_difficulty_followup(
+        chat_client, level, followup):
+    user_id = store.get_or_create_user("crossfit-knee-" + level + "@example.com")
+    profile = {**PROFILE, "level": level, "equipment": "gym"}
+    store.save_profile(user_id, profile)
+    chat_client.set_cookie(appmod.SESSION_COOKIE, store.create_session(user_id))
+    conversation_id = "crossfit-knee-" + level
+    first = _events(chat_client.post("/chat", json={
+        "message": "Give me a CrossFit workout", "lang": "en", "conversation_id": conversation_id}))
+    assert any("training_completion" in event for event in first)
+    store.save_profile(user_id, {**profile, "injuries": "knee pain"})
+    second = _events(chat_client.post("/chat", json={
+        "message": followup, "lang": "en", "conversation_id": conversation_id}))
+    assert second[-1] == {"done": True}
+    revised = next((event["training_completion"] for event in second
+                    if "training_completion" in event), None)
+    assert revised is not None, second
+    assert all(item["rep_max"] <= 8 for session in revised["sessions"]
+               for item in session["exercises"]
+               if load_exercise_library().require(item["exercise_id"]).movement_pattern
+               in {MovementPattern.SQUAT, MovementPattern.LUNGE})
+
+
+@pytest.mark.parametrize("message", (
+    "Don't give me EMOM", "No EMOM", "without CrossFit or AMRAP",
+    "Neither WOD nor EMOM", "Не искам да правя кросфит или EMOM",
+    "Не искам кросфит, нито EMOM", "Без AMRAP и EMOM",
+))
+def test_clause_wide_negation_suppresses_mixed_modal_intent(message):
+    assert parse_mixed_modal_request(message) is None
+
+
+@pytest.mark.parametrize(("message", "expected"), (
+    ("I don't want AMRAP; give me intervals", SessionFormat.INTERVALS),
+    ("No EMOM, give me an AMRAP", SessionFormat.AMRAP),
+    ("Не искам AMRAP, искам EMOM", SessionFormat.EMOM),
+    ("Не искам кросфит, искам интервали", SessionFormat.INTERVALS),
+))
+def test_affirmative_clause_after_negation_selects_requested_format(message, expected):
+    assert parse_mixed_modal_request(message).format is expected
+
+
+@pytest.mark.parametrize("message", (
+    "Направи ми тренировка за днес", "Направи ми хранителен план",
+    "Make me a strength workout", "Build my nutrition plan",
+))
+def test_plain_new_requests_do_not_become_contextual_followups(message):
+    assert parse_workout_followup(message) is None
+
+
+def test_plan_followup_requires_training_context_and_does_not_steal_nutrition():
+    previous = state_for(_plan(PROFILE))
+    assert parse_workout_followup("Increase this plan's intensity", previous=previous).operation.value == (
+        "increase_difficulty")
+    assert parse_workout_followup("Increase the session timeout", previous=previous) is None
+    assert parse_workout_followup("Increase my nutrition plan calories", previous=previous) is None
+    assert parse_workout_followup("Change my meal plan", previous=previous) is None
 
 
 @pytest.mark.parametrize("message", (

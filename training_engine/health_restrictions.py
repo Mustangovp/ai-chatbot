@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+import re
 from typing import Mapping, Sequence
 
 from .models import MovementPattern
@@ -152,6 +153,42 @@ def _values(value: object) -> tuple[str, ...]:
     if isinstance(value, (tuple, list, set, frozenset)):
         return tuple(str(item).strip() for item in value if str(item).strip())
     return ()
+
+
+_KNEE_TERM = r"(?:knees?|колян\w*)"
+_KNEE_LIMITATION_TERM = (
+    r"(?:limitation|pain|injur\w*|hurt\w*|stress\w*|strain\w*|"
+    r"проблем\w*|болк\w*|боли|ограничен\w*|ограничение|травм\w*|натовар\w*)"
+)
+_KNEE_DECLARATION = re.compile(
+    rf"\b(?:{_KNEE_TERM}(?:\W+\w+){{0,4}}\W+{_KNEE_LIMITATION_TERM}|"
+    rf"{_KNEE_LIMITATION_TERM}(?:\W+\w+){{0,4}}\W+{_KNEE_TERM})\b"
+)
+_KNEE_CLEARED = re.compile(
+    r"\b(?:no|without)\s+(?:knee\s+)?(?:pain|injury|limitation)\b|"
+    r"\bknees?\s+(?:does\s+not|doesn't|do\s+not|don't)\s+hurt\b|"
+    r"\b(?:нямам|няма|без)\s+(?:\w+\s+){0,2}(?:болк\w*|проблем\w*|ограничен\w*)\b|"
+    r"\bне\s+ме\s+боли\s+колян\w*\b"
+)
+
+
+def knee_load_limited_patterns(
+        profile: Mapping[str, object] | None = None, *, message: object = None
+) -> frozenset[MovementPattern]:
+    """Map explicit knee load caution to existing dose-limited movement families.
+
+    This is not a diagnosis or hard exclusion. Ambiguous movement restrictions
+    still go through the existing fail-closed health restriction projection.
+    """
+    values = [str(message or "")]
+    if isinstance(profile, Mapping):
+        for field in ("injuries", "healthNotes", "trainingRestrictions", "medicalRestrictions"):
+            values.extend(_values(profile.get(field)))
+    for value in values:
+        for clause in re.split(r"[,;.!?]|\b(?:but|но|обаче)\b", value.casefold()):
+            if _KNEE_DECLARATION.search(clause) and not _KNEE_CLEARED.search(clause):
+                return frozenset({MovementPattern.SQUAT, MovementPattern.LUNGE})
+    return frozenset()
 
 
 def fitness_limitation_from_record(value: object) -> FitnessLimitation | None:
