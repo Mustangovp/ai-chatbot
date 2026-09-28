@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from dataclasses import replace
+import re
 from typing import Any, Mapping
 
 from .construction import (
@@ -147,8 +148,7 @@ def build_training_plan(*, recommendation_blueprint_id: str, facts: Mapping[str,
     return TrainingPlanConstructionEngine.construct(
         selection.blueprint, selected_library, _structure_policy(
             goal, level, split, recovery, policy=policy, mixed_modal=mixed_modal,
-            load_limited_patterns=(knee_load_limited_patterns(profile) | load_limited_patterns
-                                   if mixed_modal is not None else frozenset())),
+            load_limited_patterns=knee_load_limited_patterns(profile) | load_limited_patterns),
     )
 
 
@@ -163,6 +163,7 @@ def validate_training_plan_constraints(
     _reject_unreviewed_safety_constraints(profile, locked)
     library = load_exercise_library(plan.exercise_library_version)
     safety = _safety(profile, locked, library)
+    load_limited_patterns = knee_load_limited_patterns(profile)
     excluded_patterns = (safety.excluded_movement_patterns
                          | frozenset(external_excluded_movement_patterns))
     for session in plan.sessions:
@@ -173,6 +174,54 @@ def validate_training_plan_constraints(
                     or item.movement_pattern in excluded_patterns
                     or any(tag in safety.excluded_training_tags for tag in exercise.training_tags)):
                 raise TrainingRuntimeError("active training constraint entered delivery")
+            if item.movement_pattern in load_limited_patterns and item.rep_max > 8:
+                raise TrainingRuntimeError("active movement load limitation entered delivery")
+
+
+_UNSTRUCTURED_DOSE = re.compile(
+    r"\b(?:amrap|emom|metcon|wod|for\s+time|"
+    r"\d+\s*(?:x|\u00d7)\s*\d+|"
+    r"\d+\s*(?:sets?|reps?|rounds?|min(?:ute)?s?|sec(?:ond)?s?|kg|lbs|rpe|rir|"
+    r"минут\w*|секунд\w*|серии|повторен\w*|кръг\w*))\b",
+    re.IGNORECASE,
+)
+_UNSTRUCTURED_MOVEMENT = re.compile(
+    r"\b(?:squats?|lunges?|press(?:es|ing)?|push[- ]?ups?|pull[- ]?ups?|"
+    r"rows?|planks?|deadlifts?|thrusters?|hspu|burpees?|"
+    r"run(?:ning)?|bike|cycling|snatch(?:es)?|jerks?|"
+    r"клек\w*|напад\w*|прес\w*|лицев\w*|набирани\w*|тяга|"
+    r"упражнен\w*|exercise\w*|movement\w*)\b",
+    re.IGNORECASE,
+)
+_UNSTRUCTURED_COMMAND = re.compile(
+    r"\b(?:do|perform|try|use|add|replace|increase|decrease|scale|repeat|"
+    r"start|switch|подмени|добави|направи|изпълни|увеличи|намали|"
+    r"повтори|смени|натовари)\b",
+    re.IGNORECASE,
+)
+
+
+def validate_training_delivery(
+        *, plan: TrainingPlanBlueprintV2 | None,
+        facts: Mapping[str, Any],
+        locked_preferences: Mapping[str, tuple[str, ...]] | None = None,
+        external_excluded_movement_patterns: frozenset[MovementPattern] = frozenset(),
+        generated_text: str | None = None,
+        active_workout_context: bool = False,
+) -> None:
+    """Only a typed plan can deliver a prescription; generic prose cannot earn that authority."""
+    if plan is not None:
+        validate_training_plan_constraints(
+            plan, facts, locked_preferences, external_excluded_movement_patterns)
+        return
+    if not isinstance(generated_text, str):
+        raise TrainingRuntimeError("unstructured training delivery is invalid")
+    if active_workout_context:
+        raise TrainingRuntimeError("unstructured training prescription cannot be delivered")
+    text = generated_text.casefold()
+    if (_UNSTRUCTURED_DOSE.search(text)
+            or (_UNSTRUCTURED_MOVEMENT.search(text) and _UNSTRUCTURED_COMMAND.search(text))):
+        raise TrainingRuntimeError("unstructured training prescription cannot be delivered")
 
 
 def _goal(value: object) -> TrainingGoal:
@@ -329,7 +378,8 @@ def _structure_policy(goal: TrainingGoal, level: Difficulty, split: TrainingSpli
                                                                MovementPattern.MONOSTRUCTURAL} else
                          (base_sets if pattern is MovementPattern.MONOSTRUCTURAL else max(1, base_sets - 1)),
                          (16 if mixed_modal in {SessionFormat.EMOM, SessionFormat.INTERVALS} else 40)
-                         if pattern is MovementPattern.MONOSTRUCTURAL else rep_min,
+                         if pattern is MovementPattern.MONOSTRUCTURAL else
+                         min(rep_min, 8) if pattern in load_limited_patterns else rep_min,
                          (24 if mixed_modal in {SessionFormat.EMOM, SessionFormat.INTERVALS} else 60)
                          if pattern is MovementPattern.MONOSTRUCTURAL else
                          min(rep_max, 8) if pattern in load_limited_patterns else rep_max,

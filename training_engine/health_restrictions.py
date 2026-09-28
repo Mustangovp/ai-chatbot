@@ -136,7 +136,6 @@ _RECOVERING_PHRASES = (
     "shoulder is better", "shoulder feels better", "shoulder feels much better",
     "\u0440\u0430\u043c\u043e\u0442\u043e \u043c\u0438 \u0435 \u043f\u043e-\u0434\u043e\u0431\u0440\u0435",
     "\u0440\u0430\u043c\u043e\u0442\u043e \u0435 \u043f\u043e-\u0434\u043e\u0431\u0440\u0435",
-    "\u0432\u0435\u0447\u0435 \u043f\u043e\u0447\u0442\u0438 \u043d\u0435 \u043c\u0435 \u0431\u043e\u043b\u0438",
 )
 _CLEARED_PHRASES = (
     "shoulder doesn't hurt anymore", "shoulder does not hurt anymore",
@@ -165,15 +164,17 @@ _KNEE_DECLARATION = re.compile(
     rf"{_KNEE_LIMITATION_TERM}(?:\W+\w+){{0,4}}\W+{_KNEE_TERM})\b"
 )
 _KNEE_CLEARED = re.compile(
-    r"\b(?:no|without)\s+(?:knee\s+)?(?:pain|injury|limitation)\b|"
+    r"\b(?:no|without)\s+(?:\w+\s+){0,2}knee\s+(?:pain|injury|limitation)\b|"
+    r"\b(?:no|without)\s+(?:pain|injury|limitation)\s+in\s+(?:(?:my|the)\s+)?knees?\b|"
     r"\bknees?\s+(?:does\s+not|doesn't|do\s+not|don't)\s+hurt\b|"
-    r"\b(?:нямам|няма|без)\s+(?:\w+\s+){0,2}(?:болк\w*|проблем\w*|ограничен\w*)\b|"
+    r"\b(?:нямам|няма|без)\s+(?:\w+\s+){0,2}(?:болк\w*|проблем\w*|ограничен\w*)"
+    r"\s+в\s+колян\w*\b|"
     r"\bне\s+ме\s+боли\s+колян\w*\b"
 )
 _KNEE_EXPLICIT_CLEARANCE = re.compile(
     r"\b(?:my\s+knee\s+is\s+fine\s+now|knee\s+pain\s+is\s+gone|"
     r"remove\s+my\s+knee\s+(?:caution|limitation)|no\s+longer\s+(?:have\s+)?knee\s+pain|"
-    r"коляното\s+ми\s+е\s+добре|вече\s+нямам\s+болк\w*\s+в\s+коляното|"
+    r"коляното\s+ми\s+(?:вече\s+)?е\s+добре|вече\s+нямам\s+болк\w*\s+в\s+коляното|"
     r"премахни\s+ограничението\s+за\s+коляното)\b"
 )
 _KNEE_CAUTION_ACTIVE = "training_load_caution:knee:active"

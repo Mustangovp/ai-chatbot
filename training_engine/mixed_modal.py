@@ -51,6 +51,15 @@ class MixedModalRequest:
 
 
 @dataclass(frozen=True)
+class MixedModalIntent:
+    affirmed_formats: tuple[SessionFormat, ...]
+    negated_formats: tuple[SessionFormat, ...]
+    affirmed_style: bool
+    negated_style: bool
+    workout_requested: bool
+
+
+@dataclass(frozen=True)
 class MixedModalStructure:
     version: str
     format: SessionFormat
@@ -133,9 +142,16 @@ def declared_knee_limitation(facts: Mapping[str, object]) -> bool:
 
 _NEGATION = re.compile(r"\b(?:not|no|without|don't|do\s+not|neither|nor|не|без|нито)\b")
 _CLAUSE_BOUNDARY = re.compile(
-    r"[;.!?]|\b(?:but|however|но|обаче)\b|"
+    r"[;.!?]|\s*[\u2013\u2014]\s*|\s+-\s+|\b(?:but|however|но|обаче)\b|"
     r",\s*(?=(?:give\s+me|make\s+me|build|create|i\s+want|i\s+need|"
     r"дай\s+ми|направи\s+ми|искам|планирай)\b)")
+_WORKOUT_REQUEST_CUE = re.compile(
+    r"\b(?:give\s+me|make\s+me|build|create|plan|i\s+want|i\s+need|"
+    r"дай\s+ми|направи\s+ми|създай|искам|планирай)\b")
+_GENERAL_TRAINING_TERMS = (
+    "workout", "training", "strength", "hypertrophy", "general fitness",
+    "тренировка", "тренировки", "силова", "силова тренировка", "хипертрофия",
+)
 
 
 def _normalized_intent(message: object) -> str:
@@ -144,14 +160,56 @@ def _normalized_intent(message: object) -> str:
     return re.sub(r"\s+", " ", text.casefold()).strip()
 
 
-def _requested_term(text: str, term: str) -> bool:
-    # A negative clause covers coordinated terms ("not CrossFit or EMOM").
-    # A later affirmative clause can select its own format independently.
-    for clause in _CLAUSE_BOUNDARY.split(text):
-        for match in re.finditer(r"(?<!\w)" + re.escape(term) + r"(?!\w)", clause):
-            if not _NEGATION.search(clause[:match.start()]):
-                return True
-    return False
+def _term_polarity(clause: str, term: str) -> tuple[bool, bool]:
+    negated = affirmed = False
+    for match in re.finditer(r"(?<!\w)" + re.escape(term) + r"(?!\w)", clause):
+        if _NEGATION.search(clause[:match.start()]):
+            negated = True
+        else:
+            affirmed = True
+    return negated, affirmed
+
+
+def parse_mixed_modal_intent(message: object) -> MixedModalIntent:
+    """Keep each coordinated negation scoped until a real new clause begins."""
+    clauses = tuple(clause.strip(" ,") for clause in
+                    _CLAUSE_BOUNDARY.split(_normalized_intent(message)) if clause.strip(" ,"))
+    affirmed: set[SessionFormat] = set()
+    negated: set[SessionFormat] = set()
+    affirmed_style = False
+    negated_style = False
+    seen_negative = False
+    workout_requested = False
+    for clause in clauses:
+        clause_affirmed = False
+        clause_negative = False
+        for kind, terms in _FORMAT_TERMS:
+            for term in terms:
+                is_negative, is_affirmed = _term_polarity(clause, term)
+                if is_negative:
+                    negated.add(kind)
+                    clause_negative = True
+                if is_affirmed:
+                    affirmed.add(kind)
+                    clause_affirmed = True
+        for term in _STYLE_TERMS:
+            is_negative, is_affirmed = _term_polarity(clause, term)
+            clause_negative |= is_negative
+            negated_style |= is_negative
+            affirmed_style |= is_affirmed
+            clause_affirmed |= is_affirmed
+        if clause_affirmed and (_WORKOUT_REQUEST_CUE.search(clause) or seen_negative):
+            workout_requested = True
+        if (_WORKOUT_REQUEST_CUE.search(clause)
+                and any(_term_polarity(clause, term)[1]
+                        for term in _GENERAL_TRAINING_TERMS)):
+            workout_requested = True
+        seen_negative |= clause_negative
+    order = tuple(kind for kind, _terms in _FORMAT_TERMS)
+    return MixedModalIntent(
+        tuple(kind for kind in order if kind in affirmed),
+        tuple(kind for kind in order if kind in negated),
+        affirmed_style, negated_style, workout_requested)
 
 
 def parse_mixed_modal_request(message: object) -> MixedModalRequest | None:
@@ -159,15 +217,11 @@ def parse_mixed_modal_request(message: object) -> MixedModalRequest | None:
     text = _normalized_intent(message)
     if not text:
         return None
-    def requested(term: str) -> bool:
-        return _requested_term(text, term)
-    style = any(requested(term) for term in _STYLE_TERMS)
-    explicit_format = next((kind for kind, terms in _FORMAT_TERMS
-                            if any(requested(term) for term in terms)), None)
-    if not style and explicit_format is None:
+    intent = parse_mixed_modal_intent(text)
+    if not intent.affirmed_style and not intent.affirmed_formats:
         return None
     return MixedModalRequest(
-        explicit_format or SessionFormat.ROUNDS_REPS,
+        intent.affirmed_formats[0] if intent.affirmed_formats else SessionFormat.ROUNDS_REPS,
         requested_olympic=bool(re.search(r"\b(?:snatch(?:es)?|clean(?:s|\s+and\s+jerk)?|jerk|олимпийск\w*|изхвърляне|изтласкване)\b", text)),
         requested_box_jumps=bool(re.search(r"\b(?:box jumps?|скокове? на кутия)\b", text)),
         requested_monostructural=bool(re.search(r"\b(?:row(?:ing|er)?|run(?:ning)?|bike|cycling|гребане|бягане|колело)\b", text)),

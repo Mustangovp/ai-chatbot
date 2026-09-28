@@ -14,11 +14,15 @@ from training_engine import (
     parse_mixed_modal_request, structure_mixed_modal_plan,
 )
 from training_engine import renderer
-from training_engine.runtime import validate_training_plan_constraints
+from training_engine.runtime import validate_training_delivery, validate_training_plan_constraints
 from training_engine.completion import completion_projection
 from training_engine.followups import conversation_plan_from_record, serialize_conversation_plan
 from training_engine.followups import apply_followup, parse_workout_followup, state_for
-from training_engine.health_restrictions import knee_load_limited_patterns
+from training_engine.mixed_modal import parse_mixed_modal_intent
+from training_engine.health_restrictions import (
+    FitnessLimitation, FitnessLimitationState, knee_load_caution_transition,
+    knee_load_limited_patterns, set_knee_load_caution, transition_fitness_limitation,
+)
 from training_engine.lineage import delivered_plan_lineage, plan_from_delivered_lineage
 from training_engine.longitudinal import context_from_persisted_history
 from training_engine.cross_session import adapt_from_persisted_history
@@ -779,3 +783,206 @@ def test_anonymous_scoped_knee_caution_survives_new_format(chat_client):
                for item in session["exercises"]
                if load_exercise_library().require(item["exercise_id"]).movement_pattern
                in {MovementPattern.SQUAT, MovementPattern.LUNGE})
+
+
+@pytest.mark.parametrize(("message", "lang"), (
+    ("Let's go harder", "en"), ("Turn it up a notch", "en"),
+    ("Can we dial this up?", "en"), ("натовари повече", "bg"),
+))
+@pytest.mark.parametrize("unsafe_reply", (
+    "Do overhead press, push press, thruster, HSPU and shoulder press.",
+    "Bring the bells above your head for the next block.",
+))
+@pytest.mark.parametrize("brain_enforce", ("false", "true"))
+def test_generic_delivery_cannot_stream_an_unvalidated_prescription(
+        chat_client, monkeypatch, message, lang, brain_enforce, unsafe_reply):
+    user_id = store.get_or_create_user("crossfit-global-delivery-boundary@example.com")
+    store.save_profile(user_id, {**PROFILE, "equipment": "gym"})
+    store.add_account_training_constraints(user_id, ["vertical_push"])
+    chat_client.set_cookie(appmod.SESSION_COOKIE, store.create_session(user_id))
+    conversation_id = "crossfit-global-delivery-boundary"
+    first = _events(chat_client.post("/chat", json={
+        "message": "Give me a CrossFit workout", "lang": "en", "conversation_id": conversation_id}))
+    assert any("training_completion" in event for event in first)
+    monkeypatch.setenv("BRAIN_ENFORCE", brain_enforce)
+    streamed = []
+
+    def unsafe_model(**kwargs):
+        if kwargs.get("stream"):
+            streamed.append(True)
+            return [SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(
+                content=unsafe_reply))])]
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+            content=json.dumps({"explanations": []})))])
+
+    monkeypatch.setattr(appmod.client.chat.completions, "create", unsafe_model)
+    events = _events(chat_client.post("/chat", json={
+        "message": message, "lang": lang, "conversation_id": conversation_id}))
+    assert streamed
+    assert events[-1] == {"done": True}
+    assert not any("training_completion" in event for event in events)
+    assert not any(unsafe_reply in event.get("t", "") for event in events)
+
+
+@pytest.mark.parametrize("reply", (
+    "Do shoulder presses.", "Try HSPU.", "3 sets of 10 reps", "EMOM: thrusters",
+    "Направи раменна преса.",
+))
+def test_unstructured_reply_cannot_acquire_training_authority(reply):
+    with pytest.raises(TrainingRuntimeError, match="unstructured training prescription"):
+        validate_training_delivery(plan=None, facts=PROFILE, generated_text=reply,
+                                   active_workout_context=True)
+    validate_training_delivery(plan=None, facts=PROFILE,
+                               generated_text="I can explain the saved context.")
+
+
+def test_active_workout_rejects_ambiguous_generic_output_without_keyword_match():
+    with pytest.raises(TrainingRuntimeError, match="unstructured training prescription"):
+        validate_training_delivery(
+            plan=None, facts=PROFILE,
+            generated_text="Bring the bells above your head for the next block.",
+            active_workout_context=True,
+        )
+
+
+def test_generic_delivery_guard_is_independent_of_training_feature_flag(chat_client, monkeypatch):
+    user_id = store.get_or_create_user("crossfit-global-boundary-flag-off@example.com")
+    store.save_profile(user_id, {**PROFILE, "equipment": "gym"})
+    store.add_account_training_constraints(user_id, ["vertical_push"])
+    chat_client.set_cookie(appmod.SESSION_COOKIE, store.create_session(user_id))
+    conversation_id = "crossfit-global-boundary-flag-off"
+    first = _events(chat_client.post("/chat", json={
+        "message": "Give me a CrossFit workout", "lang": "en", "conversation_id": conversation_id}))
+    assert any("training_completion" in event for event in first)
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "false")
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **kwargs: [
+        SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(
+            content="Do shoulder press and thrusters."))])])
+    events = _events(chat_client.post("/chat", json={
+        "message": "Turn it up a notch", "lang": "en", "conversation_id": conversation_id}))
+    assert events[-1] == {"done": True}
+    assert not any("shoulder press" in event.get("t", "").casefold() for event in events)
+
+
+@pytest.mark.parametrize(("unrelated", "matching"), (
+    ("No pain in my shoulder", "My knee is fine now"),
+    ("Нямам болка в рамото", "Коляното ми вече е добре"),
+    ("Рамото ми вече е добре", "Вече нямам болка в коляното"),
+    ("Shoulder pain is gone", "No pain in my knee"),
+    ("Рамото ми вече е добре", "Нямам болка в коляното"),
+))
+def test_knee_clearance_is_scoped_to_knee_not_another_body_area(unrelated, matching):
+    profile = {"healthRestrictions": list(set_knee_load_caution((), active=True))}
+    assert knee_load_caution_transition(unrelated) is None
+    assert knee_load_limited_patterns(profile, message=unrelated)
+    assert knee_load_caution_transition(matching) is False
+    assert not knee_load_limited_patterns(profile, message=matching)
+
+
+def test_simultaneous_shoulder_and_knee_cautions_retire_independently():
+    shoulder = FitnessLimitation(FitnessLimitationState.ACTIVE)
+    profile = {"healthRestrictions": list(set_knee_load_caution((), active=True))}
+    assert transition_fitness_limitation(shoulder, "My knee is fine now") == shoulder
+    assert knee_load_caution_transition("Shoulder pain is gone") is None
+    assert knee_load_limited_patterns(profile, message="Shoulder pain is gone")
+    assert transition_fitness_limitation(shoulder, "Shoulder pain is gone").state is FitnessLimitationState.CLEARED
+    assert knee_load_caution_transition("My knee is fine now") is False
+
+
+@pytest.mark.parametrize(("lang", "declaration", "unrelated"), (
+    ("en", "Protect my knee", "No pain in my shoulder"),
+    ("bg", "Пази ми коляното", "Нямам болка в рамото"),
+))
+def test_account_knee_caution_survives_unrelated_clearance_turn(
+        chat_client, monkeypatch, lang, declaration, unrelated):
+    user_id = store.get_or_create_user(f"crossfit-body-area-clearance-{lang}@example.com")
+    store.save_profile(user_id, {**PROFILE, "equipment": "gym"})
+    chat_client.set_cookie(appmod.SESSION_COOKIE, store.create_session(user_id))
+    def model(**kwargs):
+        if kwargs.get("stream"):
+            return [SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content="Okay."))])]
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+            content=json.dumps({"explanations": []})))])
+    monkeypatch.setattr(appmod.client.chat.completions, "create", model)
+    for message in (declaration, unrelated):
+        events = _events(chat_client.post("/chat", json={
+            "message": message, "lang": lang, "conversation_id": "crossfit-body-area-clearance"}))
+        assert events[-1] == {"done": True}
+    assert knee_load_limited_patterns(store.get_profile(user_id))
+
+
+@pytest.mark.parametrize(("goal", "format_name"), (
+    ("strength", SessionFormat.AMRAP),
+    ("strength", None),
+    ("hypertrophy", None),
+    ("general_fitness", None),
+))
+def test_shared_training_authority_scales_knee_dose_in_every_format(goal, format_name):
+    facts = {**PROFILE, "goal": goal, "equipment": "gym"}
+    restricted = {**facts, "healthRestrictions": list(set_knee_load_caution((), active=True))}
+    base = build_training_plan(recommendation_blueprint_id="unrestricted", facts=facts,
+                               mixed_modal=format_name)
+    limited = build_training_plan(recommendation_blueprint_id="limited", facts=restricted,
+                                  mixed_modal=format_name)
+    def knee_doses(plan):
+        return [(item.sets, item.rep_max) for session in plan.sessions
+                for item in session.prescriptions if item.movement_pattern
+                in {MovementPattern.SQUAT, MovementPattern.LUNGE}]
+    assert knee_doses(base) and knee_doses(limited)
+    assert max(reps for _sets, reps in knee_doses(base)) > 8
+    assert all(reps <= 8 for _sets, reps in knee_doses(limited))
+    validate_training_plan_constraints(limited, restricted)
+    with pytest.raises(TrainingRuntimeError, match="load limitation"):
+        validate_training_plan_constraints(base, restricted)
+
+
+@pytest.mark.parametrize(("goal", "message"), (
+    ("strength", "Give me a strength workout"),
+    ("hypertrophy", "Give me a hypertrophy workout"),
+    ("general_fitness", "Give me a general fitness workout"),
+))
+def test_account_knee_caution_scales_ordinary_chat_workout_formats(
+        chat_client, goal, message):
+    user_id = store.get_or_create_user(f"crossfit-shared-knee-{goal}@example.com")
+    store.save_profile(user_id, {**PROFILE, "goal": goal, "equipment": "gym",
+                                 "healthRestrictions": list(set_knee_load_caution((), active=True))})
+    chat_client.set_cookie(appmod.SESSION_COOKIE, store.create_session(user_id))
+    events = _events(chat_client.post("/chat", json={"message": message, "lang": "en"}))
+    projection = next(event["training_completion"] for event in events if "training_completion" in event)
+    assert all(item["rep_max"] <= 8 for session in projection["sessions"]
+               for item in session["exercises"]
+               if load_exercise_library().require(item["exercise_id"]).movement_pattern
+               in {MovementPattern.SQUAT, MovementPattern.LUNGE})
+
+
+@pytest.mark.parametrize(("message", "expected"), (
+    ("No AMRAP — give me EMOM", SessionFormat.EMOM),
+    ("No AMRAP—give me EMOM", SessionFormat.EMOM),
+    ("Без AMRAP — дай ми EMOM", SessionFormat.EMOM),
+    ("No AMRAP, but EMOM is fine", SessionFormat.EMOM),
+    ("Без AMRAP, но EMOM може", SessionFormat.EMOM),
+    ("I don't want AMRAP; give me strength", None),
+))
+def test_negated_first_affirmative_second_is_delivered_as_structured_workout(
+        chat_client, monkeypatch, message, expected):
+    intent = parse_mixed_modal_intent(message)
+    assert SessionFormat.AMRAP in intent.negated_formats
+    assert intent.workout_requested
+    if expected is not None:
+        assert expected in intent.affirmed_formats
+    def model(**kwargs):
+        if kwargs.get("stream"):
+            pytest.fail("affirmed workout may not use generic model delivery")
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+            content=json.dumps({"explanations": []})))])
+    monkeypatch.setattr(appmod.client.chat.completions, "create", model)
+    events = _events(chat_client.post("/chat", json={
+        "message": message, "lang": "en", "profile": PROFILE,
+        "conversation_id": "crossfit-affirmed-" + str(expected) + message[:8]}))
+    assert events[-1] == {"done": True}
+    projection = next(event["training_completion"] for event in events if "training_completion" in event)
+    structure = projection["sessions"][0].get("mixed_modal")
+    if expected is None:
+        assert structure is None
+    else:
+        assert structure["format"] == expected.value

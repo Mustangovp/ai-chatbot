@@ -70,7 +70,8 @@ from training_engine import (
     workout_result_from_payload,
 )
 from training_engine import renderer as training_renderer
-from training_engine.runtime import validate_training_plan_constraints
+from training_engine.mixed_modal import parse_mixed_modal_intent
+from training_engine.runtime import validate_training_delivery
 from training_engine.followups import active_workout_modification
 from training_engine.rationale import build_recommendation_rationale
 from training_engine.cross_session import adapt_from_persisted_history
@@ -2291,6 +2292,11 @@ _WORKOUT_REQUEST_PREFIXES = (
 
 def _explicit_workout_request(message):
     """Return true only for an actual workout prescription request, not coaching chat."""
+    mixed_intent = parse_mixed_modal_intent(message)
+    if mixed_intent.workout_requested:
+        return True
+    if mixed_intent.negated_formats or mixed_intent.negated_style:
+        return False
     text = re.sub(r"\s+", " ", str(message or "").casefold()).strip()
     return (any(term in text for term in _WORKOUT_REQUEST_TERMS)
             and (any(text.startswith(prefix) for prefix in _WORKOUT_REQUEST_PREFIXES)
@@ -4401,6 +4407,11 @@ def chat():
         def generate():
             full = []
             _t_start = time.perf_counter()
+            _active_training_context = bool(
+                _previous_workout or _load_limited_patterns
+                or _fitness_excluded_movement_patterns
+                or (profile.get("healthRestrictions") if isinstance(profile, dict) else None)
+            )
             try:
                 if _controlled_reply is not None:
                     full.append(_controlled_reply)
@@ -4608,12 +4619,13 @@ def chat():
                     training_completion = None
                     training_delivery_class = free_activation.DeliveryClass.RENDER_REJECTED
                     try:
-                        validate_training_plan_constraints(
-                            _training_plan_blueprint,
-                            profile if isinstance(profile, dict) else {},
-                            _snapshot.locked_preferences.as_dict(),
-                            frozenset(_brain_enforcement_exclusions)
-                            | frozenset(_fitness_excluded_movement_patterns),
+                        validate_training_delivery(
+                            plan=_training_plan_blueprint,
+                            facts=profile if isinstance(profile, dict) else {},
+                            locked_preferences=_snapshot.locked_preferences.as_dict(),
+                            external_excluded_movement_patterns=(
+                                frozenset(_brain_enforcement_exclusions)
+                                | frozenset(_fitness_excluded_movement_patterns)),
                         )
                         if chat_uid:
                             try:
@@ -4707,9 +4719,6 @@ def chat():
                         delta = chunk.choices[0].delta.content
                     if delta:
                         full.append(delta)
-                        if (not nutrition_response_guard and nutrition_delivery_target is None and
-                                _recommendation_blueprint is None and _training_plan_blueprint is None):
-                            yield sse({"t": delta})
                 _bump_plans_today()  # honest landing counter: +1 real AI plan
                 reply_text = "".join(full)
                 coaching_explanations = ()
@@ -4731,6 +4740,19 @@ def chat():
                     # Guidance is presentation only. New authoritative plans use
                     # the structured plan-ready branch above; never inspect text
                     # to reconstruct a plan.
+                    yield sse({"t": reply_text})
+                else:
+                    try:
+                        validate_training_delivery(
+                            plan=None,
+                            facts=profile if isinstance(profile, dict) else {},
+                            generated_text=reply_text,
+                            active_workout_context=_active_training_context,
+                        )
+                    except TrainingRuntimeError:
+                        reply_text = (_workout_decision_reply("WORKOUT_VALIDATION_FAILED", lang)
+                                      if _previous_workout is None else
+                                      followup_message("workout change unavailable", lang))
                     yield sse({"t": reply_text})
                 speech_event = _speech_event(
                     reply_text,
@@ -4776,6 +4798,18 @@ def chat():
                     _shadow_log()
                     yield sse({"done": True})
                     return
+                if full and not _active_training_context:
+                    try:
+                        validate_training_delivery(
+                            plan=None,
+                            facts=profile if isinstance(profile, dict) else {},
+                            generated_text="".join(full),
+                        )
+                    except TrainingRuntimeError:
+                        pass
+                    else:
+                        for delta in full:
+                            yield sse({"t": delta})
                 # An upstream interruption is never a completed coaching turn.
                 # Tokens may already be visible in the browser, but they remain
                 # provisional: do not persist, learn from, count, or finalize them.
