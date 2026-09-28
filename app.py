@@ -4713,12 +4713,24 @@ def chat():
                     max_tokens=max_tokens,
                     stream=True
                 )
+                finish_metadata_seen = False
+                stream_finished = False
                 for chunk in stream:
                     delta = None
-                    if chunk.choices and chunk.choices[0].delta:
-                        delta = chunk.choices[0].delta.content
+                    if chunk.choices:
+                        choice = chunk.choices[0]
+                        if hasattr(choice, "finish_reason"):
+                            finish_metadata_seen = True
+                            if choice.finish_reason is not None:
+                                if choice.finish_reason != "stop":
+                                    raise RuntimeError("model stream did not complete")
+                                stream_finished = True
+                        if choice.delta:
+                            delta = choice.delta.content
                     if delta:
                         full.append(delta)
+                if finish_metadata_seen and not stream_finished:
+                    raise RuntimeError("model stream did not complete")
                 _bump_plans_today()  # honest landing counter: +1 real AI plan
                 reply_text = "".join(full)
                 coaching_explanations = ()
@@ -4798,21 +4810,7 @@ def chat():
                     _shadow_log()
                     yield sse({"done": True})
                     return
-                if full and not _active_training_context:
-                    try:
-                        validate_training_delivery(
-                            plan=None,
-                            facts=profile if isinstance(profile, dict) else {},
-                            generated_text="".join(full),
-                        )
-                    except TrainingRuntimeError:
-                        pass
-                    else:
-                        for delta in full:
-                            yield sse({"t": delta})
-                # An upstream interruption is never a completed coaching turn.
-                # Tokens may already be visible in the browser, but they remain
-                # provisional: do not persist, learn from, count, or finalize them.
+                # An interrupted model buffer is never delivered or finalized.
                 if refund_subject:
                     try: store.free_usage_refund(refund_subject[0], refund_subject[1])
                     except Exception: pass

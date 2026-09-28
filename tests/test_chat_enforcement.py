@@ -1425,14 +1425,20 @@ def test_exact_stop_command_bypasses_generation_quota_persistence_and_learning(c
     assert learning_calls == []
 
 
-def test_interrupted_model_stream_never_persists_or_finalizes_partial_output(client, captured, monkeypatch):
+@pytest.mark.parametrize("partial_text", (
+    "partial output",
+    "Do overhead press and thrusters.",
+    "Bring the bells above your head for the next block.",
+))
+def test_interrupted_model_stream_never_emits_or_persists_partial_output(
+        client, captured, monkeypatch, partial_text):
     persistence_calls, learning_calls, plan_calls = [], [], []
     _login_for_chat(client, _profile())
 
     def interrupted_create(**kwargs):
         captured["messages"] = kwargs["messages"]
         def stream():
-            yield _Chunk("partial output")
+            yield _Chunk(partial_text)
             raise RuntimeError("upstream interrupted")
         return stream()
 
@@ -1445,13 +1451,69 @@ def test_interrupted_model_stream_never_persists_or_finalizes_partial_output(cli
 
     events = _events(_post(client, "hello", profile=_profile()))
 
-    assert events[0] == {"t": "partial output"}
+    assert not any("t" in event for event in events)
     assert events[-1]["error"] is True
     assert events[-1]["not_counted"] is True
     assert not any(event.get("done") for event in events)
     assert persistence_calls == []
     assert learning_calls == []
     assert plan_calls == []
+
+
+def test_interrupted_recommendation_stream_never_emits_raw_prescription(
+        client, captured, monkeypatch):
+    blueprint = _workout_blueprint()
+    monkeypatch.setenv("RECOMMENDATION_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod.recommendation_architect, "design", lambda *args, **kwargs: blueprint)
+
+    def interrupted_create(**kwargs):
+        captured["messages"] = kwargs["messages"]
+        def stream():
+            yield _Chunk("Bring the bells above your head for the next block.")
+            raise RuntimeError("upstream interrupted")
+        return stream()
+
+    monkeypatch.setattr(appmod.client.chat.completions, "create", interrupted_create)
+    events = _events(_post(client, "build a workout", profile=_profile()))
+    assert "messages" in captured
+    assert not any("t" in event for event in events)
+    assert events[-1]["error"] is True
+    assert not any(event.get("done") for event in events)
+
+
+def test_completed_model_stream_with_stop_marker_still_delivers(client, captured, monkeypatch):
+    def completed_create(**kwargs):
+        captured["messages"] = kwargs["messages"]
+        return [
+            types.SimpleNamespace(choices=[types.SimpleNamespace(
+                delta=_Delta("All"), finish_reason=None)]),
+            types.SimpleNamespace(choices=[types.SimpleNamespace(
+                delta=_Delta(" set."), finish_reason=None)]),
+            types.SimpleNamespace(choices=[types.SimpleNamespace(
+                delta=_Delta(None), finish_reason="stop")]),
+        ]
+
+    monkeypatch.setattr(appmod.client.chat.completions, "create", completed_create)
+    events = _events(_post(client, "hello", profile=_profile()))
+    assert "messages" in captured
+    assert [event["t"] for event in events if "t" in event] == ["All set."]
+    assert events[-1].get("done") is True
+
+
+@pytest.mark.parametrize("finish_reason", (None, "length", "content_filter"))
+def test_incomplete_model_stream_never_emits_candidate(
+        client, captured, monkeypatch, finish_reason):
+    def incomplete_create(**kwargs):
+        captured["messages"] = kwargs["messages"]
+        return [types.SimpleNamespace(choices=[types.SimpleNamespace(
+            delta=_Delta("Let's move on."), finish_reason=finish_reason)])]
+
+    monkeypatch.setattr(appmod.client.chat.completions, "create", incomplete_create)
+    events = _events(_post(client, "hello", profile=_profile()))
+    assert "messages" in captured
+    assert not any("t" in event for event in events)
+    assert events[-1]["error"] is True
+    assert not any(event.get("done") for event in events)
 
 
 @pytest.mark.parametrize("message", [

@@ -864,6 +864,146 @@ def test_generic_delivery_guard_is_independent_of_training_feature_flag(chat_cli
     assert not any("shoulder press" in event.get("t", "").casefold() for event in events)
 
 
+def _restricted_stream_context(chat_client, key):
+    user_id = store.get_or_create_user(f"crossfit-stream-{key}@example.com")
+    store.save_profile(user_id, {**PROFILE, "equipment": "gym"})
+    store.add_account_training_constraints(user_id, ["vertical_push"])
+    assert "vertical_push" in store.list_account_training_constraints(user_id)
+    chat_client.set_cookie(appmod.SESSION_COOKIE, store.create_session(user_id))
+    conversation_id = f"crossfit-stream-{key}"
+    initial = _events(chat_client.post("/chat", json={
+        "message": "Give me a CrossFit workout", "lang": "en",
+        "conversation_id": conversation_id,
+    }))
+    projection = next(event["training_completion"] for event in initial
+                      if "training_completion" in event)
+    assert all(load_exercise_library().require(item["exercise_id"]).movement_pattern
+               is not MovementPattern.VERTICAL_PUSH
+               for session in projection["sessions"] for item in session["exercises"])
+    return conversation_id
+
+
+@pytest.mark.parametrize(("key", "fragments", "error_type"), (
+    ("before-name", ("Dumbbell ",), RuntimeError),
+    ("mid-name", ("Dumbbell Over",), RuntimeError),
+    ("full-name", ("Dumbbell Overhead Press",), RuntimeError),
+    ("before-dose", ("Dumbbell Overhead Press", ": 3 sets of "), TimeoutError),
+    ("during-dose", ("Dumbbell Overhead Press", ": 3 sets of 10 reps"), ConnectionError),
+    ("before-content", (), RuntimeError),
+))
+def test_restricted_failed_stream_discards_every_partial_prescription(
+        chat_client, monkeypatch, key, fragments, error_type):
+    conversation_id = _restricted_stream_context(chat_client, key)
+    monkeypatch.setattr(appmod, "parse_workout_followup", lambda *args, **kwargs: None)
+    streamed = []
+
+    def interrupted_model(**kwargs):
+        if not kwargs.get("stream"):
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+                content=json.dumps({"explanations": []})))])
+        streamed.append(True)
+        def stream():
+            for fragment in fragments:
+                yield SimpleNamespace(choices=[SimpleNamespace(
+                    delta=SimpleNamespace(content=fragment), finish_reason=None)])
+            raise error_type("model stream interrupted")
+        return stream()
+
+    monkeypatch.setattr(appmod.client.chat.completions, "create", interrupted_model)
+    events = _events(chat_client.post("/chat", json={
+        "message": "Let's go harder", "lang": "en",
+        "conversation_id": conversation_id,
+    }))
+    assert streamed
+    assert not any("t" in event for event in events)
+    assert not any("training_completion" in event for event in events)
+    assert events[-1]["error"] is True
+    assert not any(event.get("done") for event in events)
+    assert "vertical_push" in store.list_account_training_constraints(
+        store.get_or_create_user(f"crossfit-stream-{key}@example.com"))
+
+
+@pytest.mark.parametrize("finish_reason", (None, "length"))
+def test_restricted_incomplete_stream_discards_forbidden_exercise(
+        chat_client, monkeypatch, finish_reason):
+    key = "incomplete-" + str(finish_reason)
+    conversation_id = _restricted_stream_context(chat_client, key)
+    monkeypatch.setattr(appmod, "parse_workout_followup", lambda *args, **kwargs: None)
+    streamed = []
+    def incomplete_model(**kwargs):
+        streamed.append(True)
+        return [SimpleNamespace(choices=[SimpleNamespace(
+            delta=SimpleNamespace(content="Dumbbell Overhead Press: 3 sets of 10 reps"),
+            finish_reason=finish_reason)])]
+    monkeypatch.setattr(appmod.client.chat.completions, "create", incomplete_model)
+    events = _events(chat_client.post("/chat", json={
+        "message": "Let's go harder", "lang": "en",
+        "conversation_id": conversation_id,
+    }))
+    assert streamed
+    assert not any("t" in event for event in events)
+    assert events[-1]["error"] is True
+    assert not any(event.get("done") for event in events)
+
+
+def test_restricted_completed_unsafe_model_prescription_is_blocked(
+        chat_client, monkeypatch):
+    conversation_id = _restricted_stream_context(chat_client, "unsafe-complete")
+    monkeypatch.setattr(appmod, "parse_workout_followup", lambda *args, **kwargs: None)
+    streamed = []
+    def completed_unsafe_model(**kwargs):
+        streamed.append(True)
+        return [
+            SimpleNamespace(choices=[SimpleNamespace(
+                delta=SimpleNamespace(content="Dumbbell Overhead Press: 3 sets of 10 reps"),
+                finish_reason=None)]),
+            SimpleNamespace(choices=[SimpleNamespace(
+                delta=SimpleNamespace(content=None), finish_reason="stop")]),
+        ]
+    monkeypatch.setattr(appmod.client.chat.completions, "create", completed_unsafe_model)
+    events = _events(chat_client.post("/chat", json={
+        "message": "Let's go harder", "lang": "en",
+        "conversation_id": conversation_id,
+    }))
+    assert streamed
+    assert events[-1] == {"done": True}
+    assert not any("Dumbbell Overhead Press" in event.get("t", "") for event in events)
+    assert not any("training_completion" in event for event in events)
+
+
+def test_restricted_cancelled_model_stream_never_exposes_buffer(
+        chat_client, monkeypatch):
+    conversation_id = _restricted_stream_context(chat_client, "cancelled")
+    monkeypatch.setattr(appmod, "parse_workout_followup", lambda *args, **kwargs: None)
+    streamed = []
+
+    def cancelled_model(**kwargs):
+        streamed.append(True)
+        def stream():
+            yield SimpleNamespace(choices=[SimpleNamespace(
+                delta=SimpleNamespace(content="Dumbbell Overhead Press: 3 sets"),
+                finish_reason=None)])
+            raise GeneratorExit()
+        return stream()
+
+    monkeypatch.setattr(appmod.client.chat.completions, "create", cancelled_model)
+    delivered = []
+    response = None
+    try:
+        with pytest.raises(GeneratorExit):
+            response = chat_client.post("/chat", json={
+                "message": "Let's go harder", "lang": "en",
+                "conversation_id": conversation_id,
+            }, buffered=False)
+            for frame in response.response:
+                delivered.append(frame)
+    finally:
+        if response is not None:
+            response.close()
+    assert streamed
+    assert not any(b"Dumbbell" in frame or b'"t"' in frame for frame in delivered)
+
+
 @pytest.mark.parametrize(("unrelated", "matching"), (
     ("No pain in my shoulder", "My knee is fine now"),
     ("Нямам болка в рамото", "Коляното ми вече е добре"),
