@@ -6,6 +6,7 @@ to prompt-generated planning.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from decimal import Decimal
 from dataclasses import replace
 import re
@@ -26,6 +27,7 @@ from .health_restrictions import (
     project_explicit_health_restrictions,
 )
 from .registry import ExerciseLibrary, load_exercise_library
+from .renderer import _display_name
 from .selection import (
     TrainingGoal,
     TrainingSafetyConstraints,
@@ -168,18 +170,32 @@ def validate_training_plan_constraints(
                          | frozenset(external_excluded_movement_patterns))
     for session in plan.sessions:
         for item in session.prescriptions:
-            exercise = library.require(item.exercise_id, item.exercise_version)
-            if (item.exercise_id in safety.excluded_exercise_ids
-                    or item.movement_pattern != exercise.movement_pattern
-                    or item.movement_pattern in excluded_patterns
-                    or any(tag in safety.excluded_training_tags for tag in exercise.training_tags)):
-                raise TrainingRuntimeError("active training constraint entered delivery")
-            if item.movement_pattern in load_limited_patterns and item.rep_max > 8:
-                raise TrainingRuntimeError("active movement load limitation entered delivery")
+            _validate_exercise_constraints(
+                item.exercise_id, item.exercise_version, item.movement_pattern, item.rep_max,
+                library, safety, excluded_patterns, load_limited_patterns)
+
+
+def _validate_exercise_constraints(
+        exercise_id: str | None, exercise_version: str | None,
+        movement_pattern: MovementPattern | None, rep_max: int | None,
+        library: ExerciseLibrary, safety: TrainingSafetyConstraints,
+        excluded_patterns: frozenset[MovementPattern],
+        load_limited_patterns: frozenset[MovementPattern],
+) -> None:
+    exercise = library.require(exercise_id, exercise_version) if exercise_id is not None else None
+    if (movement_pattern is None
+            or (exercise is not None and movement_pattern != exercise.movement_pattern)
+            or exercise_id in safety.excluded_exercise_ids
+            or movement_pattern in excluded_patterns
+            or (exercise is not None and any(
+                tag in safety.excluded_training_tags for tag in exercise.training_tags))):
+        raise TrainingRuntimeError("active training constraint entered delivery")
+    if movement_pattern in load_limited_patterns and (rep_max is None or rep_max > 8):
+        raise TrainingRuntimeError("active movement load limitation entered delivery")
 
 
 _UNSTRUCTURED_DOSE = re.compile(
-    r"\b(?:\d+\s*(?:x|\u00d7)\s*\d+|"
+    r"\b(?:\d+\s*(?:x|\u00d7|х)\s*\d+|"
     r"\d+\s*(?:sets?|reps?|rounds?|rpe|rir|серии|повторен\w*|кръг\w*))\b",
     re.IGNORECASE,
 )
@@ -197,8 +213,7 @@ _UNSTRUCTURED_MOVEMENT = re.compile(
     r"rows?|planks?|deadlifts?|thrusters?|hspu|burpees?|"
     r"run(?:ning)?|bike|cycling|snatch(?:es)?|jerks?|"
     r"bells?\s+(?:above|over)\s+(?:your\s+)?head|"
-    r"клек\w*|напад\w*|прес\w*|лицев\w*|набирани\w*|тяга|"
-    r"упражнен\w*|exercise\w*|movement\w*)\b",
+    r"клек\w*|напад\w*|прес\w*|лицев\w*|набирани\w*|тяга)\b",
     re.IGNORECASE,
 )
 _UNSTRUCTURED_COMMAND = re.compile(
@@ -211,6 +226,143 @@ _UNSTRUCTURED_TRAINING_CONTEXT = re.compile(
     r"\b(?:workout|training|session|block|wod|metcon|тренировк\w*|сеси\w*)\b",
     re.IGNORECASE,
 )
+
+_NUMBER_WORDS = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+    "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
+    "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
+    "nineteen": 19, "twenty": 20, "thirty": 30, "forty": 40,
+    "fifty": 50, "sixty": 60, "hundred": 100,
+    "един": 1, "една": 1, "едно": 1, "два": 2, "две": 2,
+    "три": 3, "четири": 4, "пет": 5, "шест": 6, "седем": 7,
+    "осем": 8, "девет": 9, "десет": 10, "единадесет": 11,
+    "дванадесет": 12, "тринадесет": 13, "четиринадесет": 14,
+    "петнадесет": 15, "шестнадесет": 16, "седемнадесет": 17,
+    "осемнадесет": 18, "деветнадесет": 19, "двадесет": 20,
+    "тридесет": 30, "четиридесет": 40, "петдесет": 50,
+    "шестдесет": 60, "сто": 100,
+}
+_NUMBER_WORD = re.compile(r"\b(?:" + "|".join(sorted(_NUMBER_WORDS, key=len, reverse=True)) + r")\b")
+_COMPOUND_NUMBER = re.compile(
+    r"\b(twenty|thirty|forty|fifty|sixty)[ -](one|two|three|four|five|six|seven|eight|nine)\b"
+    r"|\b(двадесет|тридесет|четиридесет|петдесет|шестдесет)\s+и\s+"
+    r"(един|една|едно|два|две|три|четири|пет|шест|седем|осем|девет)\b"
+)
+_DOSE_UNIT = (
+    r"sets?|series|reps?|repetitions?|rounds?|seconds?|secs?|minutes?|mins?|"
+    r"kg|lbs?|load|weight|work|rest|"
+    r"сери[яи]|повторен\w*|кръг\w*|секунд\w*|минут\w*|"
+    r"килограм\w*|тежест|работа|почивка"
+)
+_COUNT_UNIT = re.compile(rf"\b(\d+)\s*({_DOSE_UNIT})\b|\b({_DOSE_UNIT})\s*(?:of|по|:|=)?\s*(\d+)\b")
+_SETS_REPS = re.compile(r"\b(\d+)\s*(?:x|×|х)\s*(\d+)\b")
+_TEMPO_DOSE = re.compile(r"\b(?:tempo|темпо)\s*[:=]?\s*(\d(?:[-/]\d){3})\b")
+_TABLE_EXERCISE = re.compile(r"^(?:exercise|movement|упражнен\w*|движен\w*)$", re.IGNORECASE)
+_TABLE_DOSE = re.compile(rf"^(?:{_DOSE_UNIT}|tempo|темпо)$", re.IGNORECASE)
+_UNCERTAIN_DOSE = re.compile(
+    rf"\b(?:several|multiple|few|няколко)\s+(?:{_DOSE_UNIT})\b", re.IGNORECASE)
+
+# These are movement-family aliases, not new exercises or prescription authority.
+# Exact catalogue names (including BG renderer names) resolve to exercise IDs first.
+_MOVEMENT_FAMILIES = (
+    (re.compile(r"(?<!\w)(?:overhead[- ]press(?:es|ing)?|shoulder[- ]press(?:es)?|"
+                r"push[- ]press(?:es)?|thrusters?|hspu|handstand[- ]push[- ]ups?|"
+                r"преса\s+над\s+глава|раменна\s+преса|военна\s+преса|"
+                r"тръстър\w*|лицеви\s+опори\s+от\s+стойка\s+на\s+ръце)(?!\w)"),
+     MovementPattern.VERTICAL_PUSH),
+    (re.compile(r"(?<!\w)(?:squats?|клек\w*)(?!\w)"), MovementPattern.SQUAT),
+    (re.compile(r"(?<!\w)(?:lunges?|напад\w*)(?!\w)"), MovementPattern.LUNGE),
+    (re.compile(r"(?<!\w)(?:push[- ]ups?|лицеви\s+опори)(?!\w)"), MovementPattern.HORIZONTAL_PUSH),
+    (re.compile(r"(?<!\w)(?:pull[- ]ups?|набирани\w*)(?!\w)"), MovementPattern.VERTICAL_PULL),
+    (re.compile(r"(?<!\w)(?:deadlifts?|тяга)(?!\w)"), MovementPattern.HINGE),
+)
+
+
+@dataclass(frozen=True)
+class _CandidatePrescription:
+    exercise_id: str | None
+    movement_pattern: MovementPattern | None
+    dose: tuple[tuple[str, int | str], ...]
+
+    @property
+    def rep_max(self) -> int | None:
+        reps = [value for unit, value in self.dose if unit == "reps" and isinstance(value, int)]
+        return max(reps) if reps else None
+
+
+def _normalize_number_words(text: str) -> str:
+    text = text.casefold()
+    def compound(match: re.Match[str]) -> str:
+        tens, ones = (match.group(1), match.group(2)) if match.group(1) else (match.group(3), match.group(4))
+        return str(_NUMBER_WORDS[tens] + _NUMBER_WORDS[ones])
+    text = _COMPOUND_NUMBER.sub(compound, text)
+    return _NUMBER_WORD.sub(lambda match: str(_NUMBER_WORDS[match.group()]), text)
+
+
+def _prescription_segments(text: str) -> tuple[str, ...]:
+    segments = []
+    headers = None
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            headers = None
+            continue
+        if line.count("|") >= 2:
+            cells = tuple(cell.strip() for cell in line.strip("|").split("|"))
+            if all(re.fullmatch(r":?-{3,}:?", cell) for cell in cells):
+                continue
+            if (any(_TABLE_EXERCISE.fullmatch(cell) for cell in cells)
+                    and any(_TABLE_DOSE.fullmatch(cell) for cell in cells)):
+                headers = cells
+                continue
+            if headers is not None and len(headers) == len(cells):
+                segments.append(" ".join(f"{key} {value}" for key, value in zip(headers, cells)))
+            else:
+                segments.append(" ".join(cells))
+        else:
+            headers = None
+            segments.append(line)
+    return tuple(segments + [left + " " + right for left, right in zip(segments, segments[1:])])
+
+
+def _candidate_prescriptions(text: str, library: ExerciseLibrary) -> tuple[_CandidatePrescription, ...]:
+    candidates = []
+    exercises = sorted(library.exercises, key=lambda item: len(item.display_name), reverse=True)
+    for segment in _prescription_segments(text):
+        normalized = _normalize_number_words(segment)
+        dose = []
+        for match in _SETS_REPS.finditer(normalized):
+            dose.extend((("sets", int(match.group(1))), ("reps", int(match.group(2)))))
+        for match in _COUNT_UNIT.finditer(normalized):
+            value = int(match.group(1) or match.group(4))
+            unit = (match.group(2) or match.group(3)).casefold()
+            if unit.startswith(("rep", "повторен")):
+                unit = "reps"
+            elif unit.startswith(("set", "seri", "сери")):
+                unit = "sets"
+            dose.append((unit, value))
+        for match in _TEMPO_DOSE.finditer(normalized):
+            dose.append(("tempo", match.group(1)))
+        if not dose:
+            continue
+        exercise_id = None
+        movement_pattern = None
+        for exercise in exercises:
+            names = (exercise.display_name, _display_name(exercise.exercise_id, exercise.display_name, "bg"))
+            if any(re.search(r"(?<!\w)" + re.escape(name.casefold()) + r"(?!\w)", normalized)
+                   for name in names):
+                exercise_id = exercise.exercise_id
+                movement_pattern = exercise.movement_pattern
+                break
+        if movement_pattern is None:
+            for pattern, family in _MOVEMENT_FAMILIES:
+                if pattern.search(normalized):
+                    movement_pattern = family
+                    break
+        if movement_pattern is not None or _UNSTRUCTURED_MOVEMENT.search(normalized):
+            candidates.append(_CandidatePrescription(exercise_id, movement_pattern, tuple(dose)))
+    return tuple(candidates)
 
 
 def validate_training_delivery(
@@ -229,12 +381,27 @@ def validate_training_delivery(
     if not isinstance(generated_text, str):
         raise TrainingRuntimeError("unstructured training delivery is invalid")
     text = generated_text.casefold()
+    library = load_exercise_library()
+    candidates = _candidate_prescriptions(generated_text, library)
+    if candidates:
+        profile = dict(facts)
+        locked = dict(locked_preferences or {})
+        _reject_unreviewed_safety_constraints(profile, locked)
+        safety = _safety(profile, locked, library)
+        excluded_patterns = safety.excluded_movement_patterns | frozenset(external_excluded_movement_patterns)
+        load_limited_patterns = knee_load_limited_patterns(profile)
+        for candidate in candidates:
+            _validate_exercise_constraints(
+                candidate.exercise_id, None, candidate.movement_pattern, candidate.rep_max,
+                library, safety, excluded_patterns, load_limited_patterns)
+        raise TrainingRuntimeError("unstructured training prescription cannot be delivered")
     movements = tuple(_UNSTRUCTURED_MOVEMENT.finditer(text))
     has_movement = bool(movements)
     has_command = bool(_UNSTRUCTURED_COMMAND.search(text))
     has_timed_or_loaded_dose = bool(_UNSTRUCTURED_TIMED_OR_LOADED_DOSE.search(text))
     # A format name by itself can be explanatory; a dose, instruction, or exercise list cannot.
     if (_UNSTRUCTURED_DOSE.search(text)
+            or (has_movement and _UNCERTAIN_DOSE.search(text))
             or (has_movement and (has_command or has_timed_or_loaded_dose))
             or (_UNSTRUCTURED_FORMAT.search(text) and (has_movement or has_timed_or_loaded_dose))
             or _UNSTRUCTURED_FORMAT_INSTRUCTION.search(text)

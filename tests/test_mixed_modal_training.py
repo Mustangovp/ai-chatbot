@@ -836,6 +836,77 @@ def test_unstructured_reply_cannot_acquire_training_authority(reply):
                                generated_text="I can explain the saved context.")
 
 
+@pytest.mark.parametrize("reply", (
+    "Overhead press: 3 sets of 10",
+    "Overhead press: three sets of ten repetitions",
+    "- Push press: three sets of ten repetitions",
+    "| Exercise | Sets | Reps |\n| --- | --- | --- |\n| Thruster | three | ten |",
+    "HSPU: three rounds of ten repetitions",
+    "Преса над глава: три серии по десет повторения",
+    "- Раменна преса: три серии по десет повторения",
+    "| Упражнение | Серии | Повторения |\n| --- | --- | --- |\n| Раменна преса | три | десет |",
+    "Dumbbell Overhead Press: 3 x 10",
+    "Раменна преса: 3 х 10",
+    "Overhead press\nthree sets of ten repetitions",
+    "Thruster: two rounds, thirty seconds of work and ten seconds of rest",
+    "Push press: four sets at a load of twenty kg, tempo 2-0-1-0",
+))
+def test_unstructured_prescription_formats_cannot_acquire_authority(reply):
+    with pytest.raises(TrainingRuntimeError, match="unstructured training prescription"):
+        validate_training_delivery(plan=None, facts=PROFILE,
+                                   generated_text=reply, active_workout_context=True)
+
+
+@pytest.mark.parametrize(("message", "reply", "force_generic"), (
+    ("How much protein do I need?", "Overhead press: three sets of ten repetitions", False),
+    ("How much protein do I need?", "| Exercise | Sets | Reps |\n| --- | --- | --- |\n| Thruster | 3 | 10 |", False),
+    ("Tell me something encouraging", "- HSPU: three sets of ten repetitions", False),
+    ("Tell me something encouraging", "Преса над глава: три серии по десет повторения", False),
+    ("Let's go harder", "| Упражнение | Серии | Повторения |\n| --- | --- | --- |\n| Раменна преса | три | десет |", True),
+))
+def test_completed_prescription_formats_are_blocked_across_chat_routes(
+        chat_client, monkeypatch, message, reply, force_generic):
+    conversation_id = _restricted_stream_context(chat_client, "format-" + str(len(reply)) + str(force_generic))
+    if force_generic:
+        monkeypatch.setattr(appmod, "parse_workout_followup", lambda *args, **kwargs: None)
+    streamed = _completed_model_reply(monkeypatch, reply)
+    events = _events(chat_client.post("/chat", json={
+        "message": message, "lang": "bg" if "Упражнение" in reply else "en",
+        "conversation_id": conversation_id,
+    }))
+    assert streamed
+    assert events[-1] == {"done": True}
+    assert not any(reply in event.get("t", "") for event in events)
+    assert not any("training_completion" in event for event in events)
+
+
+@pytest.mark.parametrize("reply", (
+    "Dumbbell Overhead Press: three sets of ten repetitions",
+    "| Exercise | Sets | Reps |\n| --- | --- | --- |\n| Thruster | 3 | 10 |",
+    "Раменна преса: 3 х 10",
+))
+def test_extracted_dose_uses_existing_movement_constraint_check(reply):
+    with pytest.raises(TrainingRuntimeError, match="active training constraint entered delivery"):
+        validate_training_delivery(
+            plan=None, facts=PROFILE,
+            locked_preferences={"exercise_exclusions": ("vertical_push",)},
+            generated_text=reply,
+        )
+
+
+@pytest.mark.parametrize("reply", (
+    "Protein is useful when you are training consistently.",
+    "You can take your workout one step at a time.",
+    "An EMOM is a workout format; your verified plan sets the exercise doses.",
+))
+def test_active_restriction_allows_safe_nonprescriptive_explanation(reply):
+    validate_training_delivery(
+        plan=None, facts=PROFILE,
+        locked_preferences={"exercise_exclusions": ("vertical_push",)},
+        generated_text=reply, active_workout_context=True,
+    )
+
+
 def test_active_workout_rejects_ambiguous_generic_output_without_keyword_match():
     with pytest.raises(TrainingRuntimeError, match="unstructured training prescription"):
         validate_training_delivery(

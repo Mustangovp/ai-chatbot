@@ -4750,6 +4750,11 @@ def chat():
                         validate_training_delivery(
                             plan=None,
                             facts=profile if isinstance(profile, dict) else {},
+                            locked_preferences=(_snapshot.locked_preferences.as_dict()
+                                                if _snapshot is not None else None),
+                            external_excluded_movement_patterns=(
+                                frozenset(_brain_enforcement_exclusions)
+                                | frozenset(_fitness_excluded_movement_patterns)),
                             generated_text=reply_text,
                             active_workout_context=_active_training_context,
                         )
