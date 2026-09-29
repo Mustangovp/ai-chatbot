@@ -3823,7 +3823,6 @@ def chat():
                                       else None)
         # All nutrition advice and plans enter one request-scoped state machine.
         # Only plan-ready requests receive the complete daily-plan contract.
-        nutrition_response_guard = _nutrition_conversation.response_guard
         nutrition_guard_targets = _nutrition_conversation.targets
         nutrition_delivery_target = (int(nutrition_delivery_targets.kcal)
                                      if nutrition_delivery_targets is not None else None)
@@ -3968,7 +3967,6 @@ def chat():
                                         "gave me" in user_message.casefold())))
             nutrition_delivery_targets = None
             nutrition_delivery_target = None
-            nutrition_response_guard = False
             _revised_nutrition_plan = None
             _nutrition_revision_failure = None
 
@@ -4747,12 +4745,6 @@ def chat():
                         reply_text = decision_engine.controlled_response(
                             decision_engine.DecisionResult("clarify", _shadow_decision.intent,
                                                            "recommendation_integrity_contract", (), 1.0), lang)
-                    yield sse({"t": reply_text})
-                elif nutrition_response_guard:
-                    # Guidance is presentation only. New authoritative plans use
-                    # the structured plan-ready branch above; never inspect text
-                    # to reconstruct a plan.
-                    yield sse({"t": reply_text})
                 else:
                     try:
                         validate_training_delivery(
@@ -4765,7 +4757,7 @@ def chat():
                         reply_text = (_workout_decision_reply("WORKOUT_VALIDATION_FAILED", lang)
                                       if _previous_workout is None else
                                       followup_message("workout change unavailable", lang))
-                    yield sse({"t": reply_text})
+                yield sse({"t": reply_text})
                 speech_event = _speech_event(
                     reply_text,
                     preserve_visible=nutrition_delivery_failed,

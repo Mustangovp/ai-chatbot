@@ -179,24 +179,36 @@ def validate_training_plan_constraints(
 
 
 _UNSTRUCTURED_DOSE = re.compile(
-    r"\b(?:amrap|emom|metcon|wod|for\s+time|"
-    r"\d+\s*(?:x|\u00d7)\s*\d+|"
-    r"\d+\s*(?:sets?|reps?|rounds?|min(?:ute)?s?|sec(?:ond)?s?|kg|lbs|rpe|rir|"
-    r"минут\w*|секунд\w*|серии|повторен\w*|кръг\w*))\b",
+    r"\b(?:\d+\s*(?:x|\u00d7)\s*\d+|"
+    r"\d+\s*(?:sets?|reps?|rounds?|rpe|rir|серии|повторен\w*|кръг\w*))\b",
+    re.IGNORECASE,
+)
+_UNSTRUCTURED_FORMAT = re.compile(r"\b(?:amrap|emom|metcon|wod|for\s+time)\b", re.IGNORECASE)
+_UNSTRUCTURED_FORMAT_INSTRUCTION = re.compile(
+    r"\b(?:do|try|start|perform|use|build)\s+(?:an?\s+)?(?:amrap|emom|metcon|wod)\b",
+    re.IGNORECASE,
+)
+_UNSTRUCTURED_TIMED_OR_LOADED_DOSE = re.compile(
+    r"\b\d+\s*(?:min(?:ute)?s?|sec(?:ond)?s?|kg|lbs|минут\w*|секунд\w*)\b",
     re.IGNORECASE,
 )
 _UNSTRUCTURED_MOVEMENT = re.compile(
     r"\b(?:squats?|lunges?|press(?:es|ing)?|push[- ]?ups?|pull[- ]?ups?|"
     r"rows?|planks?|deadlifts?|thrusters?|hspu|burpees?|"
     r"run(?:ning)?|bike|cycling|snatch(?:es)?|jerks?|"
+    r"bells?\s+(?:above|over)\s+(?:your\s+)?head|"
     r"клек\w*|напад\w*|прес\w*|лицев\w*|набирани\w*|тяга|"
     r"упражнен\w*|exercise\w*|movement\w*)\b",
     re.IGNORECASE,
 )
 _UNSTRUCTURED_COMMAND = re.compile(
-    r"\b(?:do|perform|try|use|add|replace|increase|decrease|scale|repeat|"
+    r"\b(?:do|perform|try|use|add|replace|increase|decrease|scale|repeat|bring|"
     r"start|switch|подмени|добави|направи|изпълни|увеличи|намали|"
     r"повтори|смени|натовари)\b",
+    re.IGNORECASE,
+)
+_UNSTRUCTURED_TRAINING_CONTEXT = re.compile(
+    r"\b(?:workout|training|session|block|wod|metcon|тренировк\w*|сеси\w*)\b",
     re.IGNORECASE,
 )
 
@@ -216,11 +228,20 @@ def validate_training_delivery(
         return
     if not isinstance(generated_text, str):
         raise TrainingRuntimeError("unstructured training delivery is invalid")
-    if active_workout_context:
-        raise TrainingRuntimeError("unstructured training prescription cannot be delivered")
     text = generated_text.casefold()
+    movements = tuple(_UNSTRUCTURED_MOVEMENT.finditer(text))
+    has_movement = bool(movements)
+    has_command = bool(_UNSTRUCTURED_COMMAND.search(text))
+    has_timed_or_loaded_dose = bool(_UNSTRUCTURED_TIMED_OR_LOADED_DOSE.search(text))
+    # A format name by itself can be explanatory; a dose, instruction, or exercise list cannot.
     if (_UNSTRUCTURED_DOSE.search(text)
-            or (_UNSTRUCTURED_MOVEMENT.search(text) and _UNSTRUCTURED_COMMAND.search(text))):
+            or (has_movement and (has_command or has_timed_or_loaded_dose))
+            or (_UNSTRUCTURED_FORMAT.search(text) and (has_movement or has_timed_or_loaded_dose))
+            or _UNSTRUCTURED_FORMAT_INSTRUCTION.search(text)
+            or (_UNSTRUCTURED_TRAINING_CONTEXT.search(text)
+                and has_command and has_timed_or_loaded_dose)
+            or any("," in text[left.end():right.start()]
+                   for left, right in zip(movements, movements[1:]))):
         raise TrainingRuntimeError("unstructured training prescription cannot be delivered")
 
 

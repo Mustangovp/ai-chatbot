@@ -883,6 +883,100 @@ def _restricted_stream_context(chat_client, key):
     return conversation_id
 
 
+def _completed_model_reply(monkeypatch, reply):
+    streamed = []
+
+    def create(**kwargs):
+        if kwargs.get("stream"):
+            streamed.append(True)
+            return [
+                SimpleNamespace(choices=[SimpleNamespace(
+                    delta=SimpleNamespace(content=reply), finish_reason=None)]),
+                SimpleNamespace(choices=[SimpleNamespace(
+                    delta=SimpleNamespace(content=None), finish_reason="stop")]),
+            ]
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+            content=json.dumps({"explanations": []})))])
+
+    monkeypatch.setattr(appmod.client.chat.completions, "create", create)
+    return streamed
+
+
+@pytest.mark.parametrize("brain_enforce", ("false", "true"))
+@pytest.mark.parametrize("active_workout", (False, True))
+@pytest.mark.parametrize(("reply", "allowed"), (
+    ("Spend 30 minutes preparing a protein-rich meal; follow your established nutrition target.", True),
+    ("Do Dumbbell Overhead Press, thrusters, and HSPU: 3 sets of 10 reps.", False),
+))
+def test_nutrition_guidance_cannot_bypass_training_delivery(
+        chat_client, monkeypatch, brain_enforce, active_workout, reply, allowed):
+    key = f"nutrition-{brain_enforce}-{active_workout}-{allowed}"
+    if active_workout:
+        conversation_id = _restricted_stream_context(chat_client, key)
+    else:
+        user_id = store.get_or_create_user(f"crossfit-stream-{key}@example.com")
+        store.save_profile(user_id, {**PROFILE, "equipment": "gym"})
+        store.add_account_training_constraints(user_id, ["vertical_push"])
+        chat_client.set_cookie(appmod.SESSION_COOKIE, store.create_session(user_id))
+        conversation_id = f"crossfit-stream-{key}"
+    monkeypatch.setenv("BRAIN_ENFORCE", brain_enforce)
+    streamed = _completed_model_reply(monkeypatch, reply)
+    events = _events(chat_client.post("/chat", json={
+        "message": "How much protein do I need?", "lang": "en",
+        "conversation_id": conversation_id,
+    }))
+    assert streamed
+    assert events[-1] == {"done": True}
+    assert (reply in "".join(event.get("t", "") for event in events)) is allowed
+    assert not any("training_completion" in event for event in events)
+
+
+@pytest.mark.parametrize(("message", "reply"), (
+    ("How can I stay motivated?", "You can take this one step at a time."),
+    ("Tell me something encouraging", "You are showing up for yourself, and that matters."),
+    ("How can I stay motivated?", "You handled that WOD with patience; consistency matters."),
+    ("What is an EMOM?", "An EMOM is a format with a repeating time structure."),
+))
+def test_active_workout_does_not_block_nonprescriptive_coaching(
+        chat_client, monkeypatch, message, reply):
+    conversation_id = _restricted_stream_context(chat_client, message.split()[0].lower())
+    streamed = _completed_model_reply(monkeypatch, reply)
+    events = _events(chat_client.post("/chat", json={
+        "message": message, "lang": "en", "conversation_id": conversation_id,
+    }))
+    assert streamed
+    assert events[-1] == {"done": True}
+    assert any(event.get("t") == reply for event in events)
+    assert not any("training_completion" in event for event in events)
+
+
+def test_active_workout_safe_structured_followup_still_delivers(chat_client):
+    conversation_id = _restricted_stream_context(chat_client, "safe-followup")
+    events = _events(chat_client.post("/chat", json={
+        "message": "Make the WOD harder", "lang": "en",
+        "conversation_id": conversation_id,
+    }))
+    assert events[-1] == {"done": True}
+    projection = next(event["training_completion"] for event in events
+                      if "training_completion" in event)
+    assert all(load_exercise_library().require(item["exercise_id"]).movement_pattern
+               is not MovementPattern.VERTICAL_PUSH
+               for session in projection["sessions"] for item in session["exercises"])
+
+
+def test_nutrition_route_blocks_bare_forbidden_exercise_list(chat_client, monkeypatch):
+    conversation_id = _restricted_stream_context(chat_client, "nutrition-bare-list")
+    reply = "Dumbbell Overhead Press, thrusters, HSPU."
+    streamed = _completed_model_reply(monkeypatch, reply)
+    events = _events(chat_client.post("/chat", json={
+        "message": "How much protein do I need?", "lang": "en",
+        "conversation_id": conversation_id,
+    }))
+    assert streamed
+    assert events[-1] == {"done": True}
+    assert not any(reply in event.get("t", "") for event in events)
+
+
 @pytest.mark.parametrize(("key", "fragments", "error_type"), (
     ("before-name", ("Dumbbell ",), RuntimeError),
     ("mid-name", ("Dumbbell Over",), RuntimeError),
