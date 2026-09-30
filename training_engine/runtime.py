@@ -195,7 +195,7 @@ def _validate_exercise_constraints(
 
 
 _UNSTRUCTURED_DOSE = re.compile(
-    r"\b(?:\d+\s*(?:x|\u00d7|х)\s*\d+|"
+    r"\b(?:\d+\s*(?:x|\u00d7|х|by|по)\s*\d+|"
     r"\d+\s*(?:sets?|reps?|rounds?|rpe|rir|серии|повторен\w*|кръг\w*))\b",
     re.IGNORECASE,
 )
@@ -256,12 +256,22 @@ _DOSE_UNIT = (
     r"килограм\w*|тежест|работа|почивка"
 )
 _COUNT_UNIT = re.compile(rf"\b(\d+)\s*({_DOSE_UNIT})\b|\b({_DOSE_UNIT})\s*(?:of|по|:|=)?\s*(\d+)\b")
-_SETS_REPS = re.compile(r"\b(\d+)\s*(?:x|×|х)\s*(\d+)\b")
+_SETS_REPS = re.compile(r"\b(\d+)\s*(?:x|×|х|by|по)\s*(\d+)\b")
 _TEMPO_DOSE = re.compile(r"\b(?:tempo|темпо)\s*[:=]?\s*(\d(?:[-/]\d){3})\b")
 _TABLE_EXERCISE = re.compile(r"^(?:exercise|movement|упражнен\w*|движен\w*)$", re.IGNORECASE)
-_TABLE_DOSE = re.compile(rf"^(?:{_DOSE_UNIT}|tempo|темпо)$", re.IGNORECASE)
+_TABLE_DOSE = re.compile(
+    rf"^(?:{_DOSE_UNIT}|tempo|темпо|(?:sets?|сери[яи])\s*(?:x|×|х|/|by|по)\s*"
+    rf"(?:reps?|repetitions?|повторен\w*))$", re.IGNORECASE)
 _UNCERTAIN_DOSE = re.compile(
-    rf"\b(?:several|multiple|few|няколко)\s+(?:{_DOSE_UNIT})\b", re.IGNORECASE)
+    rf"\b(?:several|multiple|few|няколко|a\s+dozen|\w+\s+dozen|"
+    rf"a\s+couple\s+of|дузина)\s+(?:{_DOSE_UNIT})\b", re.IGNORECASE)
+_UNRESOLVED_TRAINING_DOSE = re.compile(
+    r"\b(?:\d+\s*(?:sets?|reps?|repetitions?|rounds?|сери[яи]|повторен\w*|кръг\w*)|"
+    r"(?:tempo|темпо|load|тежест)\s*[:=]?\s*\d+|"
+    r"(?:work|rest|работа|почивка)\s*\d+\s*(?:seconds?|minutes?|секунд\w*|минут\w*))\b",
+    re.IGNORECASE,
+)
+_PRESCRIPTION_INTRO = re.compile(r"(?m)^\s*(?:[-*+]\s+|[^:\n]{1,80}:\s+)")
 
 # These are movement-family aliases, not new exercises or prescription authority.
 # Exact catalogue names (including BG renderer names) resolve to exercise IDs first.
@@ -300,9 +310,10 @@ def _normalize_number_words(text: str) -> str:
     return _NUMBER_WORD.sub(lambda match: str(_NUMBER_WORDS[match.group()]), text)
 
 
-def _prescription_segments(text: str) -> tuple[str, ...]:
+def _prescription_segments(text: str) -> tuple[tuple[str, ...], bool]:
     segments = []
     headers = None
+    prescription_table = False
     for line in text.splitlines():
         line = line.strip()
         if not line:
@@ -317,19 +328,36 @@ def _prescription_segments(text: str) -> tuple[str, ...]:
                 headers = cells
                 continue
             if headers is not None and len(headers) == len(cells):
+                prescription_table = True
                 segments.append(" ".join(f"{key} {value}" for key, value in zip(headers, cells)))
             else:
                 segments.append(" ".join(cells))
         else:
             headers = None
             segments.append(line)
-    return tuple(segments + [left + " " + right for left, right in zip(segments, segments[1:])])
+    return (tuple(segments + [left + " " + right for left, right in zip(segments, segments[1:])]),
+            prescription_table)
 
 
-def _candidate_prescriptions(text: str, library: ExerciseLibrary) -> tuple[_CandidatePrescription, ...]:
+def _candidate_identity(normalized: str, exercises: tuple) -> tuple[str | None, MovementPattern | None]:
+    for exercise in exercises:
+        names = (exercise.display_name, _display_name(exercise.exercise_id, exercise.display_name, "bg"))
+        if any(re.search(r"(?<!\w)" + re.escape(name.casefold()) + r"(?!\w)", normalized)
+               for name in names):
+            return exercise.exercise_id, exercise.movement_pattern
+    for pattern, family in _MOVEMENT_FAMILIES:
+        if pattern.search(normalized):
+            return None, family
+    return None, None
+
+
+def _candidate_prescriptions(
+        text: str, library: ExerciseLibrary,
+) -> tuple[tuple[_CandidatePrescription, ...], bool]:
     candidates = []
-    exercises = sorted(library.exercises, key=lambda item: len(item.display_name), reverse=True)
-    for segment in _prescription_segments(text):
+    exercises = tuple(sorted(library.exercises, key=lambda item: len(item.display_name), reverse=True))
+    segments, prescription_table = _prescription_segments(text)
+    for segment in segments:
         normalized = _normalize_number_words(segment)
         dose = []
         for match in _SETS_REPS.finditer(normalized):
@@ -346,23 +374,10 @@ def _candidate_prescriptions(text: str, library: ExerciseLibrary) -> tuple[_Cand
             dose.append(("tempo", match.group(1)))
         if not dose:
             continue
-        exercise_id = None
-        movement_pattern = None
-        for exercise in exercises:
-            names = (exercise.display_name, _display_name(exercise.exercise_id, exercise.display_name, "bg"))
-            if any(re.search(r"(?<!\w)" + re.escape(name.casefold()) + r"(?!\w)", normalized)
-                   for name in names):
-                exercise_id = exercise.exercise_id
-                movement_pattern = exercise.movement_pattern
-                break
-        if movement_pattern is None:
-            for pattern, family in _MOVEMENT_FAMILIES:
-                if pattern.search(normalized):
-                    movement_pattern = family
-                    break
+        exercise_id, movement_pattern = _candidate_identity(normalized, exercises)
         if movement_pattern is not None or _UNSTRUCTURED_MOVEMENT.search(normalized):
             candidates.append(_CandidatePrescription(exercise_id, movement_pattern, tuple(dose)))
-    return tuple(candidates)
+    return tuple(candidates), prescription_table
 
 
 def validate_training_delivery(
@@ -382,7 +397,7 @@ def validate_training_delivery(
         raise TrainingRuntimeError("unstructured training delivery is invalid")
     text = generated_text.casefold()
     library = load_exercise_library()
-    candidates = _candidate_prescriptions(generated_text, library)
+    candidates, prescription_table = _candidate_prescriptions(generated_text, library)
     if candidates:
         profile = dict(facts)
         locked = dict(locked_preferences or {})
@@ -395,8 +410,19 @@ def validate_training_delivery(
                 candidate.exercise_id, None, candidate.movement_pattern, candidate.rep_max,
                 library, safety, excluded_patterns, load_limited_patterns)
         raise TrainingRuntimeError("unstructured training prescription cannot be delivered")
+    if prescription_table:
+        raise TrainingRuntimeError("unstructured training prescription cannot be delivered")
+    normalized_text = _normalize_number_words(text)
+    if ((_PRESCRIPTION_INTRO.search(generated_text)
+         or _UNSTRUCTURED_COMMAND.search(text)
+         or _UNSTRUCTURED_TRAINING_CONTEXT.search(text))
+            and (_UNRESOLVED_TRAINING_DOSE.search(normalized_text)
+                 or _UNCERTAIN_DOSE.search(text))):
+        raise TrainingRuntimeError("unstructured training prescription cannot be delivered")
     movements = tuple(_UNSTRUCTURED_MOVEMENT.finditer(text))
-    has_movement = bool(movements)
+    exercises = tuple(sorted(library.exercises, key=lambda item: len(item.display_name), reverse=True))
+    has_movement = bool(movements or any(pattern.search(text) for pattern, _ in _MOVEMENT_FAMILIES)
+                        or _candidate_identity(text, exercises)[1] is not None)
     has_command = bool(_UNSTRUCTURED_COMMAND.search(text))
     has_timed_or_loaded_dose = bool(_UNSTRUCTURED_TIMED_OR_LOADED_DOSE.search(text))
     # A format name by itself can be explanatory; a dose, instruction, or exercise list cannot.

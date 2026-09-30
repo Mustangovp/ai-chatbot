@@ -14,7 +14,9 @@ from training_engine import (
     parse_mixed_modal_request, structure_mixed_modal_plan,
 )
 from training_engine import renderer
-from training_engine.runtime import validate_training_delivery, validate_training_plan_constraints
+from training_engine.runtime import (
+    _candidate_prescriptions, validate_training_delivery, validate_training_plan_constraints,
+)
 from training_engine.completion import completion_projection
 from training_engine.followups import conversation_plan_from_record, serialize_conversation_plan
 from training_engine.followups import apply_followup, parse_workout_followup, state_for
@@ -850,6 +852,9 @@ def test_unstructured_reply_cannot_acquire_training_authority(reply):
     "Overhead press\nthree sets of ten repetitions",
     "Thruster: two rounds, thirty seconds of work and ten seconds of rest",
     "Push press: four sets at a load of twenty kg, tempo 2-0-1-0",
+    "Overhead press: three by ten",
+    "| Exercise | Sets x Reps |\n| --- | --- |\n| Overhead press | three by ten |",
+    "Преса над глава: три по десет",
 ))
 def test_unstructured_prescription_formats_cannot_acquire_authority(reply):
     with pytest.raises(TrainingRuntimeError, match="unstructured training prescription"):
@@ -863,6 +868,9 @@ def test_unstructured_prescription_formats_cannot_acquire_authority(reply):
     ("Tell me something encouraging", "- HSPU: three sets of ten repetitions", False),
     ("Tell me something encouraging", "Преса над глава: три серии по десет повторения", False),
     ("Let's go harder", "| Упражнение | Серии | Повторения |\n| --- | --- | --- |\n| Раменна преса | три | десет |", True),
+    ("How much protein do I need?", "Overhead press: three by ten", False),
+    ("Tell me something encouraging", "Overhead press: a dozen sets", False),
+    ("Let's go harder", "| Exercise | Sets x Reps |\n| --- | --- |\n| Overhead press | three by ten |", True),
 ))
 def test_completed_prescription_formats_are_blocked_across_chat_routes(
         chat_client, monkeypatch, message, reply, force_generic):
@@ -894,10 +902,42 @@ def test_extracted_dose_uses_existing_movement_constraint_check(reply):
         )
 
 
+def test_en_bg_and_table_doses_resolve_to_one_canonical_exercise():
+    library = load_exercise_library()
+    examples = (
+        "Dumbbell Overhead Press: three sets of ten repetitions",
+        "Раменна преса с дъмбели: три серии по десет повторения",
+        "| Exercise | Sets | Reps |\n| --- | --- | --- |\n| Dumbbell Overhead Press | three | ten |",
+    )
+    normalized = [_candidate_prescriptions(text, library)[0][0] for text in examples]
+    assert all(item.exercise_id == "dumbbell.overhead_press" for item in normalized)
+    assert all(item.movement_pattern is MovementPattern.VERTICAL_PUSH for item in normalized)
+    assert all(item.dose == (("sets", 3), ("reps", 10)) for item in normalized)
+
+
+@pytest.mark.parametrize("reply", (
+    "Overhead press: a dozen sets",
+    "Преса над глава: няколко серии",
+    "Марширане на място: няколко минути",
+    "| Exercise | Sets | Reps |\n| --- | --- | --- |\n| Unknown movement | three | ten |",
+    "Unsupported move: three sets of ten repetitions",
+    "Непознато движение: три серии по десет повторения",
+))
+def test_ambiguous_prescription_with_active_restriction_fails_closed(reply):
+    with pytest.raises(TrainingRuntimeError):
+        validate_training_delivery(
+            plan=None, facts=PROFILE,
+            locked_preferences={"exercise_exclusions": ("vertical_push",)},
+            generated_text=reply, active_workout_context=True,
+        )
+
+
 @pytest.mark.parametrize("reply", (
     "Protein is useful when you are training consistently.",
     "You can take your workout one step at a time.",
     "An EMOM is a workout format; your verified plan sets the exercise doses.",
+    "Overhead press technique: no fixed dose is supplied here.",
+    "One set at a time is a way to pace yourself.",
 ))
 def test_active_restriction_allows_safe_nonprescriptive_explanation(reply):
     validate_training_delivery(
