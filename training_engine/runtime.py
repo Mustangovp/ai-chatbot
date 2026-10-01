@@ -233,26 +233,31 @@ _UNSTRUCTURED_NEXT_EXERCISE = re.compile(
     re.IGNORECASE,
 )
 _PROHIBITIVE_CLAUSE = re.compile(
-    r"^\s*(?:[-*+]\s+)?(?:please\s+)?(?:(?:i|we)\s+)?(?:do\s+not|don['’]t|never|"
-    r"avoid|skip|refrain\s+from|should\s+not|must\s+not|"
+    r"^\s*(?:please\s+)?(?:(?:you|i|we)\s+)?(?:"
+    r"(?:do\s+not|don['’]t|should\s+not|must\s+not|never)\s+"
+    r"(?:perform|do|try|use|add|recommend|include)|"
+    r"(?:avoid|skip|refrain\s+from)(?:\s+(?:performing|doing|using))?|"
     r"не\s+(?:прави|изпълнявай|включвай|опитвай|използвай|препоръч\w*)|"
-    r"избягвай|не\s+бива)\b", re.IGNORECASE,
+    r"избягвай|не\s+(?:трябва|бива)\s+да\s+(?:изпълняваш|правиш|включваш)|"
+    r"не\s+е\s+препоръчително(?:\s+да\s+(?:изпълняваш|правиш))?)"
+    r"\s*(?:(?:any|the|these|all)\s+)?$", re.IGNORECASE,
 )
 _NEGATED_RECOMMENDATION = re.compile(
-    r"\b(?:is|are|was|were)\s+not\s+recommend\w*\b|"
-    r"\bне\s+се\s+препоръчва\b", re.IGNORECASE,
+    r"^\s*(?:(?:is|are|was|were)\s+not\s+recommend\w*|"
+    r"не\s+се\s+препоръчва|не\s+е\s+препоръчител\w*)\b", re.IGNORECASE,
 )
 _CLAUSE_BREAK = re.compile(
-    r"(?<=[.!?;])\s+|\b(?:but|however|но|обаче)\b|"
-    r"\b(?:then|afterwards|след\s+това|вместо\s+това)\s+"
-    r"(?=(?:do|perform|try|use|add|recommend\w*|"
-    r"направи|изпълни|опитай|включи|препоръч\w*)\b)|"
-    r"[,;]\s*(?=(?:do|perform|try|use|add|recommend\w*|"
-    r"направи|изпълни|опитай|включи|препоръч\w*)\b)|"
-    r"\b(?:and|и)\s+(?=(?:do|perform|try|use|add|recommend\w*|"
-    r"направи|изпълни|опитай|включи|препоръч\w*)\b)",
+    r"(?<=[.!?])\s+|;\s*|\b(?:but|however|но|обаче)\b",
     re.IGNORECASE,
 )
+_LOCAL_CONNECTOR = re.compile(r"(?:\s|,|&|/|\b(?:and|or|и|или)\b)*", re.IGNORECASE)
+_LOCAL_CUE_BREAK = re.compile(
+    r",|\b(?:and|or|then|afterwards|и|или|след\s+това|вместо\s+това)\b", re.IGNORECASE)
+_LIST_MARKER = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
+_TRAINING_HEADING = re.compile(
+    r"\b(?:exercises?|movements?|workout|упражнен\w*|движени\w*|тренировк\w*)\b", re.IGNORECASE)
+_PROHIBITIVE_HEADING = re.compile(
+    r"\b(?:avoid|excluded|not\s+recommended|избягва\w*|изключени|забранени)\b", re.IGNORECASE)
 _UNSTRUCTURED_TRAINING_CONTEXT = re.compile(
     r"\b(?:workout|training|session|block|wod|metcon|тренировк\w*|сеси\w*)\b",
     re.IGNORECASE,
@@ -332,6 +337,22 @@ class _CandidatePrescription:
         return max(reps) if reps else None
 
 
+@dataclass(frozen=True)
+class _DeliveryUnit:
+    text: str
+    prescriptive: bool = False
+    prohibitive: bool = False
+    table: bool = False
+
+
+@dataclass(frozen=True)
+class _MovementMention:
+    start: int
+    end: int
+    exercise_id: str | None
+    movement_pattern: MovementPattern | None
+
+
 def _normalize_number_words(text: str) -> str:
     text = text.casefold()
     def compound(match: re.Match[str]) -> str:
@@ -344,58 +365,28 @@ def _normalize_number_words(text: str) -> str:
 def _normalize_delivery_markup(text: str) -> str:
     lines = []
     for line in text.splitlines():
+        heading = bool(re.match(r"^\s{0,3}#{1,6}\s+", line))
         line = re.sub(r"^\s{0,3}#{1,6}\s+", "", line)
         line = re.sub(r"(?<!\w)(?:\*{1,3}|_{1,3})(?=\w)", "", line)
         line = re.sub(r"(?<=\w)(?:\*{1,3}|_{1,3})(?!\w)", "", line)
+        if heading and not line.endswith(":"):
+            line += ":"
         lines.append(line)
     return "\n".join(lines)
 
 
-def _actionable_delivery_text(text: str, library: ExerciseLibrary) -> str:
-    movement_names = tuple(
-        name.casefold() for exercise in library.exercises
-        for name in (exercise.display_name,
-                     _display_name(exercise.exercise_id, exercise.display_name, "bg")))
-    lines = []
-    for line in _normalize_delivery_markup(text).splitlines():
-        clauses = _CLAUSE_BREAK.split(line)
-        actionable = []
-        for clause in clauses:
-            prohibition = _PROHIBITIVE_CLAUSE.match(clause)
-            prohibited_movement = False
-            if prohibition:
-                subject = clause[prohibition.end():].strip().casefold()
-                subject = re.sub(
-                    r"^(?:perform(?:ing)?|do(?:ing)?|try(?:ing)?|use|using|add(?:ing)?|"
-                    r"recommend(?:ing)?|include|including)\s+", "", subject)
-                subject = re.sub(r"^(?:any|the|these|all)\s+", "", subject)
-                # Only a negation directed at a movement removes that reference.
-                # "Do not skip X" and "avoid fatigue by doing X" still prescribe X.
-                prohibited_movement = bool(
-                    (_UNSTRUCTURED_MOVEMENT.match(subject)
-                     or any(pattern.match(subject) for pattern, _ in _MOVEMENT_FAMILIES)
-                     or any(re.match(re.escape(name) + r"(?!\w)", subject)
-                            for name in movement_names))
-                    and not _UNSTRUCTURED_COMMAND.search(subject))
-            negated_recommendation = _NEGATED_RECOMMENDATION.search(clause)
-            if (not clause.strip() or prohibited_movement
-                    or (negated_recommendation and not _UNSTRUCTURED_COMMAND.search(
-                        clause[:negated_recommendation.start()]
-                        + clause[negated_recommendation.end():]))):
-                continue
-            actionable.append(clause)
-        lines.append(" ".join(actionable))
-    return "\n".join(lines)
-
-
-def _prescription_segments(text: str) -> tuple[tuple[str, ...], bool, int]:
+def _prescription_segments(text: str) -> tuple[_DeliveryUnit, ...]:
     segments = []
     headers = None
-    prescription_table = False
+    list_prescriptive = list_prohibitive = False
     for line in text.splitlines():
         line = line.strip()
         if not line:
             headers = None
+            continue
+        if line.endswith(":") and _TRAINING_HEADING.search(line):
+            list_prohibitive = bool(_PROHIBITIVE_HEADING.search(line))
+            list_prescriptive = not list_prohibitive
             continue
         if line.count("|") >= 2:
             cells = tuple(cell.strip() for cell in line.strip("|").split("|"))
@@ -406,15 +397,83 @@ def _prescription_segments(text: str) -> tuple[tuple[str, ...], bool, int]:
                 headers = cells
                 continue
             if headers is not None and len(headers) == len(cells):
-                prescription_table = True
-                segments.append(" ".join(f"{key} {value}" for key, value in zip(headers, cells)))
+                segments.append(_DeliveryUnit(
+                    " ".join(value if _TABLE_EXERCISE.fullmatch(key) else f"{key} {value}"
+                             for key, value in zip(headers, cells)),
+                    prescriptive=True, table=True))
             else:
-                segments.append(" ".join(cells))
+                segments.append(_DeliveryUnit(" ".join(cells)))
         else:
             headers = None
-            segments.append(line)
-    return (tuple(segments + [left + " " + right for left, right in zip(segments, segments[1:])]),
-            prescription_table, len(segments))
+            bullet = _LIST_MARKER.match(line)
+            segments.append(_DeliveryUnit(
+                "- " + line[bullet.end():] if bullet else line,
+                prescriptive=bool(bullet and list_prescriptive),
+                prohibitive=bool(bullet and list_prohibitive)))
+            if not bullet:
+                list_prescriptive = list_prohibitive = False
+    return tuple(segments)
+
+
+def _movement_mentions(text: str, exercises: tuple) -> tuple[_MovementMention, ...]:
+    matches = []
+    for exercise in exercises:
+        for name in (exercise.display_name, _display_name(exercise.exercise_id, exercise.display_name, "bg")):
+            for match in re.finditer(r"(?<!\w)" + re.escape(name.casefold()) + r"(?!\w)", text):
+                matches.append(_MovementMention(match.start(), match.end(), exercise.exercise_id,
+                                                exercise.movement_pattern))
+    for pattern, family in _MOVEMENT_FAMILIES:
+        matches.extend(_MovementMention(match.start(), match.end(), None, family)
+                       for match in pattern.finditer(text))
+    matches.extend(_MovementMention(match.start(), match.end(), None, None)
+                   for match in _UNSTRUCTURED_MOVEMENT.finditer(text))
+    # Prefer the complete catalogue/alias span over a nested generic word such as "press".
+    result = []
+    for mention in sorted(matches, key=lambda item: (item.start, -(item.end - item.start),
+                                                     item.exercise_id is None)):
+        if not result or mention.start >= result[-1].end:
+            result.append(mention)
+    return tuple(result)
+
+
+def _actionable_delivery_units(text: str, library: ExerciseLibrary) -> tuple[_DeliveryUnit, ...]:
+    result = []
+    for unit in _prescription_segments(_normalize_delivery_markup(text)):
+        for clause in _CLAUSE_BREAK.split(unit.text.casefold()):
+            mentions = _movement_mentions(clause, library.exercises)
+            if not mentions:
+                result.append(_DeliveryUnit(clause, unit.prescriptive, unit.prohibitive, unit.table))
+                continue
+            previous_prohibitive = unit.prohibitive
+            previous_prescriptive = unit.prescriptive
+            enumerated = any("," in clause[left.end:right.start]
+                             for left, right in zip(mentions, mentions[1:]))
+            for index, mention in enumerate(mentions):
+                before = clause[mentions[index - 1].end if index else 0:mention.start]
+                after = clause[mention.end:mentions[index + 1].start if index + 1 < len(mentions) else len(clause)]
+                continuation = bool(index and _LOCAL_CONNECTOR.fullmatch(before))
+                local_before = _LIST_MARKER.sub("", _LOCAL_CUE_BREAK.split(before)[-1])
+                local_after = _LOCAL_CUE_BREAK.split(after)[0]
+                explicit_prescription = bool(
+                    _UNSTRUCTURED_COMMAND.search(local_before)
+                    or _UNSTRUCTURED_NEXT_EXERCISE.search(local_before)
+                    or _UNSTRUCTURED_NEXT_EXERCISE.search(local_after)
+                    or _UNSTRUCTURED_FAILURE_DOSE.search(local_after)
+                    or _COUNT_UNIT.search(_normalize_number_words(local_after))
+                    or _SETS_REPS.search(_normalize_number_words(local_after)))
+                prohibitive = bool(_PROHIBITIVE_CLAUSE.fullmatch(local_before)
+                                   or _NEGATED_RECOMMENDATION.match(local_after)
+                                   or (not explicit_prescription and (
+                                       (continuation and previous_prohibitive)
+                                       or (not before.strip() and unit.prohibitive))))
+                prescriptive = bool(explicit_prescription or enumerated
+                                    or (continuation and previous_prescriptive) or unit.prescriptive)
+                previous_prohibitive, previous_prescriptive = prohibitive, prescriptive and not prohibitive
+                if not prohibitive:
+                    result.append(_DeliveryUnit(
+                        local_before + clause[mention.start:mention.end] + local_after,
+                        prescriptive=prescriptive, table=unit.table))
+    return tuple(result)
 
 
 def _candidate_identity(normalized: str, exercises: tuple) -> tuple[str | None, MovementPattern | None]:
@@ -431,12 +490,14 @@ def _candidate_identity(normalized: str, exercises: tuple) -> tuple[str | None, 
 
 def _candidate_prescriptions(
         text: str, library: ExerciseLibrary,
-) -> tuple[tuple[_CandidatePrescription, ...], bool]:
+) -> tuple[tuple[_CandidatePrescription, ...], bool, str]:
     candidates = []
     exercises = tuple(sorted(library.exercises, key=lambda item: len(item.display_name), reverse=True))
-    segments, prescription_table, direct_count = _prescription_segments(_normalize_delivery_markup(text))
+    units = _actionable_delivery_units(text, library)
+    segments = units + tuple(_DeliveryUnit(left.text + " " + right.text)
+                             for left, right in zip(units, units[1:]))
     for index, segment in enumerate(segments):
-        normalized = _normalize_number_words(segment)
+        normalized = _normalize_number_words(segment.text)
         dose = []
         for match in _SETS_REPS.finditer(normalized):
             dose.extend((("sets", int(match.group(1))), ("reps", int(match.group(2)))))
@@ -452,14 +513,13 @@ def _candidate_prescriptions(
             dose.append(("tempo", match.group(1)))
         if _UNSTRUCTURED_FAILURE_DOSE.search(normalized):
             dose.append(("failure", "technical"))
-        if not dose and (index >= direct_count or not (
+        if not dose and (index >= len(units) or not (segment.prescriptive or
                 _UNSTRUCTURED_COMMAND.search(normalized)
                 or _UNSTRUCTURED_NEXT_EXERCISE.search(normalized))):
             continue
-        exercise_id, movement_pattern = _candidate_identity(normalized, exercises)
-        if movement_pattern is not None or _UNSTRUCTURED_MOVEMENT.search(normalized):
-            candidates.append(_CandidatePrescription(exercise_id, movement_pattern, tuple(dose)))
-    return tuple(candidates), prescription_table
+        for mention in _movement_mentions(normalized, exercises):
+            candidates.append(_CandidatePrescription(mention.exercise_id, mention.movement_pattern, tuple(dose)))
+    return tuple(candidates), any(unit.table for unit in units), "\n".join(unit.text for unit in units)
 
 
 def validate_training_delivery(
@@ -478,9 +538,8 @@ def validate_training_delivery(
     if not isinstance(generated_text, str):
         raise TrainingRuntimeError("unstructured training delivery is invalid")
     library = load_exercise_library()
-    actionable_text = _actionable_delivery_text(generated_text, library)
+    candidates, prescription_table, actionable_text = _candidate_prescriptions(generated_text, library)
     text = actionable_text.casefold()
-    candidates, prescription_table = _candidate_prescriptions(actionable_text, library)
     if candidates:
         profile = dict(facts)
         locked = dict(locked_preferences or {})

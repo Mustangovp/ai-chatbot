@@ -918,6 +918,97 @@ def test_prohibition_does_not_mask_a_later_recommendation(reply):
         )
 
 
+@pytest.mark.parametrize("heading", (
+    "Today's prescribed exercises", "Exercises", "Prescribed exercises",
+    "Next exercises", "Workout", "Movements", "Упражнения",
+    "Предписани упражнения", "Следващи упражнения", "Тренировка",
+))
+def test_bare_movement_list_inherits_prescriptive_heading(heading):
+    with pytest.raises(TrainingRuntimeError, match="active training constraint"):
+        validate_training_delivery(
+            plan=None, facts=PROFILE,
+            locked_preferences={"exercise_exclusions": ("vertical_push",)},
+            generated_text=f"{heading}:\n\n- Overhead press\n- HSPU",
+        )
+
+
+@pytest.mark.parametrize("reply", (
+    "Avoid overhead press, your next exercise is HSPU",
+    "Overhead press is not recommended; try thrusters instead.",
+    "Избягвай раменна преса, следващото упражнение е HSPU",
+    "Раменна преса не е препоръчителна; опитай тръстъри вместо това.",
+    "Avoid overhead press, your next exercise is overhead press.",
+    "Avoid overhead press, HSPU is your next exercise.",
+    "Avoid overhead press, do squats and HSPU.",
+    "## Next exercises\n- HSPU",
+    "| Exercise | Sets | Reps |\n| --- | --- | --- |\n| Do not perform overhead press | 3 | 10 |\n| HSPU | 3 | 10 |",
+))
+def test_each_movement_has_local_intent(reply):
+    with pytest.raises(TrainingRuntimeError, match="active training constraint"):
+        validate_training_delivery(
+            plan=None, facts=PROFILE,
+            locked_preferences={"exercise_exclusions": ("vertical_push",)},
+            generated_text=reply,
+        )
+
+
+@pytest.mark.parametrize("reply", (
+    "You should not perform overhead press because of your recorded restriction.",
+    "You must not perform overhead press because of your recorded restriction.",
+    "Overhead press is not recommended because it conflicts with your restriction.",
+    "Не трябва да изпълняваш раменна преса поради записаното ограничение.",
+    "Раменна преса не е препоръчителна поради ограничението.",
+    "Не е препоръчително да изпълняваш раменна преса поради ограничението.",
+    "Exercises to avoid:\n- Overhead press\n- HSPU",
+    "Упражнения за избягване:\n- Раменна преса\n- HSPU",
+    "| Exercise | Sets | Reps |\n| --- | --- | --- |\n| Do not perform overhead press | 3 | 10 |",
+))
+def test_prohibitive_modals_and_lists_remain_explanatory(reply):
+    validate_training_delivery(
+        plan=None, facts=PROFILE,
+        locked_preferences={"exercise_exclusions": ("vertical_push",)},
+        generated_text=reply,
+    )
+
+
+@pytest.mark.parametrize("brain_enforce", ("false", "true"))
+@pytest.mark.parametrize(("message", "force_generic"), (
+    ("How much protein do I need?", False),
+    ("Tell me something encouraging", False),
+    ("Let's go harder", True),
+))
+@pytest.mark.parametrize(("lang", "reply", "allowed"), (
+    ("en", "Today's prescribed exercises:\n- Overhead press\n- Push press\n- Thruster\n- HSPU", False),
+    ("bg", "Предписани упражнения:\n- Раменна преса\n- Тръстъри\n- HSPU", False),
+    ("en", "Avoid overhead press, your next exercise is HSPU", False),
+    ("bg", "Избягвай раменна преса, следващото упражнение е HSPU", False),
+    ("en", "Overhead press is not recommended; try thrusters instead.", False),
+    ("bg", "Раменна преса не е препоръчителна; опитай тръстъри вместо това.", False),
+    ("en", "You should not perform overhead press because of your recorded restriction.", True),
+    ("bg", "Не трябва да изпълняваш раменна преса поради записаното ограничение.", True),
+    ("en", "Overhead press is not recommended because it conflicts with your restriction.", True),
+    ("bg", "Раменна преса не е препоръчителна поради ограничението.", True),
+))
+def test_local_movement_intent_across_routes_and_brain_modes(
+        chat_client, monkeypatch, brain_enforce, message, force_generic, lang, reply, allowed):
+    conversation_id = _restricted_stream_context(chat_client, "local-intent")
+    monkeypatch.setenv("BRAIN_ENFORCE", brain_enforce)
+    if force_generic:
+        monkeypatch.setattr(appmod, "parse_workout_followup", lambda *args, **kwargs: None)
+    streamed = _completed_model_reply(monkeypatch, reply)
+    events = _events(chat_client.post("/chat", json={
+        "message": message, "lang": lang, "conversation_id": conversation_id,
+    }))
+    assert streamed
+    assert events[-1] == {"done": True}
+    delivered = "".join(event.get("t", "") for event in events)
+    assert (reply in delivered) is allowed
+    if not allowed:
+        assert not any(term in delivered.casefold() for term in
+                       ("overhead press", "push press", "thruster", "hspu", "раменна преса", "тръстър"))
+    assert not any("training_completion" in event for event in events)
+
+
 @pytest.mark.parametrize(("message", "reply", "force_generic"), (
     ("How much protein do I need?", "Overhead press: three sets of ten repetitions", False),
     ("How much protein do I need?", "| Exercise | Sets | Reps |\n| --- | --- | --- |\n| Thruster | 3 | 10 |", False),
@@ -1022,6 +1113,8 @@ def test_en_bg_and_table_doses_resolve_to_one_canonical_exercise():
     "| Exercise | Sets | Reps |\n| --- | --- | --- |\n| Unknown movement | three | ten |",
     "Unsupported move: three sets of ten repetitions",
     "Непознато движение: три серии по десет повторения",
+    "- Unsupported movement three sets of ten repetitions",
+    "1. Unsupported movement three sets of ten repetitions",
 ))
 def test_ambiguous_prescription_with_active_restriction_fails_closed(reply):
     with pytest.raises(TrainingRuntimeError):
