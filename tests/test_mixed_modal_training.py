@@ -862,6 +862,62 @@ def test_unstructured_prescription_formats_cannot_acquire_authority(reply):
                                    generated_text=reply, active_workout_context=True)
 
 
+@pytest.mark.parametrize("reply", (
+    "I recommend overhead press as your next exercise.",
+    "Try push press today.",
+    "- HSPU until technical failure.",
+    "| **Exercise** | **Sets** | **Reps** |\n| --- | --- | --- |\n| **Thruster** | **three** | **ten** |",
+    "Препоръчвам раменна преса като следващо упражнение.",
+    "Опитай тръстъри днес.",
+    "- Лицеви опори от стойка на ръце до технически отказ.",
+    "| **Упражнение** | **Серии** | **Повторения** |\n| --- | --- | --- |\n| **Раменна преса** | **три** | **десет** |",
+))
+def test_unnumbered_and_markdown_prescriptions_use_existing_constraint_validator(reply):
+    with pytest.raises(TrainingRuntimeError, match="active training constraint entered delivery"):
+        validate_training_delivery(
+            plan=None, facts=PROFILE,
+            locked_preferences={"exercise_exclusions": ("vertical_push",)},
+            generated_text=reply, active_workout_context=True,
+        )
+
+
+@pytest.mark.parametrize("reply", (
+    "Do not perform overhead press because it conflicts with your restriction.",
+    "Avoid thrusters and HSPU.",
+    "Don't do push press; it conflicts with your restriction.",
+    "I do not recommend overhead press with that restriction.",
+    "Overhead press is not recommended with your restriction.",
+    "Не прави раменна преса, защото противоречи на ограничението ти.",
+    "Не препоръчвам раменна преса при това ограничение.",
+    "Избягвай тръстъри и лицеви опори от стойка на ръце.",
+    "### **Avoid thrusters and HSPU.**",
+    "Avoid performing Dumbbell Overhead Press.",
+    "Do not perform overhead press; try a protein-rich meal instead.",
+))
+def test_prohibitive_movement_explanations_are_not_prescriptions(reply):
+    validate_training_delivery(
+        plan=None, facts=PROFILE,
+        locked_preferences={"exercise_exclusions": ("vertical_push",)},
+        generated_text=reply, active_workout_context=True,
+    )
+
+
+@pytest.mark.parametrize("reply", (
+    "Avoid overhead press, but try HSPU until technical failure.",
+    "Avoid overhead press, then do HSPU.",
+    "Не прави раменна преса, но опитай тръстъри.",
+    "Do not skip overhead press: three sets of ten repetitions.",
+    "Avoid fatigue by doing overhead press: three sets of ten repetitions.",
+))
+def test_prohibition_does_not_mask_a_later_recommendation(reply):
+    with pytest.raises(TrainingRuntimeError, match="active training constraint entered delivery"):
+        validate_training_delivery(
+            plan=None, facts=PROFILE,
+            locked_preferences={"exercise_exclusions": ("vertical_push",)},
+            generated_text=reply,
+        )
+
+
 @pytest.mark.parametrize(("message", "reply", "force_generic"), (
     ("How much protein do I need?", "Overhead press: three sets of ten repetitions", False),
     ("How much protein do I need?", "| Exercise | Sets | Reps |\n| --- | --- | --- |\n| Thruster | 3 | 10 |", False),
@@ -885,6 +941,50 @@ def test_completed_prescription_formats_are_blocked_across_chat_routes(
     assert streamed
     assert events[-1] == {"done": True}
     assert not any(reply in event.get("t", "") for event in events)
+    assert not any("training_completion" in event for event in events)
+
+
+@pytest.mark.parametrize(("message", "reply", "force_generic"), (
+    ("How much protein do I need?", "I recommend overhead press as your next exercise.", False),
+    ("Tell me something encouraging", "- HSPU until technical failure.", False),
+    ("Let's go harder", "Try push press today.", True),
+    ("How much protein do I need?", "Препоръчвам раменна преса като следващо упражнение.", False),
+    ("Tell me something encouraging", "| **Exercise** | **Sets** | **Reps** |\n| --- | --- | --- |\n| **Thruster** | **three** | **ten** |", False),
+))
+def test_unnumbered_prescriptions_are_blocked_across_chat_routes(
+        chat_client, monkeypatch, message, reply, force_generic):
+    conversation_id = _restricted_stream_context(chat_client, "semantic-" + str(len(reply)) + str(force_generic))
+    if force_generic:
+        monkeypatch.setattr(appmod, "parse_workout_followup", lambda *args, **kwargs: None)
+    streamed = _completed_model_reply(monkeypatch, reply)
+    events = _events(chat_client.post("/chat", json={
+        "message": message, "lang": "bg" if "Препоръчвам" in reply else "en",
+        "conversation_id": conversation_id,
+    }))
+    assert streamed
+    assert events[-1] == {"done": True}
+    assert reply not in "".join(event.get("t", "") for event in events)
+    assert not any("training_completion" in event for event in events)
+
+
+@pytest.mark.parametrize(("message", "reply", "force_generic"), (
+    ("How much protein do I need?", "Do not perform overhead press because it conflicts with your restriction.", False),
+    ("Tell me something encouraging", "Avoid thrusters and HSPU.", False),
+    ("Let's go harder", "Не прави раменна преса, защото противоречи на ограничението ти.", True),
+))
+def test_prohibitive_explanations_deliver_across_chat_routes(
+        chat_client, monkeypatch, message, reply, force_generic):
+    conversation_id = _restricted_stream_context(chat_client, "prohibitive-" + str(len(reply)) + str(force_generic))
+    if force_generic:
+        monkeypatch.setattr(appmod, "parse_workout_followup", lambda *args, **kwargs: None)
+    streamed = _completed_model_reply(monkeypatch, reply)
+    events = _events(chat_client.post("/chat", json={
+        "message": message, "lang": "bg" if "Не прави" in reply else "en",
+        "conversation_id": conversation_id,
+    }))
+    assert streamed
+    assert events[-1] == {"done": True}
+    assert reply in "".join(event.get("t", "") for event in events)
     assert not any("training_completion" in event for event in events)
 
 
