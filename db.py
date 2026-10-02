@@ -13,7 +13,7 @@ Design guarantees requested for 1.0:
   • coach_id / source columns are present (nullable) so multiple AI coaches and
     wearable data sources can be added later without a migration redesign.
 """
-import os, uuid, hashlib, secrets, datetime as _dt, time as _time, math
+import os, uuid, hashlib, secrets, datetime as _dt, time as _time, math, json
 from contextlib import contextmanager
 from sqlalchemy import (
     create_engine, MetaData, Table, Column, String, Integer, Boolean, Float,
@@ -542,6 +542,7 @@ _MIGRATIONS = [
     # historical v22-v24 path remains additive; this step repairs already
     # recorded production ledgers without dropping data.
     (26, lambda c: _ensure_free_activation_analytics_state_width(c)),
+    (27, lambda c: _ensure_nutrition_plan_schema(c)),
 ]
 
 
@@ -724,6 +725,120 @@ def _ensure_free_activation_analytics_state_width(connection):
     if (verified.get("nullable") != original_nullable
             or verified.get("default") != original_default):
         raise RuntimeError("free_activations.analytics_state contract changed during v26")
+
+
+def _nutrition_plan_document(row, columns):
+    source = row.get("plan") if "plan" in columns else None
+    if source is None:
+        legacy_sources = [row[name] for name in ("data", "content")
+                          if name in columns and row[name] is not None]
+        if len(legacy_sources) != 1:
+            raise RuntimeError("nutrition_plans row cannot be migrated deterministically")
+        source = legacy_sources[0]
+    if isinstance(source, str):
+        try:
+            source = json.loads(source)
+        except ValueError:
+            raise RuntimeError("nutrition_plans row cannot be migrated deterministically") from None
+    if not isinstance(source, dict):
+        raise RuntimeError("nutrition_plans row cannot be migrated deterministically")
+    from nutrition_plan import NutritionPlanError, from_record
+    try:
+        plan = from_record(source)
+    except (NutritionPlanError, ValueError, TypeError):
+        raise RuntimeError("nutrition_plans row cannot be migrated deterministically") from None
+    if (len(plan.id) > 64 or len(plan.version) > 32
+            or row.get("plan_id") not in (None, plan.id)
+            or row.get("version") not in (None, plan.version)):
+        raise RuntimeError("nutrition_plans row identity does not match its plan")
+    return source, plan.id, plan.version
+
+
+def _nutrition_plan_id_is_unique(connection):
+    inspector = inspect(connection)
+    if any(item.get("column_names") == ["plan_id"]
+           for item in inspector.get_unique_constraints("nutrition_plans")):
+        return True
+    return any(item.get("unique") and item.get("column_names") == ["plan_id"]
+               and not any(key.endswith("_where") and value is not None
+                           for key, value in (item.get("dialect_options") or {}).items())
+               for item in inspector.get_indexes("nutrition_plans"))
+
+
+def _ensure_nutrition_plan_schema(connection):
+    """Repair only structured NutritionPlan rows; never infer a plan from display text."""
+    if connection.dialect.name not in {"postgresql", "sqlite"}:
+        raise RuntimeError("unsupported nutrition_plans migration dialect")
+    if not inspect(connection).has_table("nutrition_plans"):
+        nutrition_plans.create(connection, checkfirst=True)
+    if connection.dialect.name == "postgresql":
+        connection.execute(text("LOCK TABLE nutrition_plans IN ACCESS EXCLUSIVE MODE"))
+
+    inspector = inspect(connection)
+    columns = {item["name"]: item for item in inspector.get_columns("nutrition_plans")}
+    if ({"id", "user_id", "created_at"} - columns.keys()
+            or inspector.get_pk_constraint("nutrition_plans").get("constrained_columns") != ["id"]):
+        raise RuntimeError("nutrition_plans identity schema is incomplete")
+    legacy = Table("nutrition_plans", MetaData(), autoload_with=connection)
+    existing_rows = connection.execute(select(legacy)).mappings().all()
+    documents = {}
+    for row in existing_rows:
+        if row["id"] is None or row["user_id"] is None:
+            raise RuntimeError("nutrition_plans row identity is incomplete")
+        document, plan_id, version = _nutrition_plan_document(row, columns)
+        documents[row["id"]] = (document, plan_id, version, row.get("plan") is None)
+    if len({item[1] for item in documents.values()}) != len(documents):
+        raise RuntimeError("nutrition_plans plan identity is duplicated")
+
+    for name, definition in (("plan_id", "VARCHAR(64)"), ("version", "VARCHAR(32)"),
+                             ("plan", "JSON")):
+        if name not in columns:
+            connection.execute(text(f"ALTER TABLE nutrition_plans ADD COLUMN {name} {definition}"))
+    if connection.dialect.name == "postgresql":
+        columns = {item["name"]: item for item in inspect(connection).get_columns("nutrition_plans")}
+        for name, width in (("plan_id", 64), ("version", 32)):
+            length = getattr(columns[name]["type"], "length", None)
+            if isinstance(length, int) and length < width:
+                connection.execute(text(
+                    f"ALTER TABLE nutrition_plans ALTER COLUMN {name} TYPE VARCHAR({width})"))
+        if not isinstance(columns["plan"]["type"], JSON):
+            connection.execute(text(
+                "ALTER TABLE nutrition_plans ALTER COLUMN plan TYPE JSON USING plan::json"))
+
+    repaired = Table("nutrition_plans", MetaData(), autoload_with=connection)
+    for row_id, (document, plan_id, version, needs_plan_copy) in documents.items():
+        values = {"plan_id": plan_id, "version": version}
+        if needs_plan_copy:
+            values["plan"] = (document if isinstance(repaired.c.plan.type, JSON)
+                              else json.dumps(document))
+        connection.execute(repaired.update().where(repaired.c.id == row_id).values(**values))
+
+    if connection.dialect.name == "postgresql":
+        for name in ("plan_id", "version", "plan"):
+            connection.execute(text(f"ALTER TABLE nutrition_plans ALTER COLUMN {name} SET NOT NULL"))
+
+    if not _nutrition_plan_id_is_unique(connection):
+        connection.execute(text(
+            "CREATE UNIQUE INDEX ix_nutrition_plans_plan_id ON nutrition_plans (plan_id)"))
+    if not _nutrition_plan_id_is_unique(connection):
+        raise RuntimeError("nutrition_plans plan identity is not unique")
+
+    verified_columns = {item["name"]: item for item in inspect(connection).get_columns("nutrition_plans")}
+    if {"id", "user_id", "created_at", "plan_id", "version", "plan"} - verified_columns.keys():
+        raise RuntimeError("nutrition_plans required columns missing after v27")
+    if connection.dialect.name == "postgresql" and any(
+            verified_columns[name].get("nullable") for name in ("plan_id", "version", "plan")):
+        raise RuntimeError("nutrition_plans required columns are nullable after v27")
+    final = Table("nutrition_plans", MetaData(), autoload_with=connection)
+    final_rows = connection.execute(select(final)).mappings().all()
+    if len(final_rows) != len(documents) or {row["id"] for row in final_rows} != set(documents):
+        raise RuntimeError("nutrition_plans rows changed during v27")
+    for row in final_rows:
+        document, plan_id, version, _ = documents[row["id"]]
+        verified_document, _, _ = _nutrition_plan_document(row, verified_columns)
+        if (row["user_id"] is None or row["plan_id"] != plan_id
+                or row["version"] != version or verified_document != document):
+            raise RuntimeError("nutrition_plans row changed during v27")
 
 
 def _add_runtime_workout_blueprint(connection):

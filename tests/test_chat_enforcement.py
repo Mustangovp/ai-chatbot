@@ -2272,6 +2272,31 @@ def test_chat_context_builder_keeps_personality_and_profile_inputs_raw(client, c
     response.get_data()
 
 
+def test_chat_personality_accepts_canonical_completion_and_malformed_legacy_rows(
+        client, captured, monkeypatch, capsys):
+    import personality
+    _login_for_chat(client, _profile())
+    canonical = {"occurred_at": datetime.now(timezone.utc).isoformat(), "completion": 100,
+                 "exercises": {"workout_completion": {
+                     "exercises": [{"exercise_id": "bodyweight.push_up",
+                                    "completed_repetitions": 10}]}}}
+    monkeypatch.setattr(store, "list_training_completion_records",
+                        lambda *_args, **_kwargs: [canonical, {"exercises": ["bad", 3]}, "bad"])
+    response = _post(client, "Hello", lang="en")
+    assert _events(response)[-1] == {"done": True}
+    assert "PERSONALITY CORE" in captured["system"]
+    assert "personality compose failed" not in capsys.readouterr().out
+    assert "has progressed" not in personality.compose(
+        lang="en", profile={}, workouts=[canonical, {"exercises": ["bad"]}, "bad"],
+        message="Hello")
+    legacy = [
+        {"exercises": [{"name": "Squat", "weight": "30", "reps": "8"}]},
+        {"exercises": [{"name": "Squat", "weight": "20", "reps": "8"}]},
+    ]
+    assert "Squat has progressed from 20kg to 30kg" in personality.compose(
+        lang="en", profile={}, workouts=legacy, message="Hello")
+
+
 def test_first_contact_uses_one_authoritative_context_snapshot(client, monkeypatch):
     calls = []
     original = appmod.context_builder.build_context

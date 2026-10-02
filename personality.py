@@ -15,6 +15,7 @@ The model writes the words; this engine guarantees they always sound like APEX.
 """
 import re
 import datetime as _dt
+from collections.abc import Mapping
 
 # ══════════════════════════════════════════════════════════════════════════════
 # LAYER 1 — PERSONALITY CORE  (fixed identity; identical every session)
@@ -162,6 +163,12 @@ def _parse_dt(s):
         return None
 
 
+def _workout_rows(workouts):
+    if not isinstance(workouts, (list, tuple)):
+        return []
+    return [row for row in workouts if isinstance(row, Mapping)]
+
+
 def _sessions_within(workouts, days, now):
     n = 0
     for w in workouts or []:
@@ -175,7 +182,7 @@ def analyze(profile, workouts, message, now=None):
     """Turn raw data into coaching signals. Pure read — never fabricates."""
     now = now or _dt.datetime.now(_dt.timezone.utc)
     profile = profile or {}
-    workouts = workouts or []
+    workouts = _workout_rows(workouts)
     msg = message or ""
 
     sleep = str(profile.get("sleepQuality", "")).lower()
@@ -257,9 +264,17 @@ def _progression(workouts):
     """Find one exercise whose weight (or reps) measurably increased over time."""
     # workouts are newest-first; walk oldest→newest per exercise.
     hist = {}
-    for w in reversed(workouts or []):
-        for ex in (w.get("exercises") or []):
-            name = (ex.get("name") or "").strip()
+    for w in reversed(_workout_rows(workouts)):
+        exercises = w.get("exercises")
+        if not isinstance(exercises, (list, tuple)):
+            continue
+        for ex in exercises:
+            if not isinstance(ex, Mapping):
+                continue
+            name = ex.get("name")
+            if not isinstance(name, str):
+                continue
+            name = name.strip()
             if not name:
                 continue
             wt = _num(ex.get("weight"))
@@ -284,7 +299,7 @@ def _fmt(n):
 def observations(profile, workouts, signals, en=True):
     """Return 0–2 TRUE observations the coach may reference. Never invented."""
     out = []
-    workouts = workouts or []
+    workouts = _workout_rows(workouts)
     now = _dt.datetime.now(_dt.timezone.utc)
 
     # Consistency vs plan (only when both a plan and history exist).

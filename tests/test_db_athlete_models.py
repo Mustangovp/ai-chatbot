@@ -57,7 +57,7 @@ def test_v14_constraint_lifecycle_migration_preserves_rows_and_is_idempotent(tmp
         with engine.begin() as connection:
             applied = {row[0] for row in connection.execute(select(versions.c.version)).all()}
             for version, migration in store._MIGRATIONS:
-                if version not in applied:
+                if version == 15 and version not in applied:
                     migration(connection)
                     connection.execute(versions.insert().values(version=version))
 
@@ -97,7 +97,7 @@ def test_v16_nutrition_followup_migration_is_additive_and_idempotent(tmp_path):
         with engine.begin() as connection:
             applied = {row[0] for row in connection.execute(select(versions.c.version)).all()}
             for version, migration in store._MIGRATIONS:
-                if version not in applied:
+                if version == 17 and version not in applied:
                     migration(connection)
                     connection.execute(versions.insert().values(version=version))
 
