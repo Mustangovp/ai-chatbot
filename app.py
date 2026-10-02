@@ -3536,14 +3536,14 @@ def chat():
                             (_brain_enforcement_directive is not None and
                              not _brain_enforcement_directive["should_generate_workout"])):
                         _constraint_state = _shoulder_constraint_state(profile)
-                        if _constraint_state == "active":
-                            _training_engine_failure = "training_engine_shoulder_safety_contract"
-                        elif _constraint_state == "unavailable":
+                        if _constraint_state == "unavailable":
                             _training_engine_failure = "training_engine_safety_constraints_unavailable"
                         elif str(_training_error) == "explicit health restriction is unsupported":
                             _training_engine_failure = "training_engine_explicit_health_restriction"
                         elif _workout_followup is not None:
                             _followup_failure_reply = followup_message(_training_error, lang)
+                        elif _constraint_state == "active":
+                            _training_engine_failure = "training_engine_shoulder_safety_contract"
                         else:
                             _training_engine_failure = "training_engine_profile_contract"
             _active_workout = (not (_medical_hold and _medical_hold.get("status") == "ACTIVE_MEDICAL_HOLD") and
@@ -3718,8 +3718,6 @@ def chat():
                             "active": "training_engine_shoulder_safety_contract",
                             "unavailable": "training_engine_safety_constraints_unavailable",
                         }.get(_constraint_state, "training_engine_profile_contract")
-                        if str(_training_error) == "explicit health restriction is unsupported":
-                            _training_engine_failure = "training_engine_explicit_health_restriction"
                     else:
                         _shoulder_safety_validation = _validate_training_plan_shoulder_safety(
                             _training_plan_blueprint, profile,
@@ -3739,10 +3737,14 @@ def chat():
                             (_brain_enforcement_directive is not None and
                              not _brain_enforcement_directive["should_generate_workout"])):
                         _constraint_state = _shoulder_constraint_state(profile)
-                        _training_engine_failure = {
-                            "active": "training_engine_shoulder_safety_contract",
-                            "unavailable": "training_engine_safety_constraints_unavailable",
-                        }.get(_constraint_state, "training_engine_profile_contract")
+                        _training_engine_failure = (
+                            "training_engine_explicit_health_restriction"
+                            if str(_training_error) == "explicit health restriction is unsupported"
+                            else {
+                                "active": "training_engine_shoulder_safety_contract",
+                                "unavailable": "training_engine_safety_constraints_unavailable",
+                            }.get(_constraint_state, "training_engine_profile_contract")
+                        )
             
             # 3. Decision mapping
             if _decision.s2.halt:

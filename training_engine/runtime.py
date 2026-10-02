@@ -89,6 +89,7 @@ def build_training_plan(*, recommendation_blueprint_id: str, facts: Mapping[str,
                         advisory_preferred_exercise_ids: tuple[str, ...] = (),
                         level_override: Difficulty | None = None,
                         mixed_modal: SessionFormat | None = None,
+                        mixed_modal_dose_step: int = 0,
                         load_limited_patterns: frozenset[MovementPattern] = frozenset()) -> TrainingPlanBlueprintV2:
     """Build one deterministic weekly plan or fail without producing a partial plan."""
     profile = dict(facts)
@@ -100,6 +101,9 @@ def build_training_plan(*, recommendation_blueprint_id: str, facts: Mapping[str,
         raise TrainingRuntimeError("training level override is invalid")
     if mixed_modal is not None and not isinstance(mixed_modal, SessionFormat):
         raise TrainingRuntimeError("mixed-modal format is invalid")
+    if type(mixed_modal_dose_step) is not int or mixed_modal_dose_step not in (0, 1) or (
+            mixed_modal is None and mixed_modal_dose_step):
+        raise TrainingRuntimeError("mixed-modal dose step is invalid")
     if not isinstance(load_limited_patterns, frozenset) or not load_limited_patterns <= {
             MovementPattern.SQUAT, MovementPattern.LUNGE}:
         raise TrainingRuntimeError("unsupported movement load limitation")
@@ -150,6 +154,7 @@ def build_training_plan(*, recommendation_blueprint_id: str, facts: Mapping[str,
     return TrainingPlanConstructionEngine.construct(
         selection.blueprint, selected_library, _structure_policy(
             goal, level, split, recovery, policy=policy, mixed_modal=mixed_modal,
+            mixed_modal_dose_step=mixed_modal_dose_step,
             load_limited_patterns=knee_load_limited_patterns(profile) | load_limited_patterns),
     )
 
@@ -717,6 +722,7 @@ def _policy_for_constraints(goal: TrainingGoal, split: TrainingSplit,
 def _structure_policy(goal: TrainingGoal, level: Difficulty, split: TrainingSplit,
                       recovery: RecoveryAssumption, *, policy: TrainingGoalPolicy | None = None,
                       mixed_modal: SessionFormat | None = None,
+                      mixed_modal_dose_step: int = 0,
                       load_limited_patterns: frozenset[MovementPattern] = frozenset()) -> TrainingStructurePolicy:
     base_sets = 3 if goal is TrainingGoal.MUSCLE_GAIN else 2
     if mixed_modal is not None:
@@ -726,7 +732,7 @@ def _structure_policy(goal: TrainingGoal, level: Difficulty, split: TrainingSpli
     rep_min, rep_max = ((8, 12) if goal is TrainingGoal.MUSCLE_GAIN else (10, 15)
                         if goal is TrainingGoal.FAT_LOSS else (8, 12))
     if mixed_modal is not None:
-        rep_min, rep_max = 6, 10
+        rep_min, rep_max = 6 + mixed_modal_dose_step, 10 + mixed_modal_dose_step
     rpe = Decimal("7") if recovery is RecoveryAssumption.FRESH else Decimal("6")
     rir = 10 - int(rpe)
     rest = 90 if goal is TrainingGoal.MUSCLE_GAIN else 60
@@ -761,7 +767,8 @@ def _structure_policy(goal: TrainingGoal, level: Difficulty, split: TrainingSpli
     sessions = 1 if recovery is RecoveryAssumption.LIMITED else requested_sessions
     return TrainingStructurePolicy(
         version=f"training-structure-policy-v1:{goal.value}:{level.value}:{split.value}:{recovery.value}"
-                + (f":mixed-modal:{mixed_modal.value}" if mixed_modal is not None else ""),
+                + (f":mixed-modal:{mixed_modal.value}" if mixed_modal is not None else "")
+                + (":dose-step:1" if mixed_modal_dose_step else ""),
         goal=goal, experience_level=level, training_split=split, recovery=recovery, sessions_per_week=sessions,
         session_patterns=(policy or training_goal_policy(goal, split)).session_patterns,
         movement_order=(MovementPattern.SQUAT, MovementPattern.LUNGE,

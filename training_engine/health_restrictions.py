@@ -83,7 +83,7 @@ _CLINICIAN_CLEARANCE_MARKERS = (
 
 _DIRECT_RESTRICTION_MARKERS = (
     "avoid ", "do not ", "don't ", "dont ", "without ", "no ",
-    "shouldn't ", "should not ", "не искам ", "без ", "избягвам ",
+    "shouldn't ", "should not ", "не искам ", "без ", "избягвам ", "избягвай ",
 )
 
 _USER_CONSTRAINT_CLEARANCE_MARKERS = (

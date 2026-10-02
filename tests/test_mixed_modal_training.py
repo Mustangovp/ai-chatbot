@@ -19,11 +19,12 @@ from training_engine.runtime import (
 )
 from training_engine.completion import completion_projection
 from training_engine.followups import conversation_plan_from_record, serialize_conversation_plan
-from training_engine.followups import apply_followup, parse_workout_followup, state_for
+from training_engine.followups import apply_followup, followup_message, parse_workout_followup, state_for
 from training_engine.mixed_modal import parse_mixed_modal_intent
 from training_engine.health_restrictions import (
     FitnessLimitation, FitnessLimitationState, knee_load_caution_transition,
     knee_load_limited_patterns, set_knee_load_caution, transition_fitness_limitation,
+    explicit_restrictions_from_message,
 )
 from training_engine.lineage import delivered_plan_lineage, plan_from_delivered_lineage
 from training_engine.longitudinal import context_from_persisted_history
@@ -292,6 +293,106 @@ def test_real_chat_account_constraint_survives_crossfit_delivery(chat_client):
     assert not any(item["exercise_id"] == "dumbbell.overhead_press" for item in completion["sessions"][0]["exercises"])
     assert completion["sessions"][0]["mixed_modal"]["format"] == "rounds_reps"
     assert "Active movement exclusions" in events[0]["t"]
+
+
+@pytest.mark.parametrize("first_contact", (False, True))
+@pytest.mark.parametrize("brain_enforce", (False, True))
+@pytest.mark.parametrize("level", ("beginner", "intermediate", "advanced"))
+def test_bulgarian_shoulder_restriction_crossfit_and_harder_followup(
+        chat_client, monkeypatch, first_contact, brain_enforce, level):
+    monkeypatch.setenv("BRAIN_ENFORCE", str(brain_enforce).lower())
+    user_id = store.get_or_create_user(
+        f"crossfit-bg-shoulder-{level}-{first_contact}-{brain_enforce}@example.com")
+    store.save_profile(user_id, {**PROFILE, "level": level, "equipment": "gym"})
+    chat_client.set_cookie(appmod.SESSION_COOKIE, store.create_session(user_id))
+    conversation_id = f"crossfit-bg-shoulder-{level}-{first_contact}-{brain_enforce}"
+    first_message = (
+        "Имам ограничение в рамото: избягвай движения с избутване над глава. "
+        "Дай ми CrossFit тренировка за днес."
+    )
+    assert explicit_restrictions_from_message(first_message) == (first_message,)
+    first = _events(chat_client.post("/chat", json={
+        "message": first_message, "lang": "bg", "conversation_id": conversation_id,
+        "first_contact": first_contact,
+    }))
+    assert first[-1]["done"] is True
+    first_completion = next(event["training_completion"] for event in first
+                            if "training_completion" in event)
+    assert store.list_account_training_constraints(user_id) == ("vertical_push",)
+    second = _events(chat_client.post("/chat", json={
+        "message": "Направи я по-трудна, без да нарушаваш ограничението ми за рамото.",
+        "lang": "bg", "conversation_id": conversation_id,
+    }))
+    assert second[-1] == {"done": True}
+    second_completion = next(event["training_completion"] for event in second
+                             if "training_completion" in event)
+    library = load_exercise_library()
+    for completion in (first_completion, second_completion):
+        assert completion["sessions"][0]["mixed_modal"]["format"] == "rounds_reps"
+        assert all(library.require(item["exercise_id"]).movement_pattern
+                   is not MovementPattern.VERTICAL_PUSH
+                   for session in completion["sessions"] for item in session["exercises"])
+    first_doses = {item["exercise_id"]: item["rep_max"]
+                   for item in first_completion["sessions"][0]["exercises"]}
+    second_doses = {item["exercise_id"]: item["rep_max"]
+                    for item in second_completion["sessions"][0]["exercises"]}
+    assert any(second_doses[exercise_id] > reps for exercise_id, reps in first_doses.items()
+               if exercise_id in second_doses)
+
+
+def test_shoulder_constraint_does_not_mask_followup_construction_reason(chat_client, monkeypatch):
+    user_id = store.get_or_create_user("crossfit-error-reason@example.com")
+    store.save_profile(user_id, {**PROFILE, "level": "intermediate", "equipment": "gym",
+                                 "healthRestrictions": ["Avoid overhead pressing"],
+                                 "_fitness_limitation_state": FitnessLimitation(
+                                     FitnessLimitationState.ACTIVE).to_record()})
+    store.add_account_training_constraints(user_id, ["vertical_push"])
+    chat_client.set_cookie(appmod.SESSION_COOKIE, store.create_session(user_id))
+    conversation_id = "crossfit-error-reason-flow"
+    first = _events(chat_client.post("/chat", json={
+        "message": "Дай ми CrossFit тренировка", "lang": "bg", "conversation_id": conversation_id,
+    }))
+    assert any("training_completion" in event for event in first)
+    original = appmod._active_training_plan
+    reason = "difficulty change produced no valid prescription change"
+
+    def fail_revision(*args, **kwargs):
+        if kwargs.get("followup") is not None:
+            raise TrainingRuntimeError(reason)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(appmod, "_active_training_plan", fail_revision)
+    second = _events(chat_client.post("/chat", json={
+        "message": "Направи я по-трудна", "lang": "bg", "conversation_id": conversation_id,
+    }))
+    assert second[-1] == {"done": True}
+    assert not any("training_completion" in event for event in second)
+    assert next(event["t"] for event in second if "t" in event) == followup_message(reason, "bg")
+
+
+def test_first_contact_missing_plan_keeps_shoulder_safety_reason(chat_client, monkeypatch):
+    user_id = store.get_or_create_user("crossfit-first-contact-miss@example.com")
+    store.save_profile(user_id, {**PROFILE, "equipment": "gym",
+                                 "_fitness_limitation_state": FitnessLimitation(
+                                     FitnessLimitationState.ACTIVE).to_record()})
+    store.add_account_training_constraints(user_id, ["vertical_push"])
+    chat_client.set_cookie(appmod.SESSION_COOKIE, store.create_session(user_id))
+    monkeypatch.setattr(appmod, "_active_training_plan", lambda *_args, **_kwargs: None)
+    events = _events(chat_client.post("/chat", json={
+        "message": "Дай ми CrossFit тренировка", "lang": "bg", "first_contact": True,
+        "conversation_id": "crossfit-first-contact-miss",
+    }))
+    assert events[-1]["done"] is True
+    assert next(event["t"] for event in events if "t" in event) == appmod._shoulder_safety_failure_reply("bg")
+    assert not any("training_completion" in event for event in events)
+
+
+@pytest.mark.parametrize("dose_step", (-1, 2, True))
+def test_mixed_modal_dose_step_is_bounded(dose_step):
+    with pytest.raises(TrainingRuntimeError, match="mixed-modal dose step is invalid"):
+        build_training_plan(
+            recommendation_blueprint_id="bounded-crossfit-dose", facts=PROFILE,
+            mixed_modal=SessionFormat.ROUNDS_REPS, mixed_modal_dose_step=dose_step)
 
 
 def test_wod_harder_followup_uses_authoritative_plan_and_preserves_constraint(chat_client, monkeypatch):

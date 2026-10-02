@@ -382,6 +382,12 @@ def apply_followup(*, followup: WorkoutFollowUp, previous: WorkoutConversationSt
         return build_training_plan(**kwargs)
     if followup.operation in (WorkoutFollowUpOperation.INCREASE_DIFFICULTY,
                                WorkoutFollowUpOperation.DECREASE_DIFFICULTY):
+        if (followup.operation is WorkoutFollowUpOperation.INCREASE_DIFFICULTY
+                and previous.plan.sessions[0].mixed_modal is not None):
+            candidate = build_training_plan(**kwargs, mixed_modal_dose_step=1)
+            if blueprint_hash(candidate) == previous.blueprint_hash:
+                raise TrainingRuntimeError("difficulty change produced no valid prescription change")
+            return candidate
         current = _difficulty(facts.get("level") or facts.get("experience_level"))
         target = _step(current, 1 if followup.operation is WorkoutFollowUpOperation.INCREASE_DIFFICULTY else -1)
         if target is None:
