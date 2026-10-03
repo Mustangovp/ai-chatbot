@@ -14,7 +14,7 @@ from .construction import (ExercisePrescription, MuscleGroupVolume,
 from .models import Difficulty, MovementPattern
 from .selection import TrainingSplit
 from .registry import ExerciseLibrary, load_exercise_library
-from .mixed_modal import MixedModalStructure, parse_mixed_modal_request
+from .mixed_modal import MixedModalStructure, parse_mixed_modal_intent, parse_mixed_modal_request
 from .runtime import TrainingRuntimeError, build_training_plan
 
 
@@ -82,6 +82,15 @@ _TRAINING_MODIFIER = re.compile(
 _NON_TRAINING_CONTEXT = re.compile(
     r"\b(?:nutrition|meal|food|calor\w*|macro\w*|timeout|latency|"
     r"хран\w*|калор\w*|макро\w*)\b")
+_WORKOUT_ADVICE_REFERENT = r"\b(?:workout|training|session|wod|тренировк\w*|сеси\w*)\b"
+_POST_WORKOUT_CONTEXT = re.compile(
+    r"\b(?:after|след)\b[^.!?;]*" + _WORKOUT_ADVICE_REFERENT
+    + r"|\bpost[- ](?:workout|training|session)\b")
+_FOOD_ADVICE = re.compile(
+    r"\b(?:nutrition|foods?|meals?|eat|protein|supplements?|"
+    r"хран\w*|ям|яде\w*|протеин\w*|добавк\w*)\b")
+_ENERGY_EXPENDITURE = re.compile(r"\b(?:calor\w*|energy|калор\w*|енерги\w*)\b")
+_ENERGY_BURN = re.compile(r"\b(?:burn\w*|expend\w*|изгор\w*|изгар\w*)\b")
 _CHANGE_ACTION = re.compile(
     r"\b(?:make|increase|raise|boost|progress|scale|decrease|reduce|lower|ease|adjust|change|"
     r"направи|увеличи|вдигни|намали|облекчи|промени|адаптирай|скалирай)\b")
@@ -133,6 +142,22 @@ def _normalized(value: object) -> str:
     return _NORMALIZE.sub(" ", str(value or "").casefold().strip())
 
 
+def workout_context_advice_intent(message: object) -> str | None:
+    """A referenced workout can contextualize advice without requesting mutation."""
+    text = _normalized(message)
+    if not re.search(_WORKOUT_ADVICE_REFERENT, text):
+        return None
+    if parse_mixed_modal_intent(text).workout_requested:
+        return None
+    if _CHANGE_ACTION.search(text) and _TRAINING_MODIFIER.search(text):
+        return None
+    if _ENERGY_EXPENDITURE.search(text) and _ENERGY_BURN.search(text):
+        return "question"
+    if _FOOD_ADVICE.search(text) and _POST_WORKOUT_CONTEXT.search(text):
+        return "nutrition"
+    return None
+
+
 def active_workout_modification(
         message: object, *, previous: WorkoutConversationState | None
 ) -> WorkoutFollowUp | None:
@@ -140,6 +165,8 @@ def active_workout_modification(
     if previous is None:
         return None
     text = _normalized(message)
+    if workout_context_advice_intent(text) is not None:
+        return None
     if not text or (_NEW_WORKOUT_REQUEST.search(text) and _WORKOUT_REFERENT.search(text)
                     and not re.search(r"\b(?:this|that|it|това|тази|я)\b", text)):
         return None
@@ -168,7 +195,7 @@ def parse_workout_followup(
 ) -> WorkoutFollowUp | None:
     """Resolve only closed operation phrases; ordinary chat remains untouched."""
     text = _normalized(message)
-    if not text:
+    if not text or workout_context_advice_intent(text) is not None:
         return None
     if previous is not None and _ACTIVE_NEGATION.search(text):
         negated_change = active_workout_modification(text, previous=previous)

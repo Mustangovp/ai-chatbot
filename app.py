@@ -72,7 +72,7 @@ from training_engine import (
 from training_engine import renderer as training_renderer
 from training_engine.mixed_modal import parse_mixed_modal_intent
 from training_engine.runtime import validate_training_delivery
-from training_engine.followups import active_workout_modification
+from training_engine.followups import active_workout_modification, workout_context_advice_intent
 from training_engine.rationale import build_recommendation_rationale
 from training_engine.cross_session import adapt_from_persisted_history
 from training_engine.longitudinal import context_from_persisted_history
@@ -2342,6 +2342,21 @@ def _workout_explanation_request(message):
     return any(term == text or term in text for term in _WORKOUT_EXPLANATION_TERMS)
 
 
+def _active_workout_calorie_reply(message, previous_workout, lang):
+    """Explain the delivered duration, never invent an energy-expenditure estimate."""
+    if previous_workout is None or workout_context_advice_intent(message) != "question":
+        return None
+    duration = previous_workout.plan.sessions[0].estimated_duration_minutes
+    if lang == "en":
+        return (f"The workout we created has a planned duration of {duration} minutes. "
+                "An exact calorie expenditure isn't supported by the plan alone: "
+                "it depends on your actual pace, effort and pauses. "
+                "Without measured execution data, I won't invent a calorie number.")
+    return (f"Тренировката, която създадохме, е с планирана продължителност {duration} минути. "
+            "Самият план не позволява точен калориен разход: той зависи от реалното темпо, "
+            "усилие и паузи. Без измерени данни от изпълнението няма да измислям калорийна стойност.")
+
+
 def _workout_decision_reply(decision, lang):
     """Bounded explanation for an unresolved authoritative workout turn."""
     english = str(lang).lower() == "en"
@@ -2362,6 +2377,8 @@ def _planning_intent(message, history, classified_intent, *, require_explicit_wo
         return None
     if nutrition_conversation.is_plan_request(message, history):
         return "nutrition"
+    if workout_context_advice_intent(message) is not None:
+        return None
     if _mixed_modal_topic_request(message):
         return None
     # A concrete prescription request is authoritative even when the narrow
@@ -3428,6 +3445,8 @@ def chat():
             _shadow_intent = decision_engine.classify_intent(user_message)
             if _mixed_modal_topic_request(user_message):
                 _shadow_intent = "question"
+            if _shadow_intent != "medical":
+                _shadow_intent = workout_context_advice_intent(user_message) or _shadow_intent
             if (_explicit_workout_request(user_message)
                     or _workout_continuation_request(user_message, _legacy_history)):
                 _shadow_intent = "workout"
@@ -3644,6 +3663,8 @@ def chat():
             _first_intent = decision_engine.classify_intent(user_message)
             if _mixed_modal_topic_request(user_message):
                 _first_intent = "question"
+            if _first_intent != "medical":
+                _first_intent = workout_context_advice_intent(user_message) or _first_intent
             if (_explicit_workout_request(user_message)
                     or _workout_continuation_request(user_message, history)):
                 _first_intent = "workout"
@@ -3818,6 +3839,8 @@ def chat():
             system_content = (personality_block + "\n\n" + base) if personality_block else base
 
         _nutrition_intent = decision_engine.classify_intent(user_message)
+        if _nutrition_intent != "medical":
+            _nutrition_intent = workout_context_advice_intent(user_message) or _nutrition_intent
         _combined_coaching_request = _requests_workout_and_nutrition(user_message)
         _v2_shadow_full_day = nutrition_validation.is_full_day_request(user_message, history)
         _authoritative_nutrition_targets = _daily_nutrition_targets(user_message, profile_block, history)
@@ -4091,6 +4114,9 @@ def chat():
                 and (_active_workout_mutation is not None
                      or _explicit_workout_request(user_message))):
             _controlled_reply = followup_message("workout change unavailable", lang)
+
+        if _controlled_reply is None and _training_plan_blueprint is None:
+            _controlled_reply = _active_workout_calorie_reply(user_message, _previous_workout, lang)
 
         if _health_scope.scope is HealthSafetyScope.DECLARED_HEALTH_CONTEXT:
             system_content = system_content + "\n\n" + declared_context_prompt(lang)

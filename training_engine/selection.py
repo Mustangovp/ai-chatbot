@@ -130,7 +130,7 @@ def training_goal_policy(goal: TrainingGoal, split: TrainingSplit = TrainingSpli
         version=f"training-goal-policy-v1:{split.value}",
         goal=goal,
         required_patterns=tuple(pattern for session in sessions for pattern in session),
-        prefer_highest_compatible_difficulty=goal is TrainingGoal.MUSCLE_GAIN,
+        prefer_highest_compatible_difficulty=goal in {TrainingGoal.MUSCLE_GAIN, TrainingGoal.ENDURANCE},
         split=split,
         session_patterns=sessions,
     )

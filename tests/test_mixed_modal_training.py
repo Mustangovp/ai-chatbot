@@ -21,6 +21,7 @@ from training_engine.completion import completion_projection
 from training_engine.followups import conversation_plan_from_record, serialize_conversation_plan
 from training_engine.followups import apply_followup, followup_message, parse_workout_followup, state_for
 from training_engine.mixed_modal import parse_mixed_modal_intent
+from training_engine.selection import TrainingSelectionEngine
 from training_engine.health_restrictions import (
     FitnessLimitation, FitnessLimitationState, knee_load_caution_transition,
     knee_load_limited_patterns, set_knee_load_caution, transition_fitness_limitation,
@@ -1707,3 +1708,164 @@ def test_negated_first_affirmative_second_is_delivered_as_structured_workout(
         assert structure is None
     else:
         assert structure["format"] == expected.value
+
+
+@pytest.mark.parametrize(("message", "format_name"), (
+    ("crossFit тренировка", "rounds_reps"),
+    ("кросфит тренировка", "rounds_reps"),
+    ("CrossFit WOD", "rounds_reps"),
+    ("CrossFit AMRAP", "amrap"),
+    ("дай ми кросфит тренировка", "rounds_reps"),
+    ("направи ми CrossFit тренировка", "rounds_reps"),
+))
+@pytest.mark.parametrize("brain_enforce", (False, True))
+def test_observed_crossfit_noun_phrase_delivers_deterministic_workout(
+        chat_client, monkeypatch, message, format_name, brain_enforce):
+    monkeypatch.setenv("BRAIN_ENFORCE", str(brain_enforce).lower())
+    user_id = store.get_or_create_user("crossfit-observed-noun@example.com")
+    store.save_profile(user_id, {**PROFILE, "goal": "endurance", "level": "intermediate",
+                                 "equipment": "home"})
+    store.add_account_training_constraints(user_id, ["vertical_push"])
+    chat_client.set_cookie(appmod.SESSION_COOKIE, store.create_session(user_id))
+    monkeypatch.setattr(appmod.client.chat.completions, "create",
+                        lambda **kwargs: pytest.fail("workout request must use deterministic delivery"))
+    events = _events(chat_client.post("/chat", json={"message": message, "lang": "bg"}))
+    assert events[-1] == {"done": True}
+    projection = next(event["training_completion"] for event in events if "training_completion" in event)
+    assert projection["sessions"][0]["mixed_modal"]["format"] == format_name
+    library = load_exercise_library()
+    assert all(library.require(item["exercise_id"]).movement_pattern is not MovementPattern.VERTICAL_PUSH
+               for session in projection["sessions"] for item in session["exercises"])
+    assert appmod._explicit_workout_request(message)
+
+
+@pytest.mark.parametrize("message", (
+    "кросфит?", "какво е CrossFit", "какво мислиш за CrossFit", "подходящ ли е CrossFit",
+    "Какво мислиш за CrossFit тренировка?",
+))
+def test_observed_crossfit_topic_still_converses(chat_client, monkeypatch, message):
+    answer = "CrossFit е смесен тренировъчен формат. Можем да обсъдим дали ти допада."
+    monkeypatch.setattr(appmod.client.chat.completions, "create", _observed_model(answer))
+    monkeypatch.setattr(appmod, "_active_training_plan",
+                        lambda *args, **kwargs: pytest.fail("topic must not construct a workout"))
+    events = _events(chat_client.post("/chat", json={"message": message, "lang": "bg", "profile": PROFILE}))
+    assert events[-1] == {"done": True}
+    assert "".join(event.get("t", "") for event in events) == answer
+    assert not any("training_completion" in event for event in events)
+
+
+def _observed_model(answer):
+    def model(**kwargs):
+        if kwargs.get("response_format") == {"type": "json_object"}:
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="{}"))])
+        assert kwargs.get("stream") is True
+        return iter((SimpleNamespace(choices=[SimpleNamespace(
+            delta=SimpleNamespace(content=answer), finish_reason="stop")]),))
+    return model
+
+
+def _observed_active_workout(chat_client):
+    user_id = store.get_or_create_user("crossfit-observed-context@example.com")
+    store.save_profile(user_id, {**PROFILE, "goal": "endurance", "level": "intermediate",
+                                 "equipment": "home", "weight": "72"})
+    store.add_account_training_constraints(user_id, ["vertical_push"])
+    chat_client.set_cookie(appmod.SESSION_COOKIE, store.create_session(user_id))
+    conversation_id = "crossfit-observed-context"
+    initial = _events(chat_client.post("/chat", json={
+        "message": "дай ми кросфит тренировка", "lang": "bg", "conversation_id": conversation_id}))
+    assert any("training_completion" in event for event in initial)
+    scope = (f"account:{user_id}", conversation_id)
+    return conversation_id, scope, appmod._last_workout_for(scope)
+
+
+@pytest.mark.parametrize(("message", "lang"), (
+    ("храна след тази тренировка или хранителни добавки", "bg"),
+    ("храна след тази тренировка", "bg"),
+    ("какво да ям след тази тренировка", "bg"),
+    ("хранителни добавки след тренировката", "bg"),
+    ("протеин след тази тренировка", "bg"),
+    ("food after this workout or supplements", "en"),
+    ("what should I eat after this workout?", "en"),
+    ("supplements after the workout", "en"),
+    ("protein after this workout", "en"),
+))
+@pytest.mark.parametrize("brain_enforce", (False, True))
+def test_observed_post_workout_nutrition_is_not_a_workout_change(
+        chat_client, monkeypatch, message, lang, brain_enforce):
+    monkeypatch.setenv("BRAIN_ENFORCE", str(brain_enforce).lower())
+    conversation_id, scope, previous = _observed_active_workout(chat_client)
+    assert parse_workout_followup(message, previous=previous) is None
+    answer = ("След тренировката можеш да обсъдиш обичайното си хранене; добавка не е задължителна."
+              if lang == "bg" else "You can discuss your usual food after the workout; a supplement is not required.")
+    monkeypatch.setattr(appmod.client.chat.completions, "create", _observed_model(answer))
+    monkeypatch.setattr(appmod, "_active_training_plan",
+                        lambda *args, **kwargs: pytest.fail("contextual nutrition must not construct a workout"))
+    events = _events(chat_client.post("/chat", json={
+        "message": message, "lang": lang, "conversation_id": conversation_id}))
+    assert events[-1] == {"done": True}
+    assert "".join(event.get("t", "") for event in events) == answer
+    assert not any("training_completion" in event for event in events)
+    assert appmod._last_workout_for(scope).plan == previous.plan
+    assert appmod._planning_intent(message, [], "workout") is None
+
+
+@pytest.mark.parametrize("restricted", (False, True))
+def test_observed_endurance_intermediate_prefers_compatible_intermediate_movements(monkeypatch, restricted):
+    facts = {**PROFILE, "goal": "endurance", "level": "intermediate", "equipment": "home"}
+    exclusions = frozenset({MovementPattern.VERTICAL_PUSH}) if restricted else frozenset()
+    candidates = {}
+    eligible = TrainingSelectionEngine._eligible
+
+    def observe_candidates(library, request, pattern):
+        candidates[pattern] = eligible(library, request, pattern)
+        return candidates[pattern]
+
+    monkeypatch.setattr(TrainingSelectionEngine, "_eligible", staticmethod(observe_candidates))
+    plan = _plan(facts, message="дай ми кросфит тренировка", exclusions=exclusions)
+    library = load_exercise_library()
+    intermediate_selected = 0
+    for item in plan.sessions[0].prescriptions:
+        exercise = library.require(item.exercise_id)
+        assert exercise.difficulty is not Difficulty.ADVANCED
+        assert item.movement_pattern not in exclusions
+        if any(candidate.difficulty is Difficulty.INTERMEDIATE
+               for candidate in candidates[item.movement_pattern]):
+            assert exercise.difficulty is Difficulty.INTERMEDIATE
+            intermediate_selected += 1
+    # No intermediate row/conditioning entry exists in the current home catalog.
+    # Prefer verified alternatives where they exist, without inventing movements.
+    assert intermediate_selected >= 2
+    validate_training_plan_constraints(plan, facts, external_excluded_movement_patterns=exclusions)
+
+
+def test_observed_endurance_beginner_is_not_promoted_to_intermediate():
+    plan = _plan({**PROFILE, "goal": "endurance", "equipment": "home"})
+    library = load_exercise_library()
+    assert all(library.require(item.exercise_id).difficulty is Difficulty.BEGINNER
+               for item in plan.sessions[0].prescriptions)
+
+
+@pytest.mark.parametrize(("message", "lang"), (
+    ("колко калории ще изгоря с тази тренировка", "bg"),
+    ("how many calories will I burn with this workout?", "en"),
+))
+@pytest.mark.parametrize("brain_enforce", (False, True))
+def test_observed_workout_calories_use_active_duration_without_inventing_estimate(
+        chat_client, monkeypatch, message, lang, brain_enforce):
+    monkeypatch.setenv("BRAIN_ENFORCE", str(brain_enforce).lower())
+    conversation_id, scope, previous = _observed_active_workout(chat_client)
+    duration = previous.plan.sessions[0].estimated_duration_minutes
+    assert duration != 30
+    monkeypatch.setattr(appmod.client.chat.completions, "create",
+                        _observed_model("A generic 30-minute workout burns exactly 300 calories."))
+    monkeypatch.setattr(appmod, "_active_training_plan",
+                        lambda *args, **kwargs: pytest.fail("calorie question must not reconstruct the workout"))
+    events = _events(chat_client.post("/chat", json={
+        "message": message, "lang": lang, "conversation_id": conversation_id}))
+    assert events[-1] == {"done": True}
+    delivered = "".join(event.get("t", "") for event in events)
+    assert str(duration) + (" минути" if lang == "bg" else " minutes") in delivered
+    assert "30-minute" not in delivered and "300" not in delivered
+    assert ("точен калориен разход" if lang == "bg" else "exact calorie expenditure") in delivered
+    assert not any("training_completion" in event for event in events)
+    assert appmod._last_workout_for(scope).plan == previous.plan

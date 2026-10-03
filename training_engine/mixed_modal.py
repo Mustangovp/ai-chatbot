@@ -153,6 +153,12 @@ _GENERAL_TRAINING_TERMS = (
     "workout", "training", "strength", "hypertrophy", "general fitness",
     "тренировка", "тренировки", "силова", "силова тренировка", "хипертрофия",
 )
+_NOUN_WORKOUT_REQUEST = re.compile(
+    r"^(?:crossfit|cross-fit|кросфит)\s+(?:"
+    + "|".join(re.escape(term) for term in (
+        "workout", "training", "session", "wod", "тренировка", "сесия",
+        *(term for _kind, terms in _FORMAT_TERMS for term in terms),
+    )) + r")\b")
 
 
 def _normalized_intent(message: object) -> str:
@@ -199,7 +205,8 @@ def parse_mixed_modal_intent(message: object) -> MixedModalIntent:
             negated_style |= is_negative
             affirmed_style |= is_affirmed
             clause_affirmed |= is_affirmed
-        if clause_affirmed and (_WORKOUT_REQUEST_CUE.search(clause) or seen_negative):
+        if clause_affirmed and (_WORKOUT_REQUEST_CUE.search(clause)
+                                or _NOUN_WORKOUT_REQUEST.search(clause) or seen_negative):
             workout_requested = True
         if (_WORKOUT_REQUEST_CUE.search(clause)
                 and any(_term_polarity(clause, term)[1]
