@@ -9,7 +9,7 @@ from .models import MovementPattern
 
 RATIONALE_VERSION = "training-rationale-v1"
 
-_GOALS = frozenset({"strength", "muscle_gain", "fat_loss", "maintenance", "general_fitness"})
+_GOALS = frozenset({"strength", "muscle_gain", "fat_loss", "maintenance", "general_fitness", "general", "endurance"})
 _LEVELS = frozenset({"beginner", "intermediate", "advanced"})
 _DIRECTIONS = frozenset({"increased", "decreased"})
 _REASONS = frozenset({

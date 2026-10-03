@@ -252,6 +252,88 @@ def _events(response):
             if line.startswith("data: ")]
 
 
+@pytest.mark.parametrize("message", (
+    "кросфит?",
+    "а можеш ли конкретно за кросфит",
+    "какво е CrossFit",
+    "подходящ ли е CrossFit",
+))
+@pytest.mark.parametrize("brain_enforce", (False, True))
+@pytest.mark.parametrize("first_contact", (False, True))
+def test_crossfit_topic_questions_remain_conversation(
+        chat_client, monkeypatch, message, brain_enforce, first_contact):
+    monkeypatch.setenv("BRAIN_ENFORCE", str(brain_enforce).lower())
+    answer = "CrossFit съчетава силови движения и кондиционна работа. Можем да обсъдим формата според целта ти."
+    prompts = []
+
+    def converse(**kwargs):
+        if kwargs.get("response_format") == {"type": "json_object"}:
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="{}"))])
+        assert kwargs.get("stream") is True
+        prompts.append(kwargs["messages"][0]["content"])
+        return iter((SimpleNamespace(choices=[SimpleNamespace(
+            delta=SimpleNamespace(content=answer), finish_reason="stop")]),))
+
+    monkeypatch.setattr(appmod.client.chat.completions, "create", converse)
+    monkeypatch.setattr(appmod, "_active_training_plan",
+                        lambda *args, **kwargs: pytest.fail("topic question must not construct a workout"))
+    events = _events(chat_client.post("/chat", json={
+        "message": message, "lang": "bg", "profile": {**PROFILE, "goal": "general"},
+        "first_contact": first_contact,
+    }))
+    assert events[-1]["done"] is True
+    assert answer == "".join(event.get("t", "") for event in events)
+    assert not any("training_completion" in event for event in events)
+    assert len(prompts) == 1 and "[TRAINING TOPIC CONVERSATION]" in prompts[0]
+    assert appmod._planning_intent(message, [], "workout") is None
+
+
+@pytest.mark.parametrize("goal", ("general", "endurance"))
+@pytest.mark.parametrize(("message", "format_name"), (
+    ("направи ми CrossFit тренировка", "rounds_reps"),
+    ("дай ми CrossFit WOD", "rounds_reps"),
+    ("можеш ли да ми направиш CrossFit тренировка", "rounds_reps"),
+    ("направи ми CrossFit AMRAP", "amrap"),
+))
+@pytest.mark.parametrize("brain_enforce", (False, True))
+@pytest.mark.parametrize("first_contact", (False, True))
+def test_onboarding_goals_deliver_explicit_crossfit_workout(
+        chat_client, monkeypatch, goal, message, format_name, brain_enforce, first_contact):
+    monkeypatch.setenv("BRAIN_ENFORCE", str(brain_enforce).lower())
+    user_id = store.get_or_create_user("crossfit-onboarding-goal@example.com")
+    profile = {**PROFILE, "goal": goal, "equipment": "gym"}
+    store.save_profile(user_id, profile)
+    chat_client.set_cookie(appmod.SESSION_COOKIE, store.create_session(user_id))
+    monkeypatch.setattr(appmod.client.chat.completions, "create",
+                        lambda **kwargs: pytest.fail("explicit CrossFit programming must be deterministic"))
+    events = _events(chat_client.post("/chat", json={
+        "message": message, "lang": "bg", "first_contact": first_contact,
+    }))
+    assert events[-1] == {"done": True}
+    completion = next(event["training_completion"] for event in events if "training_completion" in event)
+    assert completion["sessions"][0]["mixed_modal"]["format"] == format_name
+    assert completion["sessions"][0]["exercises"]
+    assert store.get_profile(user_id)["goal"] == goal
+    rationale = completion["recommendation_rationale"]
+    assert {"kind": "training_goal", "value": goal} in rationale["used"]
+    assert "Не успях да изградя" not in "".join(event.get("t", "") for event in events)
+
+
+@pytest.mark.parametrize(("goal", "expected_goal"), (("general", "maintenance"), ("endurance", "endurance")))
+def test_onboarding_goal_policy_preserves_declared_intent(goal, expected_goal):
+    profile = {**PROFILE, "goal": goal}
+    plan = build_training_plan(recommendation_blueprint_id="onboarding-goal", facts=profile)
+    assert plan.construction_policy_version.startswith(f"training-structure-policy-v1:{expected_goal}:")
+    if goal == "endurance":
+        assert all(any(item.movement_pattern is MovementPattern.MONOSTRUCTURAL
+                       for item in session.prescriptions) for session in plan.sessions)
+    else:
+        maintenance = build_training_plan(
+            recommendation_blueprint_id="onboarding-goal", facts={**profile, "goal": "maintenance"})
+        assert plan == maintenance
+    assert profile["goal"] == goal
+
+
 def test_real_chat_beginner_crossfit_and_bulgarian_delivery(chat_client, monkeypatch):
     monkeypatch.setattr(appmod.client.chat.completions, "create",
                         lambda **kwargs: pytest.fail("mixed-modal programming must not use model authority"))

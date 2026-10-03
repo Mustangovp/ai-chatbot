@@ -147,7 +147,8 @@ _CLAUSE_BOUNDARY = re.compile(
     r"дай\s+ми|направи\s+ми|искам|планирай)\b)")
 _WORKOUT_REQUEST_CUE = re.compile(
     r"\b(?:give\s+me|make\s+me|build|create|plan|i\s+want|i\s+need|"
-    r"дай\s+ми|направи\s+ми|създай|искам|планирай)\b")
+    r"дай\s+ми|направи\s+ми|създай|искам|планирай|"
+    r"можеш\s+ли\s+да\s+ми\s+(?:направиш|дадеш|създадеш))\b")
 _GENERAL_TRAINING_TERMS = (
     "workout", "training", "strength", "hypertrophy", "general fitness",
     "тренировка", "тренировки", "силова", "силова тренировка", "хипертрофия",

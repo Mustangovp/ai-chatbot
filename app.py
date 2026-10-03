@@ -2303,6 +2303,13 @@ def _explicit_workout_request(message):
                  or any(f" {prefix}" in text for prefix in _WORKOUT_REQUEST_PREFIXES)))
 
 
+def _mixed_modal_topic_request(message):
+    """A training topic alone does not authorize construction of a session."""
+    intent = parse_mixed_modal_intent(message)
+    return bool((intent.affirmed_style or intent.affirmed_formats)
+                and not _explicit_workout_request(message))
+
+
 _WORKOUT_CONTINUATION_TERMS = (
     "suggest it", "propose it", "give it to me",
     "предложи ми я", "предложи я", "дай ми я",
@@ -2355,6 +2362,8 @@ def _planning_intent(message, history, classified_intent, *, require_explicit_wo
         return None
     if nutrition_conversation.is_plan_request(message, history):
         return "nutrition"
+    if _mixed_modal_topic_request(message):
+        return None
     # A concrete prescription request is authoritative even when the narrow
     # observational classifier misses a greeting-prefixed or Bulgarian form.
     # Otherwise the request can escape into generic streaming, where no layer
@@ -3417,6 +3426,8 @@ def chat():
             _legacy_profile = profile if isinstance(profile, dict) else {}
             _legacy_history = history if isinstance(history, list) else []
             _shadow_intent = decision_engine.classify_intent(user_message)
+            if _mixed_modal_topic_request(user_message):
+                _shadow_intent = "question"
             if (_explicit_workout_request(user_message)
                     or _workout_continuation_request(user_message, _legacy_history)):
                 _shadow_intent = "workout"
@@ -3631,6 +3642,8 @@ def chat():
         model_to_use = "gpt-4o" if is_pro else "gpt-4o-mini"
         if is_first_contact:
             _first_intent = decision_engine.classify_intent(user_message)
+            if _mixed_modal_topic_request(user_message):
+                _first_intent = "question"
             if (_explicit_workout_request(user_message)
                     or _workout_continuation_request(user_message, history)):
                 _first_intent = "workout"
@@ -4115,6 +4128,14 @@ def chat():
                 _training_plan_blueprint, lang)
         elif _recommendation_blueprint is not None:
             system_content = recommendation_renderer.render_prompt(_recommendation_blueprint)
+        elif (_mixed_modal_topic_request(user_message) and _workout_followup is None
+              and _controlled_reply is None):
+            system_content += (
+                "\n\n[TRAINING TOPIC CONVERSATION]\n"
+                "Answer the user's question about the training topic in their language. "
+                "They have not requested a workout. Do not construct or prescribe a session, "
+                "exercise list, dose, or workout modification in this answer."
+            )
         if _conversation_policy is not None and _controlled_reply is None:
             if coaching.enabled():
                 # HSE may shape only the Composer's closed presentation controls.

@@ -16,6 +16,7 @@ class TrainingGoal(str, Enum):
     MUSCLE_GAIN = "muscle_gain"
     FAT_LOSS = "fat_loss"
     MAINTENANCE = "maintenance"
+    ENDURANCE = "endurance"
 
 
 class TrainingSplit(str, Enum):
@@ -121,13 +122,17 @@ class TrainingGoalPolicy:
 def training_goal_policy(goal: TrainingGoal, split: TrainingSplit = TrainingSplit.FULL_BODY) -> TrainingGoalPolicy:
     if not isinstance(goal, TrainingGoal) or not isinstance(split, TrainingSplit):
         raise ValueError("training goal policy requires typed goal and split")
+    sessions = _SPLIT_SESSION_PATTERNS[split]
+    if goal is TrainingGoal.ENDURANCE:
+        # Keep the declared goal and use the existing conditioning movement library.
+        sessions = tuple((*session, MovementPattern.MONOSTRUCTURAL) for session in sessions)
     return TrainingGoalPolicy(
         version=f"training-goal-policy-v1:{split.value}",
         goal=goal,
-        required_patterns=tuple(pattern for session in _SPLIT_SESSION_PATTERNS[split] for pattern in session),
+        required_patterns=tuple(pattern for session in sessions for pattern in session),
         prefer_highest_compatible_difficulty=goal is TrainingGoal.MUSCLE_GAIN,
         split=split,
-        session_patterns=_SPLIT_SESSION_PATTERNS[split],
+        session_patterns=sessions,
     )
 
 

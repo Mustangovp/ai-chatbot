@@ -54,6 +54,8 @@ _GOALS = {
     "weight_loss": TrainingGoal.FAT_LOSS,
     "maintenance": TrainingGoal.MAINTENANCE,
     "general_fitness": TrainingGoal.MAINTENANCE,
+    "general": TrainingGoal.MAINTENANCE,
+    "endurance": TrainingGoal.ENDURANCE,
 }
 _LEVELS = {
     "beginner": Difficulty.BEGINNER,
@@ -127,7 +129,7 @@ def build_training_plan(*, recommendation_blueprint_id: str, facts: Mapping[str,
     )
     policy = _policy_for_constraints(goal, split, safety, session_sequence_index)
     if mixed_modal is not None:
-        groups = tuple((*session, MovementPattern.MONOSTRUCTURAL)
+        groups = tuple(tuple(dict.fromkeys((*session, MovementPattern.MONOSTRUCTURAL)))
                        for session in policy.session_patterns)
         policy = replace(
             policy, version=policy.version + ":mixed-modal-v1",
