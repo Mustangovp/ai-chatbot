@@ -8,6 +8,14 @@ from .completion import completion_projection
 from .registry import ExerciseLibrary
 from .mixed_modal import SessionFormat, TrainingModality
 from .rationale import validate_recommendation_rationale
+from .prescription import PrescriptionType
+
+
+def _dose(prescription, language):
+    if prescription.prescription_type is PrescriptionType.DURATION:
+        unit = "sec" if str(language).lower() == "en" else "сек"
+        return f"{prescription.duration_min_seconds}-{prescription.duration_max_seconds} {unit}"
+    return f"{prescription.rep_min}-{prescription.rep_max}"
 
 
 _BULGARIAN_EXERCISE_NAMES = {
@@ -93,7 +101,8 @@ def _render_text_delivery(plan: TrainingPlanBlueprintV2, library: ExerciseLibrar
             exercise = library.require(prescription.exercise_id, prescription.exercise_version)
             lines.append(
                 f"{index}. **{exercise.display_name}** — {prescription.sets} {sets_word} × "
-                f"{prescription.rep_min}–{prescription.rep_max} {reps_word}; "
+                f"{_dose(prescription, language)} "
+                f"{reps_word if prescription.prescription_type is PrescriptionType.REPETITIONS else ''}; "
                 f"RPE {prescription.target_rpe}, RIR {prescription.target_rir}; "
                 f"{rest_word} {prescription.rest_seconds}s; tempo {prescription.tempo}."
             )
@@ -150,7 +159,7 @@ def render_delivery(plan: TrainingPlanBlueprintV2, library: ExerciseLibrary,
             exercise = library.require(prescription.exercise_id, prescription.exercise_version)
             lines.append(
                 f"| {_display_name(exercise.exercise_id, exercise.display_name, language)} | {prescription.sets} | "
-                f"{prescription.rep_min}-{prescription.rep_max} | {prescription.rest_seconds}{rest_unit} | "
+                f"{_dose(prescription, language)} | {prescription.rest_seconds}{rest_unit} | "
                 f"RPE {prescription.target_rpe}, RIR {prescription.target_rir}; {tempo_label} {prescription.tempo} |"
             )
     if explanations and plan.sessions[0].mixed_modal is None:

@@ -12,6 +12,7 @@ from decimal import Decimal
 from .construction import (ExercisePrescription, MuscleGroupVolume,
                            TrainingPlanBlueprintV2, TrainingSessionBlueprint)
 from .models import Difficulty, MovementPattern
+from .prescription import PrescriptionType
 from .selection import TrainingSplit
 from .registry import ExerciseLibrary, load_exercise_library
 from .mixed_modal import MixedModalStructure, parse_mixed_modal_intent, parse_mixed_modal_request
@@ -248,6 +249,9 @@ def parse_workout_followup(
 
 def blueprint_hash(plan: TrainingPlanBlueprintV2) -> str:
     payload = ";".join(
+        f"{item.exercise_id}@{item.exercise_version}:{item.sets}:"
+        f"{item.duration_min_seconds}-{item.duration_max_seconds}:duration:{item.target_rpe}:{item.rest_seconds}"
+        if item.prescription_type.value == "duration" else
         f"{item.exercise_id}@{item.exercise_version}:{item.sets}:{item.rep_min}-{item.rep_max}:{item.target_rpe}:{item.rest_seconds}"
         for session in plan.sessions for item in session.prescriptions
     )
@@ -282,6 +286,10 @@ def serialize_conversation_plan(plan: TrainingPlanBlueprintV2) -> dict[str, obje
                 "exercise_id": item.exercise_id, "exercise_version": item.exercise_version,
                 "movement_pattern": item.movement_pattern.value, "sets": item.sets,
                 "rep_min": item.rep_min, "rep_max": item.rep_max,
+                **({"prescription_type": item.prescription_type.value,
+                    "duration_min_seconds": item.duration_min_seconds,
+                    "duration_max_seconds": item.duration_max_seconds}
+                   if plan.version != "training-plan-blueprint-v2" else {}),
                 "target_rpe": str(item.target_rpe), "target_rir": item.target_rir,
                 "rest_seconds": item.rest_seconds, "tempo": item.tempo,
                 "selection_policy_version": item.selection_policy_version,
@@ -311,7 +319,11 @@ def conversation_plan_from_record(record: object) -> WorkoutConversationState | 
             prescriptions=tuple(ExercisePrescription(
                 exercise_id=str(item["exercise_id"]), exercise_version=str(item["exercise_version"]),
                 movement_pattern=MovementPattern(str(item["movement_pattern"])), sets=int(item["sets"]),
-                rep_min=int(item["rep_min"]), rep_max=int(item["rep_max"]),
+                rep_min=(int(item["rep_min"]) if item["rep_min"] is not None else None),
+                rep_max=(int(item["rep_max"]) if item["rep_max"] is not None else None),
+                prescription_type=PrescriptionType(item.get("prescription_type", "repetitions")),
+                duration_min_seconds=item.get("duration_min_seconds"),
+                duration_max_seconds=item.get("duration_max_seconds"),
                 target_rpe=Decimal(str(item["target_rpe"])), target_rir=int(item["target_rir"]),
                 rest_seconds=int(item["rest_seconds"]), tempo=str(item["tempo"]),
                 selection_policy_version=str(item["selection_policy_version"]),

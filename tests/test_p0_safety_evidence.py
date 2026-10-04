@@ -117,7 +117,10 @@ def _execution(uid):
                "session_id": session["session_id"], "completion_timestamp": "2026-09-05T10:00:00Z",
                "exercises": [{"prescription_id": item["prescription_id"], "exercise_id": item["exercise_id"],
                    "exercise_version": item["exercise_version"], "completed_sets": item["prescribed_sets"],
-                   "actual_repetitions": item["rep_min"], "completed_repetitions": item["rep_min"]}
+                   "actual_repetitions": item["rep_min"], "completed_repetitions": item["rep_min"],
+                   **({"prescription_type": "duration", "actual_duration_seconds": item["duration_min_seconds"],
+                       "completed_duration_seconds": item["duration_min_seconds"]}
+                      if item["prescription_type"] == "duration" else {})}
                    for item in session["exercises"]]}
     return plan, payload
 
@@ -135,6 +138,8 @@ def test_skipped_exercise_cannot_yield_100_after_db_roundtrip(account):
     _, payload = _execution(account[1])
     payload["exercises"][-1].update(completed_sets=0, actual_repetitions=None, completed_repetitions=0,
                                     execution_state="skipped")
+    if payload["exercises"][-1].get("prescription_type") == "duration":
+        payload["exercises"][-1].update(actual_duration_seconds=None, completed_repetitions=None)
     row = _post_execution(account, payload)
     assert row["completion"] < 100
     assert row["execution_state"] == "partial"
@@ -153,6 +158,7 @@ def test_missing_actual_reps_remain_unknown_even_when_legacy_reps_are_prefilled(
     plan, payload = _execution(account[1])
     for item in payload["exercises"]:
         item.pop("actual_repetitions")
+        item.pop("actual_duration_seconds", None)
     row = _post_execution(account, payload)
     assert row["execution_state"] == "unknown"
     assert row["completion"] != 100
@@ -164,6 +170,8 @@ def test_abandoned_execution_remains_abandoned(account):
     _, payload = _execution(account[1])
     for item in payload["exercises"]:
         item.update(completed_sets=0, actual_repetitions=None, completed_repetitions=0)
+        if item.get("prescription_type") == "duration":
+            item.update(actual_duration_seconds=None, completed_repetitions=None)
     row = _post_execution(account, payload, "abandoned")
     assert row["execution_state"] == "abandoned"
     assert row["completion"] == 0

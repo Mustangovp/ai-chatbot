@@ -66,34 +66,49 @@ def normalize_execution(session, completion=None, *, plan=None):
             seen.add(identity)
         sets = _count(item.get("completed_sets"))
         reps = _count(item.get("actual_repetitions"))
+        kind = (prescription.prescription_type.value if prescription else
+                item.get("prescription_type", "repetitions"))
+        if kind not in {"repetitions", "duration"}:
+            raise ValueError("unsupported execution dose type")
+        if item.get("prescription_type", "repetitions") != kind:
+            raise ValueError("execution dose type mismatch")
+        seconds = _count(item.get("actual_duration_seconds"))
+        if kind == "duration" and reps is not None:
+            raise ValueError("duration execution cannot report repetitions")
+        if kind == "repetitions" and seconds is not None:
+            raise ValueError("repetition execution cannot report duration")
+        work = seconds if kind == "duration" else reps
+        minimum = (prescription.duration_min_seconds if kind == "duration" else prescription.rep_min) if prescription else None
         state = ExecutionState(item.get("execution_state", "unknown"))
         if prescription and sets is not None and sets > prescription.sets:
             raise ValueError("observed sets exceed prescription")
         if state is ExecutionState.SKIPPED:
-            if sets not in (None, 0) or reps not in (None, 0):
+            if sets not in (None, 0) or work not in (None, 0):
                 raise ValueError("skipped work cannot contain completed work")
             sets = 0
         elif sets == 0:
-            if reps not in (None, 0):
+            if work not in (None, 0):
                 raise ValueError("repetitions without an observed set")
             state = ExecutionState.SKIPPED
         elif sets is not None and sets > 0:
             if state is not ExecutionState.ABANDONED:
                 if prescription and sets < prescription.sets:
                     state = ExecutionState.PARTIAL
-                elif reps is None or prescription is None:
+                elif work is None or prescription is None:
                     state = ExecutionState.UNKNOWN
                 else:
-                    state = (ExecutionState.COMPLETED if reps >= prescription.rep_min
+                    state = (ExecutionState.COMPLETED if work >= minimum
                              else ExecutionState.PARTIAL)
         elif state not in (ExecutionState.ABANDONED, ExecutionState.PARTIAL):
             state = ExecutionState.UNKNOWN
-        if prescription and sets is not None and reps is not None:
-            observed_work += sets * min(Fraction(reps, prescription.rep_min), 1)
+        if prescription and sets is not None and work is not None:
+            observed_work += sets * min(Fraction(work, minimum), 1)
         observations.append({
             **{key: item[key] for key in ("prescription_id", "exercise_id", "exercise_version", "name") if key in item},
             "completed_sets": sets, "completed_repetitions": reps,
             "actual_repetitions": reps, "execution_state": state.value,
+            **({"prescription_type": "duration", "completed_duration_seconds": seconds,
+                "actual_duration_seconds": seconds} if kind == "duration" else {}),
             **{key: item.get(key) for key in ("completed_load", "completed_rpe", "completed_rir", "completed_effort")},
         })
     # Missing prescribed exercises are unknown, not implicitly completed.

@@ -6,6 +6,8 @@ traceable weekly execution blueprint under an explicit structure policy.
 """
 from __future__ import annotations
 
+from .prescription import PrescriptionType, DURATION_POLICY_VERSION, duration_range
+
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
 from enum import Enum
@@ -85,10 +87,13 @@ class TrainingStructurePolicy:
     transition_seconds: int
     training_split: TrainingSplit = TrainingSplit.FULL_BODY
     session_patterns: tuple[tuple[MovementPattern, ...], ...] = ()
+    prescription_schema: str = "exercise-prescription-v1"
 
     def __post_init__(self) -> None:
         if not isinstance(self.version, str) or not self.version:
             raise ValueError("construction policy version is required")
+        if self.prescription_schema not in {"exercise-prescription-v1", "exercise-prescription-v2"}:
+            raise ValueError("unsupported prescription schema")
         if (not isinstance(self.goal, TrainingGoal) or not isinstance(self.experience_level, Difficulty)
                 or not isinstance(self.training_split, TrainingSplit)):
             raise ValueError("construction policy goal, experience, and split are required")
@@ -143,8 +148,8 @@ class ExercisePrescription:
     exercise_version: str
     movement_pattern: MovementPattern
     sets: int
-    rep_min: int
-    rep_max: int
+    rep_min: int | None
+    rep_max: int | None
     target_rpe: Decimal
     target_rir: int
     rest_seconds: int
@@ -153,6 +158,9 @@ class ExercisePrescription:
     prescription_policy_version: str
     construction_policy_version: str
     target_load_kg: Decimal | None = None
+    prescription_type: PrescriptionType = PrescriptionType.REPETITIONS
+    duration_min_seconds: int | None = None
+    duration_max_seconds: int | None = None
 
     def __post_init__(self) -> None:
         if not self.exercise_id or not self.exercise_version:
@@ -162,13 +170,31 @@ class ExercisePrescription:
         if (not self.selection_policy_version or not self.prescription_policy_version
                 or not self.construction_policy_version):
             raise ValueError("prescription policy traceability is required")
-        PrescriptionRule(self.movement_pattern, self.sets, self.rep_min, self.rep_max,
+        if not isinstance(self.prescription_type, PrescriptionType):
+            raise ValueError("unsupported prescription type")
+        if self.prescription_type is PrescriptionType.DURATION:
+            if self.rep_min is not None or self.rep_max is not None:
+                raise ValueError("duration prescriptions cannot contain repetition targets")
+            if (type(self.duration_min_seconds) is not int or type(self.duration_max_seconds) is not int
+                    or not 1 <= self.duration_min_seconds <= self.duration_max_seconds <= 3600):
+                raise ValueError("duration prescription requires bounded seconds")
+        elif self.duration_min_seconds is not None or self.duration_max_seconds is not None:
+            raise ValueError("repetition prescriptions cannot contain duration targets")
+        PrescriptionRule(self.movement_pattern, self.sets,
+                         1 if self.prescription_type is PrescriptionType.DURATION else self.rep_min,
+                         1 if self.prescription_type is PrescriptionType.DURATION else self.rep_max,
                          self.target_rpe, self.target_rir, self.rest_seconds, self.tempo, 1, Decimal("1"))
         if self.target_load_kg is not None:
             load = Decimal(str(self.target_load_kg))
             if load < 0:
                 raise ValueError("prescription target load must be non-negative")
             object.__setattr__(self, "target_load_kg", load)
+
+    def work_seconds(self, seconds_per_rep: int, *, maximum: bool = False) -> Decimal:
+        if self.prescription_type is PrescriptionType.DURATION:
+            return (Decimal(self.duration_max_seconds) if maximum else
+                    Decimal(self.duration_min_seconds + self.duration_max_seconds) / 2)
+        return (Decimal(self.rep_max) if maximum else Decimal(self.rep_min + self.rep_max) / 2) * seconds_per_rep
 
 
 @dataclass(frozen=True)
@@ -275,7 +301,8 @@ class TrainingPlanConstructionEngine:
         cls._validate_weekly_balance(sessions, volume, policy)
         return TrainingPlanBlueprintV2(
             plan_id=f"plan:{selection.blueprint_id}:{policy.version}",
-            version="training-plan-blueprint-v2",
+            version=("training-plan-blueprint-v3" if policy.prescription_schema == "exercise-prescription-v2"
+                     else "training-plan-blueprint-v2"),
             selection_blueprint_id=selection.blueprint_id,
             exercise_library_version=library.version,
             selection_policy_version=selection.policy_version,
@@ -319,10 +346,15 @@ class TrainingPlanConstructionEngine:
     def _prescribe(selection, policy: TrainingStructurePolicy,
                    selection_policy_version: str) -> ExercisePrescription:
         rule = policy.rule_for(selection.movement_pattern)
+        duration = duration_range(selection.exercise_id) if policy.prescription_schema == "exercise-prescription-v2" else None
         return ExercisePrescription(
             selection.exercise_id, selection.exercise_version, selection.movement_pattern,
-            rule.sets, rule.rep_min, rule.rep_max, rule.target_rpe, rule.target_rir,
-            rule.rest_seconds, rule.tempo, selection_policy_version, policy.version, policy.version,
+            rule.sets, None if duration else rule.rep_min, None if duration else rule.rep_max,
+            rule.target_rpe, rule.target_rir, rule.rest_seconds, rule.tempo, selection_policy_version,
+            policy.version + (":" + DURATION_POLICY_VERSION if duration else ""), policy.version,
+            prescription_type=PrescriptionType.DURATION if duration else PrescriptionType.REPETITIONS,
+            duration_min_seconds=duration[0] if duration else None,
+            duration_max_seconds=duration[1] if duration else None,
         )
 
     @staticmethod
@@ -331,8 +363,7 @@ class TrainingPlanConstructionEngine:
         seconds = policy.transition_seconds * max(0, len(prescriptions) - 1)
         for item in prescriptions:
             rule = policy.rule_for(item.movement_pattern)
-            average_reps = Decimal(item.rep_min + item.rep_max) / Decimal("2")
-            seconds += int(Decimal(item.sets) * average_reps * rule.work_seconds_per_rep)
+            seconds += int(item.sets * item.work_seconds(rule.work_seconds_per_rep))
             seconds += max(0, item.sets - 1) * item.rest_seconds
         return max(1, int((Decimal(seconds) / Decimal("60")).to_integral_value(rounding=ROUND_HALF_UP)))
 

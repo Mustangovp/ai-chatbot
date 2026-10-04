@@ -29,9 +29,9 @@ _PROTECTED_TEMPLATE_BLOCKS = {
 
 _PROTECTED_TEMPLATE_HASHES = {
     'core_runtime': 'd3922dd1f8da465dc9529bd5db8e8ad3ecc8287e64a50df123645756a6ee10c7',
-    'workout_memory': '47ad99846b2884f01a0c85b6af57769279424981f6590c288c1f7f4a66a98c26',
+    'workout_memory': '782d528b99d423047cae15f8c00f878ed5167efd272aff09995fcac8284f6811',
     'workout_history_sync': '61d31b1430c619311d11a95dc00018c4a40aefc77e7f42c91b0f3d64c1dc10f4',
-    'workout_execution': '16603d10477684313c93355ba1b16d3eb020b2be66007d8a9110a3fbac259d8c',
+    'workout_execution': '2501ad9dc161580a16f0884ee7828774fde049794b0074ae29f709cf884e7b05',
 }
 
 
@@ -54,22 +54,24 @@ def test_template_evidence_survives_server_and_db(state):
     session = projection['sessions'][0]
     exercises = []
     for index, item in enumerate(session['exercises']):
-        values = [item['rep_min']] * item['prescribed_sets']
+        minimum = item['duration_min_seconds'] if item['prescription_type'] == 'duration' else item['rep_min']
+        values = [minimum] * item['prescribed_sets']
         if state == 'unknown':
             values = [None] * item['prescribed_sets']
         elif state == 'skipped':
             values = []
         elif state in ('partial', 'abandoned'):
-            values = [item['rep_min']] if index == 0 else []
+            values = [minimum] if index == 0 else []
         if case == 'empty_abandoned':
             values = []
         elif case in ('mixed_unknown', 'each_missing'):
-            values = [item['rep_min']] * item['prescribed_sets']
+            values = [minimum] * item['prescribed_sets']
             if index == 0 or case == 'each_missing':
                 values[0] = None
         exercises.append({'name': item['display_name'], 'sets': item['prescribed_sets'],
                           'reps': str(item['rep_min']), 'completion': item,
-                          'observedReps': values, 'skipped': state == 'skipped' or (case == 'partial' and index > 0)})
+                          ('observedSeconds' if item['prescription_type'] == 'duration' else 'observedReps'): values,
+                          'skipped': state == 'skipped' or (case == 'partial' and index > 0)})
     workout = {'ex': exercises, 'contract': {'plan_id': plan.plan_id, 'plan_version': plan.version,
                                             'session_id': session['session_id']}}
     template = (ROOT / 'templates/apex.html').read_text(encoding='utf-8')

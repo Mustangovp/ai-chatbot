@@ -1354,7 +1354,8 @@ function memLoad(){
   m.exerciseHistory={};
   log.forEach(s=>(s.exercises||[]).forEach(ex=>{
     const k=ex.name||ex.exercise_id;if(!k)return;
-    (m.exerciseHistory[k]=m.exerciseHistory[k]||[]).push({date:s.date,sets:ex.completed_sets,reps:ex.actual_repetitions,execution_state:ex.execution_state});
+    (m.exerciseHistory[k]=m.exerciseHistory[k]||[]).push({date:s.date,sets:ex.completed_sets,reps:ex.actual_repetitions,
+      ...(ex.prescription_type==='duration'?{prescription_type:'duration',seconds:ex.actual_duration_seconds}:{}),execution_state:ex.execution_state});
     m.exerciseHistory[k]=m.exerciseHistory[k].slice(-12);
   }));
   memSave(m);return m;
@@ -1378,7 +1379,7 @@ function buildWorkoutContext(en){
   L.push((en?'  Recorded sessions: ':'  Записани сесии: ')+log.length);
   L.push((en?'  Frequency (7d): ':'  Честота (7д): ')+wk7+(en?'/week':'/седмица'));
   if(last){
-    const exs=(last.exercises||[]).map(e=>`${e.name||e.exercise_id} ${e.completed_sets??"?"}×${e.actual_repetitions??"?"}${e.weight?(' @'+e.weight+'kg'):''}`).join(', ');
+    const exs=(last.exercises||[]).map(e=>`${e.name||e.exercise_id} ${e.completed_sets??"?"}×${e.prescription_type==='duration'?(e.actual_duration_seconds??"?")+'s':(e.actual_repetitions??"?")}${e.weight?(' @'+e.weight+'kg'):''}`).join(', ');
     L.push((en?'  Last session: ':'  Последна сесия: ')+last.date+' — '+(last.type||'training')+' ['+last.execution_state+']'+(exs?(' ('+exs+')'):''));
   }
   if(justDone)L.push(en?'  ⚡ POST-WORKOUT — finished within the last 2 hours. Acknowledge it; do NOT prescribe a new workout.':'  ⚡ СЛЕД ТРЕНИРОВКА — завършена в последните 2 часа. Признай я; НЕ предлагай нова тренировка.');
@@ -2456,9 +2457,21 @@ const MUSCLE_LABELS={
 };
 function inferMuscle(name){for(const x of MUSCLE_MAP)if(x.re.test(name)){const labels=MUSCLE_LABELS[x.m]||{};return{...x,m:labels[lang==='bg'?'bg':'en']||x.m};}return{m:lang==='bg'?'\u0446\u044f\u043b\u043e \u0442\u044f\u043b\u043e':'full body',e:'⚡',ic:'#8B93A7'};}
 function inferDiff(reps,name){
-  const r=parseInt((reps||'').replace(/[^\d]/g,''))||10;
+  const r=parseInt((String(reps||'').match(/\d+/)||[])[0])||10;
   if(/начинаещ|beginner|лек|light/i.test(name))return'easy';
   if(r>=15)return'easy'; if(r<=6)return'hard'; return'med';
+}
+function workoutDifficulty(exercise){
+  if(exercise.completion)return({beginner:'easy',intermediate:'med',advanced:'hard'})[exercise.completion.difficulty]||null;
+  return inferDiff(exercise.reps,exercise.name);
+}
+function canonicalDoseValid(item){
+  const type=item.prescription_type||'repetitions';
+  if(type==='duration')return item.rep_min==null&&item.rep_max==null&&
+    Number.isInteger(item.duration_min_seconds)&&Number.isInteger(item.duration_max_seconds)&&
+    item.duration_min_seconds>0&&item.duration_max_seconds>=item.duration_min_seconds&&item.duration_max_seconds<=3600;
+  return type==='repetitions'&&Number.isInteger(item.rep_min)&&Number.isInteger(item.rep_max)&&
+    item.rep_min>0&&item.rep_max>=item.rep_min&&item.duration_min_seconds==null&&item.duration_max_seconds==null;
 }
 function localizedTime(value){
   const raw=String(value||'').trim();
@@ -2468,6 +2481,8 @@ function localizedTime(value){
 function workoutPrescription(exercise){
   if(exercise.completion){
     const item=exercise.completion;
+    if(!canonicalDoseValid(item))return{type:item.prescription_type||'repetitions',value:''};
+    if(item.prescription_type==='duration')return{type:'duration',value:item.duration_min_seconds+'–'+item.duration_max_seconds+' '+(lang==='bg'?'сек':'sec')};
     return{type:'repetitions',value:item.rep_min+'-'+item.rep_max};
   }
   const canonical=exercise.instruction_record||(window.ApexExerciseInstructions&&window.ApexExerciseInstructions.find(exercise.name));
@@ -2500,8 +2515,7 @@ function parseExercises(header,body){
     const item=canonicalSession&&canonicalSession.exercises&&canonicalSession.exercises[ex.length];
     if(canonicalSession&&(!item||item.display_name!==name||
        !Number.isInteger(item.prescribed_sets)||item.prescribed_sets<1||
-       !Number.isInteger(item.rep_min)||!Number.isInteger(item.rep_max)||
-       item.rep_min<1||item.rep_max<item.rep_min||
+       !canonicalDoseValid(item)||
        !Number.isInteger(item.rest_seconds)||item.rest_seconds<0)){
       ex.unsupported.push(name);return;
     }
@@ -2511,7 +2525,7 @@ function parseExercises(header,body){
     if(!record){ex.unsupported.push(name);return;}
     const exercise={name:window.ApexExerciseInstructions.display(record,lang),contract_display_name:name,canonical_id:record.canonical_id,instruction_record:record,
       sets:item?String(item.prescribed_sets):(iSets>-1?(r[iSets]||'3'):'3'),
-      reps:item?(item.rep_min+'-'+item.rep_max):(iReps>-1?(r[iReps]||'10'):'10'),
+      reps:item?workoutPrescription({completion:item}).value:(iReps>-1?(r[iReps]||'10'):'10'),
       rest:item?String(item.rest_seconds):(iRest>-1?(r[iRest]||'60'):'60'),
       note:iNote>-1?(r[iNote]||''):''};
     if(item)exercise.completion=Object.assign({},item);
@@ -2602,13 +2616,13 @@ function workoutDisplayMeta(exercise){
 function renderWorkoutExerciseCard(exercise,diffLabel,includeOverview=false){
   const api=window.ApexExerciseInstructions;
   const record=instructionRecordFor(exercise);if(!record)return '';
-  const mu={...inferMuscle(exercise.name),m:lang==='bg'?record.muscle_group_bg:record.muscle_group_en},df=inferDiff(exercise.reps,exercise.name),prescription=workoutPrescription(exercise),meta=workoutDisplayMeta(exercise);
+  const mu={...inferMuscle(exercise.name),m:lang==='bg'?record.muscle_group_bg:record.muscle_group_en},df=workoutDifficulty(exercise),prescription=workoutPrescription(exercise),meta=workoutDisplayMeta(exercise);
   const unit=prescription.type==='duration'?(lang==='bg'?'сек':'sec'):(lang==='bg'?'повт.':'reps');
   const labels=lang==='bg'?{sets:'Серии',target:'Повторения',rest:'Почивка',tempo:'Темпо',rpe:'RPE',rir:'RIR'}:{sets:'Sets',target:'Repetitions',rest:'Rest',tempo:'Tempo',rpe:'RPE',rir:'RIR'};
   if(prescription.type==='duration')labels.target=lang==='bg'?'Продължителност':'Duration';
   const displayUnit=(prescription.type==='duration'||prescription.type==='duration_per_side')?'':(prescription.type==='repetitions_per_side'?(lang==='bg'?' повторения на страна':' reps / side'):(' '+unit));
   const displayTarget=prescription.type==='duration'||prescription.type==='duration_per_side'?(lang==='bg'?'Продължителност':'Duration'):(prescription.type==='repetitions_per_side'?(lang==='bg'?'Повторения на страна':'Repetitions per side'):labels.target);
-  return '<article class="ex-card ei-card workout-exercise-card" data-exercise-id="'+esc(record.canonical_id)+'" data-exercise-instruction-id="'+esc(record.id)+'"><div class="workout-card-hero"><div class="ex-glyph" style="background:radial-gradient(circle at 50% 35%,'+mu.ic+'33,rgba(18,23,36,.6))">'+mu.e+'</div><div class="workout-card-title"><div class="ex-top"><h3 class="ex-name">'+esc(exercise.name)+'</h3><span class="ex-diff '+df+'">'+diffLabel[df]+'</span></div><div class="ex-muscles"><span class="ex-muscle">'+mu.m+'</span></div></div></div><div class="workout-card-stats">'+
+  return '<article class="ex-card ei-card workout-exercise-card" data-exercise-id="'+esc(record.canonical_id)+'" data-exercise-instruction-id="'+esc(record.id)+'"><div class="workout-card-hero"><div class="ex-glyph" style="background:radial-gradient(circle at 50% 35%,'+mu.ic+'33,rgba(18,23,36,.6))">'+mu.e+'</div><div class="workout-card-title"><div class="ex-top"><h3 class="ex-name">'+esc(exercise.name)+'</h3><span class="ex-diff '+(df||'')+'">'+(diffLabel[df]||'—')+'</span></div><div class="ex-muscles"><span class="ex-muscle">'+mu.m+'</span></div></div></div><div class="workout-card-stats">'+
     '<span class="workout-card-stat"><b>'+esc(exercise.sets)+'</b>'+labels.sets+'</span><span class="workout-card-stat"><b>'+esc(prescription.value)+displayUnit+'</b>'+displayTarget+'</span><span class="workout-card-stat"><b>'+esc(localizedTime(exercise.rest))+'</b>'+labels.rest+'</span><span class="workout-card-stat meta"><b>'+esc(meta.tempo)+'</b>'+labels.tempo+'</span><span class="workout-card-stat meta"><b>'+esc(meta.rpe)+'</b>'+labels.rpe+'</span><span class="workout-card-stat meta"><b>'+esc(meta.rir)+'</b>'+labels.rir+'</span></div>'+
     (meta.note?'<div class="workout-card-note">'+esc(meta.note)+'</div>':'')+workoutInstructionSections(exercise,includeOverview)+'</article>';
 }
@@ -2706,11 +2720,12 @@ function workoutExecutionEvidence(forcedState=null){
   const ex=WO.ex,observations=[],local=[],hasContract=!!(WO.contract&&ex.every(e=>e.completion));
   let total=0,observed=0,workNumerator=0n,workDenominator=1n,missing=false,anyObserved=false;
   ex.forEach(e=>{
-    const values=Array.isArray(e.observedReps)?e.observedReps:[],sets=values.length;
-    const required=hasContract?e.completion.prescribed_sets:null,min=hasContract?e.completion.rep_min:null;
+    const duration=hasContract&&e.completion.prescription_type==='duration';
+    const values=(duration?e.observedSeconds:e.observedReps)||[],sets=values.length;
+    const required=hasContract?e.completion.prescribed_sets:null,min=hasContract?(duration?e.completion.duration_min_seconds:e.completion.rep_min):null;
     const known=values.map(v=>boundedWorkoutEffort(v,0,999,true));
     if(known.some(v=>v!==null&&v>0))anyObserved=true;
-    // The scalar contract records the minimum observed reps across confirmed sets.
+    // The scalar contract records the minimum observed dose across confirmed sets.
     // One missing set count keeps the aggregate unknown; a previous set never fills it.
     const reps=sets&&known.every(v=>v!==null)?Math.min(...known):null;
     let state='unknown';
@@ -2725,7 +2740,8 @@ function workoutExecutionEvidence(forcedState=null){
       workDenominator*=BigInt(min);observed=Number(workNumerator>0n);
     }
     const item={...(hasContract?{prescription_id:e.completion.prescription_id,exercise_id:e.completion.exercise_id,exercise_version:e.completion.exercise_version}:{}),
-      completed_sets:sets,actual_repetitions:reps,completed_repetitions:reps,execution_state:state,
+      completed_sets:sets,actual_repetitions:duration?null:reps,completed_repetitions:duration?null:reps,execution_state:state,
+      ...(duration?{prescription_type:'duration',actual_duration_seconds:reps,completed_duration_seconds:reps}:{}),
       completed_load:boundedWorkoutEffort(e.weight,0,100000,false),completed_rir:boundedWorkoutEffort(e.completedRir,0,10,true),
       completed_rpe:boundedWorkoutEffort(e.completedRpe,1,10,false),completed_effort:['easy','productive','hard','incomplete'].includes(e.completedEffort)?e.completedEffort:null};
     if(sets||e.skipped){observations.push(item);local.push({...item,name:e.name});}
@@ -2765,10 +2781,12 @@ function captureExerciseEffort(){
   exercise.completedRpe=boundedWorkoutEffort(rpe&&rpe.value,1,10,false);
   exercise.completedRir=boundedWorkoutEffort(rir&&rir.value,0,10,true);
   exercise.completedEffort=['easy','productive','hard','incomplete'].includes(effort&&effort.value)?effort.value:null;
-  exercise.currentActualReps=boundedWorkoutEffort(reps&&reps.value,0,999,true);
+  const duration=exercise.completion&&exercise.completion.prescription_type==='duration';
+  exercise[duration?'currentActualSeconds':'currentActualReps']=boundedWorkoutEffort(reps&&reps.value,0,999,true);
 }
 function renderWO(){
   const t=tr(),e=WO.ex[WO.i],mu=inferMuscle(e.name),sets=parseInt(e.sets)||3,prescription=workoutPrescription(e);
+  const duration=e.completion&&e.completion.prescription_type==='duration',actual=duration?e.currentActualSeconds:e.currentActualReps;
   document.getElementById('wo-ptop-l').textContent=t.woEx+' '+(WO.i+1)+'/'+WO.ex.length;
   const pct=woProgress();
   document.getElementById('wo-ptop-r').textContent=pct===null?'—':pct+'%';
@@ -2780,9 +2798,9 @@ function renderWO(){
     stage.innerHTML='<div class="wo-step">'+(lang==='bg'?'Серия':'Set')+' '+(WO.set+1)+'/'+sets+' · ~'+woEstRemaining()+(lang==='bg'?'мин остават':'min left')+'</div>'+
       '<div class="wo-ex-glyph" style="background:radial-gradient(circle at 50% 35%,'+mu.ic+'44,rgba(18,23,36,.7))">'+mu.e+'</div>'+
       '<div class="wo-ex-name">'+esc(e.name)+'</div>'+
-      '<div class="wo-ex-target">'+esc(prescription.value)+' '+(prescription.type==='duration'?(lang==='bg'?'секунди':'seconds'):(lang==='bg'?'повторения':'reps'))+'</div>'+
+      '<div class="wo-ex-target">'+esc(prescription.value)+(prescription.type==='duration'?'':' '+(lang==='bg'?'повторения':'reps'))+'</div>'+
       '<div class="wo-ex-meta">'+mu.m+' · '+(lang==='bg'?'темп':'tempo')+' 2-0-2'+(e.note?(' · '+esc(e.note)):'')+'</div>'+
-      '<div class="wo-weight"><input type="number" id="wo-reps-in" inputmode="numeric" min="0" placeholder="'+(lang==='bg'?'повторения':'reps')+'" value="'+(e.currentActualReps==null?'':e.currentActualReps)+'"><span>'+(lang==='bg'?'реално изпълнени':'completed reps')+'</span><input type="number" id="wo-weight-in" inputmode="decimal" placeholder="'+(lang==='bg'?'кг (по избор)':'kg (optional)')+'" value="'+(e.weight||'')+'" oninput="WO.ex[WO.i].weight=this.value"></div>'+
+      '<div class="wo-weight"><input type="number" id="wo-reps-in" inputmode="numeric" min="0" placeholder="'+(duration?(lang==='bg'?'секунди':'seconds'):(lang==='bg'?'повторения':'reps'))+'" value="'+(actual==null?'':actual)+'"><span>'+(duration?(lang==='bg'?'реално задържани секунди':'held seconds'):(lang==='bg'?'реално изпълнени':'completed reps'))+'</span><input type="number" id="wo-weight-in" inputmode="decimal" placeholder="'+(lang==='bg'?'кг (по избор)':'kg (optional)')+'" value="'+(e.weight||'')+'" oninput="WO.ex[WO.i].weight=this.value"></div>'+
       '<div class="wo-effort"><span>'+(lang==='bg'?'Как се почувства упражнението?':'How did that exercise feel?')+'</span><select id="wo-effort-in" onchange="captureExerciseEffort()"><option value="">'+(lang==='bg'?'Избери':'Choose')+'</option><option value="easy"'+(e.completedEffort==='easy'?' selected':'')+'>'+(lang==='bg'?'Лесно':'Easy')+'</option><option value="productive"'+(e.completedEffort==='productive'?' selected':'')+'>'+(lang==='bg'?'Точно както трябва':'About right')+'</option><option value="hard"'+(e.completedEffort==='hard'?' selected':'')+'>'+(lang==='bg'?'Трудно':'Hard')+'</option><option value="incomplete"'+(e.completedEffort==='incomplete'?' selected':'')+'>'+(lang==='bg'?'Не успях да завърша':'Couldn’t finish')+'</option></select><details><summary>'+(lang==='bg'?'Разширено: RPE / RIR':'Advanced: RPE / RIR')+'</summary><small>'+(lang==='bg'?'RPE = колко трудно се усещаше. RIR = колко чисти повторения оставаха.':'RPE = how hard it felt. RIR = clean reps left.')+'</small><label>RPE <select id="wo-rpe-in" onchange="captureExerciseEffort()">'+workoutEffortOptions(1,10,boundedWorkoutEffort(e.completedRpe,1,10,false))+'</select></label><label>RIR <select id="wo-rir-in" onchange="captureExerciseEffort()">'+workoutEffortOptions(0,10,boundedWorkoutEffort(e.completedRir,0,10,true))+'</select></label></details></div>'+
       '<div class="set-dots">'+dots+'</div>'+
       '<div class="wo-controls"><button class="wo-btn primary" onclick="completeSet()">'+t.woDone+' →</button>'+
@@ -2802,7 +2820,9 @@ function completeSet(){
   if(!WO||WO.recorded||WO.phase!=='work')return;
   captureExerciseEffort();
   witness('setCompleted');   // fact: effort happened (model accrues load + salience)
-  const exercise=WO.ex[WO.i],sets=parseInt(exercise.sets)||3; exercise.observedReps=exercise.observedReps||[];exercise.observedReps.push(exercise.currentActualReps);exercise.currentActualReps=null;exercise.completedSets=exercise.observedReps.length; WO.set++;
+  const exercise=WO.ex[WO.i],sets=parseInt(exercise.sets)||3,duration=exercise.completion&&exercise.completion.prescription_type==='duration';
+  const values=duration?'observedSeconds':'observedReps',current=duration?'currentActualSeconds':'currentActualReps';
+  exercise[values]=exercise[values]||[];exercise[values].push(exercise[current]);exercise[current]=null;exercise.completedSets=exercise[values].length; WO.set++;
   if(WO.set>=sets){ // exercise done → advance or finish
     if(WO.i+1>=WO.ex.length){finishWorkout();return;}
     WO.i++;WO.set=0;WO.phase='rest';renderWO();
@@ -2827,7 +2847,7 @@ function finishWorkout(){
   WO.recorded=true;
   if(session.execution_state==='completed')witness('sessionCompleted');
   const t=tr(),dur=Math.round((Date.now()-sessionStart)/60000);
-  const totalSets=session.exercises.reduce((a,e)=>a+(e.actual_repetitions===null?0:e.completed_sets),0);
+  const totalSets=session.exercises.reduce((a,e)=>a+((e.prescription_type==='duration'?e.actual_duration_seconds:e.actual_repetitions)===null?0:e.completed_sets),0);
   const observedExercises=session.exercises.filter(e=>e.execution_state==='completed').length;
   const labels=lang==='bg'?{completed:t.woComplete,partial:'Частично изпълнена',skipped:'Пропусната',abandoned:'Прекратена',unknown:'Непотвърдено изпълнение'}:
     {completed:t.woComplete,partial:'Partially completed',skipped:'Skipped',abandoned:'Abandoned',unknown:'Execution unknown'};

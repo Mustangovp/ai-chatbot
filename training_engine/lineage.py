@@ -12,6 +12,7 @@ from .construction import (
 from .models import MovementPattern
 from .mixed_modal import MixedModalStructure
 from .selection import TrainingSplit
+from .prescription import PrescriptionType
 
 
 def delivered_plan_lineage(plan: TrainingPlanBlueprintV2) -> dict[str, Any]:
@@ -30,6 +31,10 @@ def delivered_plan_lineage(plan: TrainingPlanBlueprintV2) -> dict[str, Any]:
                 "sets": item.sets,
                 "rep_min": item.rep_min,
                 "rep_max": item.rep_max,
+                **({"prescription_type": item.prescription_type.value,
+                    "duration_min_seconds": item.duration_min_seconds,
+                    "duration_max_seconds": item.duration_max_seconds}
+                   if plan.version != "training-plan-blueprint-v2" else {}),
                 "target_rpe": str(item.target_rpe),
                 "target_rir": item.target_rir,
                 "rest_seconds": item.rest_seconds,
@@ -90,7 +95,11 @@ def plan_from_delivered_lineage(lineage: dict[str, Any]) -> TrainingPlanBlueprin
             prescriptions=tuple(ExercisePrescription(
                 exercise_id=str(item["exercise_id"]), exercise_version=str(item["exercise_version"]),
                 movement_pattern=MovementPattern(str(item["movement_pattern"])), sets=int(item["sets"]),
-                rep_min=int(item["rep_min"]), rep_max=int(item["rep_max"]),
+                rep_min=(int(item["rep_min"]) if item["rep_min"] is not None else None),
+                rep_max=(int(item["rep_max"]) if item["rep_max"] is not None else None),
+                prescription_type=PrescriptionType(item.get("prescription_type", "repetitions")),
+                duration_min_seconds=item.get("duration_min_seconds"),
+                duration_max_seconds=item.get("duration_max_seconds"),
                 target_rpe=Decimal(str(item["target_rpe"])), target_rir=int(item["target_rir"]),
                 rest_seconds=int(item["rest_seconds"]), tempo=str(item["tempo"]),
                 selection_policy_version=str(item["selection_policy_version"]),

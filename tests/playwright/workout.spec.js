@@ -1,5 +1,93 @@
 const { test, expect } = require('@playwright/test');
 
+test.describe('authoritative prescription metadata', () => {
+  async function mount(page, language, exercises) {
+    await page.goto('/app?lang=' + language);
+    await page.evaluate(({language, exercises}) => {
+      lang=language;
+      ownedStorageSet('apexProfile',JSON.stringify({goal:'muscle_gain',age:'30',weight:'75',height:'178',gender:'male',level:'intermediate',equip:'home'}));
+      enterConsult('');document.getElementById('profile-modal').classList.remove('on');
+      const items=exercises.map(item=>({...item,display_name:ApexExerciseInstructions.display(ApexExerciseInstructions.findByExerciseId(item.exercise_id),language)}));
+      const session={session_id:'typed-session',session_index:1,exercises:items};
+      pendingTrainingCompletion={plan_id:'typed-plan',plan_version:'training-plan-blueprint-v3',sessions:[session]};
+      pendingCompletionSessions=[session];
+      appendCoach().innerHTML=renderMarkdown(['| Exercise | Sets | Reps | Rest |','| --- | --- | --- | --- |',
+        ...items.map(item=>`| ${item.display_name} | ${item.prescribed_sets} | ${item.prescription_type==='duration'?`${item.duration_min_seconds}-${item.duration_max_seconds} sec`:'8-12'} | 60 |`)].join('\n'));
+    },{language,exercises});
+  }
+  const hold={prescription_id:'typed-hold',exercise_id:'bodyweight.hollow_hold',exercise_version:'1.0.0',
+    prescribed_sets:2,rep_min:null,rep_max:null,rest_seconds:60,difficulty:'intermediate',
+    prescription_type:'duration',duration_min_seconds:20,duration_max_seconds:40};
+  for(const language of ['bg','en']) {
+    test(`typed metadata: registry difficulty and seconds render unchanged in ${language}`,async({page})=>{
+      await page.setViewportSize({width:390,height:844});
+      const exercises=[{...hold,prescription_id:'typed-row',exercise_id:'dumbbell.bent_over_row',
+        prescription_type:'repetitions',rep_min:8,rep_max:12,duration_min_seconds:null,duration_max_seconds:null},hold];
+      await mount(page,language,exercises);
+      const cards=page.locator('.workout-protocol .workout-exercise-card');
+      await expect(cards).toHaveCount(2);
+      await expect(cards.nth(0).locator('.ex-diff')).toHaveText(language==='bg'?'Средно':'Medium');
+      await expect(cards.nth(0).locator('.workout-card-stats')).toContainText('8-12');
+      await expect(cards.nth(1).locator('.ex-diff')).toHaveText(language==='bg'?'Средно':'Medium');
+      await expect(cards.nth(1).locator('.workout-card-stats')).toContainText('20–40');
+      await expect(cards.nth(1).locator('.workout-card-stats')).toContainText(language==='bg'?'Продължителност':'Duration');
+      await expect(cards.nth(1).locator('.workout-card-stats')).not.toContainText(language==='bg'?'Повторения':'Repetitions');
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    });
+  }
+  test('typed metadata: beginner and advanced labels use registry metadata only',async({page})=>{
+    await mount(page,'en',[{...hold,prescription_type:'repetitions',rep_min:8,rep_max:12,
+      duration_min_seconds:null,duration_max_seconds:null,difficulty:'beginner',exercise_id:'bodyweight.wall_push_up'},
+      {...hold,prescription_type:'repetitions',rep_min:8,rep_max:12,duration_min_seconds:null,
+        duration_max_seconds:null,difficulty:'advanced',exercise_id:'barbell.deadlift'}]);
+    await expect(page.locator('.workout-protocol .ex-diff').nth(0)).toHaveText('Easy');
+    await expect(page.locator('.workout-protocol .ex-diff').nth(1)).toHaveText('Hard');
+  });
+  test('typed metadata: legacy rep-based hold remains reps, not browser catalog seconds',async({page})=>{
+    const {prescription_type,duration_min_seconds,duration_max_seconds,difficulty,...legacy}=hold;
+    await mount(page,'en',[{...legacy,rep_min:8,rep_max:12}]);
+    await expect(page.locator('.workout-protocol .workout-card-stats')).toContainText('8-12 reps');
+    await expect(page.locator('.workout-protocol .workout-card-stats')).not.toContainText('20–40');
+    await expect(page.locator('.workout-protocol .ex-diff')).toHaveText('—');
+  });
+  test('typed metadata: invalid duration never receives a frontend duration fallback',async({page})=>{
+    await mount(page,'en',[hold]);
+    const result=await page.evaluate(()=>{
+      const invalid={...renderedWorkoutExercises['typed-session'][0].completion,duration_min_seconds:null};
+      pendingCompletionSessions=[{exercises:[invalid]}];
+      return {dose:workoutPrescription({completion:invalid}),
+        count:parseExercises(['Exercise','Sets','Reps','Rest'],[[invalid.display_name,'2','20-40 sec','60']]).length};
+    });
+    expect(result).toEqual({dose:{type:'duration',value:''},count:0});
+  });
+  for(const observed of [35,null]) {
+    test(`typed metadata: observed duration ${observed} is never repetition evidence`,async({page})=>{
+      await mount(page,'en',[hold]);
+      await page.evaluate(()=>{
+        window.durationPosts=[];const original=window.fetch;
+        window.fetch=async(url,options)=>{
+          if(url==='/api/workout'){durationPosts.push(JSON.parse(options.body));return new Response('{}',{status:200});}
+          return original(url,options);
+        };
+        SESSION.authenticated=true;startWorkout('typed-session');
+      });
+      await expect(page.locator('#wo-reps-in')).toHaveAttribute('placeholder','seconds');
+      await expect(page.locator('#wo-reps-in')).toHaveValue('');
+      for(let i=0;i<2;i++) {
+        if(observed!==null)await page.locator('#wo-reps-in').fill(String(observed));
+        await page.locator('button[onclick="completeSet()"]').click();
+        if(i===0)await page.locator('button[onclick="endRest()"]').click();
+      }
+      const posts=await page.evaluate(()=>durationPosts);
+      expect(posts).toHaveLength(1);
+      expect(posts[0].session.execution_state).toBe(observed===null?'unknown':'completed');
+      expect(posts[0].workout_completion.exercises[0]).toMatchObject({prescription_type:'duration',
+        actual_duration_seconds:observed,completed_duration_seconds:observed,
+        actual_repetitions:null,completed_repetitions:null});
+    });
+  }
+});
+
 /**
  * Regression coverage for the CURRENT approved APEX app shell.
  *

@@ -185,6 +185,8 @@ def test_structure_survives_conversation_persistence_and_observed_completion_sta
         "prescription_id": item["prescription_id"], "exercise_id": item["exercise_id"],
         "exercise_version": item["exercise_version"], "completed_sets": 0,
         "actual_repetitions": None, "execution_state": "unknown",
+        **({"prescription_type": "duration", "actual_duration_seconds": None}
+           if item["prescription_type"] == "duration" else {}),
     } for item in session["exercises"]]
     evidence = {"plan_id": plan.plan_id, "plan_version": plan.version,
                 "session_id": session["session_id"], "exercises": observations}
@@ -207,6 +209,8 @@ def test_difficult_completed_session_is_history_not_permission_to_overload():
         "prescription_id": item["prescription_id"], "exercise_id": item["exercise_id"],
         "exercise_version": item["exercise_version"],
         "completed_sets": item["prescribed_sets"], "completed_repetitions": item["rep_max"],
+        **({"prescription_type": "duration", "completed_duration_seconds": item["duration_max_seconds"]}
+           if item["prescription_type"] == "duration" else {}),
         "completed_rpe": 9, "completed_effort": "hard",
     } for item in session["exercises"]]
     record = {
@@ -324,7 +328,7 @@ def test_onboarding_goals_deliver_explicit_crossfit_workout(
 def test_onboarding_goal_policy_preserves_declared_intent(goal, expected_goal):
     profile = {**PROFILE, "goal": goal}
     plan = build_training_plan(recommendation_blueprint_id="onboarding-goal", facts=profile)
-    assert plan.construction_policy_version.startswith(f"training-structure-policy-v1:{expected_goal}:")
+    assert plan.construction_policy_version.startswith(f"training-structure-policy-v2:typed-dose-v2:{expected_goal}:")
     if goal == "endurance":
         assert all(any(item.movement_pattern is MovementPattern.MONOSTRUCTURAL
                        for item in session.prescriptions) for session in plan.sessions)
@@ -622,7 +626,7 @@ def test_timed_doses_fit_and_duration_has_one_authority(format_name):
         work_seconds = session.mixed_modal.work_seconds or 60
         for item in session.prescriptions:
             tempo_seconds = sum(int(part) for part in item.tempo.split("-"))
-            assert item.rep_max * tempo_seconds <= work_seconds
+            assert item.work_seconds(tempo_seconds, maximum=True) <= work_seconds
 
 
 def test_existing_impossible_timed_dose_is_rejected_before_delivery():

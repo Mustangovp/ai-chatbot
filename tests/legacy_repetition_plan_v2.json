@@ -1,0 +1,237 @@
+{
+  "plan_id": "plan:selection:legacy-02a2-replay:1.4.0:muscle_gain:full_body:dumbbell.front_squat@1.0.0;dumbbell.romanian_deadlift@1.0.0;bodyweight.push_up@1.0.0;dumbbell.bent_over_row@1.0.0;bodyweight.hollow_hold@1.0.0:training-structure-policy-v1:muscle_gain:intermediate:full_body:fresh",
+  "plan_version": "training-plan-blueprint-v2",
+  "metadata": {
+    "selection_blueprint_id": "selection:legacy-02a2-replay:1.4.0:muscle_gain:full_body:dumbbell.front_squat@1.0.0;dumbbell.romanian_deadlift@1.0.0;bodyweight.push_up@1.0.0;dumbbell.bent_over_row@1.0.0;bodyweight.hollow_hold@1.0.0",
+    "exercise_library_version": "1.4.0",
+    "selection_policy_version": "training-goal-policy-v1:full_body:constraints:",
+    "construction_policy_version": "training-structure-policy-v1:muscle_gain:intermediate:full_body:fresh",
+    "training_split": "full_body",
+    "parent_plan_id": null,
+    "parent_plan_version": null,
+    "revision_id": null,
+    "revision_reasons": [],
+    "progression_decision_ids": [],
+    "lifecycle_policy_version": null,
+    "weekly_volume": [
+      {
+        "muscle_group": "chest",
+        "weekly_sets": 6
+      },
+      {
+        "muscle_group": "core",
+        "weekly_sets": 4
+      },
+      {
+        "muscle_group": "glutes",
+        "weekly_sets": 12
+      },
+      {
+        "muscle_group": "hamstrings",
+        "weekly_sets": 6
+      },
+      {
+        "muscle_group": "lats",
+        "weekly_sets": 6
+      },
+      {
+        "muscle_group": "mid_back",
+        "weekly_sets": 6
+      },
+      {
+        "muscle_group": "quadriceps",
+        "weekly_sets": 6
+      }
+    ]
+  },
+  "sessions": [
+    {
+      "session_id": "session:selection:legacy-02a2-replay:1.4.0:muscle_gain:full_body:dumbbell.front_squat@1.0.0;dumbbell.romanian_deadlift@1.0.0;bodyweight.push_up@1.0.0;dumbbell.bent_over_row@1.0.0;bodyweight.hollow_hold@1.0.0:1",
+      "session_index": 1,
+      "selection_blueprint_id": "selection:legacy-02a2-replay:1.4.0:muscle_gain:full_body:dumbbell.front_squat@1.0.0;dumbbell.romanian_deadlift@1.0.0;bodyweight.push_up@1.0.0;dumbbell.bent_over_row@1.0.0;bodyweight.hollow_hold@1.0.0",
+      "estimated_duration_minutes": 24,
+      "mixed_modal": null,
+      "prescriptions": [
+        {
+          "prescription_id": "prescription_6be7d51c0f9257a1f1e8e0bb",
+          "exercise_id": "dumbbell.front_squat",
+          "exercise_version": "1.0.0",
+          "movement_pattern": "squat",
+          "sets": 3,
+          "rep_min": 8,
+          "rep_max": 12,
+          "target_rpe": "7",
+          "target_rir": 3,
+          "rest_seconds": 90,
+          "tempo": "3-1-1-0",
+          "target_load_kg": null,
+          "selection_policy_version": "training-goal-policy-v1:full_body:constraints:",
+          "prescription_policy_version": "training-structure-policy-v1:muscle_gain:intermediate:full_body:fresh",
+          "construction_policy_version": "training-structure-policy-v1:muscle_gain:intermediate:full_body:fresh"
+        },
+        {
+          "prescription_id": "prescription_7cca0e5bca525428993bb8c7",
+          "exercise_id": "bodyweight.push_up",
+          "exercise_version": "1.0.0",
+          "movement_pattern": "horizontal_push",
+          "sets": 3,
+          "rep_min": 8,
+          "rep_max": 12,
+          "target_rpe": "7",
+          "target_rir": 3,
+          "rest_seconds": 90,
+          "tempo": "3-1-1-0",
+          "target_load_kg": null,
+          "selection_policy_version": "training-goal-policy-v1:full_body:constraints:",
+          "prescription_policy_version": "training-structure-policy-v1:muscle_gain:intermediate:full_body:fresh",
+          "construction_policy_version": "training-structure-policy-v1:muscle_gain:intermediate:full_body:fresh"
+        },
+        {
+          "prescription_id": "prescription_69d650abd32fc9b039e2facb",
+          "exercise_id": "dumbbell.bent_over_row",
+          "exercise_version": "1.0.0",
+          "movement_pattern": "horizontal_pull",
+          "sets": 3,
+          "rep_min": 8,
+          "rep_max": 12,
+          "target_rpe": "7",
+          "target_rir": 3,
+          "rest_seconds": 90,
+          "tempo": "3-1-1-0",
+          "target_load_kg": null,
+          "selection_policy_version": "training-goal-policy-v1:full_body:constraints:",
+          "prescription_policy_version": "training-structure-policy-v1:muscle_gain:intermediate:full_body:fresh",
+          "construction_policy_version": "training-structure-policy-v1:muscle_gain:intermediate:full_body:fresh"
+        },
+        {
+          "prescription_id": "prescription_38b68171dddc79de0d504504",
+          "exercise_id": "dumbbell.romanian_deadlift",
+          "exercise_version": "1.0.0",
+          "movement_pattern": "hinge",
+          "sets": 3,
+          "rep_min": 8,
+          "rep_max": 12,
+          "target_rpe": "7",
+          "target_rir": 3,
+          "rest_seconds": 90,
+          "tempo": "3-1-1-0",
+          "target_load_kg": null,
+          "selection_policy_version": "training-goal-policy-v1:full_body:constraints:",
+          "prescription_policy_version": "training-structure-policy-v1:muscle_gain:intermediate:full_body:fresh",
+          "construction_policy_version": "training-structure-policy-v1:muscle_gain:intermediate:full_body:fresh"
+        },
+        {
+          "prescription_id": "prescription_6d191a20ccc46efd04538b80",
+          "exercise_id": "bodyweight.hollow_hold",
+          "exercise_version": "1.0.0",
+          "movement_pattern": "core_anti_extension",
+          "sets": 2,
+          "rep_min": 8,
+          "rep_max": 12,
+          "target_rpe": "7",
+          "target_rir": 3,
+          "rest_seconds": 45,
+          "tempo": "2-1-2-0",
+          "target_load_kg": null,
+          "selection_policy_version": "training-goal-policy-v1:full_body:constraints:",
+          "prescription_policy_version": "training-structure-policy-v1:muscle_gain:intermediate:full_body:fresh",
+          "construction_policy_version": "training-structure-policy-v1:muscle_gain:intermediate:full_body:fresh"
+        }
+      ]
+    },
+    {
+      "session_id": "session:selection:legacy-02a2-replay:1.4.0:muscle_gain:full_body:dumbbell.front_squat@1.0.0;dumbbell.romanian_deadlift@1.0.0;bodyweight.push_up@1.0.0;dumbbell.bent_over_row@1.0.0;bodyweight.hollow_hold@1.0.0:2",
+      "session_index": 2,
+      "selection_blueprint_id": "selection:legacy-02a2-replay:1.4.0:muscle_gain:full_body:dumbbell.front_squat@1.0.0;dumbbell.romanian_deadlift@1.0.0;bodyweight.push_up@1.0.0;dumbbell.bent_over_row@1.0.0;bodyweight.hollow_hold@1.0.0",
+      "estimated_duration_minutes": 24,
+      "mixed_modal": null,
+      "prescriptions": [
+        {
+          "prescription_id": "prescription_a66317f3ccfb0da9ea0d58b9",
+          "exercise_id": "dumbbell.front_squat",
+          "exercise_version": "1.0.0",
+          "movement_pattern": "squat",
+          "sets": 3,
+          "rep_min": 8,
+          "rep_max": 12,
+          "target_rpe": "7",
+          "target_rir": 3,
+          "rest_seconds": 90,
+          "tempo": "3-1-1-0",
+          "target_load_kg": null,
+          "selection_policy_version": "training-goal-policy-v1:full_body:constraints:",
+          "prescription_policy_version": "training-structure-policy-v1:muscle_gain:intermediate:full_body:fresh",
+          "construction_policy_version": "training-structure-policy-v1:muscle_gain:intermediate:full_body:fresh"
+        },
+        {
+          "prescription_id": "prescription_4fcf2df6e13fca2317a5987c",
+          "exercise_id": "bodyweight.push_up",
+          "exercise_version": "1.0.0",
+          "movement_pattern": "horizontal_push",
+          "sets": 3,
+          "rep_min": 8,
+          "rep_max": 12,
+          "target_rpe": "7",
+          "target_rir": 3,
+          "rest_seconds": 90,
+          "tempo": "3-1-1-0",
+          "target_load_kg": null,
+          "selection_policy_version": "training-goal-policy-v1:full_body:constraints:",
+          "prescription_policy_version": "training-structure-policy-v1:muscle_gain:intermediate:full_body:fresh",
+          "construction_policy_version": "training-structure-policy-v1:muscle_gain:intermediate:full_body:fresh"
+        },
+        {
+          "prescription_id": "prescription_6d358d8f780b19d9c96ec625",
+          "exercise_id": "dumbbell.bent_over_row",
+          "exercise_version": "1.0.0",
+          "movement_pattern": "horizontal_pull",
+          "sets": 3,
+          "rep_min": 8,
+          "rep_max": 12,
+          "target_rpe": "7",
+          "target_rir": 3,
+          "rest_seconds": 90,
+          "tempo": "3-1-1-0",
+          "target_load_kg": null,
+          "selection_policy_version": "training-goal-policy-v1:full_body:constraints:",
+          "prescription_policy_version": "training-structure-policy-v1:muscle_gain:intermediate:full_body:fresh",
+          "construction_policy_version": "training-structure-policy-v1:muscle_gain:intermediate:full_body:fresh"
+        },
+        {
+          "prescription_id": "prescription_5117761ba4303be70b9241ce",
+          "exercise_id": "dumbbell.romanian_deadlift",
+          "exercise_version": "1.0.0",
+          "movement_pattern": "hinge",
+          "sets": 3,
+          "rep_min": 8,
+          "rep_max": 12,
+          "target_rpe": "7",
+          "target_rir": 3,
+          "rest_seconds": 90,
+          "tempo": "3-1-1-0",
+          "target_load_kg": null,
+          "selection_policy_version": "training-goal-policy-v1:full_body:constraints:",
+          "prescription_policy_version": "training-structure-policy-v1:muscle_gain:intermediate:full_body:fresh",
+          "construction_policy_version": "training-structure-policy-v1:muscle_gain:intermediate:full_body:fresh"
+        },
+        {
+          "prescription_id": "prescription_eb02d3324258f8eaf4f3537a",
+          "exercise_id": "bodyweight.hollow_hold",
+          "exercise_version": "1.0.0",
+          "movement_pattern": "core_anti_extension",
+          "sets": 2,
+          "rep_min": 8,
+          "rep_max": 12,
+          "target_rpe": "7",
+          "target_rir": 3,
+          "rest_seconds": 45,
+          "tempo": "2-1-2-0",
+          "target_load_kg": null,
+          "selection_policy_version": "training-goal-policy-v1:full_body:constraints:",
+          "prescription_policy_version": "training-structure-policy-v1:muscle_gain:intermediate:full_body:fresh",
+          "construction_policy_version": "training-structure-policy-v1:muscle_gain:intermediate:full_body:fresh"
+        }
+      ]
+    }
+  ]
+}

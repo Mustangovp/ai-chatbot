@@ -768,10 +768,11 @@ def _structure_policy(goal: TrainingGoal, level: Difficulty, split: TrainingSpli
                           TrainingSplit.PUSH_PULL_LEGS: 3}[split]
     sessions = 1 if recovery is RecoveryAssumption.LIMITED else requested_sessions
     return TrainingStructurePolicy(
-        version=f"training-structure-policy-v1:{goal.value}:{level.value}:{split.value}:{recovery.value}"
+        version=f"training-structure-policy-v2:typed-dose-v2:{goal.value}:{level.value}:{split.value}:{recovery.value}"
                 + (f":mixed-modal:{mixed_modal.value}" if mixed_modal is not None else "")
                 + (":dose-step:1" if mixed_modal_dose_step else ""),
         goal=goal, experience_level=level, training_split=split, recovery=recovery, sessions_per_week=sessions,
+        prescription_schema="exercise-prescription-v2",
         session_patterns=(policy or training_goal_policy(goal, split)).session_patterns,
         movement_order=(MovementPattern.SQUAT, MovementPattern.LUNGE,
                         MovementPattern.HORIZONTAL_PUSH, MovementPattern.HORIZONTAL_PULL,

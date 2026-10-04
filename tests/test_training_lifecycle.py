@@ -37,6 +37,7 @@ def _workout(plan):
         tuple(ExercisePerformance(
             item.exercise_id, item.exercise_version, item.sets, item.rep_max,
             Decimal("7"), 3, Decimal("20"), True,
+            prescription_type=item.prescription_type, completed_duration_seconds=item.duration_max_seconds,
         ) for item in plan.sessions[0].prescriptions),
     )
 

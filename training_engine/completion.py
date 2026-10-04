@@ -11,6 +11,7 @@ from typing import Any, Mapping
 from .construction import ExercisePrescription, TrainingPlanBlueprintV2, TrainingSessionBlueprint
 from .progression import ExercisePerformance, WorkoutResult
 from .registry import ExerciseLibrary
+from .prescription import PrescriptionType
 
 QUALITATIVE_EFFORTS = frozenset({"easy", "productive", "hard", "incomplete"})
 
@@ -44,6 +45,10 @@ def completion_projection(plan: TrainingPlanBlueprintV2, library: ExerciseLibrar
                 "exercise_id": prescription.exercise_id,
                 "exercise_version": prescription.exercise_version,
                 "display_name": exercise.display_name,
+                "difficulty": exercise.difficulty.value,
+                "prescription_type": prescription.prescription_type.value,
+                "duration_min_seconds": prescription.duration_min_seconds,
+                "duration_max_seconds": prescription.duration_max_seconds,
                 "prescribed_sets": prescription.sets,
                 "rep_min": prescription.rep_min,
                 "rep_max": prescription.rep_max,
@@ -63,11 +68,13 @@ class CompletedPrescription:
     exercise_id: str
     exercise_version: str
     completed_sets: int
-    completed_repetitions: int
+    completed_repetitions: int | None
     completed_load: Decimal | None
     completed_rir: int | None
     completed_rpe: Decimal | None
     completed_effort: str | None
+    prescription_type: PrescriptionType = PrescriptionType.REPETITIONS
+    completed_duration_seconds: int | None = None
 
 
 @dataclass(frozen=True)
@@ -93,6 +100,8 @@ class WorkoutCompletion:
                 exercise_version=item.exercise_version,
                 completed_sets=item.completed_sets,
                 completed_repetitions=item.completed_repetitions,
+                prescription_type=item.prescription_type,
+                completed_duration_seconds=item.completed_duration_seconds,
                 achieved_rpe=item.completed_rpe,
                 achieved_rir=item.completed_rir,
                 qualitative_effort=item.completed_effort,
@@ -146,6 +155,14 @@ def validate_workout_completion_payload(payload: Any) -> None:
         _nonnegative_int(item.get("completed_sets"), "completed_sets")
         if item.get("completed_repetitions") is not None:
             _nonnegative_int(item.get("completed_repetitions"), "completed_repetitions")
+        kind = PrescriptionType(item.get("prescription_type", "repetitions"))
+        if kind is PrescriptionType.DURATION:
+            if item.get("completed_repetitions") is not None:
+                raise ValueError("duration evidence cannot report repetitions")
+            if item.get("completed_duration_seconds") is not None:
+                _nonnegative_int(item["completed_duration_seconds"], "completed_duration_seconds")
+        elif item.get("completed_duration_seconds") is not None:
+            raise ValueError("repetition evidence cannot report duration")
         _optional_decimal(item.get("completed_load"), "completed_load")
         _optional_int(item.get("completed_rir"), "completed_rir", 0, 10)
         _optional_decimal(item.get("completed_rpe"), "completed_rpe", Decimal("1"), Decimal("10"))
@@ -169,17 +186,33 @@ def _completed_exercise(payload: Any, expected: Mapping[str, ExercisePrescriptio
     if (payload.get("exercise_id"), payload.get("exercise_version")) != (prescription.exercise_id, prescription.exercise_version):
         raise ValueError("completed exercise identity does not match its prescription")
     sets = _nonnegative_int(payload.get("completed_sets"), "completed_sets")
-    repetitions = _nonnegative_int(payload.get("completed_repetitions"), "completed_repetitions")
+    kind = prescription.prescription_type
+    if PrescriptionType(payload.get("prescription_type", "repetitions")) is not kind:
+        raise ValueError("completion dose type does not match its prescription")
+    duration = None
+    repetitions = None
+    if kind is PrescriptionType.DURATION:
+        if payload.get("completed_repetitions") is not None:
+            raise ValueError("duration evidence cannot report repetitions")
+        duration = _nonnegative_int(payload.get("completed_duration_seconds"), "completed_duration_seconds")
+        work = duration
+    else:
+        if payload.get("completed_duration_seconds") is not None:
+            raise ValueError("repetition evidence cannot report duration")
+        repetitions = _nonnegative_int(payload.get("completed_repetitions"), "completed_repetitions")
+        work = repetitions
     if sets > prescription.sets:
         raise ValueError("completed sets exceed the rendered prescription")
-    if (sets == 0) != (repetitions == 0):
-        raise ValueError("completed work must include both sets and repetitions")
+    if (sets == 0) != (work == 0):
+        raise ValueError("completed work must include both sets and observed dose")
     return CompletedPrescription(
         prescription_id=identifier,
         exercise_id=prescription.exercise_id,
         exercise_version=prescription.exercise_version,
         completed_sets=sets,
         completed_repetitions=repetitions,
+        prescription_type=kind,
+        completed_duration_seconds=duration,
         completed_load=_optional_decimal(payload.get("completed_load"), "completed_load"),
         completed_rir=_optional_int(payload.get("completed_rir"), "completed_rir", 0, 10),
         completed_rpe=_optional_decimal(payload.get("completed_rpe"), "completed_rpe", Decimal("1"), Decimal("10")),

@@ -306,14 +306,14 @@ def structure_mixed_modal_plan(
             cap = (prescribed_sets * (60 + rest) + 59) // 60
         else:
             upper_seconds = 30 * max(0, len(session.prescriptions) - 1)
-            upper_seconds += sum(item.sets * item.rep_max * sum(int(phase) for phase in item.tempo.split("-"))
+            upper_seconds += sum(item.sets * int(item.work_seconds(sum(int(phase) for phase in item.tempo.split("-")), maximum=True))
                                  + max(0, item.sets - 1) * item.rest_seconds
                                  for item in session.prescriptions)
             cap = (upper_seconds + 59) // 60
         if kind in {SessionFormat.EMOM, SessionFormat.INTERVALS}:
             for item in session.prescriptions:
                 work_seconds = 60
-                if item.rep_max * sum(int(phase) for phase in item.tempo.split("-")) > work_seconds:
+                if item.work_seconds(sum(int(phase) for phase in item.tempo.split("-")), maximum=True) > work_seconds:
                     raise MixedModalPlanningError("prescribed station dose exceeds the timed work window")
         cap = max(5, cap)
         if cap > 60:

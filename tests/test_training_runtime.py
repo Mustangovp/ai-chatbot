@@ -79,6 +79,8 @@ def _persisted_completion_record(plan, *, workout_id="cross-session-1", rpe=None
             "exercise_version": item["exercise_version"],
             "completed_sets": item["prescribed_sets"] if complete else item["prescribed_sets"] - 1,
             "completed_repetitions": item["rep_max"],
+            **({"prescription_type": "duration", "completed_duration_seconds": item["duration_max_seconds"]}
+               if item["prescription_type"] == "duration" else {}),
             "completed_load": None,
             "completed_rpe": rpe,
             "completed_rir": rir,

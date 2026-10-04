@@ -35,6 +35,8 @@ def _payload(plan, *, rpe=None, rir=None):
             "exercise_version": exercise["exercise_version"],
             "completed_sets": exercise["prescribed_sets"],
             "completed_repetitions": exercise["rep_max"],
+            **({"prescription_type": "duration", "completed_duration_seconds": exercise["duration_max_seconds"]}
+               if exercise["prescription_type"] == "duration" else {}),
             "completed_load": "20",
             "completed_rpe": rpe,
             "completed_rir": rir,

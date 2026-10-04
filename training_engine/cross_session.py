@@ -8,6 +8,7 @@ from typing import Mapping, Sequence
 
 from .completion import validate_workout_completion_payload
 from .construction import TrainingPlanBlueprintV2
+from .prescription import PrescriptionType
 from .lifecycle import PlanRevisionReason
 from .lifecycle_runtime import advance_training_lifecycle
 from .progression import (
@@ -169,7 +170,10 @@ def _performance(item: Mapping[str, object]) -> ExercisePerformance | None:
         return ExercisePerformance(
             exercise_id=str(item["exercise_id"]), exercise_version=str(item["exercise_version"]),
             completed_sets=int(item["completed_sets"]),
-            completed_repetitions=int(item["completed_repetitions"]),
+            completed_repetitions=(int(item["completed_repetitions"])
+                                   if item.get("completed_repetitions") is not None else None),
+            prescription_type=PrescriptionType(item.get("prescription_type", "repetitions")),
+            completed_duration_seconds=item.get("completed_duration_seconds"),
             achieved_rpe=parsed_rpe, achieved_rir=parsed_rir,
             qualitative_effort=effort,
             load_kg=(Decimal(str(item["completed_load"]))

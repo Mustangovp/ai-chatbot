@@ -335,6 +335,8 @@ training_completion_prescriptions = Table("training_completion_prescriptions", m
     Column("exercise_version", String(48), nullable=False),
     Column("completed_sets", Integer, nullable=False),
     Column("completed_repetitions", Integer, nullable=False),
+    Column("prescription_type", String(16), nullable=False, server_default="repetitions"),
+    Column("completed_duration_seconds", Integer),
     Column("completed_load", Float),
     Column("completed_rpe", Float),
     Column("completed_rir", Integer),
@@ -543,6 +545,7 @@ _MIGRATIONS = [
     # recorded production ledgers without dropping data.
     (26, lambda c: _ensure_free_activation_analytics_state_width(c)),
     (27, lambda c: _ensure_nutrition_plan_schema(c)),
+    (28, lambda c: _add_training_completion_duration(c)),
 ]
 
 
@@ -894,6 +897,35 @@ def _add_runtime_nutrition_followup(connection):
     if "nutrition_followup" not in columns:
         connection.execute(text(
             "ALTER TABLE conversation_runtime_state ADD COLUMN nutrition_followup VARCHAR(40)"))
+
+def _add_training_completion_duration(connection):
+    """Add typed seconds without rewriting legacy repetition evidence."""
+    table = "training_completion_prescriptions"
+    columns = {item["name"] for item in inspect(connection).get_columns(table)}
+    if "prescription_type" not in columns:
+        connection.execute(text(f"ALTER TABLE {table} ADD COLUMN prescription_type "
+                                "VARCHAR(16) NOT NULL DEFAULT 'repetitions'"))
+    if "completed_duration_seconds" not in columns:
+        connection.execute(text(f"ALTER TABLE {table} ADD COLUMN completed_duration_seconds INTEGER"))
+    columns = {item["name"] for item in inspect(connection).get_columns(table)}
+    if not {"prescription_type", "completed_duration_seconds"} <= columns:
+        raise RuntimeError("training completion duration schema is incomplete")
+
+
+def _completion_fact_projection(row):
+    """Duration uses zero in the legacy NOT NULL rep column, never seconds.
+
+    The storage-only sentinel becomes None at every evidence read boundary.
+    Legacy repetition rows retain their exact shape and values for replay.
+    """
+    fact = {key: row[key] for key in (
+        "prescription_id", "exercise_id", "exercise_version", "completed_sets",
+        "completed_repetitions", "completed_load", "completed_rpe", "completed_rir", "completed_effort")}
+    if row.get("prescription_type") == "duration":
+        fact.update(prescription_type="duration", completed_repetitions=None,
+                    completed_duration_seconds=row["completed_duration_seconds"])
+    return fact
+
 
 def run_migrations():
     """Create the base schema, then apply any pending versioned migrations.
@@ -2082,14 +2114,7 @@ def list_training_completion_records(user_id, limit=60):
                 "workout_id": row["workout_id"], "plan_id": plan["plan_id"],
                 "plan_version": plan["plan_version"], "session_id": session["session_id"],
                 "completion_timestamp": _aware(row["completed_at"]).isoformat(),
-                "exercises": [{
-                    "prescription_id": item["prescription_id"],
-                    "exercise_id": item["exercise_id"], "exercise_version": item["exercise_version"],
-                    "completed_sets": item["completed_sets"],
-                    "completed_repetitions": item["completed_repetitions"],
-                    "completed_load": item["completed_load"], "completed_rpe": item["completed_rpe"],
-                    "completed_rir": item["completed_rir"], "completed_effort": item["completed_effort"],
-                } for item in facts],
+                "exercises": [_completion_fact_projection(item) for item in facts],
             }
             records.append({
                 "id": str(row["id"]), "occurred_at": _aware(row["completed_at"]).isoformat(),
@@ -2148,8 +2173,12 @@ def record_training_completion(user_id, session, completion):
             prescribed_sets = prescription["prescription"].get("sets")
             if not isinstance(prescribed_sets, int) or fact["completed_sets"] > prescribed_sets:
                 raise ValueError("completed sets exceed the delivered prescription")
-            if (fact["completed_sets"] == 0) != (fact["completed_repetitions"] == 0):
-                raise ValueError("completed work must include both sets and repetitions")
+            kind = prescription["prescription"].get("prescription_type", "repetitions")
+            if fact.get("prescription_type", "repetitions") != kind:
+                raise ValueError("completion dose type does not match delivered prescription")
+            work = fact.get("completed_duration_seconds") if kind == "duration" else fact["completed_repetitions"]
+            if (fact["completed_sets"] == 0) != (work == 0):
+                raise ValueError("completed work must include both sets and observed dose")
             seen.add(fact["prescription_id"])
             facts.append(fact)
         if set(expected) != seen:
@@ -2171,12 +2200,15 @@ def record_training_completion(user_id, session, completion):
         for fact_index, fact in enumerate(facts, 1):
             c.execute(insert(training_completion_prescriptions).values(
                 id=uuid.uuid4(), completion_id=completion_uuid,
-                prescription_index=fact_index, **fact,
+                prescription_index=fact_index, **{**fact, "completed_repetitions":
+                    0 if fact.get("prescription_type") == "duration" else fact["completed_repetitions"]},
             ))
         _materialize_progression_from_lineage(c, user_uuid, plan, completion_uuid)
         _materialize_training_trajectory(c, user_uuid, plan)
         legacy_id = uuid.uuid4()
         execution_facts = [{**fact, "actual_repetitions": fact["completed_repetitions"],
+                            **({"actual_duration_seconds": fact["completed_duration_seconds"]}
+                               if fact.get("prescription_type") == "duration" else {}),
                             "execution_state": "completed"} for fact in facts]
         execution_completion = {**completion, "execution_state": "completed",
                                 "exercises": execution_facts}
@@ -2242,10 +2274,7 @@ def _materialize_progression_from_lineage(connection, user_uuid, plan_row, sourc
                 "workout_id": completion["workout_id"], "plan_id": plan.plan_id,
                 "plan_version": plan.version, "session_id": session["session_id"],
                 "completion_timestamp": _aware(completion["completed_at"]).isoformat(),
-                "exercises": [{key: row[key] for key in (
-                    "prescription_id", "exercise_id", "exercise_version", "completed_sets",
-                    "completed_repetitions", "completed_load", "completed_rpe", "completed_rir",
-                    "completed_effort")} for row in facts],
+                "exercises": [_completion_fact_projection(row) for row in facts],
             }
             payloads.append(payload)
             sources[completion["workout_id"]] = (completion, facts)
@@ -2449,10 +2478,17 @@ def _validated_completion_fact(value):
     required = ("prescription_id", "exercise_id", "exercise_version", "completed_sets", "completed_repetitions")
     if any(field not in value for field in required):
         raise ValueError("completion prescription is incomplete")
-    if (isinstance(value["completed_sets"], bool) or isinstance(value["completed_repetitions"], bool)
-            or not isinstance(value["completed_sets"], int) or not isinstance(value["completed_repetitions"], int)
-            or value["completed_sets"] < 0 or value["completed_repetitions"] < 0):
+    kind = value.get("prescription_type", "repetitions")
+    if kind not in {"repetitions", "duration"}:
+        raise ValueError("completion dose type is invalid")
+    work = value.get("completed_duration_seconds") if kind == "duration" else value["completed_repetitions"]
+    if (type(value["completed_sets"]) is not int or type(work) is not int
+            or value["completed_sets"] < 0 or work < 0):
         raise ValueError("completion performance values are invalid")
+    if kind == "duration" and value["completed_repetitions"] is not None:
+        raise ValueError("duration evidence cannot contain repetitions")
+    if kind == "repetitions" and value.get("completed_duration_seconds") is not None:
+        raise ValueError("repetition evidence cannot contain duration")
     def optional_number(field, minimum=None, maximum=None):
         raw = value.get(field)
         if raw is None:
@@ -2480,6 +2516,8 @@ def _validated_completion_fact(value):
         "exercise_version": _lineage_text(value["exercise_version"], "exercise_version"),
         "completed_sets": value["completed_sets"],
         "completed_repetitions": value["completed_repetitions"],
+        **({"prescription_type": "duration", "completed_duration_seconds": work}
+           if kind == "duration" else {}),
         "completed_load": optional_number("completed_load", minimum=0),
         "completed_rpe": optional_number("completed_rpe", minimum=1, maximum=10),
         "completed_rir": completed_rir,
@@ -2525,7 +2563,9 @@ def build_memory_context(user_id, en=True):
         return cnt
     L.append(("  Frequency (7d): " if en else "  Честота (7д): ") + str(_within(7)) + ("/week" if en else "/седмица"))
     exs = last.get("exercises") or []
-    exs_str = ", ".join(f"{e.get('name') or e.get('exercise_id')} {e.get('completed_sets')}×{e.get('completed_repetitions')}" +
+    exs_str = ", ".join(f"{e.get('name') or e.get('exercise_id')} {e.get('completed_sets')}×" +
+                        (f"{e.get('completed_duration_seconds')}s" if e.get('prescription_type') == 'duration'
+                         else str(e.get('completed_repetitions'))) +
                         (f" @{e.get('weight')}kg" if e.get('weight') else "") for e in exs)
     try:
         occ = _aware(_dt.datetime.fromisoformat(last["occurred_at"]))

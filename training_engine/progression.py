@@ -15,6 +15,7 @@ from typing import Iterable, TYPE_CHECKING
 
 from .construction import ExercisePrescription, TrainingPlanBlueprintV2
 from .registry import ExerciseLibrary, load_exercise_library
+from .prescription import PrescriptionType
 
 if TYPE_CHECKING:
     from .progression_state import ExerciseProgressState
@@ -41,21 +42,33 @@ class ExercisePerformance:
     exercise_id: str
     exercise_version: str
     completed_sets: int
-    completed_repetitions: int
+    completed_repetitions: int | None
     achieved_rpe: Decimal | None
     achieved_rir: int | None
     load_kg: Decimal | None
     completed: bool
     pain_reported: bool = False
     qualitative_effort: str | None = None
+    prescription_type: PrescriptionType = PrescriptionType.REPETITIONS
+    completed_duration_seconds: int | None = None
 
     def __post_init__(self) -> None:
         if not self.exercise_id or not self.exercise_version:
             raise ValueError("exercise performance requires traceable exercise identity")
         if not isinstance(self.completed_sets, int) or self.completed_sets < 0:
             raise ValueError("completed sets must be non-negative")
-        if not isinstance(self.completed_repetitions, int) or self.completed_repetitions < 0:
-            raise ValueError("completed repetitions must be non-negative")
+        if not isinstance(self.prescription_type, PrescriptionType):
+            raise ValueError("unsupported performance dose type")
+        if self.prescription_type is PrescriptionType.DURATION:
+            work = self.completed_duration_seconds
+            if self.completed_repetitions is not None:
+                raise ValueError("duration performance cannot contain repetitions")
+        else:
+            work = self.completed_repetitions
+            if self.completed_duration_seconds is not None:
+                raise ValueError("repetition performance cannot contain duration")
+        if type(work) is not int or work < 0:
+            raise ValueError("completed dose must be non-negative")
         if self.achieved_rpe is not None:
             rpe = Decimal(str(self.achieved_rpe))
             if not Decimal("1") <= rpe <= Decimal("10"):
@@ -73,7 +86,7 @@ class ExercisePerformance:
             raise ValueError("completion and pain flags must be boolean")
         if self.qualitative_effort not in (None, "easy", "productive", "hard", "incomplete"):
             raise ValueError("qualitative effort is invalid")
-        if self.completed and (self.completed_sets < 1 or self.completed_repetitions < 1):
+        if self.completed and (self.completed_sets < 1 or work < 1):
             raise ValueError("completed performance requires completed work")
 
 
@@ -345,7 +358,16 @@ class ProgressionEngine:
         if (not policy.allow_single_effort_signal
                 and (latest.achieved_rir is None or latest.achieved_rpe is None)):
             return cls._build(ProgressionDecisionType.MAINTAIN, "effort_not_recorded", prescription, plan, policy)
-        if latest.completed_repetitions < prescription.rep_max:
+        if latest.prescription_type is not prescription.prescription_type:
+            return cls._build(ProgressionDecisionType.MAINTAIN, "performance_dose_type_mismatch",
+                              prescription, plan, policy)
+        if prescription.prescription_type is PrescriptionType.DURATION:
+            # No seconds-to-repetitions conversion or new duration progression.
+            # Existing load/set authority may run only after the hold ceiling.
+            if latest.completed_duration_seconds < prescription.duration_max_seconds:
+                return cls._build(ProgressionDecisionType.MAINTAIN, "duration_range_not_reached",
+                                  prescription, plan, policy)
+        elif latest.completed_repetitions < prescription.rep_max:
             return cls._build(ProgressionDecisionType.INCREASE_REPETITIONS, "repetition_range_not_reached",
                               prescription, plan, policy, repetitions=policy.repetition_increment)
         prior = tuple(item for item in progression_history

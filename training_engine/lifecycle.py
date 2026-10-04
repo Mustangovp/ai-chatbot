@@ -232,8 +232,7 @@ class TrainingLifecycleOrchestrator:
     def _duration(prescriptions: tuple[ExercisePrescription, ...]) -> int:
         seconds = 30 * max(0, len(prescriptions) - 1)
         for item in prescriptions:
-            average_reps = Decimal(item.rep_min + item.rep_max) / Decimal("2")
-            seconds += int(Decimal(item.sets) * average_reps * 4)
+            seconds += int(item.sets * item.work_seconds(4))
             seconds += max(0, item.sets - 1) * item.rest_seconds
         return max(1, int((Decimal(seconds) / Decimal("60")).to_integral_value(rounding=ROUND_HALF_UP)))
 

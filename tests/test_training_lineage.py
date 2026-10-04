@@ -51,6 +51,9 @@ def _completion(plan, *, workout_id="lineage-workout-1", sets=None, effort="easy
             "exercise_version": item["exercise_version"],
             "completed_sets": item["prescribed_sets"] if sets is None else sets,
             "completed_repetitions": item["rep_max"] if sets is None or sets > 0 else 0,
+            **({"prescription_type": "duration", "completed_repetitions": None,
+                "completed_duration_seconds": item["duration_max_seconds"] if sets is None or sets > 0 else 0}
+               if item["prescription_type"] == "duration" else {}),
             "completed_load": 20,
             "completed_rpe": 6,
             "completed_rir": 4,
