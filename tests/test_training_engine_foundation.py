@@ -25,9 +25,9 @@ from training_engine import (
 def test_default_registry_has_stable_versioned_exercise_taxonomy():
     library = load_exercise_library()
 
-    assert library.version == "1.3.0"
+    assert library.version == "1.4.0"
     assert library is load_exercise_library()
-    assert len(library.exercises) == 31
+    assert len(library.exercises) == 40
     assert {item.movement_pattern for item in library.exercises} == set(MovementPattern)
     assert {Equipment.BODYWEIGHT, Equipment.DUMBBELL, Equipment.BARBELL,
             Equipment.CABLE, Equipment.RESISTANCE_BAND, Equipment.PULLUP_BAR} <= {

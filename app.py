@@ -2583,6 +2583,15 @@ def _brain_enforcement_physiology(user_id):
         return None
 
 
+_REGISTRY_SHOULDER_ALIASES = {
+    "dumbbell.bent_over_row": "dumbbell_row",
+    "bodyweight.negative_pull_up": "assisted_pull_up",
+    "dumbbell.reverse_lunge": "dumbbell_lunge",
+    "dumbbell.front_squat": "goblet_squat",
+    "bodyweight.hollow_hold": "dead_bug",
+}
+
+
 def _shoulder_validator_id(exercise_id):
     """Map a namespaced registry ID to the shoulder index's explicit movement ID.
 
@@ -2592,6 +2601,8 @@ def _shoulder_validator_id(exercise_id):
     existing validator fails closed.
     """
     value = str(exercise_id or "")
+    # Explicit registry aliases reuse the existing load taxonomy, not new safety rules.
+    value = _REGISTRY_SHOULDER_ALIASES.get(value, value)
     for candidate in (value, value.replace(".", "_"), value.rsplit(".", 1)[-1]):
         if candidate in EXERCISE_SHOULDER_LOAD:
             return candidate

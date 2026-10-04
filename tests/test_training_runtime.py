@@ -108,7 +108,7 @@ def test_runtime_adapter_builds_a_deterministic_traceable_training_plan():
     assert all(item.exercise_id and item.exercise_version
                for item in first.sessions[0].prescriptions)
     rendered = renderer.render_delivery(first, load_exercise_library(), (), "en")
-    assert "Goblet Squat" in rendered
+    assert "Dumbbell Front Squat" in rendered
     assert "RPE" in rendered and "tempo" in rendered
 
 
@@ -493,14 +493,13 @@ def test_longitudinal_rationale_is_bounded_and_invalid_history_is_ignored():
 
 
 def test_expanded_exercise_library_has_unique_ids_and_final_shoulder_index_coverage():
+    from app import _shoulder_validator_id
+
     library = load_exercise_library()
-    assert len(library.exercises) == 31
+    assert len(library.exercises) == 40
     assert len({(item.exercise_id, item.version) for item in library.exercises}) == len(library.exercises)
     for exercise in library.exercises:
-        candidates = (exercise.exercise_id, exercise.exercise_id.replace(".", "_"),
-                      exercise.exercise_id.rsplit(".", 1)[-1])
-        assert any(shoulder_load_movements_for(candidate) != frozenset({"unknown_shoulder_load"})
-                   for candidate in candidates), exercise.exercise_id
+        assert shoulder_load_movements_for(_shoulder_validator_id(exercise.exercise_id)) != frozenset({"unknown_shoulder_load"}), exercise.exercise_id
         for reference in (exercise.progression.next_exercise_ids
                           + exercise.regression.prior_exercise_ids
                           + exercise.prerequisite_exercise_ids):
@@ -562,9 +561,9 @@ def test_split_support_rejects_unknown_split_without_falling_back_to_full_body()
 
 def test_persona_signal_changes_only_a_safe_deterministic_rank_tie():
     signals = persona_expert_training_signals(persona_match=_persona(goals=("strength",)))
-    baseline = build_training_plan(recommendation_blueprint_id="rec-base", facts=_PROFILE)
+    baseline = build_training_plan(recommendation_blueprint_id="rec-base", facts=_BEGINNER_PROFILE)
     advised = build_training_plan(
-        recommendation_blueprint_id="rec-advised", facts=_PROFILE,
+        recommendation_blueprint_id="rec-advised", facts=_BEGINNER_PROFILE,
         advisory_preferred_exercise_ids=signals.preferred_exercise_ids,
     )
 
@@ -599,7 +598,7 @@ def test_hard_exclusions_beat_persona_and_expert_preferences():
     )
 
     assert "dumbbell.row" not in _exercise_ids(persona_plan)
-    assert "bodyweight.table_row" in _exercise_ids(persona_plan)
+    assert "dumbbell.bent_over_row" in _exercise_ids(persona_plan)
     assert "bodyweight.wall_push_up" not in _exercise_ids(expert_plan)
     assert "bodyweight.incline_push_up" in _exercise_ids(expert_plan)
 

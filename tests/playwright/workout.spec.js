@@ -2125,7 +2125,9 @@ test.describe('APEX approved app shell — UX regression', () => {
         'Bodyweight Squat', 'Goblet Squat', 'Reverse Lunge', 'Bodyweight Hip Hinge',
         'Dumbbell Romanian Deadlift', 'Dumbbell Row', 'Resistance-Band Row',
         'Dumbbell Overhead Press', 'Seated Dumbbell Press', 'Pull-Up', 'Front Plank',
-        'Barbell Back Squat', 'Easy march in place', 'Chair squat', 'Glute bridge', 'Bird-dog'];
+        'Barbell Back Squat', 'Dumbbell Bench Press', 'Barbell Bench Press', 'Dumbbell Bent-Over Row',
+        'Negative Pull-Up', 'Dumbbell Reverse Lunge', 'Dumbbell Front Squat', 'Barbell Deadlift',
+        'Hollow Body Hold', 'Dumbbell Push Press', 'Easy march in place', 'Chair squat', 'Glute bridge', 'Bird-dog'];
       const fields = ['overview', 'starting', 'execution', 'breathing', 'cues', 'mistakes', 'regression', 'safety'];
       return {
         missing: engineNames.filter((name) => !ApexExerciseInstructions.find(name)),
@@ -2136,6 +2138,41 @@ test.describe('APEX approved app shell — UX regression', () => {
     expect(catalog.missing).toEqual([]);
     expect(catalog.incomplete).toEqual([]);
   });
+
+  for (const language of ['bg', 'en']) {
+    test(`WO-CAT-4: v1.4 instructions resolve all nine identities without replacing the ${language} prescription`, async ({ page }) => {
+      const rendered = await page.evaluate((language) => {
+        lang = language;
+        const ids = ['dumbbell.bench_press', 'barbell.bench_press', 'dumbbell.bent_over_row',
+          'bodyweight.negative_pull_up', 'dumbbell.reverse_lunge', 'dumbbell.front_squat',
+          'barbell.deadlift', 'bodyweight.hollow_hold', 'dumbbell.push_press'];
+        const exercises = ids.map((id, index) => ({
+          prescription_id: `registry-prescription-${index}`, exercise_id: id, exercise_version: '1.0.0',
+          display_name: ApexExerciseInstructions.display(ApexExerciseInstructions.findByExerciseId(id), language),
+          prescribed_sets: 2, rep_min: 8, rep_max: 10, rest_seconds: 60,
+        }));
+        const session = { session_id: 'registry-instructions', session_index: 1, exercises };
+        pendingTrainingCompletion = { plan_id: 'registry-plan', plan_version: 'v2', sessions: [session] };
+        pendingCompletionSessions = [session];
+        const markdown = ['| Exercise | Sets | Reps | Rest | Note |', '| --- | --- | --- | --- | --- |',
+          ...exercises.map((item) => `| ${item.display_name} | 2 | 8-10 | 60 | controlled |`)].join('\n');
+        appendCoach().innerHTML = renderMarkdown(markdown);
+        return Object.values(renderedWorkoutExercises).flat().map((item) => ({
+          id: item.completion.exercise_id, name: item.name, canonical_id: item.canonical_id,
+          sets: item.sets, reps: item.reps, rest: item.rest,
+        }));
+      }, language);
+      await expect(page.locator('.workout-protocol .workout-exercise-card')).toHaveCount(9);
+      await expect(page.locator('.ei-section:empty')).toHaveCount(0);
+      expect(rendered).toHaveLength(9);
+      for (const item of rendered) {
+        expect(item.canonical_id).toBe(item.id);
+        expect(item).toMatchObject({ sets: '2', reps: '8-10', rest: '60' });
+        await expect(page.locator('.workout-protocol')).toContainText(item.name);
+      }
+      await expect(page.locator('.workout-protocol')).toContainText(language === 'en' ? 'Starting position' : '\u041d\u0430\u0447\u0430\u043b\u043d\u0430 \u043f\u043e\u0437\u0438\u0446\u0438\u044f');
+    });
+  }
 
   test('WO-CAT-2: a single-exercise question renders one focused card without replay or network', async ({ page }) => {
     const calls = await page.evaluate(async () => {

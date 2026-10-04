@@ -100,7 +100,7 @@ def test_selection_rejects_exercise_when_its_prerequisite_is_unavailable():
         (MovementPattern.VERTICAL_PULL,), False,
     )
     result = TrainingSelectionEngine.select(
-        load_exercise_library(),
+        load_exercise_library("1.3.0"),
         _request(
             goal=TrainingGoal.MAINTENANCE,
             experience=Difficulty.ADVANCED,

@@ -20,7 +20,7 @@ from .models import (
 )
 
 
-EXERCISE_LIBRARY_VERSION = "1.3.0"
+EXERCISE_LIBRARY_VERSION = "1.4.0"
 
 
 @dataclass(frozen=True)
@@ -97,7 +97,8 @@ def _exercise(exercise_id: str, name: str, primary: tuple[str, ...], secondary: 
     )
 
 
-_EXERCISES = (
+# Released tuples are append-only catalog boundaries, never slices of the current catalog.
+_EXERCISES_V1_2 = (
     _exercise("bodyweight.wall_push_up", "Wall Push-Up", ("chest",), ("triceps", "anterior_deltoid"),
               MovementPattern.HORIZONTAL_PUSH, frozenset({Equipment.BODYWEIGHT}), Difficulty.BEGINNER,
               ("upper_body", "push", "home"),
@@ -201,6 +202,9 @@ _EXERCISES = (
     _exercise("band.pallof_press", "Resistance-Band Pallof Press", ("core",), ("obliques", "shoulders"),
               MovementPattern.CORE_ANTI_EXTENSION, frozenset({Equipment.RESISTANCE_BAND}), Difficulty.BEGINNER,
               ("core", "home"), ("Use a secure anchor and resist rotation without holding your breath.",)),
+)
+
+_EXERCISES_V1_3 = _EXERCISES_V1_2 + (
     _exercise("bodyweight.march_in_place", "March in Place", ("calves",), ("glutes", "core"),
               MovementPattern.MONOSTRUCTURAL, frozenset({Equipment.BODYWEIGHT}), Difficulty.BEGINNER,
               ("monostructural", "conditioning", "home"),
@@ -208,14 +212,64 @@ _EXERCISES = (
 )
 
 
-_DEFAULT_LIBRARY = ExerciseLibrary(EXERCISE_LIBRARY_VERSION, _EXERCISES)
-_LEGACY_LIBRARY = ExerciseLibrary("1.2.0", _EXERCISES[:-1])
+_EXERCISES_V1_4 = _EXERCISES_V1_3 + (
+    _exercise("dumbbell.bench_press", "Dumbbell Bench Press", ("chest",), ("triceps", "anterior_deltoid"),
+              MovementPattern.HORIZONTAL_PUSH, frozenset({Equipment.DUMBBELL, Equipment.BENCH}), Difficulty.INTERMEDIATE,
+              ("upper_body", "push"), ("Use a stable bench and a controlled, pain-free shoulder range.",),
+              regression=("dumbbell.floor_press",)),
+    _exercise("barbell.bench_press", "Barbell Bench Press", ("chest",), ("triceps", "anterior_deltoid"),
+              MovementPattern.HORIZONTAL_PUSH, frozenset({Equipment.BARBELL, Equipment.BENCH}), Difficulty.ADVANCED,
+              ("upper_body", "push", "barbell"),
+              ("Use a stable bench, rack and correctly set safety arms or a competent spotter; never bounce the bar.",),
+              regression=("dumbbell.bench_press",)),
+    _exercise("dumbbell.bent_over_row", "Dumbbell Bent-Over Row", ("lats", "mid_back"),
+              ("biceps", "posterior_deltoid", "erectors"),
+              MovementPattern.HORIZONTAL_PULL, frozenset({Equipment.DUMBBELL}), Difficulty.INTERMEDIATE,
+              ("upper_body", "pull"), ("Maintain a stable hip hinge and avoid using trunk momentum.",),
+              regression=("dumbbell.row",)),
+    _exercise("bodyweight.negative_pull_up", "Negative Pull-Up", ("lats",), ("biceps", "mid_back"),
+              MovementPattern.VERTICAL_PULL, frozenset({Equipment.PULLUP_BAR}), Difficulty.INTERMEDIATE,
+              ("upper_body", "pull"),
+              ("Use a secure bar and a stable way to reach the top; lower under control without dropping or swinging.",),
+              progression=("bodyweight.pull_up",), regression=("band.lat_pulldown",)),
+    _exercise("dumbbell.reverse_lunge", "Dumbbell Reverse Lunge", ("quadriceps", "glutes"),
+              ("hamstrings", "calves", "core"),
+              MovementPattern.LUNGE, frozenset({Equipment.DUMBBELL}), Difficulty.INTERMEDIATE,
+              ("lower_body", "unilateral"), ("Keep the front knee aligned with the foot and control balance and depth.",),
+              regression=("bodyweight.reverse_lunge",)),
+    _exercise("dumbbell.front_squat", "Dumbbell Front Squat", ("quadriceps", "glutes"),
+              ("hamstrings", "core", "upper_back"),
+              MovementPattern.SQUAT, frozenset({Equipment.DUMBBELL}), Difficulty.INTERMEDIATE,
+              ("lower_body", "squat"), ("Keep the dumbbells supported at shoulder height; do not press them overhead.",),
+              regression=("dumbbell.goblet_squat",)),
+    _exercise("barbell.deadlift", "Barbell Deadlift", ("glutes", "hamstrings", "quadriceps"),
+              ("erectors", "forearms", "upper_back"),
+              MovementPattern.HINGE, frozenset({Equipment.BARBELL}), Difficulty.ADVANCED,
+              ("lower_body", "hinge", "barbell"),
+              ("Brace before lifting, keep the bar close and stop if a neutral spine cannot be maintained.",),
+              regression=("dumbbell.romanian_deadlift",)),
+    _exercise("bodyweight.hollow_hold", "Hollow Body Hold", ("core",), ("hip_flexors",),
+              MovementPattern.CORE_ANTI_EXTENSION, frozenset({Equipment.BODYWEIGHT}), Difficulty.INTERMEDIATE,
+              ("core", "home"), ("Keep arms beside the trunk, the low back on the floor and breathe; shorten the lever if it arches.",),
+              regression=("bodyweight.plank",)),
+    _exercise("dumbbell.push_press", "Dumbbell Push Press", ("deltoids",),
+              ("triceps", "quadriceps", "glutes", "core"),
+              MovementPattern.VERTICAL_PUSH, frozenset({Equipment.DUMBBELL}), Difficulty.INTERMEDIATE,
+              ("upper_body", "push"),
+              ("Use controlled leg drive and a pain-free overhead range without lumbar extension; avoid under overhead restrictions.",),
+              regression=("dumbbell.overhead_press",)),
+)
+
+_LIBRARIES = MappingProxyType({
+    "1.2.0": ExerciseLibrary("1.2.0", _EXERCISES_V1_2),
+    "1.3.0": ExerciseLibrary("1.3.0", _EXERCISES_V1_3),
+    "1.4.0": ExerciseLibrary("1.4.0", _EXERCISES_V1_4),
+})
 
 
 def load_exercise_library(version: str | None = None) -> ExerciseLibrary:
     """Resolve the recorded catalog version for immutable plan replay."""
-    if version is None or version == EXERCISE_LIBRARY_VERSION:
-        return _DEFAULT_LIBRARY
-    if version == _LEGACY_LIBRARY.version:
-        return _LEGACY_LIBRARY
-    raise ValueError("unknown exercise library version")
+    try:
+        return _LIBRARIES[EXERCISE_LIBRARY_VERSION if version is None else version]
+    except KeyError as error:
+        raise ValueError("unknown exercise library version") from error
