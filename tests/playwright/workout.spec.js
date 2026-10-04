@@ -1873,40 +1873,21 @@ test.describe('APEX approved app shell — UX regression', () => {
     expect(result.calls).toEqual(['/chat', '/api/profile', '/chat']);
   });
 
-  test('AUTH-5: account profile language overrides an incognito browser default after login', async ({ page }) => {
-    const restored = await page.evaluate(async () => {
-      lang = 'en';
-      localStorage.setItem('apexLang', 'en');
-      const originalFetch = window.fetch;
-      window.fetch = async (url) => {
-        if (url === '/auth/me') {
-          return new Response(JSON.stringify({ authenticated: true, email: 'bg@example.com', plan: 'free', status: 'free' }), {
-            status: 200, headers: { 'Content-Type': 'application/json' }
-          });
-        }
-        if (url === '/api/profile') {
-          return new Response(JSON.stringify({ profile: { age: '33', language: 'bg' } }), {
-            status: 200, headers: { 'Content-Type': 'application/json' }
-          });
-        }
-        if (url === '/api/history') {
-          return new Response(JSON.stringify({ workouts: [], nutrition: [], timeline: [] }), {
-            status: 200, headers: { 'Content-Type': 'application/json' }
-          });
-        }
-        if (url === '/api/conversations?limit=60') {
-          return new Response(JSON.stringify({ messages: [] }), {
-            status: 200, headers: { 'Content-Type': 'application/json' }
-          });
-        }
-        return originalFetch(url);
-      };
-      await loadSession(null);
-      const result = { lang, documentLang: document.documentElement.lang, stored: localStorage.getItem('apexLang') };
-      window.fetch = originalFetch;
-      return result;
+  test('AUTH-5: account profile language overrides only an unsaved browser fallback after login', async ({ page }) => {
+    await page.evaluate(() => {
+      localStorage.removeItem('apexLang');
+      const profile = pfLoad();delete profile.language;delete profile.lang;
+      ownedStorageSet('apexProfile', JSON.stringify(profile));
     });
-
+    await page.route('**/auth/me', route => route.fulfill({ json: {
+      authenticated: true, email: 'bg@example.com', plan: 'free', status: 'free',
+    } }));
+    await page.route('**/api/profile', route => route.fulfill({ json: { profile: { age: '33', language: 'bg' } } }));
+    await page.route('**/api/history', route => route.fulfill({ json: { workouts: [], nutrition: [], timeline: [] } }));
+    await page.route('**/api/conversations?limit=60', route => route.fulfill({ json: { messages: [] } }));
+    await page.goto('/app');
+    await expect(page.locator('html')).toHaveAttribute('lang', 'bg');
+    const restored = await page.evaluate(() => ({ lang, documentLang: document.documentElement.lang, stored: localStorage.getItem('apexLang') }));
     expect(restored).toEqual({ lang: 'bg', documentLang: 'bg', stored: 'bg' });
   });
 

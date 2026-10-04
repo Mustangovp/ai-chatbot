@@ -672,23 +672,8 @@ footer a:hover{color:var(--text);}
 <script>
 /* ═══════════ LANGUAGE ═══════════ */
 let lang='bg';
-try{
-  const saved=localStorage.getItem('apexLang');
-  const nav=(navigator.language||(navigator.languages&&navigator.languages[0])||'').toLowerCase();
-  if(saved==='bg'){
-    lang='bg';
-  }else if(saved==='en'){
-    // Saved EN is respected — unless the browser is clearly Bulgarian.
-    // A BG browser + saved 'en' means prior contamination (e.g. opened a shared /en link).
-    // Silently recover: reset to BG and do not redirect.
-    if(nav.startsWith('bg')){lang='bg';localStorage.setItem('apexLang','bg');}
-    else{lang='en';}
-  }else{
-    // No saved preference: detect from browser language.
-    if(nav.startsWith('en'))lang='en';
-    localStorage.setItem('apexLang',lang);
-  }
-}catch(e){}
+// This authored BG page does not overwrite a saved app preference on a visit.
+// Its CTA passes the explicit BG choice; the language toggle saves a user choice.
 const T={
   en:{
     'nav-cta':'Start free','slogan':'Your peak. Your pulse.',

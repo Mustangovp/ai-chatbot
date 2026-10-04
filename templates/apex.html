@@ -1512,7 +1512,19 @@ const T={
     priv:{title:'Поверителност и безопасност',b:'<h4>Твоите данни</h4><p>Преди вход APEX може да използва локално хранилище в браузъра. След вход профилът и историята в акаунта ти се съхраняват от APEX, за да се запазват между сесии и устройства.</p><h4>Медицинска безопасност</h4><p>APEX е треньорски инструмент. Не диагностицира, не предписва и не замества медицински специалисти. При болка, симптоми или заболявания се консултирай с лекар.</p><h4>Треньорски контекст</h4><p>APEX използва релевантния треньорски контекст за персонализирани насоки и планове, включително обработка от AI услугата. Данните ти не се продават.</p>'},
     about:{title:'За APEX',b:'<p><strong>APEX PULSE PRO</strong> е жива AI биологична операционна система — личен треньор, който чете физиологията ти и адаптира всеки план за теб.</p><h4>Какво прави</h4><ul><li>Персонализирани тренировки и хранене</li><li>Треньорство спрямо възстановяването</li><li>Постоянна треньорска памет</li></ul><p style="color:var(--faint);margin-top:12px">Версия 3.3 · Твоят връх. Твоят пулс.</p>'}}
 };
-let lang=(apexStorageGet('apexLang')||'en').toLowerCase(); if(lang!=='bg'&&lang!=='en')lang='en';
+function supportedLanguage(value){
+  const normalized=typeof value==='string'?value.trim().toLowerCase():'';
+  return normalized==='bg'||normalized==='en'?normalized:null;
+}
+// Keep the explicit choice after applyIntent removes the navigation query.
+let navigationLanguage=supportedLanguage(new URLSearchParams(location.search).get('lang'));
+function resolveAppLanguage(profile=pfLoad()){
+  return navigationLanguage||supportedLanguage(apexStorageGet('apexLang'))||
+    supportedLanguage(profile.language)||supportedLanguage(profile.lang)||
+    (String(navigator.language||(navigator.languages&&navigator.languages[0])||'').toLowerCase().startsWith('bg')?'bg':'en');
+}
+let lang=resolveAppLanguage();
+if(navigationLanguage)apexStorageSet('apexLang',lang);
 function tr(){return T[lang];}
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -1596,8 +1608,9 @@ function applyLang(){
   applyReadout();
 }
 function toggleLang(){
-  lang=lang==='en'?'bg':'en';apexStorageSet('apexLang',lang);
-  const profile=pfLoad();profile.language=lang;ownedStorageSet('apexProfile',JSON.stringify(profile));accountSaveProfile(profile);
+  lang=lang==='en'?'bg':'en';navigationLanguage=lang;apexStorageSet('apexLang',lang);
+  const profile=pfLoad();profile.language=lang;if('lang' in profile)profile.lang=lang;
+  ownedStorageSet('apexProfile',JSON.stringify(profile));accountSaveProfile(profile);
   applyLang();renderTrainingConstraints(ACTIVE_TRAINING_CONSTRAINTS);if(consultOn)resetGreeting();
 }
 
@@ -1876,14 +1889,22 @@ async function loadSession(tokenAccess){
   if(SESSION.authenticated&&SESSION.email)activateDataOwner('account',SESSION.email.trim().toLowerCase());
   else activateDataOwner('anonymous',DATA_OWNER.kind==='anonymous'?DATA_OWNER.id:anonymousOwnerId());
   // If just signed in, pull the account's canonical data down (DB → cache) once.
-  if(SESSION.authenticated){
-    await syncFromAccount();
-    const savedProfile=pfLoad();
-    const savedLanguage=String((savedProfile.language||savedProfile.lang||'')).toLowerCase();
-    if(savedLanguage==='bg'||savedLanguage==='en'){
-      lang=savedLanguage;apexStorageSet('apexLang',lang);applyLang();
+  const accountProfileLoaded=SESSION.authenticated?await syncFromAccount():false;
+  const savedProfile=pfLoad();
+  lang=resolveAppLanguage(savedProfile);
+  const hasLanguagePreference=navigationLanguage||supportedLanguage(apexStorageGet('apexLang'))||
+    supportedLanguage(savedProfile.language)||supportedLanguage(savedProfile.lang);
+  if(hasLanguagePreference){
+    apexStorageSet('apexLang',lang);
+    // Never upload an incomplete cache when the canonical account read failed.
+    if((SESSION.authenticated?accountProfileLoaded:Object.keys(savedProfile).length>0)&&
+      (savedProfile.language!==lang||('lang' in savedProfile&&savedProfile.lang!==lang))){
+      savedProfile.language=lang;if('lang' in savedProfile)savedProfile.lang=lang;
+      ownedStorageSet('apexProfile',JSON.stringify(savedProfile));
+      if(SESSION.authenticated)await accountSaveProfile(savedProfile);
     }
   }
+  applyLang();
   const restoredProfile=pfLoad();
   if(restoredProfile&&restoredProfile._medical_hold&&restoredProfile._medical_hold.status==='ACTIVE_MEDICAL_HOLD'){
     activateMedicalHold(false);
@@ -1895,6 +1916,7 @@ function isElite(){ return SESSION.plan==='core'||SESSION.plan==='pro'; }
 async function syncFromAccount(){
   // Read account truth without uploading anonymous/browser state. For fields
   // present in both places, the server copy is authoritative.
+  let profileLoaded=false;
   try{
     const [profileResponse,historyResponse,conversationResponse]=await Promise.all([
       fetch('/api/profile',{credentials:'same-origin'}),
@@ -1909,6 +1931,7 @@ async function syncFromAccount(){
       if(d&&d.profile&&typeof d.profile==='object'){
         const merged=Object.assign({},local,d.profile);
         if(Object.keys(merged).length)ownedStorageSet('apexProfile',JSON.stringify(merged));
+        profileLoaded=true;
       }
     }
     if(historyResponse.ok){
@@ -1944,6 +1967,7 @@ async function syncFromAccount(){
     }
     applyReadout();
   }catch(e){ console.debug('sync failed',e); }
+  return profileLoaded;
 }
 function applyAthleteCoreProjection(projection){
   try{return !!(core&&core.setServerProjection(projection));}catch(e){return false;}
@@ -3523,8 +3547,7 @@ let toastTimer;function toast(msg){const el=document.getElementById('toast');el.
 const GOAL_FROM_LANDING={burn:'fat_loss',zero:'general',growth:'muscle_gain',build:'strength'};
 function applyIntent(){
   const q=new URLSearchParams(location.search);
-  // language
-  const ul=q.get('lang'); if(ul==='bg'||ul==='en'){lang=ul;apexStorageSet('apexLang',lang);}
+  // Language was resolved before startup; the explicit choice survives query cleanup.
   // goal from landing goal-cards → pre-seed profile goal
   const g=q.get('goal'); if(g&&GOAL_FROM_LANDING[g]){const p=pfLoad();if(!p.goal){p.goal=GOAL_FROM_LANDING[g];ownedStorageSet('apexProfile',JSON.stringify(p));}}
   // Stripe return → poll for token (payment flow preserved)
