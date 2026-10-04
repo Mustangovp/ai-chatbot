@@ -1748,6 +1748,37 @@ def save_profile(user_id, data: dict):
             c.execute(insert(profiles).values(id=uuid.uuid4(), user_id=_as_uuid(user_id), data=data))
 
 
+def save_profile_learning(user_id, previous: dict, learned: dict) -> bool:
+    """Merge detached learning only if its source learning state is still current.
+
+    The final compare-and-swap also protects concurrent explicit profile saves.
+    Comparing serialized JSON works on PostgreSQL JSON and SQLite without adding
+    schema or holding a database lock during network extraction.
+    """
+    keys = frozenset({"preferences", "habits", "constraints", "patterns",
+                      "confidence", "timeline", "clarifications"})
+    if set(previous) != keys or set(learned) != keys:
+        raise ValueError("invalid learning profile fields")
+    if previous == learned:
+        return False
+    with engine.begin() as c:
+        row = c.execute(select(
+            profiles.c.id, profiles.c.data,
+            profiles.c.data.cast(String).label("serialized_data"),
+        ).where(profiles.c.user_id == _as_uuid(user_id))).mappings().first()
+        if row is None:
+            return False
+        current = dict(row["data"])
+        if any(current.get(key, [] if key == "timeline" else {}) != previous[key] for key in keys):
+            return False
+        current.update(learned)
+        result = c.execute(update(profiles).where(
+            profiles.c.id == row["id"],
+            profiles.c.data.cast(String) == row["serialized_data"],
+        ).values(data=current))
+        return result.rowcount == 1
+
+
 def list_account_training_constraint_records(user_id, *, active_only=True):
     """Return bounded account-owned constraint records without free-form chat text."""
     with engine.begin() as c:

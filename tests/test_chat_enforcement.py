@@ -18,6 +18,7 @@ import json
 import re
 import time
 import types
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import FrozenInstanceError, replace
 from decimal import Decimal
 import pytest
@@ -105,6 +106,16 @@ def _enforce_off_by_default(monkeypatch):
     monkeypatch.delenv("PERSONA_EXPERT_COMMUNICATION_ACTIVE", raising=False)
     monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "false")
     yield
+
+
+@pytest.fixture(autouse=True)
+def _isolated_learning_worker(monkeypatch):
+    # Keep the real dispatch/persistence boundary, stub only external extraction,
+    # and drain detached work before the next test changes profiles or patches.
+    monkeypatch.setattr(appmod.HumanLearningEngine, "extract_facts", lambda *_args: {})
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="test-chat-learning") as executor:
+        monkeypatch.setattr(appmod, "_learning_worker_executor", lambda: executor)
+        yield
 
 
 def _events(resp):

@@ -9,6 +9,10 @@ import time
 import datetime as _dt
 import base64
 import threading
+import atexit
+import logging
+from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
 import json as _json_lib
 import re
 from typing import Mapping
@@ -2118,17 +2122,69 @@ Current profile values:
 from brain.learning.schema import HumanModel
 from brain.learning.engine import HumanLearningEngine
 
+_learning_slots = threading.BoundedSemaphore(16)
+_learning_executor_lock = threading.Lock()
+_learning_executor = None
+_learning_executor_pid = None
+_learning_logger = logging.getLogger("apex.learning")
+
+
+def _learning_worker_executor():
+    """Create a bounded, serial learning pool inside the post-fork process."""
+    global _learning_executor, _learning_executor_pid
+    with _learning_executor_lock:
+        if _learning_executor is None or _learning_executor_pid != os.getpid():
+            _learning_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="apex-learning")
+            _learning_executor_pid = os.getpid()
+        return _learning_executor
+
+
+def _shutdown_learning_executor():
+    global _learning_executor
+    with _learning_executor_lock:
+        executor, _learning_executor = _learning_executor, None
+    if executor is not None:
+        executor.shutdown(wait=False, cancel_futures=True)
+
+
+atexit.register(_shutdown_learning_executor)
+
+
 def _update_learning_engine(uid, user_msg, assistant_reply, current_profile):
-    model = HumanModel(current_profile)
-    HumanLearningEngine.process_exchange(model, user_msg, assistant_reply)
-    updated_profile = model.to_dict()
-    for k, v in updated_profile.items():
-        current_profile[k] = v
+    """Schedule best-effort learning without waiting for extraction or its result.
+
+    Called once after exchange persistence. Preserve already-resolved profile
+    changes before dispatch; extraction must not own restriction persistence.
+    A saturated pool drops learning; detached work never shares the profile.
+    """
     if uid:
         try:
             _save_chat_profile(uid, current_profile)
-        except Exception as e:
-            print(f"[learning] save_profile failed: {e}")
+        except Exception as error:
+            _learning_logger.warning("[learning] profile persistence failed: %s", type(error).__name__)
+    if not _learning_slots.acquire(blocking=False):
+        return None
+    try:
+        profile_snapshot = deepcopy(current_profile)
+
+        def work():
+            try:
+                source = store.get_profile(uid) if uid else profile_snapshot
+                model = HumanModel(deepcopy(source))
+                previous = deepcopy(model.to_dict())
+                HumanLearningEngine.process_exchange(model, user_msg, assistant_reply)
+                if uid:
+                    store.save_profile_learning(uid, previous, model.to_dict())
+            except Exception as error:
+                _learning_logger.warning("[learning] background failed: %s", type(error).__name__)
+
+        future = _learning_worker_executor().submit(work)
+        future.add_done_callback(lambda _done: _learning_slots.release())
+        return future
+    except Exception as error:
+        _learning_slots.release()
+        _learning_logger.warning("[learning] scheduling failed: %s", type(error).__name__)
+        return None
 
 
 def _daily_nutrition_target(message, profile_block, history=None):
