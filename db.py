@@ -2124,6 +2124,58 @@ def list_training_completion_records(user_id, limit=60):
     return records
 
 
+def get_my_training(user_id):
+    """Account-owned SELECTs only; no materialization or legacy truth inference."""
+    from my_training import last_completed, latest_workout
+
+    owner = _as_uuid(user_id)
+    with engine.connect() as connection:
+        plan = connection.execute(select(delivered_training_plans).where(
+            delivered_training_plans.c.user_id == owner).order_by(
+                delivered_training_plans.c.delivered_at.desc(),
+                delivered_training_plans.c.id.desc()).limit(1)).mappings().first()
+        session = None
+        prescriptions = []
+        if plan:
+            first_sessions = connection.execute(select(delivered_training_sessions).where(
+                delivered_training_sessions.c.delivered_plan_id == plan["id"],
+                delivered_training_sessions.c.session_index == 1)).mappings().all()
+            session = first_sessions[0] if len(first_sessions) == 1 else None
+            if session:
+                prescriptions = connection.execute(select(delivered_training_prescriptions).where(
+                    delivered_training_prescriptions.c.delivered_session_id == session["id"]
+                )).mappings().all()
+        latest = latest_workout(plan, session, prescriptions)
+        completion = connection.execute(select(training_completions).where(
+            training_completions.c.user_id == owner,
+            training_completions.c.completion_percent == 100).order_by(
+                training_completions.c.completed_at.desc(),
+                training_completions.c.id.desc()).limit(1)).mappings().first()
+        completed = None
+        if completion:
+            completed_plan = connection.execute(select(delivered_training_plans).where(
+                delivered_training_plans.c.id == completion["delivered_plan_id"],
+                delivered_training_plans.c.user_id == owner)).mappings().first()
+            completed_session = connection.execute(select(delivered_training_sessions).where(
+                delivered_training_sessions.c.id == completion["delivered_session_id"],
+                delivered_training_sessions.c.delivered_plan_id == completion["delivered_plan_id"]
+            )).mappings().first()
+            facts = connection.execute(select(training_completion_prescriptions).where(
+                training_completion_prescriptions.c.completion_id == completion["id"]
+            ).order_by(training_completion_prescriptions.c.prescription_index)).mappings().all()
+            completed = last_completed(completion, completed_plan, completed_session,
+                                       [_completion_fact_projection(item) for item in facts])
+        rows = connection.execute(select(account_training_constraints.c.id,
+                                         account_training_constraints.c.pattern).where(
+            account_training_constraints.c.user_id == owner,
+            account_training_constraints.c.state == "active"
+        ).order_by(account_training_constraints.c.created_at, account_training_constraints.c.id)).mappings().all()
+        if any(row["pattern"] not in _ACCOUNT_TRAINING_CONSTRAINT_PATTERNS for row in rows):
+            raise ValueError("unsupported saved training constraint")
+        constraints = [{"id": str(row["id"]), "pattern": row["pattern"]} for row in rows]
+    return {"latest_workout": latest, "last_completed": completed, "active_constraints": constraints}
+
+
 def record_training_completion(user_id, session, completion):
     """Atomically store normalized completion facts and legacy history output.
 

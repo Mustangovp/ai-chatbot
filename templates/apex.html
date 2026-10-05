@@ -149,6 +149,19 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 /* Subscription / info panels reuse .sheet */
 .panel-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:13px 0;border-top:1px solid var(--border);font-size:14px;}
 .panel-row:first-of-type{border-top:none;}
+.my-training{margin-top:20px;}
+.my-training-section{padding:18px 0;border-top:1px solid var(--border);}
+.my-training-section:first-child{padding-top:0;border-top:0;}
+.my-training-section h3{font-size:16px;font-weight:700;line-height:1.4;letter-spacing:0;margin-bottom:12px;}
+.my-training-meta,.my-training-empty{font-size:14px;line-height:1.6;color:var(--muted);}
+.my-training-meta{margin-bottom:10px;}
+.my-training-list{list-style:none;margin:0;padding:0;}
+.my-training-exercise{display:grid;grid-template-columns:80px minmax(0,1fr);gap:12px;align-items:center;padding:10px 0;}
+.my-training-exercise h4{font-size:14px;line-height:1.5;font-weight:650;letter-spacing:0;overflow-wrap:anywhere;}
+.my-training-dose{font-size:13px;line-height:1.6;color:var(--muted);margin-top:3px;}
+.my-training-constraints li{font-size:14px;line-height:1.6;padding:5px 0;}
+.my-training-action{position:sticky;bottom:0;padding-top:10px;background:var(--bg);z-index:1;}
+.my-training .save{border-radius:8px;font-size:14px;line-height:1.5;}
 .panel-row .pr-l{color:var(--muted);font-weight:600;} .panel-row .pr-v{font-weight:700;text-align:right;}
 .plan-badge{display:inline-flex;align-items:center;gap:6px;font-family:'Unbounded';font-weight:700;font-size:12px;letter-spacing:.5px;padding:6px 13px;border-radius:20px;}
 .plan-badge.pro{color:var(--gold);background:rgba(255,177,60,.12);border:1px solid rgba(255,177,60,.3);}
@@ -1443,7 +1456,7 @@ const T={
     woExit:'Exit',woSkip:'Skip rest',woResume:'Begin',woComplete:'Session complete',woGreat:'Logged. Recovery starts now.',
     woSummary:{ex:'Exercises',sets:'Sets',time:'Minutes'},todayWO:'Build me a workout for today',
     nutriTotal:'Daily totals',sec:'sec',jumpLatest:'Jump to latest',
-    menu:{home:'Home',consult:'Consultation',workouts:'My Workouts',nutrition:'Nutrition',progress:'Progress',
+    menu:{home:'Home',consult:'Consultation',workouts:'My Training',nutrition:'Nutrition',progress:'Progress',
       history:'History',profile:'Profile',feedback:'Feedback',subscription:'Subscription',language:'Language',
       settings:'Settings',privacy:'Privacy & Safety',about:'About APEX'},
     seed:{workouts:'Build me a workout for today',nutrition:'Build me a nutrition plan',progress:'How am I progressing? Analyze my training.'},
@@ -1758,7 +1771,7 @@ function menuAction(k){
   switch(k){
     case 'home': exitConsult(); break;
     case 'consult': enterConsult(); break;
-    case 'workouts': enterConsult(seed.workouts); break;
+    case 'workouts': showMyTraining(); break;
     case 'nutrition': enterConsult(seed.nutrition); break;
     case 'progress': enterConsult(seed.progress); break;
     case 'history': showHistory(); break;
@@ -1785,6 +1798,105 @@ function showPanel(title,bodyHtml){
   document.getElementById('panel-modal').classList.add('on');
 }
 function closePanel(){ document.getElementById('panel-modal').classList.remove('on'); }
+const MY_TRAINING_COPY={
+  bg:{title:'Моите тренировки',latest:'Последно създадена тренировка',completed:'Последно завършена',remembers:'APEX помни',
+    emptyLatest:'Още няма създадена тренировка.',emptyCompleted:'Още няма завършена тренировка.',emptyConstraints:'Няма запазени активни тренировъчни ограничения.',
+    create:'Създай тренировка за днес',loading:'Зареждане…',unavailable:'Тренировъчните данни не са достъпни в момента.',
+    sets:'серии',reps:'повторения',duration:'сек продължителност',rest:'сек почивка',minutes:'мин · приблизителна продължителност',load:'кг',exercise:'Упражнение'},
+  en:{title:'My Training',latest:'Latest generated workout',completed:'Last completed',remembers:'APEX remembers',
+    emptyLatest:'No workout has been generated yet.',emptyCompleted:'No workout has been completed yet.',emptyConstraints:'No active training constraints are saved.',
+    create:"Create today's workout",loading:'Loading…',unavailable:'Training data is unavailable at the moment.',
+    sets:'sets',reps:'repetitions',duration:'sec duration',rest:'sec rest',minutes:'min · estimated duration',load:'kg',exercise:'Exercise'}
+};
+let myTrainingDeliveryOwner=null;
+function myTrainingDate(value){
+  if(!value)return '';
+  const date=new Date(value);return Number.isFinite(date.getTime())?date.toLocaleDateString(lang==='bg'?'bg-BG':'en-GB',{day:'numeric',month:'short',year:'numeric'}):'';
+}
+function myTrainingExerciseName(item){
+  const api=window.ApexExerciseInstructions,record=api&&api.findByExerciseId(item.exercise_id);
+  return record?api.display(record,lang):(item.display_name||MY_TRAINING_COPY[lang].exercise);
+}
+function myTrainingRange(min,max){return min===max?String(min):String(min)+'–'+String(max);}
+function myTrainingExercises(items,completed=false){
+  const copy=MY_TRAINING_COPY[lang];
+  return '<ol class="my-training-list">'+items.map(item=>{
+    const duration=item.prescription_type==='duration',sets=completed?item.completed_sets:item.sets;
+    const work=completed?(duration?item.completed_duration_seconds:item.completed_repetitions):
+      (duration?myTrainingRange(item.duration_min_seconds,item.duration_max_seconds):myTrainingRange(item.rep_min,item.rep_max));
+    const facts=[sets+' '+copy.sets];
+    if(work!==null&&work!==undefined)facts.push(work+' '+(duration?copy.duration:copy.reps));
+    if(!completed&&Number.isInteger(item.rest_seconds))facts.push(item.rest_seconds+' '+copy.rest);
+    if(completed&&typeof item.completed_load==='number'&&Number.isFinite(item.completed_load))facts.push(item.completed_load+' '+copy.load);
+    return '<li class="my-training-exercise" data-training-exercise-id="'+esc(item.exercise_id||'')+'">'+renderExerciseVisual({completion:item},'thumb')+
+      '<div><h4>'+esc(myTrainingExerciseName(item))+'</h4><p class="my-training-dose">'+esc(facts.join(' · '))+'</p></div></li>';
+  }).join('')+'</ol>';
+}
+function renderMyTraining(data,state='ready'){
+  const copy=MY_TRAINING_COPY[lang],empty=text=>'<p class="my-training-empty">'+esc(text)+'</p>';
+  const unavailable=state==='error'?copy.unavailable:copy.loading;
+  const latest=data&&data.latest_workout,completed=data&&data.last_completed;
+  const summary=(workout,isCompleted)=>{
+    const date=myTrainingDate(isCompleted?workout.completed_at:workout.delivered_at),meta=[];
+    if(date)meta.push(date);
+    if(!isCompleted&&Number.isInteger(workout.estimated_duration_minutes))meta.push(workout.estimated_duration_minutes+' '+copy.minutes);
+    return (meta.length?'<p class="my-training-meta">'+esc(meta.join(' · '))+'</p>':'')+myTrainingExercises(workout.exercises,isCompleted);
+  };
+  const constraints=data&&Array.isArray(data.active_constraints)?data.active_constraints.filter(item=>item&&TRAINING_CONSTRAINT_LABELS[item.pattern]&&(!item.state||item.state==='active')):[];
+  const sections=[
+    ['latest',copy.latest,state!=='ready'?empty(unavailable):(latest&&Array.isArray(latest.exercises)&&latest.exercises.length?summary(latest,false):empty(copy.emptyLatest))],
+    ['completed',copy.completed,state!=='ready'?empty(unavailable):(completed&&Array.isArray(completed.exercises)&&completed.exercises.length?summary(completed,true):empty(copy.emptyCompleted))],
+    ['constraints',copy.remembers,state!=='ready'?empty(unavailable):(constraints.length?'<ul class="my-training-list my-training-constraints">'+constraints.map(item=>'<li>'+esc(TRAINING_CONSTRAINT_LABELS[item.pattern][lang])+'</li>').join('')+'</ul>':empty(copy.emptyConstraints))]
+  ];
+  return '<div class="my-training" id="my-training" aria-busy="'+(state==='loading')+'">'+sections.map(([key,title,body])=>
+    '<section class="my-training-section" data-my-training-block="'+key+'" aria-labelledby="my-training-'+key+'"><h3 id="my-training-'+key+'">'+esc(title)+'</h3>'+body+'</section>').join('')+
+    '<div class="my-training-action"><button class="save" id="my-training-create" onclick="createFromMyTraining()">'+esc(copy.create)+'</button></div></div>';
+}
+function browserMyTraining(){
+  let latest=null,completed=null;
+  // Only metadata attached to the current owner's actually rendered protocol
+  // is eligible. Later plan sessions and stale account UI are not browser facts.
+  const protocol=latestWorkoutProtocol(),key=protocol&&decodeURIComponent(protocol.dataset.workoutKey||''),contract=key&&pendingWorkoutContracts[key];
+  const first=pendingTrainingCompletion&&pendingTrainingCompletion.sessions&&pendingTrainingCompletion.sessions[0];
+  if(myTrainingDeliveryOwner===dataOwnerToken()&&contract&&first&&first.session_id===contract.session_id&&pendingTrainingCompletion.plan_id===contract.plan_id){
+    const exercises=(renderedWorkoutExercises[key]||[]).map(item=>item.completion);
+    if(exercises.length&&exercises.every(item=>item&&typeof item.exercise_id==='string'&&typeof item.exercise_version==='string')){
+      latest={exercises:exercises.map(item=>({...item,sets:item.prescribed_sets}))};
+    }
+  }
+  let log=[];try{log=JSON.parse(ownedStorageGet('apexWorkoutLog')||'[]');}catch(e){}
+  if(Array.isArray(log)){
+    const row=log.slice().reverse().find(item=>item&&item.execution_schema==='workout-execution-v1'&&item.execution_state==='completed'&&Array.isArray(item.exercises)&&item.exercises.length&&item.exercises.every(ex=>{
+      const work=ex.prescription_type==='duration'?ex.actual_duration_seconds:ex.actual_repetitions;
+      return ex.execution_state==='completed'&&Number.isInteger(ex.completed_sets)&&ex.completed_sets>0&&Number.isInteger(work)&&work>0;
+    }));
+    const date=row&&typeof row.ts==='number'?new Date(row.ts):null;
+    if(row)completed={completed_at:date&&Number.isFinite(date.getTime())?date.toISOString():null,exercises:row.exercises.map(ex=>({
+      exercise_id:ex.exercise_id,exercise_version:ex.exercise_version,display_name:ex.name,
+      completed_sets:ex.completed_sets,prescription_type:ex.prescription_type||'repetitions',
+      completed_repetitions:ex.prescription_type==='duration'?null:ex.actual_repetitions,
+      completed_duration_seconds:ex.prescription_type==='duration'?ex.actual_duration_seconds:null,completed_load:ex.completed_load
+    }))};
+  }
+  // There is no existing anonymous canonical constraint store. Health/profile
+  // prose and account constraint caches are deliberately not inferred here.
+  return {latest_workout:latest,last_completed:completed,active_constraints:[]};
+}
+async function showMyTraining(){
+  const owner=dataOwnerToken(),authenticated=SESSION.authenticated;
+  if(!authenticated){showPanel(MY_TRAINING_COPY[lang].title,renderMyTraining(browserMyTraining()));return;}
+  showPanel(MY_TRAINING_COPY[lang].title,renderMyTraining(null,'loading'));
+  try{
+    const response=await fetch('/api/my-training',{credentials:'same-origin',cache:'no-store'});
+    if(!response.ok)throw new Error('training_read_unavailable');
+    const data=await response.json();
+    if(owner!==dataOwnerToken()||!SESSION.authenticated||!document.getElementById('my-training'))return;
+    document.getElementById('panel-body').innerHTML=renderMyTraining(data);
+  }catch(e){
+    if(owner===dataOwnerToken()&&SESSION.authenticated&&document.getElementById('my-training'))document.getElementById('panel-body').innerHTML=renderMyTraining(null,'error');
+  }
+}
+function createFromMyTraining(){closePanel();enterConsult(tr().seed.workouts);}
 function fmtDate(ts){ try{return new Date(ts*1000).toLocaleDateString(lang==='bg'?'bg-BG':'en-GB',{day:'numeric',month:'short',year:'numeric'});}catch(e){return '—';} }
 async function showSubscription(){
   const s=tr().sub, a=tr().auth;
@@ -3149,6 +3261,7 @@ async function send(options={}){
 }
 
 async function runChatExchange(x,body){
+  myTrainingDeliveryOwner=dataOwnerToken();
   // M-1: watchdog aborts a stalled request after 75s of inactivity so the UI is
   // never stuck. Each token resets it, so a long but active stream is never cut.
   const kick=()=>{if(x.watchdog)clearTimeout(x.watchdog);x.watchdog=setTimeout(()=>x.controller.abort(),75000);};
