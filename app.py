@@ -1640,7 +1640,9 @@ def landing_en():
 @app.route("/app")
 def app_chat():
     """APEX V3 — the AI Operating System shell. The landing page, alive."""
-    return render_template("apex.html")
+    response = make_response(render_template("apex.html"))
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 def _free_activation_request_token(key):
