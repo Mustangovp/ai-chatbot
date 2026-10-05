@@ -1836,6 +1836,20 @@ def _require_user():
 # ═══════════════════════════════════════════════════════════
 # ACCOUNT DATA API — profile / history / memory (account-owned)
 # ═══════════════════════════════════════════════════════════
+@app.route("/api/progress", methods=["GET"])
+def api_progress():
+    user = _require_user()
+    if not user:
+        return jsonify({"error": "unauthenticated"}), 401
+    try:
+        response = jsonify(store.get_training_progress(user["id"]))
+        response.headers["Cache-Control"] = "private, no-store"
+        return response
+    except Exception as error:
+        print(f"[progress] read unavailable: {type(error).__name__}")
+        return jsonify({"error": "training_data_unavailable"}), 503
+
+
 @app.route("/api/my-training", methods=["GET"])
 def api_my_training():
     user = _require_user()

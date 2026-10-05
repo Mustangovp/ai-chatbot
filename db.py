@@ -2124,6 +2124,35 @@ def list_training_completion_records(user_id, limit=60):
     return records
 
 
+def get_training_progress(user_id):
+    """Account-owned ledger reads only; no legacy rows, writes or classifiers."""
+    from training_progress import progress_projection
+
+    owner = _as_uuid(user_id)
+    with engine.connect() as connection:
+        plans = connection.execute(select(delivered_training_plans).where(
+            delivered_training_plans.c.user_id == owner).order_by(
+                delivered_training_plans.c.delivered_at.desc(), delivered_training_plans.c.id.desc())).mappings().all()
+        sessions = connection.execute(select(delivered_training_sessions).join(delivered_training_plans,
+            delivered_training_sessions.c.delivered_plan_id == delivered_training_plans.c.id).where(
+                delivered_training_plans.c.user_id == owner)).mappings().all()
+        completions = connection.execute(select(training_completions).where(
+            training_completions.c.user_id == owner, training_completions.c.completion_percent == 100
+        ).order_by(training_completions.c.completed_at.desc(), training_completions.c.id.desc())).mappings().all()
+        rows = connection.execute(select(training_completion_prescriptions).join(training_completions,
+            training_completion_prescriptions.c.completion_id == training_completions.c.id).where(
+                training_completions.c.user_id == owner, training_completions.c.completion_percent == 100
+        ).order_by(training_completion_prescriptions.c.prescription_index)).mappings().all()
+        facts = [{"completion_id": row["completion_id"], "fact": _completion_fact_projection(row)} for row in rows]
+        events = connection.execute(select(training_progression_events).where(
+            training_progression_events.c.user_id == owner).order_by(
+                training_progression_events.c.event_at.desc(), training_progression_events.c.id.desc())).mappings().all()
+        trajectories = connection.execute(select(training_trajectory_states).where(
+            training_trajectory_states.c.user_id == owner).order_by(
+                training_trajectory_states.c.exercise_id, training_trajectory_states.c.exercise_version)).mappings().all()
+    return progress_projection(owner, plans, sessions, completions, facts, events, trajectories)
+
+
 def get_my_training(user_id):
     """Account-owned SELECTs only; no materialization or legacy truth inference."""
     from my_training import latest_workout

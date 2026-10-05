@@ -162,6 +162,20 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 .my-training-constraints li{font-size:14px;line-height:1.6;padding:5px 0;}
 .my-training-action{position:sticky;bottom:0;padding-top:10px;background:var(--bg);z-index:1;}
 .my-training .save{border-radius:8px;font-size:14px;line-height:1.5;}
+.training-progress{margin-top:20px;}
+.training-progress-section{padding:18px 0;border-top:1px solid var(--border);}
+.training-progress-section:first-child{padding-top:0;border-top:0;}
+.training-progress-section h3{font-size:16px;line-height:1.4;font-weight:700;letter-spacing:0;margin-bottom:12px;}
+.training-progress p{font-size:14px;line-height:1.6;overflow-wrap:anywhere;}
+.training-progress-note{color:var(--muted);}
+.training-progress-list{list-style:none;margin:10px 0 0;padding:0;}
+.training-progress-list li{padding:10px 0;border-top:1px solid var(--border);}
+.training-progress-list li:first-child{border-top:0;}
+.training-progress-session{display:flex;flex-wrap:wrap;gap:4px 16px;justify-content:space-between;font-size:14px;line-height:1.6;}
+.training-progress-direction{display:grid;grid-template-columns:80px minmax(0,1fr);gap:12px;align-items:center;}
+.training-progress h4{font-size:14px;line-height:1.5;font-weight:650;letter-spacing:0;overflow-wrap:anywhere;}
+.training-progress-state{font-weight:650;margin:3px 0;color:var(--text);}
+.training-progress time{font-size:13px;line-height:1.6;color:var(--muted);}
 .panel-row .pr-l{color:var(--muted);font-weight:600;} .panel-row .pr-v{font-weight:700;text-align:right;}
 .plan-badge{display:inline-flex;align-items:center;gap:6px;font-family:'Unbounded';font-weight:700;font-size:12px;letter-spacing:.5px;padding:6px 13px;border-radius:20px;}
 .plan-badge.pro{color:var(--gold);background:rgba(255,177,60,.12);border:1px solid rgba(255,177,60,.3);}
@@ -1780,7 +1794,7 @@ function menuAction(k){
     case 'consult': enterConsult(); break;
     case 'workouts': showMyTraining(); break;
     case 'nutrition': enterConsult(seed.nutrition); break;
-    case 'progress': enterConsult(seed.progress); break;
+    case 'progress': showProgress(); break;
     case 'history': showHistory(); break;
     case 'profile': openProfile(0); break;
     case 'feedback': openFeedback(); break;
@@ -1940,6 +1954,74 @@ async function showMyTraining(){
   }
 }
 function createFromMyTraining(){closePanel();enterConsult(tr().seed.workouts);}
+const PROGRESS_COPY={
+  bg:{title:'Прогрес',record:'Тренировъчен запис',direction:'Посока по упражнения',adjustments:'Последни корекции',
+    emptyRecord:'Още няма достатъчно завършени тренировки за прогрес отчет.',emptyDirection:'Още няма достатъчно сравними тренировъчни данни.',
+    emptyAdjustments:'Още няма потвърдени тренировъчни корекции.',signIn:'Влез в профила си, за да виждаш потвърдена тренировъчна тенденция между сесиите.',
+    states:{progressing:['Напредва','APEX има достатъчно сравними сесии и е регистрирал прогресиращи корекции.'],
+      stable:['Стабилно','Сравнимите сесии поддържат текущата тренировъчна схема.'],insufficient_evidence:['Нужни са още сравними сесии','']}},
+  en:{title:'Progress',record:'Training record',direction:'Exercise direction',adjustments:'Recent adjustments',
+    emptyRecord:'There are not enough completed workouts for a progress record yet.',emptyDirection:'There is not enough comparable training data yet.',
+    emptyAdjustments:'No training adjustments have been confirmed yet.',signIn:'Sign in to see verified training direction across sessions.',
+    states:{progressing:['Progressing','APEX has enough comparable sessions and has recorded forward training adjustments.'],
+      stable:['Stable','Comparable sessions support keeping the current training prescription.'],insufficient_evidence:['More comparable sessions needed','']}}
+};
+function progressRecordText(count,local){
+  if(lang==='bg')return count===1?'1 завършена тренировка е записана '+(local?'в този браузър.':'в APEX.'):
+    count+' завършени тренировки са записани '+(local?'в този браузър.':'в APEX.');
+  return count+' completed workout'+(count===1?' is':'s are')+' recorded '+(local?'in this browser.':'in APEX.');
+}
+function renderProgress(data,state='ready',local=false){
+  const copy=PROGRESS_COPY[lang],note=text=>'<p class="training-progress-note">'+esc(text)+'</p>';
+  const unavailable=state==='error'?MY_TRAINING_COPY[lang].unavailable:MY_TRAINING_COPY[lang].loading;
+  const record=data&&data.record,count=record&&Number.isInteger(record.completed_sessions)?record.completed_sessions:0;
+  const sessions=record&&Array.isArray(record.recent_sessions)?record.recent_sessions.slice(0,5):[];
+  const recordBody=count>0?'<p>'+esc(progressRecordText(count,local))+'</p><ol class="training-progress-list">'+sessions.map(item=>{
+    const date=myTrainingDate(item.completed_at),n=Array.isArray(item.exercises)?item.exercises.length:null;
+    const facts=n===null?'':n+' '+(lang==='bg'?(n===1?'упражнение':'упражнения'):(n===1?'exercise':'exercises'));
+    return date?'<li class="training-progress-session"><time datetime="'+esc(item.completed_at)+'">'+esc(date)+'</time><span class="training-progress-note">'+esc(facts)+'</span></li>':'';
+  }).join('')+'</ol>':note(copy.emptyRecord);
+  const directions=!local&&data&&Array.isArray(data.exercise_trajectories)?data.exercise_trajectories.filter(item=>item&&Object.hasOwn(copy.states,item.state)):[];
+  const directionBody=directions.length?'<ul class="training-progress-list">'+directions.map(item=>{
+    const [label,support]=copy.states[item.state];
+    return '<li class="training-progress-direction" data-progress-exercise-id="'+esc(item.exercise_id)+'">'+renderExerciseVisual({completion:item},'thumb')+
+      '<div><h4>'+esc(myTrainingExerciseName(item))+'</h4><p class="training-progress-state">'+esc(label)+'</p>'+(support?note(support):'')+'</div></li>';
+  }).join('')+'</ul>':note(local?copy.signIn:copy.emptyDirection);
+  const adjustments=!local&&data&&Array.isArray(data.recent_adjustments)?data.recent_adjustments.slice(0,5):[];
+  const rows=adjustments.map(item=>{
+    const text=adjustmentText(item),date=myTrainingDate(item.occurred_at);
+    return text&&date?'<li><time datetime="'+esc(item.occurred_at)+'">'+esc(date)+'</time><h4>'+esc(myTrainingExerciseName(item))+'</h4><p>'+esc(text)+'</p></li>':'';
+  }).filter(Boolean);
+  const sections=[['record',copy.record,recordBody],['direction',copy.direction,directionBody],
+    ['adjustments',copy.adjustments,rows.length?'<ol class="training-progress-list">'+rows.join('')+'</ol>':note(copy.emptyAdjustments)]];
+  return '<div class="training-progress" id="training-progress" aria-busy="'+(state==='loading')+'">'+sections.map(([key,title,body])=>
+    '<section class="training-progress-section" data-progress-block="'+key+'" aria-labelledby="progress-'+key+'"><h3 id="progress-'+key+'">'+esc(title)+'</h3>'+(state==='ready'?body:note(unavailable))+'</section>').join('')+'</div>';
+}
+function browserProgress(){
+  let log=[];try{log=JSON.parse(ownedStorageGet('apexWorkoutLog')||'[]');}catch(e){}
+  const completed=Array.isArray(log)?log.filter(item=>item&&item.execution_schema==='workout-execution-v1'&&item.execution_state==='completed'&&
+    Array.isArray(item.exercises)&&item.exercises.length&&item.exercises.every(ex=>{
+      const work=ex.prescription_type==='duration'?ex.actual_duration_seconds:ex.actual_repetitions;
+      return ex.execution_state==='completed'&&Number.isInteger(ex.completed_sets)&&ex.completed_sets>0&&Number.isInteger(work)&&work>0;
+    })):[];
+  const dated=completed.filter(item=>typeof item.ts==='number'&&Number.isFinite(new Date(item.ts).getTime())).sort((a,b)=>b.ts-a.ts);
+  return {record:{completed_sessions:completed.length,recent_sessions:dated.slice(0,5).map(item=>({completed_at:new Date(item.ts).toISOString()}))},
+    exercise_trajectories:[],recent_adjustments:[]};
+}
+async function showProgress(){
+  const owner=dataOwnerToken(),authenticated=SESSION.authenticated;
+  if(!authenticated){showPanel(PROGRESS_COPY[lang].title,renderProgress(browserProgress(),'ready',true));return;}
+  showPanel(PROGRESS_COPY[lang].title,renderProgress(null,'loading'));
+  try{
+    const response=await fetch('/api/progress',{credentials:'same-origin',cache:'no-store'});
+    if(!response.ok)throw new Error('progress_read_unavailable');
+    const data=await response.json();
+    if(owner!==dataOwnerToken()||!SESSION.authenticated||!document.getElementById('training-progress'))return;
+    document.getElementById('panel-body').innerHTML=renderProgress(data);
+  }catch(e){
+    if(owner===dataOwnerToken()&&SESSION.authenticated&&document.getElementById('training-progress'))document.getElementById('panel-body').innerHTML=renderProgress(null,'error');
+  }
+}
 function fmtDate(ts){ try{return new Date(ts*1000).toLocaleDateString(lang==='bg'?'bg-BG':'en-GB',{day:'numeric',month:'short',year:'numeric'});}catch(e){return '—';} }
 async function showSubscription(){
   const s=tr().sub, a=tr().auth;
