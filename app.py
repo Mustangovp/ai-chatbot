@@ -1935,7 +1935,15 @@ def api_workout():
             athlete_store.observe(u["id"], "workout_completed", saved)
     except Exception as error:
         print(f"[workout] optional observation unavailable: {type(error).__name__}")
-    return jsonify({"ok": True, "id": wid})
+    response = {"ok": True, "id": wid}
+    if isinstance(workout_completion, dict) and workout_completion.get("execution_state") == "completed":
+        try:
+            response["adaptation"] = store.get_workout_adaptation(u["id"], workout_completion)
+        except Exception as error:
+            # The completion is already committed; an optional read cannot undo it.
+            print(f"[workout] adaptation unavailable: {type(error).__name__}")
+            response["adaptation"] = None
+    return jsonify(response)
 
 
 @app.route("/api/history", methods=["GET", "POST"])

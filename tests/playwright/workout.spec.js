@@ -600,7 +600,7 @@ test.describe('APEX approved app shell — UX regression', () => {
     expect(completion).toMatchObject({ completed_rpe: null, completed_rir: null });
   });
 
-  test('WO-3: a traceable completion asks /chat for the next deterministic workout revision', async ({ page }) => {
+  test('WO-3: a traceable completion returns to coach without requesting another workout', async ({ page }) => {
     const posted = await page.evaluate(async () => {
       const projection = {
         plan_id: 'plan-next', plan_version: 'v2', sessions: [{
@@ -632,20 +632,16 @@ test.describe('APEX approved app shell — UX regression', () => {
       document.getElementById('wo-reps-in').value='10';
       completeSet();
       finishToCoach();
-      await new Promise((resolve) => setTimeout(resolve, 350));
       window.fetch = originalFetch;
-      return chat;
+      return {chat,consultOn,input:document.getElementById('user-in').value};
     });
 
-    expect(posted.message).toBe('Следваща тренировка.');
-    expect(posted.completed_workout).toMatchObject({
-      plan_id: 'plan-next', plan_version: 'v2', session_id: 'session-next',
-      exercises: [{ prescription_id: 'prescription-next', exercise_id: 'exercise.push_up' }]
-    });
-    expect(posted.recovery).toMatchObject({ source_version: 'browser-recovery-v1' });
+    expect(posted.chat).toBeNull();
+    expect(posted.consultOn).toBe(true);
+    expect(posted.input).toBe('');
   });
 
-  test('WO-3A: legacy completion sends the completed exercises for post-workout coaching', async ({ page }) => {
+  test('WO-3A: legacy execution also returns to coach without inventing an automatic request', async ({ page }) => {
     const posted = await page.evaluate(async () => {
       const originalFetch = window.fetch;
       let chat = null;
@@ -667,16 +663,11 @@ test.describe('APEX approved app shell — UX regression', () => {
       sessionStart = Date.now() - 20 * 60000;
       finishWorkout();
       finishToCoach();
-      await new Promise((resolve) => setTimeout(resolve, 350));
       window.fetch = originalFetch;
       return chat;
     });
 
-    expect(posted.message).toBe('Прегледай записаното изпълнение.');
-    expect(posted.completed_workout).toMatchObject({
-      completion: null, execution_state: 'unknown', exercises: []
-    });
-    expect(posted.completed_workout).not.toHaveProperty('plan_id');
+    expect(posted).toBeNull();
   });
 
   test('NP-1: nutrition parser recognizes a separator-less plan with no raw pipes', async ({ page }) => {

@@ -416,11 +416,18 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 .rest-ring .rt-num .n{font-family:'Unbounded';font-weight:700;font-size:46px;}
 .rest-ring .rt-num .l{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--faint);}
 /* summary */
-.wo-summary{max-width:460px;}
-.sum-stats{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:22px 0;}
-.sum-stat{background:rgba(18,23,36,.6);border:1px solid var(--border);border-radius:14px;padding:14px 20px;min-width:90px;}
-.sum-stat .v{font-family:'Unbounded';font-weight:700;font-size:24px;color:var(--lime);}
-.sum-stat .l{font-size:9.5px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--faint);margin-top:3px;}
+.wo-summary{width:100%;max-width:620px;margin:auto;text-align:left;letter-spacing:0;}
+.wo-summary h2{font-family:'Unbounded';font-size:22px;line-height:1.4;border-left:3px solid var(--pulse);padding-left:14px;margin:0 0 12px;}
+.wo-summary h3{font-size:15px;margin:0 0 10px;}
+.wo-result-section{padding:18px 0;border-bottom:1px solid var(--border);}
+.wo-result-section:first-child{padding-top:0;}
+.wo-result-meta,.wo-result-note{font-size:14px;line-height:1.6;color:var(--muted);margin:0;}
+.wo-recorded-list,.completion-adjustments{list-style:none;padding:0;margin:0;}
+.wo-recorded-list li,.completion-adjustments li{font-size:14px;line-height:1.6;margin:10px 0;overflow-wrap:anywhere;}
+.wo-recorded-list strong,.completion-adjustments strong{font-weight:700;color:var(--text);}
+.wo-recorded-list p,.completion-adjustments p{color:var(--muted);margin:2px 0 0;}
+.wo-summary .wo-controls{justify-content:flex-start;margin-top:20px;gap:10px;}
+.wo-summary .wo-btn{height:auto;min-height:48px;max-width:100%;padding:12px 20px;font-size:14px;white-space:normal;}
 
 /* ── MODAL system ─────────────────────────────────────────────────── */
 .modal{position:fixed;top:0;right:0;left:0;height:var(--app-viewport-height);z-index:50;display:none;align-items:center;justify-content:center;padding:calc(20px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom));
@@ -1384,10 +1391,10 @@ function memLoad(){
   memSave(m);return m;
 }
 function memSave(m){ownedStorageSet('apexCoachMemory',JSON.stringify(m));}
-function logWorkout(session,workoutCompletion=null){
+function logWorkout(session,workoutCompletion=null,onRecorded=null){
   session=truthfulWorkoutRecord(session);
   const log=workoutMemoryLog();log.push(session);ownedStorageSet('apexWorkoutLog',JSON.stringify(log.slice(-60)));
-  accountLogWorkout(session,workoutCompletion);
+  accountLogWorkout(session,workoutCompletion,onRecorded);
   const m=memLoad();m.lastWorkout=session;m.lastWorkoutAt=session.ts;memSave(m);
 }
 // Build the [WORKOUT MEMORY] block the backend coaching engine reads.
@@ -1818,6 +1825,41 @@ function myTrainingExerciseName(item){
   return record?api.display(record,lang):(item.display_name||MY_TRAINING_COPY[lang].exercise);
 }
 function myTrainingRange(min,max){return min===max?String(min):String(min)+'–'+String(max);}
+function recordedExerciseFacts(item){
+  const bg=lang==='bg',facts=[],duration=item.prescription_type==='duration';
+  if(Number.isInteger(item.completed_sets)&&item.completed_sets>0)facts.push(item.completed_sets+' '+(bg?(item.completed_sets===1?'серия':'серии'):(item.completed_sets===1?'set':'sets')));
+  const work=duration?item.completed_duration_seconds:item.completed_repetitions;
+  if(Number.isInteger(work)&&work>0)facts.push(work+' '+(duration?(bg?'сек':'sec'):(bg?'повт.':'reps')));
+  if(typeof item.completed_load==='number'&&Number.isFinite(item.completed_load))facts.push(item.completed_load+' '+(bg?'кг':'kg'));
+  const effort={easy:bg?'Лесно':'Easy',productive:bg?'Точно както трябва':'About right',hard:bg?'Трудно':'Hard',incomplete:bg?'Не успях да завърша':'Couldn’t finish'};
+  if(effort[item.completed_effort])facts.push(effort[item.completed_effort]);
+  if(typeof item.completed_rpe==='number'&&item.completed_rpe>=1&&item.completed_rpe<=10)facts.push('RPE '+item.completed_rpe);
+  if(Number.isInteger(item.completed_rir)&&item.completed_rir>=0&&item.completed_rir<=10)facts.push('RIR '+item.completed_rir);
+  return facts;
+}
+function adjustmentText(item){
+  const bg=lang==='bg';
+  if(item.decision_type==='increase_load'&&/^(?:\d+)(?:\.\d+)?$/.test(String(item.load_delta_kg))&&Number(item.load_delta_kg)>0)
+    return bg?'Увеличи тежестта с '+item.load_delta_kg+' кг при следващо изпълнение.':'Increase the load by '+item.load_delta_kg+' kg next time.';
+  if(item.decision_type==='increase_repetitions'&&Number.isInteger(item.repetition_delta)&&item.repetition_delta>0){
+    const n=item.repetition_delta;return bg?'Добави '+n+' '+(n===1?'повторение':'повторения')+' при следващо изпълнение.':'Add '+n+' repetition'+(n===1?'':'s')+' next time.';
+  }
+  if(item.decision_type==='increase_sets'&&Number.isInteger(item.set_delta)&&item.set_delta>0){
+    const n=item.set_delta;return bg?'Добави '+n+' '+(n===1?'серия':'серии')+' при следващо изпълнение.':'Add '+n+' set'+(n===1?'':'s')+' next time.';
+  }
+  if(item.decision_type==='maintain')return bg?'Запази текущата схема.':'Keep the current prescription.';
+  if(item.decision_type==='deload')return bg?'Следващото изпълнение трябва да е по-леко.':'The next exposure should be lighter.';
+  if(item.decision_type==='replace_exercise'&&item.replacement&&item.replacement.exercise_id)
+    return bg?'Смени упражнението с '+myTrainingExerciseName(item.replacement)+'.':'Replace this exercise with '+myTrainingExerciseName(item.replacement)+'.';
+  return '';
+}
+function renderRecordedAdjustments(decisions){
+  const rows=Array.isArray(decisions)?decisions.map(item=>{
+    const text=adjustmentText(item);return text?'<li><strong>'+esc(myTrainingExerciseName(item))+'</strong><p>'+esc(text)+'</p></li>':'';
+  }).filter(Boolean):[];
+  return rows.length?'<ul class="completion-adjustments">'+rows.join('')+'</ul>':'<p class="wo-result-note">'+
+    (lang==='bg'?'Тренировката е записана. Няма потвърдена промяна в програмата.':'Workout recorded. No training adjustment has been confirmed.')+'</p>';
+}
 function myTrainingExercises(items,completed=false){
   const copy=MY_TRAINING_COPY[lang];
   return '<ol class="my-training-list">'+items.map(item=>{
@@ -1840,7 +1882,8 @@ function renderMyTraining(data,state='ready'){
     const date=myTrainingDate(isCompleted?workout.completed_at:workout.delivered_at),meta=[];
     if(date)meta.push(date);
     if(!isCompleted&&Number.isInteger(workout.estimated_duration_minutes))meta.push(workout.estimated_duration_minutes+' '+copy.minutes);
-    return (meta.length?'<p class="my-training-meta">'+esc(meta.join(' · '))+'</p>':'')+myTrainingExercises(workout.exercises,isCompleted);
+    return (meta.length?'<p class="my-training-meta">'+esc(meta.join(' · '))+'</p>':'')+myTrainingExercises(workout.exercises,isCompleted)+
+      (isCompleted&&Array.isArray(workout.adjustments)?'<h4 class="my-training-meta">'+(lang==='bg'?'Следваща корекция':'Next adjustment')+'</h4>'+renderRecordedAdjustments(workout.adjustments):'');
   };
   const constraints=data&&Array.isArray(data.active_constraints)?data.active_constraints.filter(item=>item&&TRAINING_CONSTRAINT_LABELS[item.pattern]&&(!item.state||item.state==='active')):[];
   const sections=[
@@ -2110,11 +2153,15 @@ function accountSaveProfile(p){
   return fetch('/api/profile',{method:'PUT',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({profile:p})})
     .then(response=>response.ok?refreshAthleteCoreProjection():false).catch(()=>false);
 }
-function accountLogWorkout(s,workoutCompletion=null){
+function accountLogWorkout(s,workoutCompletion=null,onRecorded=null){
   if(!SESSION.authenticated)return Promise.resolve(false);
   const body={session:s};if(workoutCompletion)body.workout_completion=workoutCompletion;
   return fetch('/api/workout',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body)})
-    .then(response=>response.ok?refreshAthleteCoreProjection():false).catch(()=>false);
+    .then(async response=>{
+      if(!response.ok){if(onRecorded)onRecorded(null);return false;}
+      const result=await response.json();if(onRecorded)onRecorded(result);
+      return refreshAthleteCoreProjection();
+    }).catch(()=>{if(onRecorded)onRecorded(null);return false;});
 }
 
 /* ── Passwordless login (magic link) ── */
@@ -3004,50 +3051,44 @@ function finishWorkout(){
   const {session,completion:workoutCompletion}=workoutExecutionEvidence();
   WO.recorded=true;
   if(session.execution_state==='completed')witness('sessionCompleted');
-  const t=tr(),dur=Math.round((Date.now()-sessionStart)/60000);
-  const totalSets=session.exercises.reduce((a,e)=>a+((e.prescription_type==='duration'?e.actual_duration_seconds:e.actual_repetitions)===null?0:e.completed_sets),0);
-  const observedExercises=session.exercises.filter(e=>e.execution_state==='completed').length;
-  const labels=lang==='bg'?{completed:t.woComplete,partial:'Частично изпълнена',skipped:'Пропусната',abandoned:'Прекратена',unknown:'Непотвърдено изпълнение'}:
-    {completed:t.woComplete,partial:'Partially completed',skipped:'Skipped',abandoned:'Abandoned',unknown:'Execution unknown'};
+  const dur=Math.round((Date.now()-sessionStart)/60000),owner=dataOwnerToken(),authenticated=SESSION.authenticated;
   lastWorkoutCompletion=workoutCompletion;
   lastWorkoutSummary=session;
-  logWorkout(session,workoutCompletion);
   document.getElementById('wo-ptop-r').textContent=session.completion===null?'—':session.completion+'%';
   document.getElementById('wo-fill').style.width=(session.completion||0)+'%';
-  document.getElementById('wo-stage').innerHTML='<div class="wo-summary"><div class="wo-step">'+(session.execution_state==='completed'?'✓ ':'')+labels[session.execution_state]+'</div>'+
-    '<div class="wo-ex-glyph" style="background:radial-gradient(circle at 50% 35%,#B6FF3C44,rgba(18,23,36,.7));margin:0 auto 20px">🏁</div>'+
-    '<div class="wo-ex-name">'+(session.execution_state==='completed'?t.woGreat:labels[session.execution_state])+'</div>'+
-    '<div class="sum-stats"><div class="sum-stat"><div class="v">'+observedExercises+'</div><div class="l">'+t.woSummary.ex+'</div></div>'+
-    '<div class="sum-stat"><div class="v">'+totalSets+'</div><div class="l">'+t.woSummary.sets+'</div></div>'+
-    '<div class="sum-stat"><div class="v">'+dur+'</div><div class="l">'+t.woSummary.time+'</div></div></div>'+
-    '<div class="wo-controls"><button class="wo-btn primary" onclick="finishToCoach()">'+(lang==='bg'?'Към треньора →':'Back to coach →')+'</button></div></div>';
+  renderWorkoutResult(session,dur,authenticated?'pending':'anonymous');
+  logWorkout(session,workoutCompletion,result=>{
+    // A delayed receipt must not enter a different account or a later workout.
+    if(owner!==dataOwnerToken()||!SESSION.authenticated||!WO||!WO.recorded||lastWorkoutSummary!==session)return;
+    const adaptation=result&&result.adaptation,decisions=adaptation&&workoutCompletion&&
+      adaptation.workout_id===workoutCompletion.workout_id?adaptation.decisions:[];
+    renderWorkoutResult(session,dur,result&&result.ok?'saved':'error',decisions);
+  });
 }
-function finishToCoach(){
-  document.getElementById('workout').classList.remove('on'); WO=null; applyReadout();
-  if(!consultOn)enterConsult();
-  const completion=lastWorkoutCompletion;
-  const summary=lastWorkoutSummary;
-  lastWorkoutCompletion=null;
-  lastWorkoutSummary=null;
-  if(completion&&completion.execution_state==='completed'){
-    const recoveryFeel=(pfLoad().recoveryFeel||'ok').toLowerCase();
-    const recovery={
-      state:recoveryFeel==='fresh'?'fully_recovered':(recoveryFeel==='tired'?'fatigued':'normally_recovered'),
-      accumulated_fatigue:recoveryFeel==='fresh'?'15':(recoveryFeel==='tired'?'65':'30'),
-      source_version:'browser-recovery-v1'
-    };
-    setTimeout(()=>{
-      document.getElementById('user-in').value=lang==='bg'?'Следваща тренировка.':'Build my next workout.';
-      send({completedWorkout:completion,recovery});
-    },300);
-    return;
-  }
-  // Incomplete and legacy execution is context, never a claim of completion.
-  setTimeout(()=>{
-    document.getElementById('user-in').value=lang==='bg'?'Прегледай записаното изпълнение.':'Review my recorded workout execution.';
-    send({completedWorkout:completion||summary,recovery:{source_version:'browser-recovery-v1'}});
-  },300);
+function renderWorkoutResult(session,minutes,state,decisions=[]){
+  const bg=lang==='bg',labels=bg?{completed:'Тренировката е завършена',partial:'Частично изпълнена',skipped:'Пропусната',abandoned:'Прекратена',unknown:'Непотвърдено изпълнение'}:
+    {completed:'Workout completed',partial:'Partially completed',skipped:'Skipped',abandoned:'Abandoned',unknown:'Execution unknown'};
+  const exercises=session.exercises.filter(e=>e.execution_state==='completed').length;
+  const sets=session.exercises.reduce((sum,e)=>sum+((e.prescription_type==='duration'?e.actual_duration_seconds:e.actual_repetitions)>0?e.completed_sets:0),0);
+  const meta=[exercises+' '+(bg?'завършени упражнения':'completed exercises'),sets+' '+(bg?'серии':'sets'),minutes+' '+(bg?'мин':'min')];
+  const rows=session.exercises.map(item=>'<li><strong>'+esc(item.exercise_id?myTrainingExerciseName({...item,display_name:item.name}):item.name||MY_TRAINING_COPY[lang].exercise)+
+    '</strong><p>'+esc(recordedExerciseFacts(item).join(' · ')|| (bg?'Няма потвърдено изпълнение.':'No observed execution.'))+'</p></li>').join('');
+  let next;
+  if(state==='anonymous')next='<p class="wo-result-note">'+(bg?'Влез в профила си, за да запазваш тренировъчните адаптации между сесиите.':'Sign in to preserve training adaptations across sessions.')+'</p>';
+  else if(state==='pending')next='<p class="wo-result-note" role="status">'+(bg?'Записване в профила…':'Saving to your account…')+'</p>';
+  else if(state==='error')next='<p class="wo-result-note" role="status">'+(bg?'Записът в профила не е потвърден. Няма потвърдена корекция.':'Account save has not been confirmed. No adjustment has been confirmed.')+'</p>';
+  else if(session.execution_state!=='completed')next='<p class="wo-result-note">'+(bg?'Няма потвърдена промяна в програмата.':'No training adjustment has been confirmed.')+'</p>';
+  else next=renderRecordedAdjustments(decisions);
+  document.getElementById('wo-stage').innerHTML='<div class="wo-summary" data-workout-result="'+session.execution_state+'">'+
+    '<section class="wo-result-section" data-completion-section="completed"><h2>'+labels[session.execution_state]+'</h2><p class="wo-result-meta">'+esc(meta.join(' · '))+'</p></section>'+
+    '<section class="wo-result-section" data-completion-section="recorded"><h3>'+(bg?'APEX отчете':'APEX recorded')+'</h3><ul class="wo-recorded-list">'+rows+'</ul></section>'+
+    '<section class="wo-result-section" data-completion-section="adjustment"><h3>'+(bg?'Следваща корекция':'Next adjustment')+'</h3>'+next+'</section>'+
+    '<div class="wo-controls"><button class="wo-btn primary" onclick="finishToMyTraining()">'+(bg?'Към Моите тренировки':'Go to My Training')+'</button>'+
+    '<button class="wo-btn ghost" onclick="finishToCoach()">'+(bg?'Към треньора':'Back to coach')+'</button></div></div>';
 }
+function closeWorkoutResult(){document.getElementById('workout').classList.remove('on');WO=null;lastWorkoutCompletion=null;lastWorkoutSummary=null;applyReadout();}
+function finishToMyTraining(){closeWorkoutResult();showMyTraining();}
+function finishToCoach(){closeWorkoutResult();if(!consultOn)enterConsult();}
 
 /* ═══════════════════════════════════════════════════════════════════
    CHAT MESSAGES + AI ENGINE
