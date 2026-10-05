@@ -344,6 +344,15 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 .ei-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:12px;}.ei-name{font-family:'Unbounded';font-size:14px;font-weight:600;color:#fff;}.ei-prescription{white-space:nowrap;font-size:11.5px;font-weight:700;color:var(--gold);}
 .ei-section{border-top:1px solid rgba(255,255,255,.09);padding:10px 0 0;margin-top:10px;}.ei-section summary{cursor:pointer;list-style:none;font-size:12.5px;font-weight:700;color:var(--text);}.ei-section summary::-webkit-details-marker{display:none;}.ei-section summary::before{content:'›';display:inline-block;color:var(--cyan);font-size:17px;line-height:10px;margin-right:7px;transform:rotate(0deg);transition:transform .18s ease;}.ei-section[open] summary::before{transform:rotate(90deg);}.ei-static-label{font-size:12.5px;font-weight:700;color:var(--text);}.ei-section ol,.ei-section ul{margin:9px 0 2px;padding-left:19px;color:var(--muted);font-size:12.5px;line-height:1.55;}.ei-section li+li{margin-top:4px;}.ei-copy{margin:9px 0 2px;color:var(--muted);font-size:12.5px;line-height:1.55;}
 .workout-exercise-card{display:block;padding:15px 16px;}.workout-card-hero{display:flex;gap:12px;align-items:center;}.workout-card-hero .ex-glyph{width:58px;height:58px;font-size:26px;}.workout-card-title{min-width:0;flex:1;}.workout-card-title .ex-top{margin:0 0 5px;}.workout-card-title .ex-name{font-family:'Unbounded';font-size:14px;}.workout-card-title .ex-muscles{margin:0;}.workout-card-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px 8px;margin-top:13px;}.workout-card-stat{min-width:0;border:1px solid rgba(255,255,255,.08);border-radius:9px;padding:7px 8px;background:rgba(7,9,16,.22);color:var(--faint);font-size:10px;line-height:1.25;}.workout-card-stat b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font-size:12px;margin-bottom:2px;}.workout-card-stat.meta b{font-size:11px;color:var(--cyan);}.workout-card-note{margin:10px 0 0;color:var(--faint);font-size:11.5px;line-height:1.45;}.workout-rationale{margin:12px 0 4px;border:1px solid rgba(56,224,255,.22);border-radius:8px;background:rgba(7,9,16,.24);}.workout-rationale summary{padding:10px 12px;color:var(--text);font-size:12px;font-weight:700;cursor:pointer;}.workout-rationale ul{margin:0;padding:0 16px 12px 30px;color:var(--faint);font-size:11.5px;line-height:1.45;}.workout-rationale li+li{margin-top:5px;}
+.exercise-visual{width:80px;height:60px;aspect-ratio:4/3;flex:none;overflow:hidden;border:1px solid rgba(255,255,255,.12);border-radius:8px;background:#1b1d21;}
+.exercise-visual img{display:block;width:100%;height:100%;object-fit:cover;}
+.exercise-visual img[hidden]{display:none;}
+.exercise-visual.is-fallback{border-left:2px solid rgba(232,52,52,.38);}
+.exercise-visual-protocol{width:160px;height:120px;margin-bottom:20px;}
+.workout-card-title .ex-top{flex-wrap:wrap;row-gap:5px;}
+.workout-card-title .ex-name{max-width:100%;overflow-wrap:break-word;}
+.workout-card-stat{overflow-wrap:anywhere;}
+.workout-card-stat b{white-space:normal;}
 @media(max-width:560px){.ei-card{padding:14px;}.ei-top{align-items:flex-start;flex-direction:column;gap:4px;}.ei-prescription{white-space:normal;}}
 
 /* ── WORKOUT MODE (full-screen protocol) ─────────────────────────── */
@@ -773,6 +782,7 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 </defs></svg>
 
 <script src="/static/exercise_instruction_library.js"></script>
+<script src="/static/exercise/visuals/v1/manifest.js"></script>
 <script>
 /* Account-owned browser data. Bare legacy keys are claimed only by the current
    anonymous browser identity and are never uploaded into an account. */
@@ -2637,6 +2647,18 @@ function workoutDisplayMeta(exercise){
   const rpe=(note.match(/RPE\s*([\d.]+)/i)||[])[1]||'—',rir=(note.match(/RIR\s*([\d.]+)/i)||[])[1]||'—';
   return{tempo,rpe,rir,note};
 }
+function exerciseVisualFailed(image){
+  image.hidden=true;
+  image.parentElement.classList.add('is-fallback');
+  image.parentElement.setAttribute('aria-hidden','true');
+}
+function renderExerciseVisual(exercise,variant){
+  const id=exercise&&exercise.completion&&exercise.completion.exercise_id;
+  const api=window.ApexExerciseVisuals,visual=api&&api.resolve(id),protocol=variant==='protocol';
+  const css='exercise-visual'+(protocol?' exercise-visual-protocol':'');
+  if(!visual)return '<div class="'+css+' is-fallback" aria-hidden="true"></div>';
+  return '<div class="'+css+'" data-exercise-visual-id="'+esc(visual.exercise_id)+'"><img src="'+esc(protocol?visual.protocol:visual.thumb)+'" alt="'+esc(visual.alt[lang==='bg'?'bg':'en'])+'" width="'+(protocol?160:80)+'" height="'+(protocol?120:60)+'" loading="'+(protocol?'eager':'lazy')+'" decoding="async" onerror="exerciseVisualFailed(this)"></div>';
+}
 function renderWorkoutExerciseCard(exercise,diffLabel,includeOverview=false){
   const api=window.ApexExerciseInstructions;
   const record=instructionRecordFor(exercise);if(!record)return '';
@@ -2646,7 +2668,7 @@ function renderWorkoutExerciseCard(exercise,diffLabel,includeOverview=false){
   if(prescription.type==='duration')labels.target=lang==='bg'?'Продължителност':'Duration';
   const displayUnit=(prescription.type==='duration'||prescription.type==='duration_per_side')?'':(prescription.type==='repetitions_per_side'?(lang==='bg'?' повторения на страна':' reps / side'):(' '+unit));
   const displayTarget=prescription.type==='duration'||prescription.type==='duration_per_side'?(lang==='bg'?'Продължителност':'Duration'):(prescription.type==='repetitions_per_side'?(lang==='bg'?'Повторения на страна':'Repetitions per side'):labels.target);
-  return '<article class="ex-card ei-card workout-exercise-card" data-exercise-id="'+esc(record.canonical_id)+'" data-exercise-instruction-id="'+esc(record.id)+'"><div class="workout-card-hero"><div class="ex-glyph" style="background:radial-gradient(circle at 50% 35%,'+mu.ic+'33,rgba(18,23,36,.6))">'+mu.e+'</div><div class="workout-card-title"><div class="ex-top"><h3 class="ex-name">'+esc(exercise.name)+'</h3><span class="ex-diff '+(df||'')+'">'+(diffLabel[df]||'—')+'</span></div><div class="ex-muscles"><span class="ex-muscle">'+mu.m+'</span></div></div></div><div class="workout-card-stats">'+
+  return '<article class="ex-card ei-card workout-exercise-card" data-exercise-id="'+esc(record.canonical_id)+'" data-exercise-instruction-id="'+esc(record.id)+'"><div class="workout-card-hero">'+renderExerciseVisual(exercise,'thumb')+'<div class="workout-card-title"><div class="ex-top"><h3 class="ex-name">'+esc(exercise.name)+'</h3><span class="ex-diff '+(df||'')+'">'+(diffLabel[df]||'—')+'</span></div><div class="ex-muscles"><span class="ex-muscle">'+mu.m+'</span></div></div></div><div class="workout-card-stats">'+
     '<span class="workout-card-stat"><b>'+esc(exercise.sets)+'</b>'+labels.sets+'</span><span class="workout-card-stat"><b>'+esc(prescription.value)+displayUnit+'</b>'+displayTarget+'</span><span class="workout-card-stat"><b>'+esc(localizedTime(exercise.rest))+'</b>'+labels.rest+'</span><span class="workout-card-stat meta"><b>'+esc(meta.tempo)+'</b>'+labels.tempo+'</span><span class="workout-card-stat meta"><b>'+esc(meta.rpe)+'</b>'+labels.rpe+'</span><span class="workout-card-stat meta"><b>'+esc(meta.rir)+'</b>'+labels.rir+'</span></div>'+
     (meta.note?'<div class="workout-card-note">'+esc(meta.note)+'</div>':'')+workoutInstructionSections(exercise,includeOverview)+'</article>';
 }
@@ -2820,7 +2842,7 @@ function renderWO(){
     let dots='';for(let s=0;s<sets;s++)dots+='<div class="set-dot '+(s<WO.set?'done':(s===WO.set?'current':''))+'">'+(s+1)+'</div>';
     const nextEx=WO.i+1<WO.ex.length?WO.ex[WO.i+1].name:(lang==='bg'?'Завършек':'Finish');
     stage.innerHTML='<div class="wo-step">'+(lang==='bg'?'Серия':'Set')+' '+(WO.set+1)+'/'+sets+' · ~'+woEstRemaining()+(lang==='bg'?'мин остават':'min left')+'</div>'+
-      '<div class="wo-ex-glyph" style="background:radial-gradient(circle at 50% 35%,'+mu.ic+'44,rgba(18,23,36,.7))">'+mu.e+'</div>'+
+      renderExerciseVisual(e,'protocol')+
       '<div class="wo-ex-name">'+esc(e.name)+'</div>'+
       '<div class="wo-ex-target">'+esc(prescription.value)+(prescription.type==='duration'?'':' '+(lang==='bg'?'повторения':'reps'))+'</div>'+
       '<div class="wo-ex-meta">'+mu.m+' · '+(lang==='bg'?'темп':'tempo')+' 2-0-2'+(e.note?(' · '+esc(e.note)):'')+'</div>'+

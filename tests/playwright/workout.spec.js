@@ -250,7 +250,7 @@ test.describe('APEX approved app shell — UX regression', () => {
     expect(result.states).toEqual(['waiting', 'listening', 'thinking', 'answering', 'resting', 'recovering', 'goodbye']);
   });
 
-  test('WO-1B: classic muscle-group glyphs contain no exercise SVG and never request camera access', async ({ page }) => {
+  test('WO-1B: legacy exercise visuals use neutral fallback and never request camera access', async ({ page }) => {
     await page.evaluate(() => {
       window.__cameraCalls = 0;
       if (navigator.mediaDevices) {
@@ -276,17 +276,17 @@ test.describe('APEX approved app shell — UX regression', () => {
     await expect(cards).toHaveCount(5);
     await expect(cards.locator('svg')).toHaveCount(0);
     await expect(cards.locator('[data-exercise-figure]')).toHaveCount(0);
-    await expect(cards.nth(0).locator('.ex-glyph')).toHaveCount(1);
-    await expect(cards.nth(2).locator('.ex-glyph')).toHaveCount(1);
-    await expect(cards.nth(4).locator('.ex-glyph')).toHaveCount(1);
+    await expect(cards.locator('.ex-glyph')).toHaveCount(0);
+    await expect(cards.locator('.exercise-visual.is-fallback')).toHaveCount(5);
+    await expect(cards.locator('.exercise-visual img')).toHaveCount(0);
     await expect(page.locator('[data-camera-hr], [aria-label*="pulse" i], [aria-label*="heart" i]')).toHaveCount(0);
 
     await page.locator('.start-wo').click();
-    await expect(page.locator('#wo-stage > .wo-ex-glyph')).toHaveCount(1);
-    await expect(page.locator('#wo-stage > .wo-ex-glyph svg')).toHaveCount(0);
+    await expect(page.locator('#wo-stage > .exercise-visual-protocol.is-fallback')).toHaveCount(1);
+    await expect(page.locator('#wo-stage > .exercise-visual-protocol img, #wo-stage > .exercise-visual-protocol svg')).toHaveCount(0);
     await page.evaluate(() => { WO.i = 2; WO.set = 0; renderWO(); });
-    await expect(page.locator('#wo-stage > .wo-ex-glyph')).toHaveCount(1);
-    await expect(page.locator('#wo-stage > .wo-ex-glyph svg')).toHaveCount(0);
+    await expect(page.locator('#wo-stage > .exercise-visual-protocol.is-fallback')).toHaveCount(1);
+    await expect(page.locator('#wo-stage > .exercise-visual-protocol img, #wo-stage > .exercise-visual-protocol svg')).toHaveCount(0);
     expect(await page.evaluate(() => window.__cameraCalls)).toBe(0);
     await page.evaluate(() => quitWorkout());
   });
