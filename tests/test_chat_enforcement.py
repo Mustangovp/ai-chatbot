@@ -4283,7 +4283,7 @@ def test_nutrition_plan_is_immutable_structured_authority_with_deterministic_ren
         plan.version = "mutated"
 
 
-def test_nutrition_delivery_adds_a_deterministic_explanation_after_the_canonical_table():
+def test_nutrition_delivery_keeps_meal_explanations_without_a_generic_footer():
     plan = nutrition_plan.build_plan(
         _structured_plan_payload(), _NUTRITION_TARGETS,
         restrictions=(), provenance={"test": "structured"})
@@ -4291,7 +4291,8 @@ def test_nutrition_delivery_adds_a_deterministic_explanation_after_the_canonical
     delivered = nutrition_plan.render_delivery(plan, "en")
 
     assert delivered.startswith("| Meal | Menu title | Meal ID | Food")
-    assert delivered.endswith("**APEX rationale:** The plan follows your confirmed energy target and your saved protein target.")
+    assert "APEX rationale" not in delivered
+    assert all(line.startswith("|") and line.endswith("|") for line in delivered.splitlines())
     assert "**Why this plan:**" not in delivered
     assert "Each meal has a defined role in the day" not in delivered
     assert "approved target tolerance" not in delivered
@@ -4301,14 +4302,15 @@ def test_nutrition_delivery_adds_a_deterministic_explanation_after_the_canonical
     assert "Completes the day while keeping the confirmed 175 g protein target in range." in delivered
 
 
-def test_nutrition_delivery_rationale_is_localized_and_uses_only_plan_facts():
+def test_nutrition_delivery_bg_has_no_generic_footer():
     plan = nutrition_plan.build_plan(
         _structured_plan_payload(), _NUTRITION_TARGETS,
         restrictions=("peanut allergy",), provenance={"test": "structured"})
 
     delivered = nutrition_plan.render_delivery(plan, "bg")
 
-    assert "**APEX логика:**" in delivered
+    assert "**APEX логика:**" not in delivered
+    assert all(line.startswith("|") and line.endswith("|") for line in delivered.splitlines())
     assert "**Защо този режим:**" not in delivered
     assert "одобрения допуск" not in delivered
     assert "оптимал" not in delivered.lower()

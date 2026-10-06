@@ -362,7 +362,7 @@ def build_source_backed_plan(targets: NutritionTargets, lang: str, *,
                               restrictions: tuple[str, ...],
                               profile: Mapping[str, object] | None = None,
                               recent_context: RecentNutritionContext | None = None) -> NutritionPlan | None:
-    """Try at most three catalog alternatives, then the prior fallback.
+    """Try at most thirty-four rich catalog alternatives, then the prior fallback.
 
     Only ingredient selection changes. Each attempt uses the same existing
     service, optimizer parameters, portion bounds, and final NutritionPlan gate.
@@ -406,11 +406,13 @@ def _fallback_catalogs(catalog, goal, recent_context):
                 preference = -food.protein_per_100g
             elif food.category == "carbohydrate":
                 preference = -food.carbs_per_100g
+            elif goal == "endurance" and food.category == "fruit":
+                preference = -food.carbs_per_100g
         return (food.food_id in recent_ids, preference, food.food_id)
 
     seen = set()
-    for offset in range(3):
-        selected, used = set(), {"protein": set(), "carbohydrate": set()}
+    for offset in range(6):
+        selected = set()
         for meal in ("breakfast", "lunch", "dinner"):
             roles = ("protein", "carbohydrate", "fruit") if meal == "breakfast" else (
                 "protein", "carbohydrate", "vegetable", "fat")
@@ -418,20 +420,48 @@ def _fallback_catalogs(catalog, goal, recent_context):
                 pool = [food for food in catalog.foods if food.category == role
                         and meal in food.allowed_meals and "supplement" not in food.dietary_tags
                         and _catalog_measurement_state(food) is not None]
-                if meal != "breakfast" and role in used:
-                    pool = [food for food in pool if food.food_id not in used[role]] or pool
-                novel = [food for food in pool if food.food_id not in recent_ids]
-                pool = sorted(novel or pool, key=rank)
+                pool = sorted(pool, key=rank)
                 if not pool:
                     continue
-                chosen = pool[offset % len(pool)]
-                selected.add(chosen.food_id)
-                if meal != "breakfast" and role in used:
-                    used[role].add(chosen.food_id)
+                # Keep multiple compatible sources for the unchanged service
+                # to choose distinct main proteins/starches and feasible doses.
+                # A single low-density source per role cannot meet normal kcal.
+                width = 2 if meal == "breakfast" else 4
+                if role == "fat":
+                    selected.update(food.food_id for food in pool)
+                elif role == "fruit":
+                    selected.add(pool[0].food_id)
+                else:
+                    start = offset % len(pool)
+                    ordered = pool[start:] + pool[:start]
+                    selected.update(food.food_id for food in ordered[:width])
         signature = tuple(sorted(selected))
         if signature not in seen:
             seen.add(signature)
             yield Catalog(catalog.version, tuple(food for food in catalog.foods if food.food_id in selected))
+    # The service prefers the highest-protein main-meal sources. At normal
+    # kcal, that can exceed the confirmed protein range. Keep all other roles
+    # intact and try bounded protein-density tiers; the unchanged optimizer
+    # and final target validator remain the only feasibility authority.
+    main_proteins = sorted(
+        (food for food in catalog.foods if food.category == "protein"
+         and {"lunch", "dinner"}.intersection(food.allowed_meals)
+         and "supplement" not in food.dietary_tags
+         and _catalog_measurement_state(food) is not None),
+        key=lambda food: (-food.protein_per_100g, food.food_id),
+    )
+    fruits = sorted((food for food in catalog.foods if food.category == "fruit"
+                     and "breakfast" in food.allowed_meals
+                     and _catalog_measurement_state(food) is not None), key=rank)
+    for offset in range(1, min(len(main_proteins), 15)):
+        excluded = {food.food_id for food in main_proteins[:offset]}
+        preferred_exclusions = excluded | {food.food_id for food in fruits[1:]}
+        for exclusions in (preferred_exclusions, excluded):
+            foods = tuple(food for food in catalog.foods if food.food_id not in exclusions)
+            signature = tuple(sorted(food.food_id for food in foods))
+            if signature not in seen:
+                seen.add(signature)
+                yield Catalog(catalog.version, foods)
     # Feasibility takes precedence over novelty or goal preference.
     yield catalog
 
@@ -951,7 +981,7 @@ def render(plan: NutritionPlan, lang: str, recipe_tokens: Mapping[str, str] | No
 
 def render_delivery(plan: NutritionPlan, lang: str, profile: Mapping[str, object] | None = None,
                     nutrition_rationale: object | None = None) -> str:
-    """Render a validated plan with a deterministic, non-authoritative explanation."""
+    """Render the validated meal table with optional existing recipe tokens."""
     try:
         _validate_restrictions(plan.meals, plan.restrictions + recorded_profile_restrictions(profile))
     except NutritionRestrictionError:
@@ -975,17 +1005,7 @@ def render_delivery(plan: NutritionPlan, lang: str, profile: Mapping[str, object
     except Exception:
         # Presentation enhancement must not block the validated plan contract.
         pass
-    table = render(plan, lang, recipe_tokens)
-    goal = _selection_goal(profile)
-    if str(lang).lower() == "en":
-        goal_text = {"fat_loss": " for fat loss", "muscle_gain": " for weight gain"}.get(goal, "")
-        protein_text = " and your saved protein target" if plan.targets.protein is not None else ""
-        explanation = f"**APEX rationale:** The plan follows your confirmed energy target{goal_text}{protein_text}."
-    else:
-        goal_text = {"fat_loss": " за сваляне на мазнини", "muscle_gain": " за покачване"}.get(goal, "")
-        protein_text = " и записания ти протеинов таргет" if plan.targets.protein is not None else ""
-        explanation = f"**APEX логика:** Планът следва потвърдения ти енергиен таргет{goal_text}{protein_text}."
-    return table + "\n\n" + explanation
+    return render(plan, lang, recipe_tokens)
 
 
 def to_record(plan: NutritionPlan) -> dict[str, object]:

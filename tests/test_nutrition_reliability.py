@@ -78,7 +78,7 @@ def test_chat_repairs_production_failures_and_persists_only_valid_plan(
     assert len(records) == 1
     assert records[0]["plan"]["totals"]["kcal"] == "2800"
     assert all(food["food_id"] for meal in records[0]["plan"]["meals"] for food in meal["foods"])
-    assert "APEX rationale" in events[0]["t"] if lang == "en" else "APEX логика" in events[0]["t"]
+    assert "APEX rationale" not in events[0]["t"] and "APEX логика" not in events[0]["t"]
 
 
 @pytest.mark.parametrize("field", ["kcal", "protein_g", "carbs_g", "fat_g"])
@@ -207,18 +207,14 @@ def test_recent_food_context_is_account_only_and_uses_existing_persistence(
 @pytest.mark.parametrize("lang", ["bg", "en"])
 @pytest.mark.parametrize("goal", GOALS)
 @pytest.mark.parametrize("protein", [None, Decimal("175")])
-def test_rationale_is_one_factual_sentence_without_internal_terms(lang, goal, protein):
+def test_delivery_has_no_generic_footer_or_replacement_and_preserves_plan(lang, goal, protein):
     targets = NutritionTargets(Decimal("2800"), protein)
     plan = plans.build_plan(_payload(lang), targets, restrictions=(), provenance={"internal": "not-for-ui"})
+    before = plans.to_record(plan)
     delivered = plans.render_delivery(plan, lang, profile={"goal": goal})
-    title = "**APEX rationale:**" if lang == "en" else "**APEX логика:**"
-    rationale = delivered.split(title)[1].strip()
-    assert rationale.count(".") == 1
-    assert ("protein" in rationale if lang == "en" else "протеинов" in rationale) == (protein is not None)
-    if goal == "fat_loss":
-        assert ("fat loss" if lang == "en" else "сваляне на мазнини") in rationale
-    if goal == "muscle_gain":
-        assert ("weight gain" if lang == "en" else "покачване") in rationale
+    assert "APEX rationale" not in delivered and "APEX логика" not in delivered
+    assert all(line.startswith("|") and line.endswith("|") for line in delivered.splitlines())
+    assert plans.to_record(plan) == before
     assert "Why this plan" not in delivered and "Защо този режим" not in delivered
     for word in ("tolerance", "provenance", "validation", "policy", "optimized", "perfect", "одобрения допуск", "not-for-ui"):
         assert word not in delivered
@@ -255,7 +251,9 @@ def test_chat_fallback_receives_bounded_goal_and_account_only_recent_context(
     if uid:
         records = store.list_nutrition_plans(uid)
         assert len(records) == 2
-        assert dict(plans.from_record(records[0]["plan"]).provenance)["generator"] == "source_backed_catalog_fallback"
+        recovered = plans.from_record(records[0]["plan"])
+        assert dict(recovered.provenance)["generator"] == "source_backed_catalog_fallback"
+        assert _identity(recovered) != _identity(prior)
 
 
 def test_fallback_attempts_are_bounded_and_preserve_catalog_facts(monkeypatch):
@@ -271,7 +269,7 @@ def test_fallback_attempts_are_bounded_and_preserve_catalog_facts(monkeypatch):
     monkeypatch.setattr(plans, "_build_source_backed_candidate", reject)
     assert plans.build_source_backed_plan(NutritionTargets(Decimal("2000")), "en",
                                           restrictions=(), profile={"goal": "general"}) is None
-    assert 1 <= len(calls) <= 4
+    assert 1 <= len(calls) <= 35
     assert calls[-1] == catalog
 
 
@@ -286,7 +284,7 @@ def test_fallback_optimizer_parameters_and_targets_are_not_changed(monkeypatch):
     monkeypatch.setattr(service, "build_nutrition_plan", capture)
     target = NutritionTargets(Decimal("2000"), Decimal("175"))
     assert plans.build_source_backed_plan(target, "en", restrictions=(), profile={"goal": "strength"})
-    assert 1 <= len(requests) <= 4
+    assert 1 <= len(requests) <= 35
     for request in requests:
         assert request.targets.calories_target == target.kcal
         assert request.targets.calories_tolerance == Decimal("0.05")
