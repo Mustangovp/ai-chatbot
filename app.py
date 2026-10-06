@@ -4243,7 +4243,7 @@ def chat():
             _recent_nutrition_context = nutrition_plan.recent_nutrition_context(
                 pers_nutrition_plans if chat_uid else ())
             system_content = system_content + "\n\n" + nutrition_plan.generation_contract(
-                nutrition_delivery_targets, lang, _recent_nutrition_context)
+                nutrition_delivery_targets, lang, _recent_nutrition_context, profile)
         if (_persona_expert_communication_active_for_request
                 and _training_plan_blueprint is not None
                 and _training_persona_expert_evaluation is not None):
@@ -4722,7 +4722,8 @@ def chat():
                             repair_messages = messages + [{
                                 "role": "system",
                                 "content": nutrition_plan.regeneration_contract(
-                                    validation_error, nutrition_delivery_targets, lang),
+                                    validation_error, nutrition_delivery_targets, lang,
+                                    _recent_nutrition_context, profile),
                             }]
                             repair_model = "gpt-4o" if model_to_use == "gpt-4o-mini" else model_to_use
                             completion = client.chat.completions.create(
@@ -4745,6 +4746,8 @@ def chat():
                                 nutrition_delivery_targets,
                                 lang,
                                 restrictions=_nutrition_restrictions(profile),
+                                profile=profile,
+                                recent_context=_recent_nutrition_context,
                             )
                             if authoritative_plan is not None:
                                 reply_text = _render_nutrition_delivery(authoritative_plan, lang, profile)
@@ -4759,6 +4762,8 @@ def chat():
                             nutrition_delivery_targets,
                             lang,
                             restrictions=_nutrition_restrictions(profile),
+                            profile=profile,
+                            recent_context=_recent_nutrition_context,
                         )
                         if authoritative_plan is not None:
                             reply_text = _render_nutrition_delivery(authoritative_plan, lang, profile)

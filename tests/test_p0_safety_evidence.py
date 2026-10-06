@@ -100,8 +100,11 @@ def test_peanuts_blocked_through_chat_delivery(account, monkeypatch):
     db.save_profile(uid, {**PROFILE, "age": "30", "gender": "male", "height": "180",
                           "weight": "80", "allergies": "peanut allergy"})
     monkeypatch.setattr(appmod, "_build_profile_block", lambda *args: "Calorie target: 1260 kcal")
+    payload = _food_payload("Peanuts")
+    for meal in payload["meals"]:
+        meal["foods"][0]["food_id"] = "peanuts"
     monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **kw: SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(_food_payload("Peanuts"))))]))
+        choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(payload)))]))
     response = client.post("/chat", json={"message": "Give me a nutrition plan", "lang": "en"})
     text = "".join(event.get("t", "") for event in _events(response))
     assert text == nutrition.restriction_blocked_message("en")

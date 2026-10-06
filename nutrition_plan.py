@@ -359,7 +359,105 @@ def build_plan(payload: Mapping[str, object], targets: NutritionTargets, *,
 
 
 def build_source_backed_plan(targets: NutritionTargets, lang: str, *,
-                              restrictions: tuple[str, ...]) -> NutritionPlan | None:
+                              restrictions: tuple[str, ...],
+                              profile: Mapping[str, object] | None = None,
+                              recent_context: RecentNutritionContext | None = None) -> NutritionPlan | None:
+    """Try at most three catalog alternatives, then the prior fallback.
+
+    Only ingredient selection changes. Each attempt uses the same existing
+    service, optimizer parameters, portion bounds, and final NutritionPlan gate.
+    Restrictions retain the prior fail-closed fallback boundary.
+    """
+    if restrictions:
+        return None
+    try:
+        from pathlib import Path
+        from nutrition_engine.catalog import CatalogGovernance, load_catalog_file
+
+        catalog = load_catalog_file(
+            Path(__file__).parent / "nutrition_engine" / "data" / "food_catalog_v1.json",
+            CatalogGovernance(True, False, Decimal("15")),
+        )
+        for candidate in _fallback_catalogs(catalog, _selection_goal(profile), recent_context):
+            plan = _build_source_backed_candidate(targets, lang, restrictions=restrictions, catalog=candidate)
+            if plan is not None:
+                return plan
+        return None
+    except Exception:
+        return None
+
+
+def _fallback_catalogs(catalog, goal, recent_context):
+    from nutrition_engine.catalog import Catalog
+
+    recent_names = {name for _, names in (recent_context.recent_meals if recent_context else ()) for name in names}
+    recent_ids = {food.food_id for food in catalog.foods
+                  if food.display_name_en in recent_names or food.display_name_bg in recent_names}
+
+    def rank(food):
+        preference = Decimal("0")
+        if goal == "fat_loss":
+            preference = (-food.protein_per_100g / food.kcal_per_100g
+                          if food.category == "protein" else food.kcal_per_100g)
+        elif goal == "muscle_gain" and food.category in {"protein", "carbohydrate", "fruit"}:
+            preference = -food.kcal_per_100g
+        elif goal in {"strength", "endurance"}:
+            if food.category == "protein":
+                preference = -food.protein_per_100g
+            elif food.category == "carbohydrate":
+                preference = -food.carbs_per_100g
+        return (food.food_id in recent_ids, preference, food.food_id)
+
+    seen = set()
+    for offset in range(3):
+        selected, used = set(), {"protein": set(), "carbohydrate": set()}
+        for meal in ("breakfast", "lunch", "dinner"):
+            roles = ("protein", "carbohydrate", "fruit") if meal == "breakfast" else (
+                "protein", "carbohydrate", "vegetable", "fat")
+            for role in roles:
+                pool = [food for food in catalog.foods if food.category == role
+                        and meal in food.allowed_meals and "supplement" not in food.dietary_tags
+                        and _catalog_measurement_state(food) is not None]
+                if meal != "breakfast" and role in used:
+                    pool = [food for food in pool if food.food_id not in used[role]] or pool
+                novel = [food for food in pool if food.food_id not in recent_ids]
+                pool = sorted(novel or pool, key=rank)
+                if not pool:
+                    continue
+                chosen = pool[offset % len(pool)]
+                selected.add(chosen.food_id)
+                if meal != "breakfast" and role in used:
+                    used[role].add(chosen.food_id)
+        signature = tuple(sorted(selected))
+        if signature not in seen:
+            seen.add(signature)
+            yield Catalog(catalog.version, tuple(food for food in catalog.foods if food.food_id in selected))
+    # Feasibility takes precedence over novelty or goal preference.
+    yield catalog
+
+
+def _catalog_measurement_state(source) -> str | None:
+    # Explicit projection of catalog preparation facts; no name/ID inference.
+    groups = {
+        "raw": {"raw", "raw_dry", "raw_frozen_pasteurized", "raw_with_peel", "raw_green",
+                "unroasted", "excluding_honey_roasted"},
+        "cooked": {"baked_broiled_roasted_skin_not_eaten", "cooked_roasted_trimmed_lean_only",
+                   "baked_or_broiled", "boiled_or_poached", "cooked_not_further_specified",
+                   "boiled_not_further_specified", "cooked_restaurant_source",
+                   "roasted_light_meat_skin_not_eaten", "chop_lean_only_eaten",
+                   "from_dried_no_added_fat", "cooked", "no_added_fat", "boiled_no_added_fat",
+                   "fresh_cooked_no_added_fat", "boiled_drained_without_salt"},
+        "drained": {"canned_in_water_drained_solids"},
+        "ready_to_eat": {"plain_low_fat_milk", "plain_farmers", "baked", "plain",
+                         "plain_nonfat_milk", "low_fat_1_percent",
+                         "firm_calcium_sulfate_and_nigari", "canned_not_further_specified"},
+    }
+    return next((state for state, preparations in groups.items()
+                 if source.preparation_state in preparations), None)
+
+
+def _build_source_backed_candidate(targets: NutritionTargets, lang: str, *,
+                                   restrictions: tuple[str, ...], catalog) -> NutritionPlan | None:
     """Build a validated fallback plan from the existing source-backed catalog.
 
     This path is deliberately narrow: it is used only after structured model
@@ -370,9 +468,6 @@ def build_source_backed_plan(targets: NutritionTargets, lang: str, *,
     if restrictions:
         return None
     try:
-        from pathlib import Path
-
-        from nutrition_engine.catalog import CatalogGovernance, load_catalog_file
         from nutrition_engine.models import (
             CallerRouteStatus,
             CatalogMode,
@@ -384,10 +479,6 @@ def build_source_backed_plan(targets: NutritionTargets, lang: str, *,
         )
         from nutrition_engine.service import SERVICE_VERSION, build_nutrition_plan
 
-        catalog = load_catalog_file(
-            Path(__file__).parent / "nutrition_engine" / "data" / "food_catalog_v1.json",
-            CatalogGovernance(True, False, Decimal("15")),
-        )
         policy = PracticalityPolicy(
             maximum_foods_per_meal=4,
             category_portion_overrides=(
@@ -436,7 +527,9 @@ def build_source_backed_plan(targets: NutritionTargets, lang: str, *,
         def catalog_food_payload(source, grams: Decimal) -> dict[str, str]:
             factor = grams / Decimal("100")
             food_id = source.food_id
-            measurement_state = "cooked" if "cooked" in food_id else "raw"
+            measurement_state = _catalog_measurement_state(source)
+            if measurement_state is None:
+                raise NutritionPlanError("catalog preparation state is unsupported")
             return {
                 "display_name": source.display_name_en if str(lang).lower() == "en" else source.display_name_bg,
                 "catalog_id": source.food_id,
@@ -460,7 +553,7 @@ def build_source_backed_plan(targets: NutritionTargets, lang: str, *,
             foods = []
             for food in meal.foods:
                 source = names.get(food.name)
-                if source is None:
+                if source is None or _catalog_measurement_state(source) is None:
                     return None
                 grams = food.quantity
                 if food.unit in {"pcs", "бр."}:
@@ -471,7 +564,7 @@ def build_source_backed_plan(targets: NutritionTargets, lang: str, *,
                     "display_name": food.name,
                     "catalog_id": source.food_id,
                     "food_id": source.food_id,
-                    "measurement_state": "cooked" if "cooked" in source.food_id else "raw",
+                    "measurement_state": _catalog_measurement_state(source),
                     "grams": str(grams),
                     "protein_g": str(food.macros.protein_g),
                     "carbs_g": str(food.macros.carbs_g),
@@ -758,6 +851,16 @@ def parse_generation_response(response: object) -> Mapping[str, object]:
         raise NutritionPlanError("structured nutrition generation was invalid") from exc
     if not isinstance(payload, Mapping):
         raise NutritionPlanError("structured nutrition generation must be an object")
+    meals = payload.get("meals")
+    if not isinstance(meals, list):
+        raise NutritionPlanError("structured nutrition generation requires meals")
+    for meal in meals:
+        if not isinstance(meal, Mapping) or not isinstance(meal.get("foods"), list):
+            raise NutritionPlanError("structured nutrition generation requires meal foods")
+        for food in meal["foods"]:
+            food_id = food.get("food_id") if isinstance(food, Mapping) else None
+            if not isinstance(food_id, str) or not food_id.strip():
+                raise NutritionPlanError("food.food_id must be a non-empty string")
     return payload
 
 
@@ -873,56 +976,15 @@ def render_delivery(plan: NutritionPlan, lang: str, profile: Mapping[str, object
         # Presentation enhancement must not block the validated plan contract.
         pass
     table = render(plan, lang, recipe_tokens)
-    protein_total = _display_decimal(plan.totals.protein_g)
-    protein_target = _display_decimal(plan.targets.protein) if plan.targets.protein is not None else None
-    status_text_en = (
-        "exactly meets the confirmed target"
-        if plan.target_status is PlanTargetStatus.EXACT
-        else "is within the approved target tolerance"
-    )
-    status_text_bg = (
-        "\u0442\u043e\u0447\u043d\u043e \u043f\u043e\u043a\u0440\u0438\u0432\u0430 \u043f\u043e\u0442\u0432\u044a\u0440\u0434\u0435\u043d\u0430\u0442\u0430 \u0446\u0435\u043b"
-        if plan.target_status is PlanTargetStatus.EXACT
-        else "\u0435 \u0432 \u043e\u0434\u043e\u0431\u0440\u0435\u043d\u0438\u044f \u0434\u043e\u043f\u0443\u0441\u043a \u0441\u043f\u0440\u044f\u043c\u043e \u043f\u043e\u0442\u0432\u044a\u0440\u0434\u0435\u043d\u0430\u0442\u0430 \u0446\u0435\u043b"
-    )
-    try:
-        from brain.runtime_assets.persona_expert_projection import valid_nutrition_rationale
-        rationale = valid_nutrition_rationale(nutrition_rationale)
-    except Exception:
-        rationale = None
-    rationale_type = rationale.reason_type if rationale is not None else None
+    goal = _selection_goal(profile)
     if str(lang).lower() == "en":
-        explanation = (
-            "**Why this plan:** " + (
-                f"Breakfast, lunch, and dinner distribute {protein_total} g protein across the day toward your {protein_target} g protein target. "
-                if protein_target else "Breakfast, lunch, and dinner use the listed portions to structure the day's energy target. "
-            ) +
-            "Each meal has a defined role in the day, and the portions keep the full plan aligned with your nutrition targets. "
-            "If a food or portion does not fit, tell me and we'll adjust the plan."
-        )
+        goal_text = {"fat_loss": " for fat loss", "muscle_gain": " for weight gain"}.get(goal, "")
+        protein_text = " and your saved protein target" if plan.targets.protein is not None else ""
+        explanation = f"**APEX rationale:** The plan follows your confirmed energy target{goal_text}{protein_text}."
     else:
-        explanation = (
-            "**Защо този режим:** " + (
-                f"Закуската, обядът и вечерята разпределят {protein_total} г белтъчини през деня към целта ти от {protein_target} г. "
-                if protein_target else "Закуската, обядът и вечерята използват посочените количества, за да структурират дневната енергийна цел. "
-            ) +
-            "Всяко хранене има ясна роля в деня, а количествата държат целия план съобразен с хранителните ти цели. "
-            "Ако храна или количество не ти пасва, кажи ми и ще адаптираме плана."
-        )
-    if rationale_type == "energy_target":
-        explanation += (" The confirmed energy target comes before macro or meal-timing detail."
-                        if str(lang).lower() == "en" else
-                        " Потвърденият енергиен таргет е преди детайлите за макросите и времето на храненията.")
-    elif rationale_type == "macro_distribution":
-        explanation += (" The existing macro distribution follows the confirmed energy target."
-                        if str(lang).lower() == "en" else
-                        " Съществуващото разпределение на макросите следва потвърдения енергиен таргет.")
-    elif rationale_type == "meal_timing":
-        explanation += (" The existing meal timing is subordinate to the confirmed energy and macro structure."
-                        if str(lang).lower() == "en" else
-                        " Съществуващото време на храненията е подчинено на потвърдената енергийна и макро структура.")
-    if str(lang).lower() != "en":
-        explanation += f" \u041e\u0431\u0449\u0438\u044f\u0442 \u0440\u0435\u0437\u0443\u043b\u0442\u0430\u0442 {status_text_bg}."
+        goal_text = {"fat_loss": " за сваляне на мазнини", "muscle_gain": " за покачване"}.get(goal, "")
+        protein_text = " и записания ти протеинов таргет" if plan.targets.protein is not None else ""
+        explanation = f"**APEX логика:** Планът следва потвърдения ти енергиен таргет{goal_text}{protein_text}."
     return table + "\n\n" + explanation
 
 
@@ -953,25 +1015,47 @@ def to_record(plan: NutritionPlan) -> dict[str, object]:
     }
 
 
+_GOAL_SELECTION_GUIDANCE = {
+    "fat_loss": "Prefer practical lean-protein, fruit/vegetable, and lower-energy-density combinations.",
+    "muscle_gain": "Prefer practical energy-dense meals combining carbohydrate and protein foods.",
+    "strength": "Prefer practical protein and carbohydrate meal combinations.",
+    "endurance": "Prefer variety among carbohydrate-source foods and fruit alongside protein.",
+    "general": "Prefer balanced variety without a specialized food-selection bias.",
+}
+
+
+def _selection_goal(profile: Mapping[str, object] | None) -> str:
+    value = profile.get("goal") if isinstance(profile, Mapping) else None
+    return value if isinstance(value, str) and value in _GOAL_SELECTION_GUIDANCE else ""
+
+
 def generation_contract(targets: NutritionTargets, lang: str,
-                        recent_context: RecentNutritionContext | None = None) -> str:
+                        recent_context: RecentNutritionContext | None = None,
+                        profile: Mapping[str, object] | None = None) -> str:
     """The only model contract for canonical daily-plan generation."""
     return (
         "[STRUCTURED DAILY NUTRITION PLAN]\n"
         "Return a JSON object only. Never return markdown or prose. The object has a meals array. "
         "Each meal has meal_type (breakfast, optional snack, lunch, dinner), name, time, and foods. "
         "Each food has food_id, display_name, optional catalog_id, measurement_state, grams, protein_g, carbs_g, fat_g, and kcal. "
+        "food_id MUST be a non-empty canonical ingredient string, never null, empty, omitted, or a display label. "
         "measurement_state is one of raw, cooked, drained, ready_to_eat, as_served, package_weight; "
-        "it is mandatory for rice, quinoa, pasta, oats, legumes, meat, fish, potatoes, and frozen foods. "
+        "include the actual measurement state for every ingredient. "
         "Every food is exactly one food ingredient; never combine foods in one name. "
         + ("Every display_name must be English only. " if str(lang).lower() == "en"
            else "Every display_name must be Bulgarian only; do not mix English food names. ")
         +
-        "Breakfast, lunch, and dinner are required and chronological. All numbers are positive. "
+        "Breakfast, lunch, and dinner are required and chronological. Grams and kcal must be positive; macros may be zero but never negative. "
+        "Food nutrient fields describe the stated portion, not 100g values. Calculate each portion and sum all food fields before returning JSON. "
         "The summed food totals must meet these confirmed targets within 5%: "
         f"{targets.kcal} kcal; protein {targets.protein if targets.protein is not None else 'unspecified'}g; "
         f"carbs {targets.carbs if targets.carbs is not None else 'unspecified'}g; "
-        f"fat {targets.fat if targets.fat is not None else 'unspecified'}g."
+        f"fat {targets.fat if targets.fat is not None else 'unspecified'}g. "
+        "Check kcal and EVERY specified macro independently. Do not invent an unspecified macro target or change the confirmed targets. "
+        "Allergies, restrictions, and explicit food preferences override selection preferences."
+        + ("\n[BOUNDED GOAL FOOD SELECTION]\n" + _GOAL_SELECTION_GUIDANCE[_selection_goal(profile)]
+           + " This is a selection preference only, within confirmed targets; no new targets or physiological claims."
+           if _selection_goal(profile) else "")
         + ("\n[RECENT STRUCTURED PLAN CONTEXT]\n"
            "Avoid unnecessary repetition of these recent meal ingredients when equivalent choices meet targets and restrictions: "
            + "; ".join(f"{meal}: {', '.join(labels)}" for meal, labels in recent_context.recent_meals)
@@ -980,38 +1064,18 @@ def generation_contract(targets: NutritionTargets, lang: str,
     )
 
 
-def regeneration_contract(validation_failure: Exception, targets: NutritionTargets, lang: str) -> str:
+def regeneration_contract(validation_failure: Exception, targets: NutritionTargets, lang: str,
+                          recent_context: RecentNutritionContext | None = None,
+                          profile: Mapping[str, object] | None = None) -> str:
     """Request one repair without ever returning the rejected structured plan."""
     reason = str(validation_failure).strip() or "structured nutrition validation failed"
-    allocations = (
-        ("breakfast", Decimal("0.30")),
-        ("lunch", Decimal("0.40")),
-        ("dinner", Decimal("0.30")),
-    )
-    allocation_lines = []
-    for meal_type, ratio in allocations:
-        kcal = targets.kcal * ratio
-        protein = targets.protein * ratio if targets.protein is not None else None
-        protein_text = "unspecified" if protein is None else format(protein.normalize(), "f")
-        allocation_lines.append(
-            f"- {meal_type}: exactly {format(kcal.normalize(), 'f')} kcal; "
-            f"protein {protein_text}g"
-        )
     return (
         "[STRUCTURED DAILY NUTRITION PLAN REPAIR]\n"
         "The immediately previous JSON was rejected by deterministic validation. "
         f"Validation failure: {reason}.\n"
         "Return one complete corrected JSON object only. Do not include markdown, prose, "
         "or the rejected output. Keep the original request and confirmed targets. "
-        "Every food must include food_id, display_name, measurement_state, grams, protein_g, carbs_g, fat_g, and kcal; "
-        + ("every display_name must be English only; " if str(lang).lower() == "en"
-           else "every display_name must be Bulgarian only with no English food names; ")
-        +
-        "breakfast, lunch, and dinner are required. Use exactly these meal budgets and make "
-        "the sum of each meal's food fields equal its budget before returning JSON:\n"
-        + "\n".join(allocation_lines) + "\n"
-        "The sum of all food kcal values must equal " + format(targets.kcal.normalize(), "f") + " kcal, "
-        "and the sum of all food protein values must equal "
-        + (format(targets.protein.normalize(), "f") if targets.protein is not None else "the confirmed protein target")
-        + "g. Recalculate the three meal sums before returning JSON."
+        "Repair missing/empty ingredient IDs and portion arithmetic; never fabricate nutrient values to make totals fit. "
+        "Recalculate all meal sums and the daily kcal/protein/carbs/fat sums before returning JSON.\n"
+        + generation_contract(targets, lang, recent_context, profile)
     )

@@ -4146,16 +4146,16 @@ def _structured_plan_payload(*, total_kcal="2800"):
     return {
         "meals": [
             {"meal_type": "breakfast", "name": "Breakfast", "time": "08:00", "foods": [
-                {"display_name": "Whole eggs", "catalog_id": None, "measurement_state": "raw", "grams": "200", "protein_g": "40", "carbs_g": "0", "fat_g": "20", "kcal": "340"},
-                {"display_name": "Oats", "catalog_id": None, "measurement_state": "raw", "grams": "100", "protein_g": "0", "carbs_g": "100", "fat_g": "0", "kcal": "360"},
+                {"food_id": "eggs", "display_name": "Whole eggs", "catalog_id": None, "measurement_state": "raw", "grams": "200", "protein_g": "40", "carbs_g": "0", "fat_g": "20", "kcal": "340"},
+                {"food_id": "oats", "display_name": "Oats", "catalog_id": None, "measurement_state": "raw", "grams": "100", "protein_g": "0", "carbs_g": "100", "fat_g": "0", "kcal": "360"},
             ]},
             {"meal_type": "lunch", "name": "Lunch", "time": "13:00", "foods": [
-                {"display_name": "Chicken breast", "catalog_id": None, "measurement_state": "raw", "grams": "200", "protein_g": "70", "carbs_g": "0", "fat_g": "15", "kcal": "500"},
-                {"display_name": "Rice", "catalog_id": None, "measurement_state": "cooked", "grams": "200", "protein_g": "0", "carbs_g": "140", "fat_g": "15", "kcal": "600"},
+                {"food_id": "chicken", "display_name": "Chicken breast", "catalog_id": None, "measurement_state": "raw", "grams": "200", "protein_g": "70", "carbs_g": "0", "fat_g": "15", "kcal": "500"},
+                {"food_id": "rice", "display_name": "Rice", "catalog_id": None, "measurement_state": "cooked", "grams": "200", "protein_g": "0", "carbs_g": "140", "fat_g": "15", "kcal": "600"},
             ]},
             {"meal_type": "dinner", "name": "Dinner", "time": "19:00", "foods": [
-                {"display_name": "Salmon", "catalog_id": None, "measurement_state": "raw", "grams": "200", "protein_g": "65", "carbs_g": "0", "fat_g": "28", "kcal": "600"},
-                {"display_name": "Potatoes", "catalog_id": None, "measurement_state": "cooked", "grams": "300", "protein_g": "0", "carbs_g": "110", "fat_g": "0", "kcal": dinner_kcal},
+                {"food_id": "salmon", "display_name": "Salmon", "catalog_id": None, "measurement_state": "raw", "grams": "200", "protein_g": "65", "carbs_g": "0", "fat_g": "28", "kcal": "600"},
+                {"food_id": "potatoes", "display_name": "Potatoes", "catalog_id": None, "measurement_state": "cooked", "grams": "300", "protein_g": "0", "carbs_g": "110", "fat_g": "0", "kcal": dinner_kcal},
             ]},
         ]
     }
@@ -4291,10 +4291,9 @@ def test_nutrition_delivery_adds_a_deterministic_explanation_after_the_canonical
     delivered = nutrition_plan.render_delivery(plan, "en")
 
     assert delivered.startswith("| Meal | Menu title | Meal ID | Food")
-    assert delivered.endswith("If a food or portion does not fit, tell me and we'll adjust the plan.")
-    assert "**Why this plan:**" in delivered
-    assert "Breakfast, lunch, and dinner distribute" in delivered
-    assert "Each meal has a defined role in the day" in delivered
+    assert delivered.endswith("**APEX rationale:** The plan follows your confirmed energy target and your saved protein target.")
+    assert "**Why this plan:**" not in delivered
+    assert "Each meal has a defined role in the day" not in delivered
     assert "approved target tolerance" not in delivered
     assert delivered.count("Why this meal") == 1
     assert "Starts the day with 40 g protein toward your 175 g daily target." in delivered
@@ -4309,8 +4308,8 @@ def test_nutrition_delivery_rationale_is_localized_and_uses_only_plan_facts():
 
     delivered = nutrition_plan.render_delivery(plan, "bg")
 
-    assert "**Защо този режим:**" in delivered
-    assert "Закуската, обядът и вечерята разпределят" in delivered
+    assert "**APEX логика:**" in delivered
+    assert "**Защо този режим:**" not in delivered
     assert "одобрения допуск" not in delivered
     assert "оптимал" not in delivered.lower()
 
@@ -4471,8 +4470,8 @@ def test_daily_nutrition_contract_repairs_one_rejected_generation_without_exposi
     assert calls[1]["response_format"] == {"type": "json_object"}
     assert calls[1]["messages"][-1]["role"] == "system"
     assert "kcal is outside the confirmed target" in calls[1]["messages"][-1]["content"]
-    assert "breakfast: exactly 840 kcal; protein 52.5g" in calls[1]["messages"][-1]["content"]
-    assert "lunch: exactly 1120 kcal; protein 70g" in calls[1]["messages"][-1]["content"]
+    assert "2800 kcal; protein 175g" in calls[1]["messages"][-1]["content"]
+    assert "Check kcal and EVERY specified macro independently" in calls[1]["messages"][-1]["content"]
     assert json.dumps(invalid) not in calls[1]["messages"][-1]["content"]
     assert len(plan_calls) == 1
 

@@ -38,16 +38,16 @@ TARGET_BLOCK = (
 VALID_PLAN = {
     "meals": [
         {"meal_type": "breakfast", "name": "Breakfast", "time": "08:00", "foods": [
-            {"display_name": "Whole eggs", "catalog_id": None, "measurement_state": "raw", "grams": "200", "protein_g": "40", "carbs_g": "0", "fat_g": "20", "kcal": "340"},
-            {"display_name": "Oats", "catalog_id": None, "measurement_state": "raw", "grams": "100", "protein_g": "0", "carbs_g": "100", "fat_g": "0", "kcal": "360"},
+            {"food_id": "eggs", "display_name": "Whole eggs", "catalog_id": None, "measurement_state": "raw", "grams": "200", "protein_g": "40", "carbs_g": "0", "fat_g": "20", "kcal": "340"},
+            {"food_id": "oats", "display_name": "Oats", "catalog_id": None, "measurement_state": "raw", "grams": "100", "protein_g": "0", "carbs_g": "100", "fat_g": "0", "kcal": "360"},
         ]},
         {"meal_type": "lunch", "name": "Lunch", "time": "13:00", "foods": [
-            {"display_name": "Chicken breast", "catalog_id": None, "measurement_state": "raw", "grams": "200", "protein_g": "70", "carbs_g": "0", "fat_g": "15", "kcal": "500"},
-            {"display_name": "Rice", "catalog_id": None, "measurement_state": "cooked", "grams": "200", "protein_g": "0", "carbs_g": "140", "fat_g": "15", "kcal": "600"},
+            {"food_id": "chicken", "display_name": "Chicken breast", "catalog_id": None, "measurement_state": "raw", "grams": "200", "protein_g": "70", "carbs_g": "0", "fat_g": "15", "kcal": "500"},
+            {"food_id": "rice", "display_name": "Rice", "catalog_id": None, "measurement_state": "cooked", "grams": "200", "protein_g": "0", "carbs_g": "140", "fat_g": "15", "kcal": "600"},
         ]},
         {"meal_type": "dinner", "name": "Dinner", "time": "19:00", "foods": [
-            {"display_name": "Salmon", "catalog_id": None, "measurement_state": "raw", "grams": "200", "protein_g": "65", "carbs_g": "0", "fat_g": "28", "kcal": "600"},
-            {"display_name": "Potatoes", "catalog_id": None, "measurement_state": "cooked", "grams": "300", "protein_g": "0", "carbs_g": "110", "fat_g": "0", "kcal": "400"},
+            {"food_id": "salmon", "display_name": "Salmon", "catalog_id": None, "measurement_state": "raw", "grams": "200", "protein_g": "65", "carbs_g": "0", "fat_g": "28", "kcal": "600"},
+            {"food_id": "potatoes", "display_name": "Potatoes", "catalog_id": None, "measurement_state": "cooked", "grams": "300", "protein_g": "0", "carbs_g": "110", "fat_g": "0", "kcal": "400"},
         ]},
     ]
 }
