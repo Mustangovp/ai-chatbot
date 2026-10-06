@@ -2062,7 +2062,9 @@ function savedNutritionQuantity(value){
 function savedNutritionMacros(values){
   const copy=SAVED_NUTRITION_COPY[lang];
   return values?Object.keys(copy.macros).map(key=>{
-    const value=savedNutritionQuantity(values[key]);
+    const saved=savedNutritionQuantity(values[key]),numeric=Number(saved);
+    // Match chat macro presentation without rounding persisted food quantities.
+    const value=saved!==''&&Number.isFinite(numeric)?String(Math.round(numeric)):'';
     return value!==''?copy.macros[key]+' '+value+' '+(key==='kcal'?'kcal':copy.grams):'';
   }).filter(Boolean).join(' · '):'';
 }
@@ -2073,14 +2075,14 @@ function renderSavedNutrition(data,state='ready',anonymous=false){
   const date=plan&&myTrainingDate(plan.created_at);
   const meals=plan?plan.meals.filter(meal=>meal&&Object.hasOwn(copy.meals,meal.meal_type)).map(meal=>{
     const foods=Array.isArray(meal.foods)?meal.foods:[];
-    return '<li class="saved-nutrition-meal" data-saved-meal="'+esc(meal.meal_type)+'"><header><h4>'+esc(copy.meals[meal.meal_type])+'</h4>'+
+    return '<section class="saved-nutrition-meal" data-saved-meal="'+esc(meal.meal_type)+'"><header><h4>'+esc(copy.meals[meal.meal_type])+'</h4>'+
       (meal.time?'<time>'+esc(meal.time)+'</time>':'')+'</header><ul class="saved-nutrition-foods">'+foods.map(food=>{
         const grams=savedNutritionQuantity(food.grams),measurement=copy.measurements[food.measurement_state];
         return '<li>'+esc(food.display_name)+(grams!==''?' · '+esc(grams)+' '+copy.grams:'')+(measurement?' · '+esc(measurement):'')+'</li>';
-      }).join('')+'</ul><p class="saved-nutrition-macros">'+esc(savedNutritionMacros(meal.macros))+'</p></li>';
+      }).join('')+'</ul><p class="saved-nutrition-macros">'+esc(savedNutritionMacros(meal.macros))+'</p></section>';
   }).join(''):'';
   const latestBody=plan?(date?'<p class="saved-nutrition-note"><time datetime="'+esc(plan.created_at)+'">'+esc(date)+'</time></p>':'')+
-    '<ol class="saved-nutrition-meals">'+meals+'</ol>':note(anonymous?copy.signIn:copy.empty);
+    '<div class="saved-nutrition-meals">'+meals+'</div>':note(anonymous?copy.signIn:copy.empty);
   const targetsBody=plan?'<p data-saved-targets>'+esc(savedNutritionMacros(plan.targets))+'</p><h4 class="saved-nutrition-total">'+esc(copy.total)+
     '</h4><p data-saved-totals>'+esc(savedNutritionMacros(plan.totals))+'</p>':'';
   const restrictions=plan&&Array.isArray(plan.restrictions)?plan.restrictions.filter(item=>typeof item==='string'&&item.trim()):[];

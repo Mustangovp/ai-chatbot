@@ -66,6 +66,18 @@ for (const language of ['en', 'bg']) {
     await expect(root.locator('[datetime]')).toHaveAttribute('datetime', '2026-10-01T10:00:00Z');
     await expect(root.locator('[data-saved-meal] h4')).toHaveText(language === 'bg' ?
       ['Закуска', 'Снак', 'Обяд', 'Вечеря'] : ['Breakfast', 'Snack', 'Lunch', 'Dinner']);
+    await expect(root.locator('ol')).toHaveCount(0);
+    const meals = await root.locator('[data-saved-meal]').evaluateAll(items => items.map(item => ({
+      kind: item.dataset.savedMeal, tag: item.tagName, display: getComputedStyle(item).display,
+      before: getComputedStyle(item, '::before').content, after: getComputedStyle(item, '::after').content
+    })));
+    expect(meals.map(item => item.kind)).toEqual(['breakfast', 'snack', 'lunch', 'dinner']);
+    for (const meal of meals) {
+      expect(meal.tag).toBe('SECTION');
+      expect(meal.display).not.toBe('list-item');
+      expect(['none', 'normal']).toContain(meal.before);
+      expect(['none', 'normal']).toContain(meal.after);
+    }
     await expect(root.locator('[data-saved-meal="snack"] time')).toHaveCount(0);
     await expect(root.locator('.saved-nutrition-restrictions li')).toHaveText(['peanut allergy']);
     await expect(root.locator('#saved-nutrition-create')).toHaveText(language === 'bg' ? 'Създай нов хранителен план' : 'Create a new nutrition plan');
@@ -89,12 +101,52 @@ for (const language of ['en', 'bg']) {
   test(`missing targets are omitted and plan totals are separate in ${language}`, async ({ page }) => {
     await setup(page, { language });
     await openNutrition(page, language);
-    await expect(page.locator('[data-saved-targets]')).toHaveText((language === 'bg' ? 'Калории ' : 'Calories ') + '1700.0000000000000001 kcal');
+    await expect(page.locator('[data-saved-targets]')).toHaveText((language === 'bg' ? 'Калории ' : 'Calories ') + '1700 kcal');
     await expect(page.locator('[data-saved-targets]')).not.toContainText(/0 g|0 г|protein|carbs|fat|протеин|мазнини|въглехидрати/i);
     await expect(page.locator('.saved-nutrition-total')).toHaveText(language === 'bg' ? 'Общо в плана' : 'Plan total');
     await expect(page.locator('[data-saved-totals]')).toContainText('1680 kcal');
     const value = await page.evaluate(() => savedNutritionQuantity('100.2500000000000001'));
     expect(value).toBe('100.2500000000000001');
+  });
+
+  test(`decimal macros round for display only, not API or food quantities, in ${language}`, async ({ page }) => {
+    const data = saved();
+    const plan = data.latest_plan;
+    plan.targets = { kcal: '2517.5', protein_g: '248.595', carbs_g: '96.795', fat_g: '58.0175' };
+    plan.totals = { ...plan.targets };
+    plan.meals[0].macros = { kcal: '797.25', protein_g: '50.355', carbs_g: '96.795', fat_g: '58.0175' };
+    plan.meals[0].foods[0].grams = '50.355';
+    const original = JSON.stringify(data);
+    const calls = await setup(page, { language, data });
+    const response = page.waitForResponse('**/api/nutrition');
+    await openNutrition(page, language);
+    expect(await (await response).json()).toEqual(JSON.parse(original));
+    const expectedTotal = language === 'bg' ? 'Калории 2518 kcal · Протеин 249 г · Въглехидрати 97 г · Мазнини 58 г' :
+      'Calories 2518 kcal · Protein 249 g · Carbs 97 g · Fat 58 g';
+    await expect(page.locator('[data-saved-targets]')).toHaveText(expectedTotal);
+    await expect(page.locator('[data-saved-totals]')).toHaveText(expectedTotal);
+    await expect(page.locator('[data-saved-meal="breakfast"] .saved-nutrition-macros')).toHaveText(language === 'bg' ?
+      'Калории 797 kcal · Протеин 50 г · Въглехидрати 97 г · Мазнини 58 г' :
+      'Calories 797 kcal · Protein 50 g · Carbs 97 g · Fat 58 g');
+    await expect(page.locator('[data-saved-meal="breakfast"] .saved-nutrition-foods li').first()).toHaveText(
+      'Saved Rice 1 · 50.355 ' + (language === 'bg' ? 'г · сурово' : 'g · raw'));
+    const afterRender = await page.evaluate(source => {
+      renderSavedNutrition(source);
+      return JSON.stringify(source);
+    }, data);
+    expect(afterRender).toBe(original);
+    expect(JSON.stringify(data)).toBe(original);
+    expect(calls).toEqual({ chat: 0, reads: 1, writes: 0 });
+  });
+
+  test(`meal chronology without an optional snack is preserved in ${language}`, async ({ page }) => {
+    const data = saved();
+    data.latest_plan.meals = data.latest_plan.meals.filter(meal => meal.meal_type !== 'snack');
+    await setup(page, { language, data });
+    await openNutrition(page, language);
+    expect(await page.locator('[data-saved-meal]').evaluateAll(items => items.map(item => item.dataset.savedMeal)))
+      .toEqual(['breakfast', 'lunch', 'dinner']);
+    await expect(page.locator('#saved-nutrition ol')).toHaveCount(0);
   });
 
   test(`structured empty state never promotes legacy history in ${language}`, async ({ page }) => {
