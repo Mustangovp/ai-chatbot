@@ -4165,7 +4165,7 @@ def _structured_plan_text(lang="en"):
     plan = nutrition_plan.build_plan(
         _structured_plan_payload(), _NUTRITION_TARGETS,
         restrictions=(), provenance={"test": "structured"})
-    return nutrition_plan.render_delivery(plan, lang)
+    return nutrition_plan.render_delivery(plan, lang, profile=_profile())
 
 
 _MEAL_ID_TOKEN = re.compile(r"meal-[0-9a-f]{32}-\d+")
@@ -4283,7 +4283,7 @@ def test_nutrition_plan_is_immutable_structured_authority_with_deterministic_ren
         plan.version = "mutated"
 
 
-def test_nutrition_delivery_keeps_meal_explanations_without_a_generic_footer():
+def test_nutrition_delivery_replaces_meal_filler_with_factual_plan_explanation():
     plan = nutrition_plan.build_plan(
         _structured_plan_payload(), _NUTRITION_TARGETS,
         restrictions=(), provenance={"test": "structured"})
@@ -4292,14 +4292,16 @@ def test_nutrition_delivery_keeps_meal_explanations_without_a_generic_footer():
 
     assert delivered.startswith("| Meal | Menu title | Meal ID | Food")
     assert "APEX rationale" not in delivered
-    assert all(line.startswith("|") and line.endswith("|") for line in delivered.splitlines())
-    assert "**Why this plan:**" not in delivered
+    table, explanation = delivered.split("\n\n", 1)
+    assert all(line.startswith("|") and line.endswith("|") for line in table.splitlines())
+    assert explanation.startswith("**Why this plan:**")
+    assert "2800 kcal" in explanation and "175 g" in explanation
     assert "Each meal has a defined role in the day" not in delivered
     assert "approved target tolerance" not in delivered
     assert delivered.count("Why this meal") == 1
-    assert "Starts the day with 40 g protein toward your 175 g daily target." in delivered
-    assert "Keeps protein and energy on track for your 175 g daily target." in delivered
-    assert "Completes the day while keeping the confirmed 175 g protein target in range." in delivered
+    assert "Starts the day with" not in delivered
+    assert "Keeps protein and energy on track" not in delivered
+    assert "Completes the day" not in delivered
 
 
 def test_nutrition_delivery_bg_has_no_generic_footer():
@@ -4310,8 +4312,10 @@ def test_nutrition_delivery_bg_has_no_generic_footer():
     delivered = nutrition_plan.render_delivery(plan, "bg")
 
     assert "**APEX логика:**" not in delivered
-    assert all(line.startswith("|") and line.endswith("|") for line in delivered.splitlines())
-    assert "**Защо този режим:**" not in delivered
+    table, explanation = delivered.split("\n\n", 1)
+    assert all(line.startswith("|") and line.endswith("|") for line in table.splitlines())
+    assert explanation.startswith("**Защо този план:**")
+    assert "2800 kcal" in explanation and "175 г" in explanation
     assert "одобрения допуск" not in delivered
     assert "оптимал" not in delivered.lower()
 

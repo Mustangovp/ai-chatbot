@@ -207,15 +207,19 @@ def test_recent_food_context_is_account_only_and_uses_existing_persistence(
 @pytest.mark.parametrize("lang", ["bg", "en"])
 @pytest.mark.parametrize("goal", GOALS)
 @pytest.mark.parametrize("protein", [None, Decimal("175")])
-def test_delivery_has_no_generic_footer_or_replacement_and_preserves_plan(lang, goal, protein):
+def test_delivery_has_factual_plan_explanation_and_preserves_plan(lang, goal, protein):
     targets = NutritionTargets(Decimal("2800"), protein)
     plan = plans.build_plan(_payload(lang), targets, restrictions=(), provenance={"internal": "not-for-ui"})
     before = plans.to_record(plan)
     delivered = plans.render_delivery(plan, lang, profile={"goal": goal})
     assert "APEX rationale" not in delivered and "APEX логика" not in delivered
-    assert all(line.startswith("|") and line.endswith("|") for line in delivered.splitlines())
+    table, explanation = delivered.split("\n\n", 1)
+    assert all(line.startswith("|") and line.endswith("|") for line in table.splitlines())
+    assert explanation.startswith("**Why this plan:**" if lang == "en" else "**Защо този план:**")
+    assert "2800 kcal" in explanation
+    assert ("175" in explanation) == (protein is not None)
     assert plans.to_record(plan) == before
-    assert "Why this plan" not in delivered and "Защо този режим" not in delivered
+    assert "Защо този режим" not in delivered
     for word in ("tolerance", "provenance", "validation", "policy", "optimized", "perfect", "одобрения допуск", "not-for-ui"):
         assert word not in delivered
 

@@ -5,8 +5,8 @@ rendered chat response and never upgrades legacy rendered nutrition history.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation, ROUND_CEILING
+from dataclasses import dataclass, replace
+from decimal import Decimal, InvalidOperation
 from enum import Enum
 import datetime as dt
 import json
@@ -392,7 +392,8 @@ def _fallback_catalogs(catalog, goal, recent_context):
 
     recent_names = {name for _, names in (recent_context.recent_meals if recent_context else ()) for name in names}
     recent_ids = {food.food_id for food in catalog.foods
-                  if food.display_name_en in recent_names or food.display_name_bg in recent_names}
+                  if food.display_name_en in recent_names or food.display_name_bg in recent_names
+                  or _catalog_display_name(food, "bg") in recent_names}
 
     def rank(food):
         preference = Decimal("0")
@@ -520,10 +521,8 @@ def _build_source_backed_candidate(targets: NutritionTargets, lang: str, *,
             ),
             max_search_nodes=200_000,
         )
-        # The isolated optimizer has a documented feasible envelope.  For a
-        # higher confirmed target, obtain its largest bounded base plan, then
-        # add only catalog foods at their approved increments below.  No model
-        # value is inferred or recalculated.
+        # Preserve the existing base selection envelope. Higher targets are
+        # resolved through the same public service, never a dinner top-up.
         optimizer_kcal_target = min(targets.kcal, Decimal("2500"))
         result = build_nutrition_plan(
             NutritionPlanRequest(
@@ -549,107 +548,159 @@ def _build_source_backed_candidate(targets: NutritionTargets, lang: str, *,
         if result.outcome is not NutritionPlanOutcome.SUCCESS or result.projection is None:
             return None
 
-        names = {}
-        for food in catalog.foods:
-            names[food.display_name_bg] = food
-            names[food.display_name_en] = food
-
-        def catalog_food_payload(source, grams: Decimal) -> dict[str, str]:
-            factor = grams / Decimal("100")
-            food_id = source.food_id
-            measurement_state = _catalog_measurement_state(source)
-            if measurement_state is None:
-                raise NutritionPlanError("catalog preparation state is unsupported")
-            return {
-                "display_name": source.display_name_en if str(lang).lower() == "en" else source.display_name_bg,
-                "catalog_id": source.food_id,
-                "food_id": food_id,
-                "measurement_state": measurement_state,
-                "grams": str(grams),
-                "protein_g": str(source.protein_per_100g * factor),
-                "carbs_g": str(source.carbs_per_100g * factor),
-                "fat_g": str(source.fat_per_100g * factor),
-                "kcal": str(source.kcal_per_100g * factor),
-            }
-
-        meals = []
-        labels = {"Breakfast": "breakfast", "Закуска": "breakfast",
-                  "Lunch": "lunch", "Обяд": "lunch",
-                  "Dinner": "dinner", "Вечеря": "dinner"}
-        for index, meal in enumerate(result.projection.meals):
-            meal_type = labels.get(meal.label)
-            if meal_type is None:
-                return None
-            foods = []
-            for food in meal.foods:
-                source = names.get(food.name)
-                if source is None or _catalog_measurement_state(source) is None:
-                    return None
-                grams = food.quantity
-                if food.unit in {"pcs", "бр."}:
-                    if source.grams_per_piece is None:
-                        return None
-                    grams *= source.grams_per_piece
-                foods.append({
-                    "display_name": food.name,
-                    "catalog_id": source.food_id,
-                    "food_id": source.food_id,
-                    "measurement_state": _catalog_measurement_state(source),
-                    "grams": str(grams),
-                    "protein_g": str(food.macros.protein_g),
-                    "carbs_g": str(food.macros.carbs_g),
-                    "fat_g": str(food.macros.fat_g),
-                    "kcal": str(food.macros.kcal),
-                })
-            meals.append({
-                "meal_type": meal_type,
-                "name": meal.label,
-                "time": ("08:00", "13:00", "19:00")[index],
-                "foods": foods,
-            })
-
-        current_kcal = sum(
-            Decimal(food["kcal"])
-            for meal in meals for food in meal["foods"]
-        )
-        lower_kcal = targets.kcal * Decimal("0.95")
-        # Source-backed additions are deliberately limited to familiar, single
-        # ingredient food records.  They extend only an otherwise validated
-        # base plan and keep every value traceable to the same catalog.
-        for food_id in ("dev_rice_cooked", "dev_pasta_cooked", "dev_olive_oil"):
-            if current_kcal >= lower_kcal:
-                break
-            source = catalog.by_id(food_id)
-            if source is None or source.kcal_per_100g <= 0:
-                return None
-            increment = source.portion_increment
-            needed_grams = ((lower_kcal - current_kcal) * Decimal("100") / source.kcal_per_100g)
-            increments = (needed_grams / increment).to_integral_value(rounding=ROUND_CEILING)
-            grams = min(source.maximum_portion, max(source.minimum_portion, increments * increment))
-            if grams <= 0:
-                return None
-            addition = catalog_food_payload(source, grams)
-            meals[-1]["foods"].append(addition)
-            current_kcal += Decimal(addition["kcal"])
-        if current_kcal < lower_kcal or current_kcal > targets.kcal * Decimal("1.05"):
-            return None
-
-        # The source-backed recovery must satisfy exactly the same delivery
-        # contract as a model-generated plan. Validating calories alone here
-        # allowed an under-protein fallback to bypass the canonical gate.
-        return build_plan(
-            {"meals": meals},
-            targets,
-            restrictions=restrictions,
-            provenance={
-                "generator": "source_backed_catalog_fallback",
-                "catalog_version": catalog.version,
-                "service_version": SERVICE_VERSION,
-            },
-            language="en" if str(lang).lower() == "en" else "bg",
-        )
+        if targets.kcal > optimizer_kcal_target:
+            return _expand_source_backed_result(result, targets, lang, catalog, policy, restrictions)
+        return _source_backed_projection_plan(result, targets, lang, catalog, restrictions)
     except Exception:
         return None
+
+
+def _source_backed_projection_plan(result, targets, lang, catalog, restrictions):
+    """Project a service result through the existing canonical delivery gate."""
+    names = {name: food for food in catalog.foods for name in (food.display_name_bg, food.display_name_en)}
+    meals = []
+    labels = {"Breakfast": "breakfast", "Закуска": "breakfast",
+              "Lunch": "lunch", "Обяд": "lunch",
+              "Dinner": "dinner", "Вечеря": "dinner", "Snack": "snack", "Междинно хранене": "snack"}
+    for meal in result.projection.meals:
+        meal_type = labels.get(meal.label)
+        if meal_type is None:
+            return None
+        foods = []
+        for food in meal.foods:
+            source = names.get(food.name)
+            if source is None or _catalog_measurement_state(source) is None:
+                return None
+            grams = food.quantity
+            if food.unit in {"pcs", "бр."}:
+                if source.grams_per_piece is None:
+                    return None
+                grams *= source.grams_per_piece
+            foods.append({
+                "display_name": _catalog_display_name(source, lang),
+                "catalog_id": source.food_id,
+                "food_id": source.food_id,
+                "measurement_state": _catalog_measurement_state(source),
+                "grams": str(grams),
+                "protein_g": str(food.macros.protein_g),
+                "carbs_g": str(food.macros.carbs_g),
+                "fat_g": str(food.macros.fat_g),
+                "kcal": str(food.macros.kcal),
+            })
+        meals.append({
+            "meal_type": meal_type,
+            "name": meal.label,
+            "time": {"breakfast": "08:00", "snack": "10:30", "lunch": "13:00", "dinner": "19:00"}[meal_type],
+            "foods": foods,
+        })
+    return build_plan(
+        {"meals": meals}, targets, restrictions=restrictions,
+        provenance={"generator": "source_backed_catalog_fallback",
+                    "catalog_version": catalog.version, "service_version": result.service_version},
+        language="en" if str(lang).lower() == "en" else "bg",
+    )
+
+
+_FOOD_DISPLAY_NAMES_BG = {
+    "dev_lean_pork_cooked": "Постен свински котлет",
+    "dev_cottage_cheese": "Фермерска извара",
+    "dev_greek_yogurt_nonfat": "Обезмаслено гръцко кисело мляко",
+    "dev_greek_yogurt_2pct": "Гръцко кисело мляко с ниска масленост",
+}
+
+
+def _catalog_display_name(source, lang):
+    return source.display_name_en if str(lang).lower() == "en" else (
+        _FOOD_DISPLAY_NAMES_BG.get(source.food_id, source.display_name_bg))
+
+
+def _expand_source_backed_result(base, targets, lang, catalog, policy, restrictions):
+    """Re-solve selected foods through the public service, then try one snack.
+
+    Temporary search bounds only narrow the catalog's permitted portions.
+    Nutrient facts and target parameters are unchanged. The final canonical
+    build_plan gate still accepts or rejects every returned result.
+    """
+    from nutrition_engine.catalog import Catalog
+    from nutrition_engine.models import (CallerRouteStatus, CatalogMode, DietConstraints,
+                                         NutritionPlanOutcome, NutritionPlanRequest, NutritionTargets as EngineTargets)
+    from nutrition_engine.service import SERVICE_VERSION, build_nutrition_plan
+    from nutrition_engine.quality import evaluate_quality
+    from inspect import signature
+
+    names = {name: source for source in catalog.foods for name in (source.display_name_en, source.display_name_bg)}
+    selected = {}
+    base_protein = sum(food.macros.protein_g for meal in base.projection.meals for food in meal.foods)
+    if (targets.protein is not None and base_protein > targets.protein
+            and not _within(base_protein, targets.protein, Decimal("0.05"))):
+        # This search only increases doses. The existing canonical gate would
+        # reject an already-excessive protein base, so do not spend a solve on it.
+        return None
+    for meal in base.projection.meals:
+        for food in meal.foods:
+            source = names.get(food.name)
+            if source is None:
+                return None
+            grams = food.quantity * source.grams_per_piece if food.unit in {"pcs", "бр."} else food.quantity
+            selected[source.food_id] = max(selected.get(source.food_id, Decimal("0")), grams)
+    sources = []
+    oil_slots = sum(any(names[food.name].food_id == "dev_olive_oil" for food in meal.foods)
+                    for meal in base.projection.meals)
+    oil_limit = signature(evaluate_quality).parameters["maximum_oil_g"].default
+    if not isinstance(oil_limit, Decimal):
+        return None
+    for food_id, grams in selected.items():
+        source = catalog.by_id(food_id)
+        if not source.minimum_portion <= grams <= source.maximum_portion:
+            return None
+        # Preserve protein/vegetable doses; expand existing energy sources only.
+        upper = source.maximum_portion if source.category in {"carbohydrate", "fruit", "fat"} else grams
+        if source.food_id == "dev_olive_oil":
+            # Allocate the existing quality gate's aggregate limit across its
+            # actual meal slots; do not invent a new per-meal nutrition rule.
+            upper = min(upper, oil_limit / max(1, oil_slots))
+        sources.append(replace(source, minimum_portion=grams, maximum_portion=upper,
+                               default_portion=max(grams, min(source.default_portion, upper))))
+    growth_policy = replace(policy, category_portion_overrides=())
+    snacks = sorted((food for food in catalog.foods if "snack" in food.allowed_meals
+                     and "supplement" not in food.dietary_tags
+                     and _catalog_measurement_state(food) is not None), key=lambda food: food.food_id)
+    seen = set()
+    canonical_rejected = False
+    for snack in [None] + snacks[:8]:
+        # First solve without a new meal. A snack is considered only if the
+        # selected composition cannot meet the confirmed daily target.
+        meal_sources = tuple(replace(source, maximum_portion=source.minimum_portion,
+                                     default_portion=source.minimum_portion)
+                             if canonical_rejected and source.category == "carbohydrate" else source
+                             for source in sources)
+        # An optional snack is an additional meal, not permission to replace
+        # an already-selected main-meal food. Narrow eligibility in this view.
+        addition = (replace(snack, allowed_meals=frozenset({"snack"})),) if snack and snack.food_id not in selected else ()
+        view = Catalog(catalog.version, meal_sources + addition)
+        signature = (bool(snack), canonical_rejected, tuple(food.food_id for food in view.foods))
+        if signature in seen:
+            continue
+        seen.add(signature)
+        result = build_nutrition_plan(NutritionPlanRequest(
+            language="en" if str(lang).lower() == "en" else "bg", catalog_version=catalog.version,
+            catalog_mode=CatalogMode.DEVELOPMENT, diet_constraints=DietConstraints(),
+            required_meals=("breakfast", "snack", "lunch", "dinner") if snack else ("breakfast", "lunch", "dinner"),
+            practicality_policy=growth_policy, caller_route_status=CallerRouteStatus.ELIGIBLE,
+            service_version=SERVICE_VERSION, targets=EngineTargets(
+                calories_target=targets.kcal, calories_tolerance=Decimal("0.05"),
+                protein_min_g=targets.protein if targets.protein is not None else Decimal("0"))), catalog=view)
+        if result.outcome is NutritionPlanOutcome.SUCCESS and result.projection is not None:
+            try:
+                plan = _source_backed_projection_plan(result, targets, lang, catalog, restrictions)
+            except NutritionPlanError:
+                # Service feasibility does not prove canonical macro validity.
+                # Keep the gate unchanged and try the next bounded composition.
+                canonical_rejected = True
+                continue
+            if plan is not None:
+                return plan
+    return None
 
 
 def _optional_decimal(value: object, field: str) -> Decimal | None:
@@ -916,26 +967,8 @@ def _quantity_label(food: NutritionFood, lang: str) -> str:
 
 
 def _meal_reason(meal: NutritionMeal, targets: NutritionTargets, lang: str) -> str:
-    """Return the deterministic, target-aware rationale displayed on each meal card."""
-    protein = _display_decimal(meal.macros.protein_g)
-    protein_target = _display_decimal(targets.protein) if targets.protein is not None else None
-    kcal = _display_decimal(meal.macros.kcal)
-    kcal_target = _display_decimal(targets.kcal)
-    english = str(lang).lower() == "en"
-    if meal.meal_type == "breakfast":
-        return (f"Starts the day with {protein} g protein toward your {protein_target} g daily target."
-                if protein_target else f"Starts the day with {kcal} kcal toward your {kcal_target} kcal daily target.") if english else (
-                f"\u0417\u0430\u043f\u043e\u0447\u0432\u0430 \u0434\u0435\u043d\u044f \u0441 {protein} \u0433 \u0431\u0435\u043b\u0442\u044a\u0447\u0438\u043d\u0438 \u043a\u044a\u043c \u0434\u043d\u0435\u0432\u043d\u0430\u0442\u0430 \u0442\u0438 \u0446\u0435\u043b \u043e\u0442 {protein_target} \u0433."
-                if protein_target else f"\u0417\u0430\u043f\u043e\u0447\u0432\u0430 \u0434\u0435\u043d\u044f \u0441 {kcal} kcal \u043a\u044a\u043c \u0434\u043d\u0435\u0432\u043d\u0430\u0442\u0430 \u0442\u0438 \u0446\u0435\u043b \u043e\u0442 {kcal_target} kcal.")
-    if meal.meal_type == "lunch":
-        return (f"Keeps protein and energy on track for your {protein_target} g daily target."
-                if protein_target else f"Keeps energy on track for your {kcal_target} kcal daily target.") if english else (
-                f"\u0414\u044a\u0440\u0436\u0438 \u0431\u0435\u043b\u0442\u044a\u0447\u0438\u043d\u0438\u0442\u0435 \u0438 \u0435\u043d\u0435\u0440\u0433\u0438\u044f\u0442\u0430 \u043a\u044a\u043c \u0434\u043d\u0435\u0432\u043d\u0430\u0442\u0430 \u0442\u0438 \u0446\u0435\u043b \u043e\u0442 {protein_target} \u0433."
-                if protein_target else f"\u0414\u044a\u0440\u0436\u0438 \u0435\u043d\u0435\u0440\u0433\u0438\u044f\u0442\u0430 \u043a\u044a\u043c \u0434\u043d\u0435\u0432\u043d\u0430\u0442\u0430 \u0442\u0438 \u0446\u0435\u043b \u043e\u0442 {kcal_target} kcal.")
-    return (f"Completes the day while keeping the confirmed {protein_target} g protein target in range."
-            if protein_target else f"Completes the day while keeping the confirmed {kcal_target} kcal target in range.") if english else (
-            f"\u0417\u0430\u0432\u044a\u0440\u0448\u0432\u0430 \u0434\u0435\u043d\u044f, \u043a\u0430\u0442\u043e \u0437\u0430\u043f\u0430\u0437\u0432\u0430 \u043f\u043e\u0442\u0432\u044a\u0440\u0434\u0435\u043d\u0430\u0442\u0430 \u0446\u0435\u043b \u043e\u0442 {protein_target} \u0433 \u0431\u0435\u043b\u0442\u044a\u0447\u0438\u043d\u0438."
-            if protein_target else f"\u0417\u0430\u0432\u044a\u0440\u0448\u0432\u0430 \u0434\u0435\u043d\u044f, \u043a\u0430\u0442\u043e \u0437\u0430\u043f\u0430\u0437\u0432\u0430 \u043f\u043e\u0442\u0432\u044a\u0440\u0434\u0435\u043d\u0430\u0442\u0430 \u0446\u0435\u043b \u043e\u0442 {kcal_target} kcal.")
+    """Keep the legacy table column empty; explanation belongs to the whole plan."""
+    return ""
 
 
 def render(plan: NutritionPlan, lang: str, recipe_tokens: Mapping[str, str] | None = None) -> str:
@@ -965,7 +998,9 @@ def render(plan: NutritionPlan, lang: str, recipe_tokens: Mapping[str, str] | No
             reason = _meal_reason(meal, plan.targets, lang) if index == 0 else ""
             recipe = (recipe_tokens or {}).get(meal.id, "") if index == 0 else ""
             row = "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |".format(
-                label, meal.name if index == 0 else "", meal.id if index == 0 else "", food.display_name, _quantity_label(food, lang),
+                label, meal.name if index == 0 else "", meal.id if index == 0 else "",
+                _FOOD_DISPLAY_NAMES_BG.get(food.food_id, food.display_name) if not english else food.display_name,
+                _quantity_label(food, lang),
                 _display_decimal(food.macros.protein_g), _display_decimal(food.macros.carbs_g),
                 _display_decimal(food.macros.fat_g), _display_decimal(food.macros.kcal), reason,
             )
@@ -1005,7 +1040,52 @@ def render_delivery(plan: NutritionPlan, lang: str, profile: Mapping[str, object
     except Exception:
         # Presentation enhancement must not block the validated plan contract.
         pass
-    return render(plan, lang, recipe_tokens)
+    table = render(plan, lang, recipe_tokens)
+    explanation = _plan_explanation(plan, lang, profile)
+    return table + ("\n\n" + explanation if explanation else "")
+
+
+def _plan_explanation(plan, lang, profile):
+    """Explain only confirmed targets, explicit goal, and this plan's structure."""
+    if plan.targets.kcal <= 0 or not plan.meals:
+        return ""
+    english = str(lang).lower() == "en"
+    goal = _selection_goal(profile)
+    goals = {"fat_loss": ("fat loss", "сваляне на мазнини"),
+             "muscle_gain": ("muscle gain", "покачване на мускулна маса"),
+             "strength": ("strength", "сила"), "endurance": ("endurance", "издръжливост"),
+             "general": ("general fitness", "обща физическа форма")}
+    target = _display_decimal(plan.targets.kcal)
+    total = _display_decimal(plan.totals.kcal)
+    if english:
+        prefix = f"For your {goals[goal][0]} goal, " if goal in goals else ""
+        sentences = [f"{prefix}the plan follows your confirmed {target} kcal target and provides {total} kcal."]
+        if not prefix:
+            sentences[0] = sentences[0][0].upper() + sentences[0][1:]
+    else:
+        prefix = f"За целта ти {goals[goal][1]}, " if goal in goals else ""
+        sentences = [f"{prefix}планът следва потвърдения ти таргет от {target} kcal и осигурява {total} kcal."]
+        if not prefix:
+            sentences[0] = sentences[0][0].upper() + sentences[0][1:]
+    if plan.targets.protein is not None:
+        protein_target, protein = _display_decimal(plan.targets.protein), _display_decimal(plan.totals.protein_g)
+        sentences.append(f"Your protein target is {protein_target} g; the plan provides {protein} g." if english else
+                         f"Протеиновият ти таргет е {protein_target} г; планът осигурява {protein} г.")
+    main = [meal for meal in plan.meals if meal.meal_type in _MEALS]
+    snacks = [meal for meal in plan.meals if meal.meal_type == "snack"]
+    if len(main) == 3:
+        protein_in_each = all(meal.macros.protein_g > 0 for meal in main)
+        if english:
+            structure = "Energy is spread across breakfast, lunch and dinner"
+            structure += " and a snack" if snacks else ""
+            structure += ", with protein in each main meal" if protein_in_each else ""
+        else:
+            structure = "Енергията е разпределена между закуска, обяд и вечеря"
+            structure += " и междинно хранене" if snacks else ""
+            structure += ", с белтъчини във всяко основно хранене" if protein_in_each else ""
+        sentences.append(structure + ".")
+    title = "Why this plan" if english else "Защо този план"
+    return f"**{title}:** " + " ".join(sentences[:3])
 
 
 def to_record(plan: NutritionPlan) -> dict[str, object]:

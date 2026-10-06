@@ -65,7 +65,7 @@ INVALID_PLAN = {
 def _rendered_plan(payload=VALID_PLAN):
     targets = appmod.nutrition_validation.targets_from_profile_block(TARGET_BLOCK)
     plan = appmod.nutrition_plan.build_plan(payload, targets, restrictions=(), provenance={"test": "acceptance"})
-    return appmod.nutrition_plan.render_delivery(plan, "en")
+    return appmod.nutrition_plan.render_delivery(plan, "en", profile={"goal": "strength"})
 
 
 _MEAL_ID_TOKEN = re.compile(r"meal-[0-9a-f]{32}-\d+")
