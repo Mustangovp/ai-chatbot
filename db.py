@@ -1975,6 +1975,17 @@ def list_nutrition_plans(user_id, limit=30):
                          .order_by(nutrition_plans.c.created_at.desc()).limit(limit)).mappings().all()
     return [_serial(r) for r in rows]
 
+def get_saved_nutrition(user_id):
+    """Only the newest owned structured row; no legacy fallback or writes."""
+    from saved_nutrition import latest_saved_plan
+
+    with engine.connect() as connection:
+        row = connection.execute(select(nutrition_plans).where(
+            nutrition_plans.c.user_id == _as_uuid(user_id)).order_by(
+                nutrition_plans.c.created_at.desc(), nutrition_plans.c.id.desc()).limit(1)).mappings().first()
+    return {"latest_plan": latest_saved_plan(row)}
+
+
 def add_conversation(user_id, role, content, lang=None):
     with engine.begin() as c:
         c.execute(insert(conversations).values(id=uuid.uuid4(), user_id=_as_uuid(user_id),

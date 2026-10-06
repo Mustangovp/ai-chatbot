@@ -176,6 +176,23 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 .training-progress h4{font-size:14px;line-height:1.5;font-weight:650;letter-spacing:0;overflow-wrap:anywhere;}
 .training-progress-state{font-weight:650;margin:3px 0;color:var(--text);}
 .training-progress time{font-size:13px;line-height:1.6;color:var(--muted);}
+.saved-nutrition{margin-top:20px;}
+.saved-nutrition-section{padding:18px 0;border-top:1px solid var(--border);}
+.saved-nutrition-section:first-child{padding-top:0;border-top:0;}
+.saved-nutrition-section h3{font-size:16px;line-height:1.4;font-weight:700;letter-spacing:0;margin-bottom:12px;}
+.saved-nutrition h4{font-size:14px;line-height:1.5;font-weight:650;letter-spacing:0;}
+.saved-nutrition p,.saved-nutrition li{font-size:14px;line-height:1.6;overflow-wrap:anywhere;}
+.saved-nutrition-note,.saved-nutrition-macros,.saved-nutrition time{color:var(--muted);}
+.saved-nutrition-meals,.saved-nutrition-foods,.saved-nutrition-restrictions{list-style:none;margin:0;padding:0;}
+.saved-nutrition-meal{padding:14px 0;border-top:1px solid var(--border);}
+.saved-nutrition-meal:first-child{border-top:0;}
+.saved-nutrition-meal header{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 12px;margin-bottom:8px;}
+.saved-nutrition-meal time{font-size:13px;line-height:1.6;}
+.saved-nutrition-foods li,.saved-nutrition-restrictions li{padding:3px 0;}
+.saved-nutrition-macros{margin-top:8px;font-size:13px!important;}
+.saved-nutrition-total{margin-top:16px;}
+.saved-nutrition-action{position:sticky;bottom:0;padding-top:12px;background:var(--bg);z-index:1;}
+.saved-nutrition-action .save{border-radius:8px;font-size:14px;line-height:1.5;}
 .panel-row .pr-l{color:var(--muted);font-weight:600;} .panel-row .pr-v{font-weight:700;text-align:right;}
 .plan-badge{display:inline-flex;align-items:center;gap:6px;font-family:'Unbounded';font-weight:700;font-size:12px;letter-spacing:.5px;padding:6px 13px;border-radius:20px;}
 .plan-badge.pro{color:var(--gold);background:rgba(255,177,60,.12);border:1px solid rgba(255,177,60,.3);}
@@ -1793,7 +1810,7 @@ function menuAction(k){
     case 'home': exitConsult(); break;
     case 'consult': enterConsult(); break;
     case 'workouts': showMyTraining(); break;
-    case 'nutrition': enterConsult(seed.nutrition); break;
+    case 'nutrition': showNutrition(); break;
     case 'progress': showProgress(); break;
     case 'history': showHistory(); break;
     case 'profile': openProfile(0); break;
@@ -2022,6 +2039,73 @@ async function showProgress(){
     if(owner===dataOwnerToken()&&SESSION.authenticated&&document.getElementById('training-progress'))document.getElementById('panel-body').innerHTML=renderProgress(null,'error');
   }
 }
+const SAVED_NUTRITION_COPY={
+  bg:{title:'Хранене',latest:'Последен запазен план',targets:'Таргети на плана',restrictions:'Ограничения в този план',total:'Общо в плана',
+    empty:'Още няма запазен валидиран хранителен план.',noRestrictions:'Няма запазени хранителни ограничения в този план.',
+    signIn:'Влез в профила си, за да запазваш и отваряш хранителните си планове между сесиите.',
+    create:'Създай хранителен план',createNew:'Създай нов хранителен план',loading:'Зареждане…',unavailable:'Хранителните данни не са достъпни в момента.',
+    grams:'г',macros:{kcal:'Калории',protein_g:'Протеин',carbs_g:'Въглехидрати',fat_g:'Мазнини'},
+    meals:{breakfast:'Закуска',snack:'Снак',lunch:'Обяд',dinner:'Вечеря'},
+    measurements:{raw:'сурово',cooked:'сготвено',drained:'отцедено',ready_to_eat:'готово за консумация',as_served:'както е сервирано',package_weight:'тегло от опаковката'}},
+  en:{title:'Nutrition',latest:'Latest saved plan',targets:'Plan targets',restrictions:'Restrictions in this plan',total:'Plan total',
+    empty:'No validated nutrition plan has been saved yet.',noRestrictions:'No dietary restrictions are saved with this plan.',
+    signIn:'Sign in to save and reopen your nutrition plans across sessions.',
+    create:'Create nutrition plan',createNew:'Create a new nutrition plan',loading:'Loading…',unavailable:'Nutrition data is unavailable at the moment.',
+    grams:'g',macros:{kcal:'Calories',protein_g:'Protein',carbs_g:'Carbs',fat_g:'Fat'},
+    meals:{breakfast:'Breakfast',snack:'Snack',lunch:'Lunch',dinner:'Dinner'},
+    measurements:{raw:'raw',cooked:'cooked',drained:'drained',ready_to_eat:'ready to eat',as_served:'as served',package_weight:'package weight'}}
+};
+function savedNutritionQuantity(value){
+  if(typeof value!=='string'&&typeof value!=='number')return '';
+  const text=String(value);return /^\d+(?:\.\d+)?$/.test(text)?text.replace(/(\.\d*?)0+$/,'$1').replace(/\.$/,''):'';
+}
+function savedNutritionMacros(values){
+  const copy=SAVED_NUTRITION_COPY[lang];
+  return values?Object.keys(copy.macros).map(key=>{
+    const value=savedNutritionQuantity(values[key]);
+    return value!==''?copy.macros[key]+' '+value+' '+(key==='kcal'?'kcal':copy.grams):'';
+  }).filter(Boolean).join(' · '):'';
+}
+function renderSavedNutrition(data,state='ready',anonymous=false){
+  const copy=SAVED_NUTRITION_COPY[lang],note=text=>'<p class="saved-nutrition-note">'+esc(text)+'</p>';
+  const plan=data&&data.latest_plan&&Array.isArray(data.latest_plan.meals)?data.latest_plan:null;
+  const unavailable=state==='error'?copy.unavailable:copy.loading;
+  const date=plan&&myTrainingDate(plan.created_at);
+  const meals=plan?plan.meals.filter(meal=>meal&&Object.hasOwn(copy.meals,meal.meal_type)).map(meal=>{
+    const foods=Array.isArray(meal.foods)?meal.foods:[];
+    return '<li class="saved-nutrition-meal" data-saved-meal="'+esc(meal.meal_type)+'"><header><h4>'+esc(copy.meals[meal.meal_type])+'</h4>'+
+      (meal.time?'<time>'+esc(meal.time)+'</time>':'')+'</header><ul class="saved-nutrition-foods">'+foods.map(food=>{
+        const grams=savedNutritionQuantity(food.grams),measurement=copy.measurements[food.measurement_state];
+        return '<li>'+esc(food.display_name)+(grams!==''?' · '+esc(grams)+' '+copy.grams:'')+(measurement?' · '+esc(measurement):'')+'</li>';
+      }).join('')+'</ul><p class="saved-nutrition-macros">'+esc(savedNutritionMacros(meal.macros))+'</p></li>';
+  }).join(''):'';
+  const latestBody=plan?(date?'<p class="saved-nutrition-note"><time datetime="'+esc(plan.created_at)+'">'+esc(date)+'</time></p>':'')+
+    '<ol class="saved-nutrition-meals">'+meals+'</ol>':note(anonymous?copy.signIn:copy.empty);
+  const targetsBody=plan?'<p data-saved-targets>'+esc(savedNutritionMacros(plan.targets))+'</p><h4 class="saved-nutrition-total">'+esc(copy.total)+
+    '</h4><p data-saved-totals>'+esc(savedNutritionMacros(plan.totals))+'</p>':'';
+  const restrictions=plan&&Array.isArray(plan.restrictions)?plan.restrictions.filter(item=>typeof item==='string'&&item.trim()):[];
+  const restrictionsBody=plan?(restrictions.length?'<ul class="saved-nutrition-restrictions">'+restrictions.map(item=>'<li>'+esc(item)+'</li>').join('')+'</ul>':note(copy.noRestrictions)):'';
+  const sections=[['latest',copy.latest,latestBody],['targets',copy.targets,targetsBody],['restrictions',copy.restrictions,restrictionsBody]];
+  return '<div class="saved-nutrition" id="saved-nutrition" aria-busy="'+(state==='loading')+'">'+sections.map(([key,title,body])=>
+    '<section class="saved-nutrition-section" data-nutrition-block="'+key+'" aria-labelledby="saved-nutrition-'+key+'"><h3 id="saved-nutrition-'+key+'">'+esc(title)+'</h3>'+
+    (state==='ready'?body:(key==='latest'?note(unavailable):''))+'</section>').join('')+
+    '<div class="saved-nutrition-action"><button class="save" id="saved-nutrition-create" onclick="createFromNutrition()">'+esc(plan?copy.createNew:copy.create)+'</button></div></div>';
+}
+async function showNutrition(){
+  const owner=dataOwnerToken(),authenticated=SESSION.authenticated;
+  if(!authenticated){showPanel(SAVED_NUTRITION_COPY[lang].title,renderSavedNutrition(null,'ready',true));return;}
+  showPanel(SAVED_NUTRITION_COPY[lang].title,renderSavedNutrition(null,'loading'));
+  try{
+    const response=await fetch('/api/nutrition',{credentials:'same-origin',cache:'no-store'});
+    if(!response.ok)throw new Error('nutrition_read_unavailable');
+    const data=await response.json();
+    if(owner!==dataOwnerToken()||!SESSION.authenticated||!document.getElementById('saved-nutrition'))return;
+    document.getElementById('panel-body').innerHTML=renderSavedNutrition(data);
+  }catch(e){
+    if(owner===dataOwnerToken()&&SESSION.authenticated&&document.getElementById('saved-nutrition'))document.getElementById('panel-body').innerHTML=renderSavedNutrition(null,'error');
+  }
+}
+function createFromNutrition(){closePanel();enterConsult(tr().seed.nutrition);}
 function fmtDate(ts){ try{return new Date(ts*1000).toLocaleDateString(lang==='bg'?'bg-BG':'en-GB',{day:'numeric',month:'short',year:'numeric'});}catch(e){return '—';} }
 async function showSubscription(){
   const s=tr().sub, a=tr().auth;

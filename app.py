@@ -1838,6 +1838,20 @@ def _require_user():
 # ═══════════════════════════════════════════════════════════
 # ACCOUNT DATA API — profile / history / memory (account-owned)
 # ═══════════════════════════════════════════════════════════
+@app.route("/api/nutrition", methods=["GET"])
+def api_nutrition():
+    user = _require_user()
+    if not user:
+        return jsonify({"error": "unauthenticated"}), 401
+    try:
+        response = jsonify(store.get_saved_nutrition(user["id"]))
+        response.headers["Cache-Control"] = "private, no-store"
+        return response
+    except Exception as error:
+        print(f"[nutrition-surface] read unavailable: {type(error).__name__}")
+        return jsonify({"error": "nutrition_data_unavailable"}), 503
+
+
 @app.route("/api/progress", methods=["GET"])
 def api_progress():
     user = _require_user()
