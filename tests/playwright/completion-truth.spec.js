@@ -16,7 +16,7 @@ async function start(page) {
     };
     SESSION.authenticated=true;
     const session={session_id:'truth-session',session_index:1,exercises:['Push-up','Squat'].map((name,i)=>({
-      prescription_id:'p'+i,exercise_id:'exercise.'+i,exercise_version:'1.0.0',display_name:name,
+      prescription_id:'p'+i,exercise_id:i===0?'bodyweight.push_up':'bodyweight.squat',exercise_version:'1.0.0',display_name:name,
       prescribed_sets:2,rep_min:8,rep_max:12,rest_seconds:60
     }))};
     pendingTrainingCompletion={plan_id:'truth-plan',plan_version:'v2',sessions:[session]};

@@ -2758,7 +2758,11 @@ function renderMarkdown(raw){
       const tb=[]; while(i<lines.length&&lines[i].includes('|')){tb.push(lines[i]);i++;}
       const{header,body}=parseTable(tb); const kind=classifyTable(header);
       if(kind==='nutrition')html+=renderNutrition(header,body);
-      else if(kind==='workout')html+=renderWorkout(header,body);
+      else if(kind==='workout'){
+        const workout=renderWorkout(header,body);
+        if(workout.includes('data-workout-rejected'))return workout;
+        html+=workout;
+      }
       else html+=renderGenericTable(header,body);
       continue;
     }
@@ -2871,20 +2875,22 @@ function parseExercises(header,body){
   const iNote=colIndex(header,[/бележка|note|защо|замяна/]);
   const ex=[];ex.unsupported=[];
   const canonicalSession=pendingCompletionSessions[0];
-  body.forEach(r=>{
-    const name=(r[iName]||'').trim(); if(!name||/общо|total/i.test(name))return;
-    const item=canonicalSession&&canonicalSession.exercises&&canonicalSession.exercises[ex.length];
-    if(canonicalSession&&(!item||item.display_name!==name||
-       !Number.isInteger(item.prescribed_sets)||item.prescribed_sets<1||
-       !canonicalDoseValid(item)||
-       !Number.isInteger(item.rest_seconds)||item.rest_seconds<0)){
-      ex.unsupported.push(name);return;
-    }
+  const canonicalExpected=pendingCompletionSessions.length>0||!!(pendingTrainingCompletion&&
+    Array.isArray(pendingTrainingCompletion.sessions)&&pendingTrainingCompletion.sessions.length);
+  if(canonicalExpected&&!canonicalSessionValid(canonicalSession)){
+    ex.unsupported.push('completion-contract');return ex;
+  }
+  const rows=canonicalExpected?body:body.filter(r=>{const name=(r[iName]||'').trim();return name&&!/общо|total/i.test(name);});
+  if(canonicalExpected&&rows.length!==canonicalSession.exercises.length){
+    ex.unsupported.push('completion-count');return ex;
+  }
+  rows.forEach((r,index)=>{
+    const name=(r[iName]||'').trim();
+    const item=canonicalExpected?canonicalSession.exercises[index]:null;
     const record=window.ApexExerciseInstructions&&
-      (item?window.ApexExerciseInstructions.findByExerciseId(item.exercise_id):null)||
-      (window.ApexExerciseInstructions&&window.ApexExerciseInstructions.find(name));
+      (item?window.ApexExerciseInstructions.findByExerciseId(item.exercise_id):window.ApexExerciseInstructions.find(name));
     if(!record){ex.unsupported.push(name);return;}
-    const exercise={name:window.ApexExerciseInstructions.display(record,lang),contract_display_name:name,canonical_id:record.canonical_id,instruction_record:record,
+    const exercise={name:window.ApexExerciseInstructions.display(record,lang),contract_display_name:name,canonical_id:item?item.exercise_id:record.canonical_id,instruction_record:record,
       sets:item?String(item.prescribed_sets):(iSets>-1?(r[iSets]||'3'):'3'),
       reps:item?workoutPrescription({completion:item}).value:(iReps>-1?(r[iReps]||'10'):'10'),
       rest:item?String(item.rest_seconds):(iRest>-1?(r[iRest]||'60'):'60'),
@@ -2931,7 +2937,7 @@ function workoutFollowUpIntent(value){
   if(!/(?:what is|how (?:do|to)|explain|technique|какво е|как се|обясни|техника|изпълнява)/i.test(q))return null;
   const protocol=latestWorkoutProtocol();if(!protocol||!window.ApexExerciseInstructions)return null;
   const key=decodeURIComponent(protocol.dataset.workoutKey||''),current=renderedWorkoutExercises[key]||[];
-  const record=window.ApexExerciseInstructions.records.find(item=>current.some(exercise=>exercise.canonical_id===item.canonical_id)&&item.aliases.some(alias=>{
+  const record=window.ApexExerciseInstructions.records.find(item=>current.some(exercise=>instructionRecordFor(exercise)===item)&&item.aliases.some(alias=>{
     const aliasKey=normalizedInstructionIntent(alias);return q===aliasKey||q.includes(' '+aliasKey)||q.endsWith(aliasKey);
   }));
   return record?{type:WORKOUT_SINGLE_EXERCISE_EXPLANATION,record,key}:null;
@@ -2960,7 +2966,9 @@ function instructionLabels(){
 }
 function instructionRecordFor(exercise){
   const api=window.ApexExerciseInstructions;
-  return exercise.instruction_record||(api&&api.find(exercise.name))||null;
+  if(exercise.instruction_record)return exercise.instruction_record;
+  if(exercise.completion)return api&&api.findByExerciseId(exercise.completion.exercise_id)||null;
+  return (api&&api.find(exercise.name))||null;
 }
 function workoutInstructionSections(exercise,includeOverview=false){
   const labels=instructionLabels(),record=instructionRecordFor(exercise),copy=record[lang==='bg'?'bg':'en'];
@@ -2995,7 +3003,7 @@ function renderWorkoutExerciseCard(exercise,diffLabel,includeOverview=false){
   if(prescription.type==='duration')labels.target=lang==='bg'?'Продължителност':'Duration';
   const displayUnit=(prescription.type==='duration'||prescription.type==='duration_per_side')?'':(prescription.type==='repetitions_per_side'?(lang==='bg'?' повторения на страна':' reps / side'):(' '+unit));
   const displayTarget=prescription.type==='duration'||prescription.type==='duration_per_side'?(lang==='bg'?'Продължителност':'Duration'):(prescription.type==='repetitions_per_side'?(lang==='bg'?'Повторения на страна':'Repetitions per side'):labels.target);
-  return '<article class="ex-card ei-card workout-exercise-card" data-exercise-id="'+esc(record.canonical_id)+'" data-exercise-instruction-id="'+esc(record.id)+'"><div class="workout-card-hero">'+renderExerciseVisual(exercise,'thumb')+'<div class="workout-card-title"><div class="ex-top"><h3 class="ex-name">'+esc(exercise.name)+'</h3><span class="ex-diff '+(df||'')+'">'+(diffLabel[df]||'—')+'</span></div><div class="ex-muscles"><span class="ex-muscle">'+mu.m+'</span></div></div></div><div class="workout-card-stats">'+
+  return '<article class="ex-card ei-card workout-exercise-card" data-exercise-id="'+esc(exercise.completion?exercise.completion.exercise_id:record.canonical_id)+'" data-exercise-instruction-id="'+esc(record.id)+'"><div class="workout-card-hero">'+renderExerciseVisual(exercise,'thumb')+'<div class="workout-card-title"><div class="ex-top"><h3 class="ex-name">'+esc(exercise.name)+'</h3><span class="ex-diff '+(df||'')+'">'+(diffLabel[df]||'—')+'</span></div><div class="ex-muscles"><span class="ex-muscle">'+mu.m+'</span></div></div></div><div class="workout-card-stats">'+
     '<span class="workout-card-stat"><b>'+esc(exercise.sets)+'</b>'+labels.sets+'</span><span class="workout-card-stat"><b>'+esc(prescription.value)+displayUnit+'</b>'+displayTarget+'</span><span class="workout-card-stat"><b>'+esc(localizedTime(exercise.rest))+'</b>'+labels.rest+'</span><span class="workout-card-stat meta"><b>'+esc(meta.tempo)+'</b>'+labels.tempo+'</span><span class="workout-card-stat meta"><b>'+esc(meta.rpe)+'</b>'+labels.rpe+'</span><span class="workout-card-stat meta"><b>'+esc(meta.rir)+'</b>'+labels.rir+'</span></div>'+
     (meta.note?'<div class="workout-card-note">'+esc(meta.note)+'</div>':'')+workoutInstructionSections(exercise,includeOverview)+'</article>';
 }
@@ -3007,20 +3015,41 @@ function reopenWorkoutInstructions(){
 }
 function latestWorkoutProtocol(){const protocols=document.querySelectorAll('.workout-protocol');return protocols[protocols.length-1]||null;}
 function renderFocusedExerciseInstruction(record,key){
-  const exercise=(renderedWorkoutExercises[key]||[]).find(item=>item.canonical_id===record.canonical_id);if(!exercise)return false;
+  const exercise=(renderedWorkoutExercises[key]||[]).find(item=>instructionRecordFor(item)===record);if(!exercise)return false;
   const label=lang==='bg'?'Техника на упражнението':'Exercise technique';
   const diffLbl={easy:lang==='bg'?'Лесно':'Easy',med:lang==='bg'?'Средно':'Medium',hard:lang==='bg'?'Трудно':'Hard'};
   const coach=appendCoach();coach.innerHTML='<section class="focused-exercise-instruction"><h3>'+label+'</h3>'+renderWorkoutExerciseCard(exercise,diffLbl,true)+'</section>';
   coach.querySelectorAll('details').forEach(section=>{section.open=true;});coach.scrollIntoView({behavior:'smooth',block:'start'});return true;
 }
+function canonicalSessionValid(session){
+  const text=value=>typeof value==='string'&&value.trim().length>0;
+  const source=pendingTrainingCompletion;
+  if(!source||!text(source.plan_id)||!text(source.plan_version)||!session||!text(session.session_id)||
+     !Array.isArray(session.exercises)||!session.exercises.length||!Array.isArray(source.sessions))return false;
+  const matches=source.sessions.filter(item=>item&&item.session_id===session.session_id);
+  if(matches.length!==1||!Array.isArray(matches[0].exercises)||matches[0].exercises.length!==session.exercises.length)return false;
+  const prescriptionIds=new Set(),exerciseIds=new Set();
+  // Presentation labels are not identity. Compare only immutable delivery fields.
+  const fields=['prescription_id','exercise_id','exercise_version','prescribed_sets','prescription_type',
+    'rep_min','rep_max','duration_min_seconds','duration_max_seconds','rest_seconds','difficulty'];
+  return session.exercises.every((item,index)=>{
+    const original=matches[0].exercises[index];
+    if(!item||!original||!text(item.prescription_id)||!text(item.exercise_id)||!text(item.exercise_version)||
+       prescriptionIds.has(item.prescription_id)||exerciseIds.has(item.exercise_id)||
+       !window.ApexExerciseInstructions||!window.ApexExerciseInstructions.findByExerciseId(item.exercise_id)||
+       !Number.isInteger(item.prescribed_sets)||item.prescribed_sets<1||!canonicalDoseValid(item)||
+       !Number.isInteger(item.rest_seconds)||item.rest_seconds<0||
+       !fields.every(field=>item[field]===original[field]))return false;
+    prescriptionIds.add(item.prescription_id);exerciseIds.add(item.exercise_id);return true;
+  });
+}
 function completionSessionFor(exercises){
-  const session=pendingCompletionSessions.shift();
-  if(!session||!Array.isArray(session.exercises)||session.exercises.length!==exercises.length)return null;
-  const valid=session.exercises.every((item,index)=>item&&item.display_name===exercises[index].contract_display_name&&
-    typeof item.prescription_id==='string'&&typeof item.exercise_id==='string'&&typeof item.exercise_version==='string');
-  if(!valid)return null;
-  exercises.forEach((exercise,index)=>{exercise.completion=Object.assign({},session.exercises[index]);});
-  return session;
+  const session=pendingCompletionSessions[0];
+  if(!canonicalSessionValid(session)||session.exercises.length!==exercises.length||
+     !session.exercises.every((item,index)=>exercises[index].completion&&
+       item.exercise_id===exercises[index].completion.exercise_id&&
+       item.prescription_id===exercises[index].completion.prescription_id))return null;
+  pendingCompletionSessions.shift();return session;
 }
 function workoutRationale(raw){
   if(!raw||raw.version!=='training-rationale-v1'||!Array.isArray(raw.used)||!Array.isArray(raw.changed)||
@@ -3045,9 +3074,13 @@ function renderWorkoutRationale(raw){
   return '<details class="workout-rationale"><summary>'+(lang==='bg'?'Защо този план?':'Why this plan?')+'</summary><ul>'+lines.map(line=>'<li>'+esc(line)+'</li>').join('')+'</ul></details>';
 }
 function renderWorkout(header,body){
-  const ex=parseExercises(header,body); if(ex.unsupported.length)return '<p>'+(lang==='bg'?'Тренировката не можа да бъде потвърдена безопасно. Опитай отново.':'The workout could not be safely verified. Please try again.')+'</p>';
+  const canonicalExpected=pendingCompletionSessions.length>0||!!(pendingTrainingCompletion&&
+    Array.isArray(pendingTrainingCompletion.sessions)&&pendingTrainingCompletion.sessions.length);
+  const rejected=()=>'<p data-workout-rejected="true">'+(lang==='bg'?'Тренировката не можа да бъде потвърдена безопасно. Опитай отново.':'The workout could not be safely verified. Please try again.')+'</p>';
+  const ex=parseExercises(header,body); if(ex.unsupported.length)return rejected();
   if(!ex.length)return renderGenericTable(header,body);
-  const completionSession=completionSessionFor(ex);
+  const completionSession=canonicalExpected?completionSessionFor(ex):null;
+  if(canonicalExpected&&!completionSession)return rejected();
   const workoutKey=completionSession?completionSession.session_id:('legacy-'+Date.now()+'-'+Math.random());
   pendingWorkout=ex;
   pendingWorkouts[workoutKey]=ex;
@@ -3385,9 +3418,10 @@ const ChatLifecycle={
     if(resolve)resolve();
   },
   metadata(x,event){
-    if(event.training_completion&&Array.isArray(event.training_completion.sessions)){
+    if(Object.prototype.hasOwnProperty.call(event,'training_completion')){
       pendingTrainingCompletion=event.training_completion;
-      pendingCompletionSessions=event.training_completion.sessions.slice();
+      const sessions=event.training_completion&&event.training_completion.sessions;
+      pendingCompletionSessions=Array.isArray(sessions)&&sessions.length?sessions.slice():[null];
       x.trainingCompletion=event.training_completion;
     }
     if(event.speech_text)x.speechText=event.speech_text;

@@ -37,9 +37,9 @@ test.describe('authoritative prescription metadata', () => {
   }
   test('typed metadata: beginner and advanced labels use registry metadata only',async({page})=>{
     await mount(page,'en',[{...hold,prescription_type:'repetitions',rep_min:8,rep_max:12,
-      duration_min_seconds:null,duration_max_seconds:null,difficulty:'beginner',exercise_id:'bodyweight.wall_push_up'},
+      duration_min_seconds:null,duration_max_seconds:null,difficulty:'beginner',exercise_id:'bodyweight.wall_push_up',prescription_id:'typed-wall-push-up'},
       {...hold,prescription_type:'repetitions',rep_min:8,rep_max:12,duration_min_seconds:null,
-        duration_max_seconds:null,difficulty:'advanced',exercise_id:'barbell.deadlift'}]);
+        duration_max_seconds:null,difficulty:'advanced',exercise_id:'barbell.deadlift',prescription_id:'typed-deadlift'}]);
     await expect(page.locator('.workout-protocol .ex-diff').nth(0)).toHaveText('Easy');
     await expect(page.locator('.workout-protocol .ex-diff').nth(1)).toHaveText('Hard');
   });
@@ -453,7 +453,7 @@ test.describe('APEX approved app shell — UX regression', () => {
       const projection = {
         plan_id: 'plan-test', plan_version: 'v2', sessions: [{
           session_id: 'session-test', session_index: 1, exercises: [{
-            prescription_id: 'prescription-test', exercise_id: 'exercise.push_up',
+            prescription_id: 'prescription-test', exercise_id: 'bodyweight.push_up',
             exercise_version: '1.0.0', display_name: 'Push-up', prescribed_sets: 1,
             rep_min: 8, rep_max: 12, rest_seconds: 60
           }]
@@ -483,7 +483,7 @@ test.describe('APEX approved app shell — UX regression', () => {
 
     expect(posted.workout_completion).toMatchObject({
       plan_id: 'plan-test', plan_version: 'v2', session_id: 'session-test',
-      exercises: [{ prescription_id: 'prescription-test', exercise_id: 'exercise.push_up', exercise_version: '1.0.0' }]
+      exercises: [{ prescription_id: 'prescription-test', exercise_id: 'bodyweight.push_up', exercise_version: '1.0.0' }]
     });
     expect(posted.workout_completion.exercises[0]).not.toHaveProperty('name');
     expect(posted.workout_completion.exercises[0]).toMatchObject({ completed_rpe: null, completed_rir: null });
@@ -513,7 +513,7 @@ test.describe('APEX approved app shell — UX regression', () => {
       });
     });
     for (const result of rendered) {
-      expect(result.id).toBe('marching_in_place');
+      expect(result.id).toBe('bodyweight.march_in_place');
       expect(result.card).toMatch(/16.24/);
       expect(result.card).toMatch(/повт|reps/);
       expect(result.card).not.toMatch(/20.40|20-40/);
@@ -525,7 +525,7 @@ test.describe('APEX approved app shell — UX regression', () => {
     const posted = await page.evaluate(async () => {
       const projection = { plan_id: 'plan-effort', plan_version: 'v2', sessions: [{
         session_id: 'session-effort', session_index: 1, exercises: [{
-          prescription_id: 'prescription-effort', exercise_id: 'exercise.push_up',
+          prescription_id: 'prescription-effort', exercise_id: 'bodyweight.push_up',
           exercise_version: '1.0.0', display_name: 'Push-up', prescribed_sets: 1,
           rep_min: 8, rep_max: 12, rest_seconds: 60
         }]
@@ -556,7 +556,7 @@ test.describe('APEX approved app shell — UX regression', () => {
     const posted = await page.evaluate(async () => {
       const projection = { plan_id: 'plan-rir-effort', plan_version: 'v2', sessions: [{
         session_id: 'session-rir-effort', session_index: 1, exercises: [{
-          prescription_id: 'prescription-rir-effort', exercise_id: 'exercise.push_up',
+          prescription_id: 'prescription-rir-effort', exercise_id: 'bodyweight.push_up',
           exercise_version: '1.0.0', display_name: 'Push-up', prescribed_sets: 1,
           rep_min: 8, rep_max: 12, rest_seconds: 60
         }]
@@ -605,7 +605,7 @@ test.describe('APEX approved app shell — UX regression', () => {
       const projection = {
         plan_id: 'plan-next', plan_version: 'v2', sessions: [{
           session_id: 'session-next', session_index: 1, exercises: [{
-            prescription_id: 'prescription-next', exercise_id: 'exercise.push_up',
+            prescription_id: 'prescription-next', exercise_id: 'bodyweight.push_up',
             exercise_version: '1.0.0', display_name: 'Push-up', prescribed_sets: 1,
             rep_min: 8, rep_max: 12, rest_seconds: 60
           }]
