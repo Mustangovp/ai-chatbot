@@ -173,7 +173,7 @@ test.describe('canonical exercise visuals', () => {
   });
 
   test('missing manifest does not prevent workout controls or neutral fallback', async ({ page }) => {
-    await page.route('**/static/exercise/visuals/v1/manifest.js', route => route.abort());
+    await page.route('**/static/exercise/visuals/v1/manifest.js*', route => route.abort());
     await mountWorkout(page, 'en', ['bodyweight.push_up']);
     await expect(page.locator('.workout-exercise-card .exercise-visual.is-fallback')).toHaveCount(1);
     await page.locator('.start-wo').click();
