@@ -1,4 +1,6 @@
 const { test, expect } = require('@playwright/test');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const exerciseIds = [
   'dumbbell.front_squat',
@@ -6,6 +8,13 @@ const exerciseIds = [
   'dumbbell.bent_over_row',
   'dumbbell.romanian_deadlift',
   'bodyweight.hollow_hold'
+];
+const beginnerExerciseIds = [
+  'bodyweight.squat',
+  'bodyweight.wall_push_up',
+  'bodyweight.table_row',
+  'bodyweight.glute_bridge',
+  'bodyweight.plank'
 ];
 const assetPath = (id, variant) => `/static/exercise/visuals/v1/${id}--${variant}.webp`;
 
@@ -20,7 +29,7 @@ async function mountWorkout(page, language = 'en', ids = exerciseIds) {
     enterConsult('');
     document.getElementById('profile-modal').classList.remove('on');
     const items = ids.map((id, index) => {
-      const duration = id === 'bodyweight.hollow_hold';
+      const duration = id === 'bodyweight.hollow_hold' || id === 'bodyweight.plank';
       return {
         prescription_id: 'visual-prescription-' + index,
         exercise_id: id, exercise_version: '1.0.0',
@@ -265,4 +274,125 @@ test.describe('canonical exercise visuals', () => {
       });
     }
   }
+});
+
+test.describe('beginner Movement Studies pack', () => {
+  test('canonical manifest entries resolve to local WebP files with exact dimensions', async ({ page, request }) => {
+    await page.goto('/app');
+    const entries = await page.evaluate(ids => ids.map(id => ApexExerciseVisuals.resolve(id)), beginnerExerciseIds);
+    for (const [index, id] of beginnerExerciseIds.entries()) {
+      const entry = entries[index];
+      expect(entry.exercise_id).toBe(id);
+      expect(entry.alt.bg).not.toBe('');
+      expect(entry.alt.en).not.toBe('');
+      expect(entry.alt.bg).not.toBe(entry.alt.en);
+      for (const [variant, dimensions] of [['thumb', [320, 240]], ['protocol', [960, 720]]]) {
+        const src = assetPath(id, variant);
+        expect(entry[variant]).toBe(src);
+        const bytes = fs.readFileSync(path.join(__dirname, '../..', src));
+        expect(bytes.subarray(0, 4).toString()).toBe('RIFF');
+        expect(bytes.subarray(8, 12).toString()).toBe('WEBP');
+        const response = await request.get(src);
+        expect(response.status()).toBe(200);
+        expect(Buffer.compare(await response.body(), bytes)).toBe(0);
+        expect(await page.evaluate(async src => {
+          const image = new Image();
+          image.src = src;
+          await image.decode();
+          return [image.naturalWidth, image.naturalHeight];
+        }, src)).toEqual(dimensions);
+      }
+    }
+    expect(await page.evaluate(ids => ids.flatMap(id => [
+      ApexExerciseVisuals.resolve(id.split('.')[1]),
+      ApexExerciseVisuals.resolve(id.toUpperCase()),
+      ApexExerciseVisuals.resolve({ exercise_id: id })
+    ]), beginnerExerciseIds)).toEqual(Array(15).fill(null));
+    expect(await page.evaluate(() => ApexExerciseVisuals.version)).toBe('1');
+  });
+
+  for (const language of ['bg', 'en']) {
+    test(`all five beginner cards and protocol visuals render without fallback in ${language}`, async ({ page }) => {
+      await mountWorkout(page, language, beginnerExerciseIds);
+      const cards = page.locator('.workout-exercise-card');
+      await expect(cards).toHaveCount(5);
+      for (const [index, id] of beginnerExerciseIds.entries()) {
+        const visual = cards.nth(index).locator('.exercise-visual');
+        await expect(visual).not.toHaveClass(/is-fallback/);
+        await expect(visual).toHaveAttribute('data-exercise-visual-id', id);
+        const image = visual.locator('img');
+        await expect(image).toHaveAttribute('src', assetPath(id, 'thumb'));
+        await expect(image).toHaveAttribute('loading', 'lazy');
+        await expect(image).toHaveAttribute('alt', await page.evaluate(({ id, language }) => ApexExerciseVisuals.resolve(id).alt[language], { id, language }));
+        await expectLoaded(image);
+        expect(await image.evaluate(image => [image.naturalWidth, image.naturalHeight])).toEqual([320, 240]);
+      }
+      const completionBefore = await page.evaluate(() => JSON.stringify(renderedWorkoutExercises['visual-session'].map(exercise => exercise.completion)));
+      await page.locator('.start-wo').click();
+      for (const [index, id] of beginnerExerciseIds.entries()) {
+        await page.evaluate(index => { WO.i = index; WO.set = 0; renderWO(); }, index);
+        const visual = page.locator('#wo-stage > .exercise-visual-protocol');
+        await expect(visual).not.toHaveClass(/is-fallback/);
+        await expect(visual).toHaveAttribute('data-exercise-visual-id', id);
+        await expect(visual.locator('img')).toHaveAttribute('src', assetPath(id, 'protocol'));
+        await expect(visual.locator('img')).toHaveAttribute('loading', 'eager');
+        await expectLoaded(visual.locator('img'));
+        expect(await visual.locator('img').evaluate(image => [image.naturalWidth, image.naturalHeight])).toEqual([960, 720]);
+        await expect(page.locator('button[onclick="completeSet()"]')).toBeEnabled();
+      }
+      expect(await page.evaluate(() => JSON.stringify(WO.ex.map(exercise => exercise.completion)))).toBe(completionBefore);
+      await page.evaluate(() => quitWorkout());
+    });
+
+    for (const width of [390, 360]) {
+      test(`${language} beginner pack fits ${width}px in cards and protocol`, async ({ page }, testInfo) => {
+        await page.setViewportSize({ width, height: width === 390 ? 844 : 800 });
+        await mountWorkout(page, language, beginnerExerciseIds);
+        const heroes = page.locator('.workout-card-hero');
+        for (let index = 0; index < beginnerExerciseIds.length; index++) {
+          const hero = heroes.nth(index);
+          await expectLoaded(hero.locator('img'));
+          expect(await hero.evaluate(hero => {
+            const bounds = hero.getBoundingClientRect();
+            return [...hero.querySelectorAll('.exercise-visual, .ex-name, .ex-diff')].every(element => {
+              const rect = element.getBoundingClientRect();
+              return rect.left >= bounds.left && rect.right <= bounds.right + 1
+                && element.scrollWidth <= element.clientWidth + 1;
+            });
+          })).toBe(true);
+        }
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        await heroes.first().scrollIntoViewIfNeeded();
+        await page.screenshot({ path: testInfo.outputPath(`beginner-${language}-${width}-cards.png`) });
+        await page.locator('.start-wo').click();
+        for (let index = 0; index < beginnerExerciseIds.length; index++) {
+          await page.evaluate(index => { WO.i = index; WO.set = 0; renderWO(); }, index);
+          const image = page.locator('#wo-stage > .exercise-visual-protocol img');
+          await expectLoaded(image);
+          await expect(image).toBeInViewport();
+          await expect(page.locator('button[onclick="completeSet()"]')).toBeInViewport();
+          expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        }
+        await page.screenshot({ path: testInfo.outputPath(`beginner-${language}-${width}-protocol.png`) });
+        await page.evaluate(() => quitWorkout());
+      });
+    }
+  }
+
+  test('beginner display names without completion identity and unknown IDs remain fallback', async ({ page }) => {
+    await mountWorkout(page, 'en', beginnerExerciseIds);
+    const markup = await page.evaluate(() => {
+      const labels = { easy: 'Easy', med: 'Medium', hard: 'Hard' };
+      const exercises = renderedWorkoutExercises['visual-session'];
+      return exercises.flatMap(exercise => [
+        renderWorkoutExerciseCard({ ...exercise, completion: undefined }, labels),
+        renderWorkoutExerciseCard({ ...exercise, completion: { ...exercise.completion, exercise_id: 'bodyweight.unmapped' } }, labels)
+      ]);
+    });
+    for (const card of markup) {
+      expect(card).toContain('exercise-visual is-fallback');
+      expect(card).toContain('aria-hidden="true"');
+      expect(card).not.toContain('<img');
+    }
+  });
 });
