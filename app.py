@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify, render_template, redirect, Response, stream_with_context, make_response
 from flask_cors import CORS
 from openai import OpenAI
+import llm_policy
 import stripe
 import os
 import hmac
@@ -1432,7 +1433,7 @@ def _send_seq_24h(seq: dict):
             "─────────────────────────────────────\n"
             "Ако искаш AI треньор без никакви лимити, който помни целите ти 30 дни наред:\n\n"
             "→ APEX CORE — €9.99 / 30 дни  (€0.33/ден, неограничени съобщения)\n"
-            "→ APEX PRO  — €14.99 / 30 дни (gpt-4o, по-детайлни програми)\n\n"
+            "→ APEX PRO  — €14.99 / 30 дни (по-детайлни програми)\n\n"
             "https://apexpulse.pro/app\n"
             "─────────────────────────────────────\n\n"
             "Продължавай — резултатите идват с последователност. 🔥\n\n"
@@ -1449,7 +1450,7 @@ def _send_seq_24h(seq: dict):
             "─────────────────────────────────────\n"
             "Want an AI coach with no limits that remembers your goals for 30 days straight:\n\n"
             "→ APEX CORE — €9.99 / 30 days  (€0.33/day, unlimited messages)\n"
-            "→ APEX PRO  — €14.99 / 30 days (gpt-4o, more detailed programs)\n\n"
+            "→ APEX PRO  — €14.99 / 30 days (more detailed programs)\n\n"
             "https://apexpulse.pro/app\n"
             "─────────────────────────────────────\n\n"
             "Stay consistent — results follow dedication. 🔥\n\n"
@@ -2118,7 +2119,7 @@ _FC_SYSTEM_PROMPT_BG_CONTINUE = """Ти си APEX, изключително ин
 
 def _extract_profile_silent(history_messages, current_profile):
     """
-    Quietly extracts profile data from the conversation history using GPT-4o-mini.
+    Quietly extracts profile data using the centralized extraction policy.
     Returns a dict of updated profile values.
     """
     try:
@@ -2150,13 +2151,12 @@ Current profile values:
 """ + _json.dumps(current_profile or {})
 
         resp = client.chat.completions.create(
-            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_content},
                 {"role": "user", "content": f"Conversation history:\n{conv_text}"}
             ],
-            temperature=0,
-            response_format={"type": "json_object"}
+            response_format={"type": "json_object"},
+            **llm_policy.PROFILE_EXTRACTION.request_parameters(),
         )
         extracted = _json.loads(resp.choices[0].message.content or "{}")
         updated_profile = dict(current_profile or {})
@@ -3777,7 +3777,8 @@ def chat():
         decision_state = "CONTINUE_CONVERSATION"
         # First-contact safety evaluation uses the same plan-selected model as
         # final delivery, so resolve it before either execution path begins.
-        model_to_use = "gpt-4o" if is_pro else "gpt-4o-mini"
+        text_model_policy = llm_policy.chat_policy(is_pro=is_pro)
+        model_to_use = text_model_policy.model
         if is_first_contact:
             _first_intent = decision_engine.classify_intent(user_message)
             if _mixed_modal_topic_request(user_message):
@@ -4388,13 +4389,10 @@ def chat():
         else:
             messages.append({"role": "user", "content": user_message})
 
-        # Response length cap:
-        # - PRO → up to 4000 tokens (detailed comprehensive plans)
-        # - CORE / FREE → ~1500 tokens (solid complete plans)
+        # Tier output intent and reasoning headroom live in llm_policy.
         # FREE users now get a generous DAILY message limit (ChatGPT-style),
         # so each individual answer is normal length — value comes from being
         # able to chat freely, not from one oversized answer.
-        max_tokens = 4000 if is_pro else 1500
 
         # ── STREAMING (SSE) ──
         # Отговорът тече към браузъра токен по токен, както се генерира.
@@ -4695,10 +4693,9 @@ def chat():
                         return
                     try:
                         completion = client.chat.completions.create(
-                            model=model_to_use,
                             messages=messages,
-                            max_tokens=max_tokens,
                             response_format={"type": "json_object"},
+                            **text_model_policy.request_parameters(),
                         )
                         _bump_plans_today()
                         generated = nutrition_plan.parse_generation_response(completion)
@@ -4725,12 +4722,12 @@ def chat():
                                     validation_error, nutrition_delivery_targets, lang,
                                     _recent_nutrition_context, profile),
                             }]
-                            repair_model = "gpt-4o" if model_to_use == "gpt-4o-mini" else model_to_use
+                            repair_policy = llm_policy.nutrition_repair_policy(is_pro=is_pro)
+                            repair_model = repair_policy.model
                             completion = client.chat.completions.create(
-                                model=repair_model,
                                 messages=repair_messages,
-                                max_tokens=max_tokens,
                                 response_format={"type": "json_object"},
+                                **repair_policy.request_parameters(),
                             )
                             generated = nutrition_plan.parse_generation_response(completion)
                             authoritative_plan = nutrition_plan.build_plan(
@@ -4827,10 +4824,9 @@ def chat():
                         else:
                             try:
                                 completion = client.chat.completions.create(
-                                    model=model_to_use,
                                     messages=messages,
-                                    max_tokens=max_tokens,
                                     response_format={"type": "json_object"},
+                                    **text_model_policy.request_parameters(),
                                 )
                                 _bump_plans_today()
                                 raw_explanations = completion.choices[0].message.content or ""
@@ -4879,10 +4875,9 @@ def chat():
                     return
 
                 stream = client.chat.completions.create(
-                    model=model_to_use,
                     messages=messages,
-                    max_tokens=max_tokens,
-                    stream=True
+                    stream=True,
+                    **text_model_policy.request_parameters(),
                 )
                 finish_metadata_seen = False
                 stream_finished = False

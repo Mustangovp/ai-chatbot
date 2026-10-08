@@ -1,6 +1,7 @@
 import os
 import json
 from openai import OpenAI
+import llm_policy
 from brain.learning.schema import HumanModel
 from brain.learning.confidence import ConfidenceManager
 from brain.learning.timeline import TimelineBuilder
@@ -57,10 +58,8 @@ Keep keys lowercase. Values should be short, confirmed string observations or li
 Do not include any explanation or markdown formatting, just the raw JSON.
 """
             resp = client.chat.completions.create(
-                model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.0,
-                max_tokens=300
+                **llm_policy.LEARNING_EXTRACTION.request_parameters(),
             )
             content = resp.choices[0].message.content.strip()
             if content.startswith("```"):

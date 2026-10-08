@@ -46,7 +46,7 @@ def main() -> int:
         return 1
     marker("SNAPSHOT_BUILT", started=started)
     marker("BRAIN_STARTED", started=started)
-    brain = app._brain_shadow_observation(profile, "synthetic workout request", [], "gpt-4o-mini",
+    brain = app._brain_shadow_observation(profile, "synthetic workout request", [], app.llm_policy.FREE_CORE_MODEL,
                                           locale="bg", authoritative_path="legacy", authoritative_intent="workout")
     marker("BRAIN_COMPLETED" if brain.brain_status == "SUCCESS" else "BRAIN_FAILED",
            brain.brain_status, brain.fallback_category, started)

@@ -694,8 +694,8 @@ Full regression testing across all plans, languages, user states, and device typ
 | Plan | Memory initialized | Sessions logged | Insights active | Expected behavior |
 |---|---|---|---|---|
 | FREE | ✅ | ✅ | ✅ | Memory context not sent (FREE has no workout mode) — verify graceful no-op |
-| CORE | ✅ | ✅ | ✅ | Full memory pipeline active; gpt-4o-mini receives memory context |
-| PRO | ✅ | ✅ | ✅ | Full memory pipeline active; gpt-4o receives memory context |
+| CORE | ✅ | ✅ | ✅ | Phase 1 candidate: gpt-6-luna receives memory context |
+| PRO | ✅ | ✅ | ✅ | Phase 1 candidate: gpt-6.1-sol receives memory context |
 | MASTER | ✅ | ✅ | ✅ | Identical to PRO behavior |
 
 **FREE plan note:** FREE users currently have no Workout Mode access. They have no `apexWorkoutLog` entries. `_memBuildContext()` must return empty string for FREE users, not null. Verify the empty string does not produce a malformed profile block.
@@ -825,7 +825,7 @@ These are not requirements. They are observations that will save time.
 
 **On `app.html` size:** The file is already 1700+ lines. The Intelligence Phase adds roughly 400–600 lines of new JS. Consider extracting the memory service functions into a `<script src="/static/apex-memory.js">` before Sprint 3, to keep the single file manageable. This is optional but reduces cognitive load.
 
-**On the AI context token budget:** The current profile block is approximately 600–900 tokens depending on profile completeness. Adding a 800-token memory context brings the total to 1400–1700 tokens before the conversation history. PRO users get 30 messages of history. At ~150 tokens per message, that's 4500 more tokens. Total context for a PRO user: ~6200 tokens before the user's current message. GPT-4o has a 128K context window — no risk. GPT-4o-mini has a 128K context window as well. No constraint.
+**On the AI context token budget:** The profile/memory/history estimates in this roadmap are historical planning estimates, not a runtime guarantee. Phase 1 routes FREE/CORE to gpt-6-luna and PRO to gpt-6.1-sol. Output limits include reasoning tokens; the request budgets and required latency/truncation gate are documented in `docs/architecture/APEX_MODEL_POLICY.md`. Production rollout is not authorized by this candidate.
 
 **On the recovery feedback gap:** Currently, recovery feedback is optional. If a user completes workouts without submitting recovery feedback, `rec.energy` and `rec.motivation` will be null for those sessions. All memory functions must handle this gracefully — sessions without recovery data contribute to `weeklyAdherence` and `sessionDuration` but not to `recoverySensitivity`. Do not assume recovery data exists.
 

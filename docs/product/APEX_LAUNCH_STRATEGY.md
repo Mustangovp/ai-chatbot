@@ -67,9 +67,13 @@ distribution advantage, not a build task.
 ### Pricing strategy (decisions, in EUR)
 | Tier | Price | What you get | Model |
 |---|---|---|---|
-| **FREE** | €0 | ~10 coached messages/day, safety Brain **always on**, single-device | gpt-4o-mini |
-| **CORE** | **€9.99/mo · €99/yr** | Unlimited coaching, cross-device persistent memory | gpt-4o-mini |
-| **PRO** | **€19.99/mo · €199/yr** | Smartest model, longest memory, priority, advanced multi-week plans | gpt-4o |
+| **FREE** | €0 | ~10 coached messages/day, safety Brain **always on**, single-device | gpt-6-luna |
+| **CORE** | **€9.99/mo · €99/yr** | Unlimited coaching, cross-device persistent memory | gpt-6-luna |
+| **PRO** | **€19.99/mo · €199/yr** | Smartest model, longest memory, priority, advanced multi-week plans | gpt-6.1-sol |
+
+Model routing above describes the Phase 1 candidate, not an authorized production
+rollout. See `docs/architecture/APEX_MODEL_POLICY.md`; pricing and paid availability
+are unchanged by the migration.
 
 - **Annual = ~2 months free** (anchor to it everywhere; it wins on LTV, cashflow, churn).
 - **Safety is never paywalled** — red-flag routing and constraint-aware plans exist on FREE.
@@ -80,7 +84,7 @@ distribution advantage, not a build task.
 ### Free vs Premium experience
 - **FREE** = a real taste, not crippled: genuine coaching, safety, ~10 msgs/day.
 - **CORE** = *"your coach never forgets you"* — unlimited + persistent cross-device memory.
-- **PRO** = *"the smartest version of your coach"* — gpt-4o, deepest memory, complex plans.
+- **PRO** = *"the smartest version of your coach"* — deeper coaching, memory, and complex plans.
 - The upgrade story is **more coach, not less harm** — you never pay for safety.
 
 ### User retention strategy

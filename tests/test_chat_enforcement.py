@@ -4472,7 +4472,10 @@ def test_daily_nutrition_contract_repairs_one_rejected_generation_without_exposi
 
     _assert_structured_plan_events(_events(response))
     assert len(calls) == 2
-    assert [call["model"] for call in calls] == ["gpt-4o-mini", "gpt-4o"]
+    assert [call["model"] for call in calls] == ["gpt-6-luna", "gpt-6.1-sol"]
+    assert [call["reasoning_effort"] for call in calls] == ["none", "low"]
+    assert [call["max_completion_tokens"] for call in calls] == [1500, 5500]
+    assert all("max_tokens" not in call and "temperature" not in call for call in calls)
     assert calls[1]["response_format"] == {"type": "json_object"}
     assert calls[1]["messages"][-1]["role"] == "system"
     assert "kcal is outside the confirmed target" in calls[1]["messages"][-1]["content"]
@@ -5613,3 +5616,186 @@ Calories
     assert result.delivery == appmod.nutrition_validation.serialize_nutrition_day(result.day)
     assert result.delivery.startswith("| Meal | Food | Quantity | Protein (g) |")
     assert "| Daily Total | | | 175 | 350 | 78 | 2800 |" in result.delivery
+
+
+@pytest.mark.parametrize("tier,model,effort,budget", [
+    ("free", "gpt-6-luna", "none", 1500),
+    ("core", "gpt-6-luna", "none", 1500),
+    ("pro", "gpt-6.1-sol", "low", 8000),
+])
+@pytest.mark.parametrize("lang", ["bg", "en"])
+@pytest.mark.parametrize("path", ["conversation", "training", "nutrition"])
+def test_phase1_chat_uses_exact_tier_request_contract(
+        client, monkeypatch, tier, model, effort, budget, lang, path):
+    profile = _profile(sleepQuality="good", stressLevel="low", recoveryFeel="fresh")
+    uid = _login_for_chat(client, profile)
+    if tier != "free":
+        store.upsert_subscription(uid, tier, datetime.now(timezone.utc) + timedelta(days=30))
+    calls = []
+    payload = _structured_plan_payload()
+    if lang == "bg":
+        meals = {"breakfast": "Закуска", "lunch": "Обяд", "dinner": "Вечеря"}
+        foods = {"eggs": "Яйца", "oats": "Овесени ядки", "chicken": "Пилешки гърди",
+                 "rice": "Ориз", "salmon": "Сьомга", "potatoes": "Картофи"}
+        for meal in payload["meals"]:
+            meal["name"] = meals[meal["meal_type"]]
+            for food in meal["foods"]:
+                food["display_name"] = foods[food["food_id"]]
+
+    def create(**parameters):
+        calls.append(parameters)
+        if path == "nutrition":
+            return _StructuredCompletion(payload)
+        if path == "training":
+            return _StructuredCompletion({"explanations": [
+                "Follow the confirmed plan." if lang == "en" else "Следвай потвърдения план."]})
+
+        def stream():
+            reply = "Keep taking small steps." if lang == "en" else "Продължавай с малки стъпки."
+            yield types.SimpleNamespace(choices=[types.SimpleNamespace(
+                delta=_Delta(reply), finish_reason=None)])
+            yield types.SimpleNamespace(choices=[types.SimpleNamespace(
+                delta=_Delta(None), finish_reason="stop")])
+        return stream()
+
+    monkeypatch.setattr(appmod.client.chat.completions, "create", create)
+    if path == "training":
+        monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+        message = "Build a workout for today" if lang == "en" else "Направи ми тренировка за днес"
+    elif path == "nutrition":
+        monkeypatch.setattr(appmod, "_build_profile_block", lambda *_args:
+                            "Calorie target: 2800 kcal\nProtein target: minimum 175g/day")
+        message = "Give me a full-day nutrition plan" if lang == "en" else "Дай ми пълен хранителен план"
+    else:
+        message = "How can I stay motivated?" if lang == "en" else "Как да остана мотивиран?"
+    response = _post(client, message, lang=lang)
+    events = _events(response)
+    assert response.status_code == 200
+    assert events[-1] == {"done": True}
+    assert len(calls) == 1
+    parameters = calls[0]
+    assert parameters["model"] == model
+    assert parameters["reasoning_effort"] == effort
+    assert parameters["max_completion_tokens"] == budget
+    assert "max_tokens" not in parameters and "temperature" not in parameters
+    if path == "conversation":
+        assert parameters["stream"] is True
+        assert "response_format" not in parameters
+        assert events[0]["t"] in ("Keep taking small steps.", "Продължавай с малки стъпки.")
+    else:
+        assert parameters["response_format"] == {"type": "json_object"}
+        assert "stream" not in parameters
+    if path == "training":
+        assert any(item.get("training_completion") for item in events)
+    if path == "nutrition":
+        plans = store.list_nutrition_plans(uid)
+        assert len(plans) == 1
+        assert plans[0]["plan"]["provenance"]["model"] == model
+        assert plans[0]["plan"]["totals"]["kcal"] == "2800"
+
+
+@pytest.mark.parametrize("lang", ["bg", "en"])
+def test_phase1_profile_extraction_request_and_fallback(monkeypatch, lang):
+    original = _profile()
+    calls = []
+
+    def create(**parameters):
+        calls.append(parameters)
+        return _StructuredCompletion({"equipment": "home", "frequency": 3, "goal": None})
+
+    monkeypatch.setattr(appmod.client.chat.completions, "create", create)
+    message = "I train at home three days." if lang == "en" else "Тренирам у дома три дни."
+    history = [{"role": "user", "content": message}]
+    extracted = appmod._extract_profile_silent(history, original)
+    assert extracted["equipment"] == "home" and extracted["frequency"] == "3"
+    assert extracted["goal"] == original["goal"]
+    assert original["equipment"] == "gym"
+    assert len(calls) == 1
+    parameters = calls[0]
+    assert parameters["model"] == "gpt-6-luna"
+    assert parameters["reasoning_effort"] == "none"
+    assert parameters["max_completion_tokens"] == 1500
+    assert parameters["temperature"] == 0
+    assert parameters["response_format"] == {"type": "json_object"}
+    assert "max_tokens" not in parameters and "stream" not in parameters
+
+    def unavailable(**_parameters):
+        raise RuntimeError("synthetic extraction failure")
+
+    monkeypatch.setattr(appmod.client.chat.completions, "create", unavailable)
+    assert appmod._extract_profile_silent(history, original) == original
+    monkeypatch.setattr(appmod.client.chat.completions, "create",
+                        lambda **_parameters: _RawStructuredCompletion("malformed JSON"))
+    assert appmod._extract_profile_silent(history, original) == original
+
+
+@pytest.mark.parametrize("tier,budget", [("free", 5500), ("core", 5500), ("pro", 8000)])
+def test_phase1_nutrition_repair_escalation_is_role_based(client, captured, monkeypatch, tier, budget):
+    uid = _login_for_chat(client, _profile())
+    if tier != "free":
+        store.upsert_subscription(uid, tier, datetime.now(timezone.utc) + timedelta(days=30))
+    monkeypatch.setattr(appmod, "_build_profile_block", lambda *_args:
+                        "Calorie target: 2800 kcal\nProtein target: minimum 175g/day")
+    calls = _set_sequence_stream(monkeypatch, captured, [
+        _structured_plan_payload(total_kcal="2500"), _structured_plan_payload()])
+    events = _events(_post(client, "Give me a full-day nutrition plan"))
+    _assert_structured_plan_events(events)
+    assert len(calls) == 2
+    repair = calls[1]
+    assert repair["model"] == "gpt-6.1-sol" and repair["reasoning_effort"] == "low"
+    assert repair["max_completion_tokens"] == budget
+    assert repair["response_format"] == {"type": "json_object"}
+    assert "max_tokens" not in repair and "temperature" not in repair and "stream" not in repair
+    assert store.list_nutrition_plans(uid)[0]["plan"]["provenance"]["model"] == "gpt-6.1-sol"
+
+
+@pytest.mark.parametrize("lang", ["bg", "en"])
+def test_phase1_first_contact_projects_extraction_then_terminal_stream(client, monkeypatch, lang):
+    calls = []
+
+    def create(**parameters):
+        calls.append(parameters)
+        if parameters.get("response_format"):
+            return _StructuredCompletion({"frequency": 3})
+        return iter([types.SimpleNamespace(choices=[types.SimpleNamespace(
+            delta=_Delta("Welcome." if lang == "en" else "Добре дошъл."), finish_reason="stop")])])
+
+    monkeypatch.setattr(appmod.client.chat.completions, "create", create)
+    events = _events(client.post("/chat", json={
+        "message": "Hello" if lang == "en" else "Здравей", "lang": lang,
+        "first_contact": True,
+        "profile": _profile(sleepQuality="good", stressLevel="low", recoveryFeel="fresh"),
+    }))
+    assert events[-1]["done"] is True
+    assert events[-1]["profile"]["frequency"] == "3"
+    assert len(calls) == 2
+    assert [call["model"] for call in calls] == ["gpt-6-luna", "gpt-6-luna"]
+    assert calls[0]["response_format"] == {"type": "json_object"}
+    assert calls[0]["temperature"] == 0
+    assert calls[1]["stream"] is True and "temperature" not in calls[1]
+    assert all(call["reasoning_effort"] == "none" and call["max_completion_tokens"] == 1500
+               and "max_tokens" not in call for call in calls)
+
+
+@pytest.mark.parametrize("failure", ["api", "json"])
+def test_phase1_training_explanation_failure_preserves_authoritative_delivery(client, monkeypatch, failure):
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    calls = []
+
+    def create(**parameters):
+        calls.append(parameters)
+        if failure == "api":
+            raise RuntimeError("synthetic explanation service failure")
+        return _RawStructuredCompletion("malformed JSON")
+
+    monkeypatch.setattr(appmod.client.chat.completions, "create", create)
+    events = _events(_post(client, "Build a workout for today", profile=_profile(
+        sleepQuality="good", stressLevel="low", recoveryFeel="fresh")))
+    assert len(calls) == 1
+    assert calls[0]["model"] == "gpt-6-luna" and calls[0]["reasoning_effort"] == "none"
+    assert events[-1] == {"done": True}
+    metadata = next(event["training_completion"] for event in events if "training_completion" in event)
+    assert metadata["sessions"][0]["exercises"]
+    text = next(event["t"] for event in events if "t" in event)
+    assert "Why this workout:" in text
+    assert "synthetic explanation" not in text and "malformed JSON" not in text
