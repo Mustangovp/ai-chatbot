@@ -42,7 +42,7 @@ def test_app_shell_versions_canonical_mutable_assets_with_one_release_revision(p
         assert asset_response.cache_control.no_store is False
         assert asset_response.headers["ETag"]
     # Bump this shared explicit revision when either canonical mutable asset changes.
-    assert revisions == ["canonical-workout-r2", "canonical-workout-r2"]
+    assert revisions == ["canonical-workout-r3", "canonical-workout-r3"]
 
 
 @pytest.mark.parametrize("path", ["/app", "/app?lang=en", "/app?lang=bg"])

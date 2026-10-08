@@ -1,6 +1,12 @@
 const { test, expect } = require('@playwright/test');
 const fs = require('node:fs');
 const path = require('node:path');
+const { execFileSync } = require('node:child_process');
+const canonicalExerciseIds = JSON.parse(execFileSync(
+  process.env.APEX_TEST_PYTHON || 'python',
+  [path.join(__dirname, '../canonical_workout_fixture.py')],
+  { encoding: 'utf8' }
+)).map(fixture => fixture.id);
 
 const exerciseIds = [
   'dumbbell.front_squat',
@@ -17,6 +23,10 @@ const beginnerExerciseIds = [
   'bodyweight.plank'
 ];
 const assetPath = (id, variant) => `/static/exercise/visuals/v1/${id}--${variant}.webp`;
+const realWorkoutIds = [
+  'dumbbell.goblet_squat', 'dumbbell.floor_press', 'bodyweight.table_row',
+  'bodyweight.glute_bridge', 'bodyweight.plank', 'bodyweight.march_in_place'
+];
 
 async function mountWorkout(page, language = 'en', ids = exerciseIds) {
   await page.goto('/app?lang=' + language);
@@ -55,6 +65,102 @@ async function expectLoaded(image) {
   await expect(image).toBeVisible();
   await expect.poll(() => image.evaluate(element => element.complete && element.naturalWidth > 0)).toBe(true);
 }
+
+test.describe('complete canonical Movement Studies library', () => {
+  test('every live registry ID resolves and both WebP variants decode at exact dimensions', async ({ page, request }) => {
+    await page.goto('/app');
+    const entries = await page.evaluate(ids => ids.map(id => ApexExerciseVisuals.resolve(id)), canonicalExerciseIds);
+    for (const [index, id] of canonicalExerciseIds.entries()) {
+      const entry = entries[index];
+      expect(entry, id).not.toBeNull();
+      expect(entry.exercise_id).toBe(id);
+      for (const language of ['bg', 'en']) expect(entry.alt[language].trim()).not.toBe('');
+      for (const [variant, dimensions] of [['thumb', [320, 240]], ['protocol', [960, 720]]]) {
+        const src = assetPath(id, variant);
+        expect(entry[variant]).toBe(src);
+        const response = await request.get(src);
+        expect(response.status(), src).toBe(200);
+        expect(response.headers()['content-type']).toMatch(/^(image\/webp|application\/octet-stream)(;|$)/);
+        expect(await page.evaluate(async src => {
+          const image = new Image();
+          image.src = src;
+          await image.decode();
+          return [image.naturalWidth, image.naturalHeight];
+        }, src), src).toEqual(dimensions);
+      }
+    }
+  });
+
+  for (const language of ['bg', 'en']) {
+    for (const width of [1440, 390, 360]) {
+      test(`real six-exercise workout preserves cards, protocol and completion in ${language} at ${width}px`, async ({ page }, testInfo) => {
+        await page.setViewportSize({ width, height: width === 1440 ? 900 : width === 390 ? 844 : 800 });
+        await mountWorkout(page, language, realWorkoutIds);
+        const source = await page.evaluate(() => JSON.stringify(pendingTrainingCompletion));
+        const cards = page.locator('.workout-exercise-card');
+        await expect(cards).toHaveCount(6);
+        await expect(cards.locator('.exercise-visual.is-fallback')).toHaveCount(0);
+        for (const [index, id] of realWorkoutIds.entries()) {
+          const visual = cards.nth(index).locator('.exercise-visual');
+          await expect(visual).toHaveAttribute('data-exercise-visual-id', id);
+          await expect(visual.locator('img')).toHaveAttribute('src', assetPath(id, 'thumb'));
+          await expect(visual.locator('img')).toHaveAttribute('alt', await page.evaluate(
+            ({ id, language }) => ApexExerciseVisuals.resolve(id).alt[language], { id, language }
+          ));
+          await expectLoaded(visual.locator('img'));
+          expect(await cards.nth(index).locator('.workout-card-hero').evaluate(hero => {
+            const bounds = hero.getBoundingClientRect();
+            return [...hero.querySelectorAll('.exercise-visual, .ex-name, .ex-diff')].every(element => {
+              const rect = element.getBoundingClientRect();
+              return rect.left >= bounds.left && rect.right <= bounds.right + 1
+                && element.scrollWidth <= element.clientWidth + 1;
+            });
+          })).toBe(true);
+        }
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        const before = await page.evaluate(() => JSON.stringify(renderedWorkoutExercises['visual-session'].map(exercise => exercise.completion)));
+        expect(JSON.parse(before)).toEqual(JSON.parse(source).sessions[0].exercises);
+        await cards.first().locator('.workout-card-hero').scrollIntoViewIfNeeded();
+        await page.screenshot({ path: testInfo.outputPath(`real-workout-${language}-${width}-cards.png`) });
+        await page.locator('.start-wo').click();
+        for (const [index, id] of realWorkoutIds.entries()) {
+          await page.evaluate(index => { WO.i = index; WO.set = 0; renderWO(); }, index);
+          const visual = page.locator('#wo-stage > .exercise-visual-protocol');
+          await expect(visual).not.toHaveClass(/is-fallback/);
+          await expect(visual).toHaveAttribute('data-exercise-visual-id', id);
+          await expect(visual.locator('img')).toHaveAttribute('src', assetPath(id, 'protocol'));
+          await expectLoaded(visual.locator('img'));
+          await expect(visual.locator('img')).toBeInViewport();
+          await expect(page.locator('button[onclick="completeSet()"]')).toBeEnabled();
+          await expect(page.locator('button[onclick="completeSet()"]')).toBeInViewport();
+          await expect(page.locator('#wo-reps-in')).toHaveAttribute('placeholder', index === 4
+            ? (language === 'bg' ? 'секунди' : 'seconds') : (language === 'bg' ? 'повторения' : 'reps'));
+          expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        }
+        expect(await page.evaluate(() => JSON.stringify(WO.ex.map(exercise => exercise.completion)))).toBe(before);
+        expect(await page.evaluate(() => JSON.stringify(pendingTrainingCompletion))).toBe(source);
+        await page.screenshot({ path: testInfo.outputPath(`real-workout-${language}-${width}-protocol.png`) });
+        await page.evaluate(() => quitWorkout());
+      });
+    }
+  }
+
+  test('unknown canonical identity still uses neutral fallback in active protocol', async ({ page }) => {
+    await mountWorkout(page, 'en', ['bodyweight.push_up']);
+    await page.locator('.start-wo').click();
+    await page.evaluate(() => {
+      WO.ex[0].completion = { ...WO.ex[0].completion, exercise_id: 'bodyweight.unmapped' };
+      renderWO();
+    });
+    const visual = page.locator('#wo-stage > .exercise-visual-protocol');
+    await expect(visual).toHaveClass('exercise-visual exercise-visual-protocol is-fallback');
+    await expect(visual).toHaveAttribute('aria-hidden', 'true');
+    await expect(visual).toHaveText('');
+    await expect(visual.locator('img, svg')).toHaveCount(0);
+    await expect(page.locator('button[onclick="completeSet()"]')).toBeEnabled();
+    await page.evaluate(() => quitWorkout());
+  });
+});
 
 test.describe('canonical exercise visuals', () => {
   for (const language of ['bg', 'en']) {
