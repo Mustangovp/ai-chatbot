@@ -1136,6 +1136,8 @@ def generation_contract(targets: NutritionTargets, lang: str,
     return (
         "[STRUCTURED DAILY NUTRITION PLAN]\n"
         "Return a JSON object only. Never return markdown or prose. The object has a meals array. "
+        "The meals array MUST be in exactly this order: breakfast, optional snack, lunch, dinner. "
+        "If snack is omitted: breakfast, lunch, dinner. Never place snack after lunch. "
         "Each meal has meal_type (breakfast, optional snack, lunch, dinner), name, time, and foods. "
         "Each food has food_id, display_name, optional catalog_id, measurement_state, grams, protein_g, carbs_g, fat_g, and kcal. "
         "food_id MUST be a non-empty canonical ingredient string, never null, empty, omitted, or a display label. "

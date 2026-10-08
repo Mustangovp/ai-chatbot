@@ -33,6 +33,74 @@ def _payload(lang="en"):
     return payload
 
 
+def _payload_with_snack(lang):
+    payload = _payload(lang)
+    snack = {"meal_type": "snack", "name": "Snack" if lang == "en" else "Междинно хранене",
+             "time": "10:30", "foods": [payload["meals"][0]["foods"].pop()]}
+    payload["meals"].insert(1, snack)
+    return payload
+
+
+@pytest.mark.parametrize("lang", ["bg", "en"])
+@pytest.mark.parametrize("meal_types,accepted", [
+    (("breakfast", "lunch", "dinner"), True),
+    (("breakfast", "snack", "lunch", "dinner"), True),
+    (("breakfast", "lunch", "snack", "dinner"), False),
+])
+def test_canonical_meal_order_is_validated_without_reordering(lang, meal_types, accepted):
+    payload = _payload_with_snack(lang) if "snack" in meal_types else _payload(lang)
+    meals = {meal["meal_type"]: meal for meal in payload["meals"]}
+    payload["meals"] = [meals[kind] for kind in meal_types]
+    before = deepcopy(payload)
+    if accepted:
+        plan = plans.build_plan(payload, _NUTRITION_TARGETS, restrictions=(), provenance={}, language=lang)
+        assert tuple(meal.meal_type for meal in plan.meals) == meal_types
+        assert plan.totals.kcal == Decimal("2800")
+    else:
+        with pytest.raises(plans.NutritionPlanError, match="^meals are not chronological$"):
+            plans.build_plan(payload, _NUTRITION_TARGETS, restrictions=(), provenance={}, language=lang)
+    assert payload == before
+
+
+@pytest.mark.parametrize("lang", ["bg", "en"])
+@pytest.mark.parametrize("repair", [False, True])
+def test_generation_and_chronological_repair_state_exact_meal_array_order(lang, repair):
+    contract = (plans.regeneration_contract(plans.NutritionPlanError("meals are not chronological"),
+                                            _NUTRITION_TARGETS, lang)
+                if repair else plans.generation_contract(_NUTRITION_TARGETS, lang))
+    assert "The meals array MUST be in exactly this order: breakfast, optional snack, lunch, dinner." in contract
+    assert "If snack is omitted: breakfast, lunch, dinner." in contract
+    assert "Never place snack after lunch." in contract
+    if repair:
+        assert "Validation failure: meals are not chronological." in contract
+
+
+@pytest.mark.parametrize("lang", ["bg", "en"])
+def test_chat_repairs_chronological_failure_once_and_delivers_only_valid_order(
+        client, captured, monkeypatch, lang):
+    uid = _login_for_chat(client, {**_profile(), "language": lang})
+    monkeypatch.setattr(appmod, "_build_profile_block", lambda *_args: TARGET_BLOCK)
+    valid = _payload_with_snack(lang)
+    invalid = deepcopy(valid)
+    invalid["meals"][1], invalid["meals"][2] = invalid["meals"][2], invalid["meals"][1]
+    calls = _set_sequence_stream(monkeypatch, captured, [invalid, valid])
+    message = "Give me a full-day nutrition plan" if lang == "en" else "Дай ми пълен хранителен план"
+    events = _events(_post(client, message, lang=lang))
+    assert events[-1] == {"done": True}
+    assert len(calls) == 2
+    assert [call["model"] for call in calls] == ["gpt-6-luna", "gpt-6.1-sol"]
+    assert all(call["response_format"] == {"type": "json_object"} for call in calls)
+    repair = calls[1]["messages"][-1]["content"]
+    assert "Validation failure: meals are not chronological." in repair
+    assert "breakfast, optional snack, lunch, dinner" in repair
+    assert "Never place snack after lunch." in repair
+    records = store.list_nutrition_plans(uid)
+    assert len(records) == 1
+    assert [meal["meal_type"] for meal in records[0]["plan"]["meals"]] == [
+        "breakfast", "snack", "lunch", "dinner"]
+    assert records[0]["plan"]["totals"]["kcal"] == "2800"
+
+
 @pytest.mark.parametrize("bad_id", [None, "", "   ", 17])
 def test_generated_food_id_is_required_without_breaking_legacy_records(bad_id):
     payload = _payload()
