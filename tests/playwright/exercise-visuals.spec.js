@@ -22,7 +22,11 @@ const beginnerExerciseIds = [
   'bodyweight.glute_bridge',
   'bodyweight.plank'
 ];
-const assetPath = (id, variant) => `/static/exercise/visuals/v1/${id}--${variant}.webp`;
+const assetPath = (id, variant) => `/static/exercise/visuals/v1/${id}--${variant}.webp?v=canonical-workout-r4`;
+const refinedExerciseIds = [
+  'barbell.bench_press', 'cable.pull_through', 'bodyweight.wall_push_up',
+  'bodyweight.push_up', 'bodyweight.glute_bridge'
+];
 const realWorkoutIds = [
   'dumbbell.goblet_squat', 'dumbbell.floor_press', 'bodyweight.table_row',
   'bodyweight.glute_bridge', 'bodyweight.plank', 'bodyweight.march_in_place'
@@ -162,6 +166,66 @@ test.describe('complete canonical Movement Studies library', () => {
   });
 });
 
+test.describe('five refined Movement Studies pairs', () => {
+  for (const language of ['bg', 'en']) {
+    for (const width of [390, 360]) {
+      test(`corrected cards and protocols preserve identity in ${language} at ${width}px`, async ({ page }, testInfo) => {
+        await page.setViewportSize({ width, height: width === 390 ? 844 : 800 });
+        await mountWorkout(page, language, refinedExerciseIds);
+        const source = await page.evaluate(() => JSON.stringify(pendingTrainingCompletion));
+        const cards = page.locator('.workout-exercise-card');
+        await expect(cards).toHaveCount(5);
+        await expect(cards.locator('.exercise-visual.is-fallback')).toHaveCount(0);
+        for (const [index, id] of refinedExerciseIds.entries()) {
+          const hero = cards.nth(index).locator('.workout-card-hero');
+          const visual = hero.locator('.exercise-visual');
+          await expect(visual).toHaveAttribute('data-exercise-visual-id', id);
+          await expect(visual.locator('img')).toHaveAttribute('src', assetPath(id, 'thumb'));
+          await expect(visual.locator('img')).toHaveAttribute('alt', await page.evaluate(
+            ({ id, language }) => ApexExerciseVisuals.resolve(id).alt[language], { id, language }
+          ));
+          await expectLoaded(visual.locator('img'));
+          const bounds = await visual.boundingBox();
+          expect([bounds.width, bounds.height]).toEqual([80, 60]);
+          expect(await hero.evaluate(hero => {
+            const bounds = hero.getBoundingClientRect();
+            return [...hero.querySelectorAll('.exercise-visual, .ex-name, .ex-diff')].every(element => {
+              const rect = element.getBoundingClientRect();
+              return rect.left >= bounds.left && rect.right <= bounds.right + 1
+                && element.scrollWidth <= element.clientWidth + 1;
+            });
+          })).toBe(true);
+          if (index < 2) {
+            await hero.screenshot({ path: testInfo.outputPath(`${id}-${language}-${width}-card.png`) });
+            await visual.screenshot({ path: testInfo.outputPath(`${id}-${language}-${width}-thumb-80x60.png`) });
+          }
+        }
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        await page.locator('.start-wo').click();
+        for (const [index, id] of refinedExerciseIds.entries()) {
+          await page.evaluate(index => { WO.i = index; WO.set = 0; renderWO(); }, index);
+          const visual = page.locator('#wo-stage > .exercise-visual-protocol');
+          await expect(visual).not.toHaveClass(/is-fallback/);
+          await expect(visual).toHaveAttribute('data-exercise-visual-id', id);
+          await expect(visual.locator('img')).toHaveAttribute('src', assetPath(id, 'protocol'));
+          await expectLoaded(visual.locator('img'));
+          const bounds = await visual.boundingBox();
+          expect([bounds.width, bounds.height]).toEqual([160, 120]);
+          await expect(visual).toBeInViewport();
+          await expect(page.locator('button[onclick="completeSet()"]')).toBeInViewport();
+          expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+          if (index < 2) {
+            await visual.screenshot({ path: testInfo.outputPath(`${id}-${language}-${width}-protocol-160x120.png`) });
+            await page.screenshot({ path: testInfo.outputPath(`${id}-${language}-${width}-active.png`) });
+          }
+        }
+        expect(await page.evaluate(() => JSON.stringify(pendingTrainingCompletion))).toBe(source);
+        await page.evaluate(() => quitWorkout());
+      });
+    }
+  }
+});
+
 test.describe('canonical exercise visuals', () => {
   for (const language of ['bg', 'en']) {
     test(`five approved thumbs use canonical IDs and localized alt text in ${language}`, async ({ page }) => {
@@ -247,7 +311,7 @@ test.describe('canonical exercise visuals', () => {
   });
 
   test('failed approved assets preserve geometry, controls and typed completion', async ({ page }) => {
-    await page.route('**/static/exercise/visuals/v1/*.webp', route => route.abort());
+    await page.route('**/static/exercise/visuals/v1/*.webp*', route => route.abort());
     await mountWorkout(page, 'en', ['bodyweight.hollow_hold']);
     const cardVisual = page.locator('.workout-exercise-card .exercise-visual');
     await cardVisual.scrollIntoViewIfNeeded();
@@ -292,7 +356,7 @@ test.describe('canonical exercise visuals', () => {
     let releaseImages, imageRequested;
     const blocked = new Promise(resolve => { releaseImages = resolve; });
     const requested = new Promise(resolve => { imageRequested = resolve; });
-    await page.route('**/static/exercise/visuals/v1/*.webp', async route => {
+    await page.route('**/static/exercise/visuals/v1/*.webp*', async route => {
       imageRequested();
       await blocked;
       await route.abort();
@@ -395,7 +459,7 @@ test.describe('beginner Movement Studies pack', () => {
       for (const [variant, dimensions] of [['thumb', [320, 240]], ['protocol', [960, 720]]]) {
         const src = assetPath(id, variant);
         expect(entry[variant]).toBe(src);
-        const bytes = fs.readFileSync(path.join(__dirname, '../..', src));
+        const bytes = fs.readFileSync(path.join(__dirname, '../..', new URL(src, 'http://apex.test').pathname));
         expect(bytes.subarray(0, 4).toString()).toBe('RIFF');
         expect(bytes.subarray(8, 12).toString()).toBe('WEBP');
         const response = await request.get(src);

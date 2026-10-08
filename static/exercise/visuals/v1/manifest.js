@@ -163,13 +163,17 @@
       en: 'Two-dumbbell push press setup with a shallow knee dip before leg drive'
     }
   };
+  // Inherit the app shell's shared revision instead of maintaining a second token.
+  const script = global.document && global.document.currentScript;
+  const revision = script ? new URL(script.src).searchParams.get('v') : null;
+  const suffix = revision ? '?v=' + encodeURIComponent(revision) : '';
   const entries = Object.create(null);
   Object.keys(descriptions).forEach(function (exerciseId) {
     const base = '/static/exercise/visuals/v1/' + exerciseId;
     entries[exerciseId] = Object.freeze({
       exercise_id: exerciseId,
-      thumb: base + '--thumb.webp',
-      protocol: base + '--protocol.webp',
+      thumb: base + '--thumb.webp' + suffix,
+      protocol: base + '--protocol.webp' + suffix,
       alt: Object.freeze(descriptions[exerciseId])
     });
   });
