@@ -245,7 +245,7 @@ test.describe('canonical exercise visuals', () => {
         const stats = cards.nth(index).locator('.workout-card-stats');
         await expect(stats).toContainText(index === 4 ? '20–40' : '8-12');
         await expect(stats).toContainText(index === 4 ? (language === 'bg' ? 'Продължителност' : 'Duration') : (language === 'bg' ? 'Повторения' : 'Repetitions'));
-        await expect(stats).toContainText('2-0-2');
+        await expect(cards.nth(index).locator('.workout-prescribed-meta')).toContainText('2-0-2');
       }
     });
   }

@@ -397,7 +397,20 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 .workout-card-title .ex-name{max-width:100%;overflow-wrap:break-word;}
 .workout-card-stat{overflow-wrap:anywhere;}
 .workout-card-stat b{white-space:normal;}
+.workout-card-stats{grid-template-columns:minmax(0,2fr) minmax(0,1fr);}
+.workout-key-cue{margin:10px 0 0;color:var(--muted);font-size:12.5px;line-height:1.5;}
+.workout-card-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;color:var(--muted);font-size:12px;}
+.workout-prescribed-meta{display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;font-size:12.5px;color:var(--muted);}
+.workout-prescribed-meta b{color:var(--text);}
+.ei-section>summary{min-height:28px;display:flex;align-items:center;}
+.ei-section[open]>summary::before{transform:rotate(90deg);}
+.ei-section:not([open])>summary::before{transform:rotate(0deg);}
+.ei-section>summary:focus-visible,.start-wo:focus-visible{outline:2px solid var(--text);outline-offset:4px;}
+.workout-start{display:flex;justify-content:flex-end;margin-top:18px;padding-top:14px;border-top:1px solid var(--border);}
+.wo-technique{width:100%;max-width:620px;flex-shrink:0;text-align:left;margin-top:16px;}
+.wo-stage:has(.wo-technique){justify-content:flex-start;}
 @media(max-width:560px){.ei-card{padding:14px;}.ei-top{align-items:flex-start;flex-direction:column;gap:4px;}.ei-prescription{white-space:normal;}}
+@media(max-width:560px){.workout-start .start-wo{width:100%;justify-content:center;}}
 
 /* ── WORKOUT MODE (full-screen protocol) ─────────────────────────── */
 #workout{position:fixed;inset:0;z-index:30;display:none;flex-direction:column;
@@ -2973,15 +2986,41 @@ function instructionRecordFor(exercise){
 }
 function workoutInstructionSections(exercise,includeOverview=false){
   const labels=instructionLabels(),record=instructionRecordFor(exercise),copy=record[lang==='bg'?'bg':'en'];
-  const overview=instructionContent(copy.overview);
+  const overview=instructionContent(copy.overview),cue=workoutKeyCue(exercise);
+  const cues=Array.isArray(copy.cues)?copy.cues.filter(value=>value!==cue):copy.cues;
   return (includeOverview&&overview?'<p class="ei-overview">'+esc(overview)+'</p>':'')+instructionStaticSection(labels.start,copy.starting)+instructionStaticSection(labels.steps,copy.execution,true)+
-    instructionSection(labels.breathing,copy.breathing)+instructionSection(labels.cues,copy.cues)+
-    instructionSection(labels.mistakes,copy.mistakes)+instructionSection(labels.regression,copy.regression)+instructionSection(labels.safety,copy.safety);
+    instructionStaticSection(labels.breathing,copy.breathing)+instructionStaticSection(labels.cues,cues)+
+    '<details class="ei-section workout-deep-guidance"><summary>'+(lang==='bg'?'Подробни насоки':'Deep guidance')+'</summary>'+
+    instructionStaticSection(labels.mistakes,copy.mistakes)+instructionStaticSection(labels.regression,copy.regression)+instructionStaticSection(labels.safety,copy.safety)+'</details>';
+}
+function workoutKeyCue(exercise){
+  const record=instructionRecordFor(exercise);if(!record)return '';
+  const copy=record[lang==='bg'?'bg':'en'],safety=instructionContent(copy.safety);
+  // Equipment/setup precautions stay in the scan layer, using catalog text unchanged.
+  if(typeof safety==='string'&&/anchor|stable|support|rack|spotter|furniture|secure|do not|never|закреп|стабил|опор|стойк|пейк|маса|не (?:използвай|изпълнявай|отскачай|насилвай)/i.test(safety))return safety;
+  const cues=instructionContent(copy.cues);
+  return Array.isArray(cues)?cues[0]:(cues||safety||'');
 }
 function workoutDisplayMeta(exercise){
-  const note=String(exercise.note||''),tempo=(note.match(/(?:темпо|tempo)\s*([\d-]+)/i)||[])[1]||'2-0-2';
+  const note=String(exercise.note||''),tempo=(note.match(/(?:темпо|tempo)\s*([\d-]+)/i)||[])[1]||'—';
   const rpe=(note.match(/RPE\s*([\d.]+)/i)||[])[1]||'—',rir=(note.match(/RIR\s*([\d.]+)/i)||[])[1]||'—';
-  return{tempo,rpe,rir,note};
+  const uniqueNote=note.split(/[;,]/).map(part=>part.trim()).filter(part=>{
+    const match=part.match(/^(RPE|RIR|tempo|темпо)\s*([\d.-]+)$/i);
+    if(!match)return !!part;
+    return match[2]!==({rpe,rir,tempo,темпо:tempo})[match[1].toLowerCase()];
+  }).join('; ');
+  return{tempo,rpe,rir,note:uniqueNote};
+}
+function workoutExecutionDetails(exercise,includeOverview=false,active=false){
+  const record=instructionRecordFor(exercise);if(!record)return '';
+  const meta=workoutDisplayMeta(exercise),df=workoutDifficulty(exercise);
+  const diffLabel={easy:lang==='bg'?'Лесно':'Easy',med:lang==='bg'?'Средно':'Medium',hard:lang==='bg'?'Трудно':'Hard'};
+  return '<details class="ei-section workout-execution-details'+(active?' wo-technique':'')+'"><summary>'+
+    (lang==='bg'?'Детайли за изпълнение':'Execution details')+'</summary><div class="workout-card-meta"><span class="ex-muscle">'+
+    esc(lang==='bg'?record.muscle_group_bg:record.muscle_group_en)+'</span><span class="ex-diff '+(df||'')+'">'+
+    (diffLabel[df]||'—')+'</span></div><div class="workout-prescribed-meta"><span>'+(lang==='bg'?'Темпо':'Tempo')+' <b>'+esc(meta.tempo)+
+    '</b></span><span>RPE <b>'+esc(meta.rpe)+'</b></span><span>RIR <b>'+esc(meta.rir)+'</b></span></div>'+
+    (meta.note?'<p class="workout-card-note">'+esc(meta.note)+'</p>':'')+workoutInstructionSections(exercise,includeOverview)+'</details>';
 }
 function exerciseVisualFailed(image){
   image.hidden=true;
@@ -2998,15 +3037,16 @@ function renderExerciseVisual(exercise,variant){
 function renderWorkoutExerciseCard(exercise,diffLabel,includeOverview=false){
   const api=window.ApexExerciseInstructions;
   const record=instructionRecordFor(exercise);if(!record)return '';
-  const mu={...inferMuscle(exercise.name),m:lang==='bg'?record.muscle_group_bg:record.muscle_group_en},df=workoutDifficulty(exercise),prescription=workoutPrescription(exercise),meta=workoutDisplayMeta(exercise);
+  const prescription=workoutPrescription(exercise);
   const unit=prescription.type==='duration'?(lang==='bg'?'сек':'sec'):(lang==='bg'?'повт.':'reps');
   const labels=lang==='bg'?{sets:'Серии',target:'Повторения',rest:'Почивка',tempo:'Темпо',rpe:'RPE',rir:'RIR'}:{sets:'Sets',target:'Repetitions',rest:'Rest',tempo:'Tempo',rpe:'RPE',rir:'RIR'};
   if(prescription.type==='duration')labels.target=lang==='bg'?'Продължителност':'Duration';
   const displayUnit=(prescription.type==='duration'||prescription.type==='duration_per_side')?'':(prescription.type==='repetitions_per_side'?(lang==='bg'?' повторения на страна':' reps / side'):(' '+unit));
   const displayTarget=prescription.type==='duration'||prescription.type==='duration_per_side'?(lang==='bg'?'Продължителност':'Duration'):(prescription.type==='repetitions_per_side'?(lang==='bg'?'Повторения на страна':'Repetitions per side'):labels.target);
-  return '<article class="ex-card ei-card workout-exercise-card" data-exercise-id="'+esc(exercise.completion?exercise.completion.exercise_id:record.canonical_id)+'" data-exercise-instruction-id="'+esc(record.id)+'"><div class="workout-card-hero">'+renderExerciseVisual(exercise,'thumb')+'<div class="workout-card-title"><div class="ex-top"><h3 class="ex-name">'+esc(exercise.name)+'</h3><span class="ex-diff '+(df||'')+'">'+(diffLabel[df]||'—')+'</span></div><div class="ex-muscles"><span class="ex-muscle">'+mu.m+'</span></div></div></div><div class="workout-card-stats">'+
-    '<span class="workout-card-stat"><b>'+esc(exercise.sets)+'</b>'+labels.sets+'</span><span class="workout-card-stat"><b>'+esc(prescription.value)+displayUnit+'</b>'+displayTarget+'</span><span class="workout-card-stat"><b>'+esc(localizedTime(exercise.rest))+'</b>'+labels.rest+'</span><span class="workout-card-stat meta"><b>'+esc(meta.tempo)+'</b>'+labels.tempo+'</span><span class="workout-card-stat meta"><b>'+esc(meta.rpe)+'</b>'+labels.rpe+'</span><span class="workout-card-stat meta"><b>'+esc(meta.rir)+'</b>'+labels.rir+'</span></div>'+
-    (meta.note?'<div class="workout-card-note">'+esc(meta.note)+'</div>':'')+workoutInstructionSections(exercise,includeOverview)+'</article>';
+  const rest=localizedTime(exercise.rest),restWithUnit=/^\d+(?:\.\d+)?$/.test(rest)?rest+' '+(lang==='bg'?'сек':'sec'):rest;
+  return '<article class="ex-card ei-card workout-exercise-card" data-exercise-id="'+esc(exercise.completion?exercise.completion.exercise_id:record.canonical_id)+'" data-exercise-instruction-id="'+esc(record.id)+'"><div class="workout-card-hero">'+renderExerciseVisual(exercise,'thumb')+'<div class="workout-card-title"><h3 class="ex-name">'+esc(exercise.name)+'</h3></div></div><div class="workout-card-stats">'+
+    '<span class="workout-card-stat workout-card-dose"><b>'+esc(exercise.sets)+' × '+esc(prescription.value)+displayUnit+'</b>'+labels.sets+' × '+displayTarget+'</span><span class="workout-card-stat"><b>'+esc(restWithUnit)+'</b>'+labels.rest+'</span></div>'+
+    '<p class="workout-key-cue">'+esc(workoutKeyCue(exercise))+'</p>'+workoutExecutionDetails(exercise,includeOverview)+'</article>';
 }
 function reopenWorkoutInstructions(){
   const protocol=latestWorkoutProtocol();if(!protocol)return false;
@@ -3091,13 +3131,12 @@ function renderWorkout(header,body){
     session_id:completionSession.session_id
   }:null;
   const diffLbl={easy:lang==='bg'?'Лесно':'Easy',med:lang==='bg'?'Средно':'Medium',hard:lang==='bg'?'Трудно':'Hard'};
-  let html='<section class="workout-protocol" data-workout-key="'+encodeURIComponent(workoutKey)+'"><div class="wo-intro"><span class="wt">'+(lang==='bg'?'Тренировъчен протокол':'Training protocol')+'</span>'+
-    '<button class="start-wo" data-workout-key="'+encodeURIComponent(workoutKey)+
-    '" onclick="startWorkout(decodeURIComponent(this.dataset.workoutKey))">▶ '+tr().woStart+'</button></div>'+renderWorkoutRationale(pendingTrainingCompletion&&pendingTrainingCompletion.recommendation_rationale);
+  let html='<section class="workout-protocol" data-workout-key="'+encodeURIComponent(workoutKey)+'"><div class="wo-intro"><span class="wt">'+(lang==='bg'?'Тренировъчен протокол':'Training protocol')+'</span></div>'+renderWorkoutRationale(pendingTrainingCompletion&&pendingTrainingCompletion.recommendation_rationale);
   ex.forEach(e=>{
     html+=renderWorkoutExerciseCard(e,diffLbl);
   });
-  return html+'</section>';
+  return html+'<div class="workout-start"><button class="start-wo" data-workout-key="'+encodeURIComponent(workoutKey)+
+    '" onclick="startWorkout(decodeURIComponent(this.dataset.workoutKey))">▶ '+tr().woStart+'</button></div></section>';
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -3206,13 +3245,13 @@ function renderWO(){
       renderExerciseVisual(e,'protocol')+
       '<div class="wo-ex-name">'+esc(e.name)+'</div>'+
       '<div class="wo-ex-target">'+esc(prescription.value)+(prescription.type==='duration'?'':' '+(lang==='bg'?'повторения':'reps'))+'</div>'+
-      '<div class="wo-ex-meta">'+mu.m+' · '+(lang==='bg'?'темп':'tempo')+' 2-0-2'+(e.note?(' · '+esc(e.note)):'')+'</div>'+
+      '<div class="wo-ex-meta">'+esc(workoutKeyCue(e))+'</div>'+
       '<div class="wo-weight"><input type="number" id="wo-reps-in" inputmode="numeric" min="0" placeholder="'+(duration?(lang==='bg'?'секунди':'seconds'):(lang==='bg'?'повторения':'reps'))+'" value="'+(actual==null?'':actual)+'"><span>'+(duration?(lang==='bg'?'реално задържани секунди':'held seconds'):(lang==='bg'?'реално изпълнени':'completed reps'))+'</span><input type="number" id="wo-weight-in" inputmode="decimal" placeholder="'+(lang==='bg'?'кг (по избор)':'kg (optional)')+'" value="'+(e.weight||'')+'" oninput="WO.ex[WO.i].weight=this.value"></div>'+
       '<div class="wo-effort"><span>'+(lang==='bg'?'Как се почувства упражнението?':'How did that exercise feel?')+'</span><select id="wo-effort-in" onchange="captureExerciseEffort()"><option value="">'+(lang==='bg'?'Избери':'Choose')+'</option><option value="easy"'+(e.completedEffort==='easy'?' selected':'')+'>'+(lang==='bg'?'Лесно':'Easy')+'</option><option value="productive"'+(e.completedEffort==='productive'?' selected':'')+'>'+(lang==='bg'?'Точно както трябва':'About right')+'</option><option value="hard"'+(e.completedEffort==='hard'?' selected':'')+'>'+(lang==='bg'?'Трудно':'Hard')+'</option><option value="incomplete"'+(e.completedEffort==='incomplete'?' selected':'')+'>'+(lang==='bg'?'Не успях да завърша':'Couldn’t finish')+'</option></select><details><summary>'+(lang==='bg'?'Разширено: RPE / RIR':'Advanced: RPE / RIR')+'</summary><small>'+(lang==='bg'?'RPE = колко трудно се усещаше. RIR = колко чисти повторения оставаха.':'RPE = how hard it felt. RIR = clean reps left.')+'</small><label>RPE <select id="wo-rpe-in" onchange="captureExerciseEffort()">'+workoutEffortOptions(1,10,boundedWorkoutEffort(e.completedRpe,1,10,false))+'</select></label><label>RIR <select id="wo-rir-in" onchange="captureExerciseEffort()">'+workoutEffortOptions(0,10,boundedWorkoutEffort(e.completedRir,0,10,true))+'</select></label></details></div>'+
       '<div class="set-dots">'+dots+'</div>'+
       '<div class="wo-controls"><button class="wo-btn primary" onclick="completeSet()">'+t.woDone+' →</button>'+
       ('<button class="wo-btn ghost" onclick="skipExercise()">'+(lang==='bg'?'Следващо':'Next')+' »</button>')+'</div>'+
-      '<div class="wo-next"><b>'+t.woNext+':</b> '+esc(nextEx)+'</div>';
+      '<div class="wo-next"><b>'+t.woNext+':</b> '+esc(nextEx)+'</div>'+workoutExecutionDetails(e,true,true);
   } else {
     const rest=parseInt((e.rest+'').replace(/[^\d]/g,''))||60;
     stage.innerHTML='<div class="wo-step">'+t.woRest+'</div>'+
@@ -3435,7 +3474,10 @@ const ChatLifecycle={
     x.assistantBody.innerHTML=renderMarkdown(x.full);
     if(!x.options.sessionStart)saveHistory('assistant',x.full);
     afterReply(x.full,x.speechText);
-    this.transition(x,CHAT_STATES.COMPLETED);this.finish(x);if(x.follow)hardScroll();else smartScroll();return true;
+    this.transition(x,CHAT_STATES.COMPLETED);this.finish(x);
+    const workoutStart=x.assistantBody.querySelector('.start-wo');
+    if(x.follow&&workoutStart){workoutStart.scrollIntoView({block:'nearest'});smartScroll();}
+    else if(x.follow)hardScroll();else smartScroll();return true;
   },
   fail(x,message,state=CHAT_STATES.FAILED){
     if(!x||this.current!==x||CHAT_TERMINAL.has(x.state))return;

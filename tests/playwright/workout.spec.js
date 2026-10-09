@@ -332,7 +332,9 @@ test.describe('APEX approved app shell — UX regression', () => {
     await expect(cards.nth(3)).not.toContainText('С мента в коленете');
     await expect(cards.nth(4)).toContainText('20–40 сек');
     await expect(cards.nth(4)).not.toContainText('8–12 повт.');
-    await expect(cards.first().locator('details')).toHaveCount(5);
+    await expect(cards.first().locator('details')).toHaveCount(2);
+    await expect(cards.first().locator(':scope > details')).toHaveCount(1);
+    await expect(cards.first().locator(':scope > details')).not.toHaveAttribute('open', '');
     expect(networkCalls).toBe(0);
     await expect(page.locator('.exercise-instructions')).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
@@ -356,7 +358,7 @@ test.describe('APEX approved app shell — UX regression', () => {
     await expect(page.locator('.workout-protocol')).toHaveCount(1);
     await expect(page.locator('.workout-protocol .workout-exercise-card')).toHaveCount(1);
     await expect(page.locator('.workout-protocol')).toContainText('20–40 сек');
-    await expect(page.locator('.workout-protocol details[open]')).toHaveCount(5);
+    await expect(page.locator('.workout-protocol details[open]')).toHaveCount(2);
     await expect(page.locator('.exercise-instructions')).toHaveCount(0);
     await expect(page.locator('.start-wo')).toHaveCount(1);
     expect(networkCalls).toBe(0);
@@ -2260,7 +2262,7 @@ test.describe('APEX approved app shell — UX regression', () => {
     await expect(focused).toContainText('\u041f\u0440\u043e\u0442\u0438\u0432\u043e\u043f\u043e\u043b\u043e\u0436\u043d\u0430 \u0440\u044a\u043a\u0430 \u0438 \u043a\u0440\u0430\u043a \u043e\u0442 \u0447\u0435\u0442\u0438\u0440\u0438 \u043e\u043f\u043e\u0440\u0438');
     await expect(focused).toContainText('6 \u043f\u043e\u0432\u0442\u043e\u0440\u0435\u043d\u0438\u044f \u043d\u0430 \u0441\u0442\u0440\u0430\u043d\u0430');
     await expect(focused).not.toContainText('6 \u043d\u0430 \u0441\u0442\u0440\u0430\u043d\u0430 \u043f\u043e\u0432\u0442\u043e\u0440\u0435\u043d\u0438\u044f');
-    await expect(focused.locator('details[open]')).toHaveCount(5);
+    await expect(focused.locator('details[open]')).toHaveCount(2);
     expect(calls).toBe(0);
   });
 
