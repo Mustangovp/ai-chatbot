@@ -479,6 +479,11 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 .wo-recorded-list li,.completion-adjustments li{font-size:14px;line-height:1.6;margin:10px 0;overflow-wrap:anywhere;}
 .wo-recorded-list strong,.completion-adjustments strong{font-weight:700;color:var(--text);}
 .wo-recorded-list p,.completion-adjustments p{color:var(--muted);margin:2px 0 0;}
+.wo-save-status{color:var(--text);margin-top:8px;}
+.wo-receipt{margin-top:8px;}
+.wo-receipt>summary{min-height:48px;padding:12px 0;font-size:14px;font-weight:600;cursor:pointer;}
+.wo-receipt-label{font-weight:600;color:var(--text);}
+.wo-feedback-missing{margin-top:8px;}
 .wo-summary .wo-controls{justify-content:flex-start;margin-top:20px;gap:10px;}
 .wo-summary .wo-btn{height:auto;min-height:48px;max-width:100%;padding:12px 20px;font-size:14px;white-space:normal;}
 
@@ -1879,17 +1884,51 @@ function myTrainingExerciseName(item){
   return record?api.display(record,lang):(item.display_name||MY_TRAINING_COPY[lang].exercise);
 }
 function myTrainingRange(min,max){return min===max?String(min):String(min)+'–'+String(max);}
-function recordedExerciseFacts(item){
+function recordedExecutionFacts(item){
   const bg=lang==='bg',facts=[],duration=item.prescription_type==='duration';
   if(Number.isInteger(item.completed_sets)&&item.completed_sets>0)facts.push(item.completed_sets+' '+(bg?(item.completed_sets===1?'серия':'серии'):(item.completed_sets===1?'set':'sets')));
   const work=duration?item.completed_duration_seconds:item.completed_repetitions;
   if(Number.isInteger(work)&&work>0)facts.push(work+' '+(duration?(bg?'сек':'sec'):(bg?'повт.':'reps')));
   if(typeof item.completed_load==='number'&&Number.isFinite(item.completed_load))facts.push(item.completed_load+' '+(bg?'кг':'kg'));
+  return facts;
+}
+function recordedFeedbackFacts(item){
+  const bg=lang==='bg',facts=[];
   const effort={easy:bg?'Лесно':'Easy',productive:bg?'Точно както трябва':'About right',hard:bg?'Трудно':'Hard',incomplete:bg?'Не успях да завърша':'Couldn’t finish'};
-  if(effort[item.completed_effort])facts.push(effort[item.completed_effort]);
+  if(effort[item.completed_effort])facts.push((bg?'Усещане: ':'Effort: ')+effort[item.completed_effort]);
   if(typeof item.completed_rpe==='number'&&item.completed_rpe>=1&&item.completed_rpe<=10)facts.push('RPE '+item.completed_rpe);
   if(Number.isInteger(item.completed_rir)&&item.completed_rir>=0&&item.completed_rir<=10)facts.push('RIR '+item.completed_rir);
   return facts;
+}
+function missingWorkoutFeedback(item){
+  const missing=[];
+  if(!['easy','productive','hard','incomplete'].includes(item.completed_effort))missing.push(lang==='bg'?'усещане':'effort');
+  if(typeof item.completed_rpe!=='number'||item.completed_rpe<1||item.completed_rpe>10)missing.push('RPE');
+  if(!Number.isInteger(item.completed_rir)||item.completed_rir<0||item.completed_rir>10)missing.push('RIR');
+  return missing;
+}
+function adjustmentReasonText(item){
+  const reasons={
+    recovery_overreached:['Записаното състояние изисква разтоварване.','The recorded recovery state requires a deload.'],
+    progression_cycle_complete:['Цикълът на прогресия е завършен.','The progression cycle is complete.'],
+    insufficient_exercise_history:['Няма достатъчно записана история за упражнението.','There is insufficient recorded exercise history.'],
+    pain_reported:['Има записан сигнал за болка.','Pain was reported.'],
+    pain_reported_without_regression:['Има сигнал за болка, без налична регресия в каталога.','Pain was reported with no catalog regression available.'],
+    recovery_fatigued:['Записаното състояние ограничава прогресията.','The recorded recovery state limits progression.'],
+    workout_incomplete:['Изпълнението не е завършено.','Execution was incomplete.'],
+    effort_not_ready_for_progression:['Записаното усилие не подкрепя увеличение.','Recorded effort does not support an increase.'],
+    effort_productive:['Записаното усещане е „точно както трябва“.','Recorded effort was about right.'],
+    effort_not_recorded:['Липсва необходимата за това решение самооценка на усилието.','The effort feedback required for this decision is missing.'],
+    performance_dose_type_mismatch:['Типът на записаното изпълнение не съвпада с предписанието.','The recorded execution type does not match the prescription.'],
+    duration_range_not_reached:['Горната граница на предписаното време не е достигната.','The prescribed duration ceiling was not reached.'],
+    repetition_range_not_reached:['Горната граница на повторенията не е достигната.','The prescribed repetition ceiling was not reached.'],
+    load_progression_not_eligible:['Записаната история още не покрива правилото за увеличение на тежестта.','Recorded history does not yet meet the load-increase rule.'],
+    repetition_ceiling_reached:['Горната граница на предписаното изпълнение е достигната.','The prescribed dose ceiling was reached.'],
+    set_progression_stage_exhausted:['Достигнат е лимитът за добавяне на серии на този етап.','The set-increase limit for this stage was reached.'],
+    load_progression_already_applied:['Правилото за прогресия избра стъпка чрез серии.','The progression rule selected a set-increase step.'],
+    progression_ceiling_reached:['Достигнат е лимитът на текущата прогресия.','The current progression ceiling was reached.']
+  };
+  const reason=reasons[item.reason_code];return reason?reason[lang==='bg'?0:1]:'';
 }
 function adjustmentText(item){
   const bg=lang==='bg';
@@ -1907,9 +1946,11 @@ function adjustmentText(item){
     return bg?'Смени упражнението с '+myTrainingExerciseName(item.replacement)+'.':'Replace this exercise with '+myTrainingExerciseName(item.replacement)+'.';
   return '';
 }
-function renderRecordedAdjustments(decisions){
+function renderRecordedAdjustments(decisions,explain=false){
   const rows=Array.isArray(decisions)?decisions.map(item=>{
-    const text=adjustmentText(item);return text?'<li><strong>'+esc(myTrainingExerciseName(item))+'</strong><p>'+esc(text)+'</p></li>':'';
+    const text=adjustmentText(item),reason=explain&&adjustmentReasonText(item);
+    return text?'<li><strong>'+esc(myTrainingExerciseName(item))+'</strong><p>'+esc(text)+'</p>'+
+      (reason?'<p data-adjustment-reason>'+esc(reason)+'</p>':'')+'</li>':'';
   }).filter(Boolean):[];
   return rows.length?'<ul class="completion-adjustments">'+rows.join('')+'</ul>':'<p class="wo-result-note">'+
     (lang==='bg'?'Тренировката е записана. Няма потвърдена промяна в програмата.':'Workout recorded. No training adjustment has been confirmed.')+'</p>';
@@ -3374,26 +3415,47 @@ function renderWorkoutResult(session,minutes,state,decisions=[]){
   const exercises=session.exercises.filter(e=>e.execution_state==='completed').length;
   const sets=session.exercises.reduce((sum,e)=>sum+((e.prescription_type==='duration'?e.actual_duration_seconds:e.actual_repetitions)>0?e.completed_sets:0),0);
   const meta=[exercises+' '+(bg?'завършени упражнения':'completed exercises'),sets+' '+(bg?'серии':'sets'),minutes+' '+(bg?'мин':'min')];
-  const rows=session.exercises.map(item=>'<li><strong>'+esc(item.exercise_id?myTrainingExerciseName({...item,display_name:item.name}):item.name||MY_TRAINING_COPY[lang].exercise)+
-    '</strong><p>'+esc(recordedExerciseFacts(item).join(' · ')|| (bg?'Няма потвърдено изпълнение.':'No observed execution.'))+'</p></li>').join('');
+  const rows=session.exercises.map(item=>{
+    const observed=recordedExecutionFacts(item),reported=recordedFeedbackFacts(item),missing=missingWorkoutFeedback(item);
+    return '<li><strong>'+esc(item.exercise_id?myTrainingExerciseName({...item,display_name:item.name}):item.name||MY_TRAINING_COPY[lang].exercise)+
+      '</strong><p data-receipt-facts="observed"><span class="wo-receipt-label">'+(bg?'Изпълнение: ':'Execution: ')+'</span>'+esc(observed.join(' · ')||(bg?'Няма потвърдено изпълнение.':'No observed execution.'))+'</p>'+
+      '<p data-receipt-facts="reported"><span class="wo-receipt-label">'+(bg?'Самооценка: ':'Self-reported: ')+'</span>'+esc(reported.join(' · ')||(bg?'Не е записана допълнителна самооценка.':'No optional feedback was recorded.'))+'</p>'+
+      (missing.length&&reported.length?'<p class="wo-result-note">'+(bg?'Не е записано (по избор): ':'Not recorded (optional): ')+esc(missing.join(', '))+'.</p>':'')+'</li>';
+  }).join('');
+  const saveCopy=state==='saved'?(bg?'Запазено в профила ти.':'Saved to your account.'):
+    state==='pending'?(bg?'Записано локално. Запазване в профила…':'Recorded locally. Saving to your account…'):
+    state==='error'?(bg?'Записано локално. Записът в профила не е потвърден.':'Recorded locally. Account save has not been confirmed.'):
+    (bg?'Записано само в този браузър, не в профил.':'Recorded in this browser only, not to an account.');
+  const missingFeedback=session.exercises.some(item=>missingWorkoutFeedback(item).length);
   let next;
   if(state==='anonymous')next='<p class="wo-result-note">'+(bg?'Влез в профила си, за да запазваш тренировъчните адаптации между сесиите.':'Sign in to preserve training adaptations across sessions.')+'</p>';
-  else if(state==='pending')next='<p class="wo-result-note" role="status">'+(bg?'Записване в профила…':'Saving to your account…')+'</p>';
-  else if(state==='error')next='<p class="wo-result-note" role="status">'+(bg?'Записът в профила не е потвърден. Няма потвърдена корекция.':'Account save has not been confirmed. No adjustment has been confirmed.')+'</p>';
-  else if(session.execution_state!=='completed')next='<p class="wo-result-note">'+(bg?'Няма потвърдена промяна в програмата.':'No training adjustment has been confirmed.')+'</p>';
-  else next=renderRecordedAdjustments(decisions);
+  else if(state!=='saved'||session.execution_state!=='completed'||!Array.isArray(decisions)||!decisions.some(item=>adjustmentText(item)))
+    next='<p class="wo-result-note">'+(bg?'Няма потвърдена тренировъчна корекция.':'No training adjustment has been confirmed.')+'</p>';
+  else next='<p class="wo-result-note">'+(bg?'Решения на тренировъчната система, не AI импровизация.':'Training-system decisions, not AI improvisation.')+'</p>'+renderRecordedAdjustments(decisions,true)+
+    '<p class="wo-result-note">'+(bg?'Може да се използват при бъдеща съвместима тренировка или стъпка в прогресията. Завършената тренировка не се променя.':'May be used in a future compatible workout or progression step. The completed workout is unchanged.')+'</p>';
   const stage=document.getElementById('wo-stage'),updating=!!stage.querySelector('.wo-summary'),scroll=updating?stage.scrollTop:0;
   const action=stage.contains(document.activeElement)&&document.activeElement.getAttribute('onclick');
+  const receipt=stage.querySelector('.wo-receipt'),receiptOpen=receipt&&receipt.open,receiptFocused=receipt&&receipt.querySelector('summary')===document.activeElement;
+  const liveSave=stage.querySelector('[data-completion-save-status]'),liveAdjustment=stage.querySelector('[data-completion-adjustment-status]');
   const focusedOutside=updating&&!stage.contains(document.activeElement)&&document.getElementById('workout').contains(document.activeElement);
   stage.innerHTML='<div class="wo-summary" data-workout-result="'+session.execution_state+'">'+
-    '<section class="wo-result-section" data-completion-section="completed"><h2 id="wo-current-step" tabindex="-1">'+labels[session.execution_state]+'</h2><p class="wo-result-meta">'+esc(meta.join(' · '))+'</p></section>'+
-    '<section class="wo-result-section" data-completion-section="recorded"><h3>'+(bg?'APEX отчете':'APEX recorded')+'</h3><p class="wo-result-note">'+(bg?'Повт./сек: минимумът сред потвърдените серии, не общият сбор.':'Reps/seconds: the minimum across confirmed sets, not the total.')+'</p><ul class="wo-recorded-list">'+rows+'</ul></section>'+
-    '<section class="wo-result-section" data-completion-section="adjustment"><h3>'+(bg?'Следваща корекция':'Next adjustment')+'</h3>'+next+'</section>'+
+    '<section class="wo-result-section" data-completion-section="completed"><h2 id="wo-current-step" tabindex="-1">'+labels[session.execution_state]+'</h2><p class="wo-result-meta">'+esc(meta.join(' · '))+'</p><p class="wo-result-note wo-save-status" data-completion-save-status role="status" aria-live="polite" aria-atomic="true"></p></section>'+
+    '<section class="wo-result-section" data-completion-section="recorded"><h3>'+(bg?'Разписка за тренировката':'Workout receipt')+'</h3>'+
+    (missingFeedback?'<p class="wo-result-note wo-feedback-missing">'+(bg?'Липсва част от самооценката за усилие (усещане, RPE, RIR). Тя не е задължителна за записа.':'Some optional effort feedback (effort, RPE, RIR) was not recorded. It is not required to save the workout.')+'</p>':'')+
+    '<details class="wo-receipt"><summary>'+(bg?'Подробности по упражнения':'Exercise details')+' ('+session.exercises.length+')</summary><p class="wo-result-note">'+(bg?'Повт./сек: минимумът сред потвърдените серии, не общият сбор.':'Reps/seconds: the minimum across confirmed sets, not the total.')+'</p><ul class="wo-recorded-list">'+rows+'</ul></details></section>'+
     '<div class="wo-controls"><button class="wo-btn primary" onclick="finishToMyTraining()">'+(bg?'Към Моите тренировки':'Go to My Training')+'</button>'+
-    '<button class="wo-btn ghost" onclick="finishToCoach()">'+(bg?'Към треньора':'Back to coach')+'</button></div></div>';
+    '<button class="wo-btn ghost" onclick="finishToCoach()">'+(bg?'Към треньора':'Back to coach')+'</button></div>'+
+    '<section class="wo-result-section" data-completion-section="adjustment"><h3>'+(bg?'Бъдеща тренировъчна корекция':'Future training adjustment')+'</h3><div data-completion-adjustment-status role="status" aria-live="polite" aria-atomic="true"></div></section></div>';
+  // Retain live regions so the asynchronous receipt is a text update, not a new announcement target.
+  for(const [selector,previous,text] of [['[data-completion-save-status]',liveSave,saveCopy],['[data-completion-adjustment-status]',liveAdjustment,next]]){
+    let node=stage.querySelector(selector);if(previous){node.replaceWith(previous);node=previous;}
+    if(selector==='[data-completion-save-status]')node.textContent=text;else if(node.innerHTML!==text)node.innerHTML=text;
+  }
+  stage.querySelector('.wo-receipt').open=!!receiptOpen;
   stage.scrollTop=scroll;
   const replacement=action&&[...stage.querySelectorAll('button')].find(item=>item.getAttribute('onclick')===action);
-  if(replacement)replacement.focus({preventScroll:true});else if(!focusedOutside)focusWorkoutStep();
+  if(receiptFocused)stage.querySelector('.wo-receipt>summary').focus({preventScroll:true});
+  else if(replacement)replacement.focus({preventScroll:true});else if(!focusedOutside)focusWorkoutStep();
 }
 function closeWorkoutResult(){document.getElementById('workout').classList.remove('on');WO=null;lastWorkoutCompletion=null;lastWorkoutSummary=null;applyReadout();restoreWorkoutFocus();}
 function finishToMyTraining(){closeWorkoutResult();showMyTraining();document.getElementById('panel-close').focus();}

@@ -10,6 +10,17 @@ from training_engine.progression import ProgressionDecision, ProgressionDecision
 from workout_execution import lifecycle_evidence
 
 
+# Public explanation codes only; historical/free-form policy text stays private.
+_ADJUSTMENT_REASON_CODES = frozenset({
+    "recovery_overreached", "progression_cycle_complete", "insufficient_exercise_history",
+    "pain_reported", "pain_reported_without_regression", "recovery_fatigued",
+    "workout_incomplete", "effort_not_ready_for_progression", "effort_productive",
+    "effort_not_recorded", "performance_dose_type_mismatch", "duration_range_not_reached",
+    "repetition_range_not_reached", "load_progression_not_eligible", "repetition_ceiling_reached",
+    "set_progression_stage_exhausted", "load_progression_already_applied", "progression_ceiling_reached",
+})
+
+
 def _timestamp(value):
     if not isinstance(value, datetime):
         raise ValueError("missing persisted timestamp")
@@ -145,6 +156,8 @@ def completed_adjustments(row, plan_row, session, facts, events):
             exercise = library.require(decision.exercise_id, decision.exercise_version)
             item = {"exercise_id": exercise.exercise_id, "exercise_version": exercise.version,
                     "display_name": exercise.display_name, "decision_type": kind.value}
+            if decision.reason in _ADJUSTMENT_REASON_CODES:
+                item["reason_code"] = decision.reason
             if kind is ProgressionDecisionType.INCREASE_LOAD:
                 if not decision.load_delta_kg.is_finite():
                     return []

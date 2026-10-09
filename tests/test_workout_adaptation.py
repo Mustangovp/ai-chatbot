@@ -68,6 +68,7 @@ def test_receipt_uses_exact_immutable_completion_and_survives_refresh():
             assert projected["completed_repetitions"] == observed["actual_repetitions"]
     for decision, persisted in zip(result["adjustments"], events, strict=True):
         assert decision["decision_type"] == persisted["decision"]["decision_type"]
+        assert decision["reason_code"] == persisted["decision"]["reason"]
     assert client.post("/api/workout", json={"session": {"completion": 100}, "workout_completion": payload}).status_code == 400
 
 
@@ -101,7 +102,23 @@ def test_bounded_decision_mapping_preserves_persisted_values(kind, key, value):
     if kind == "replace_exercise":
         assert projected["replacement"] == {"exercise_id": "bodyweight.push_up", "exercise_version": "1.0.0", "display_name": "Push-Up"}
     assert "PRIVATE" not in str(projected)
-    assert not {"reason", "policy_version", "decision_id", "event_id"}.intersection(projected)
+    assert not {"reason", "reason_code", "policy_version", "decision_id", "event_id"}.intersection(projected)
+
+
+@pytest.mark.parametrize("reason", ["effort_productive", "effort_not_recorded", "repetition_range_not_reached"])
+def test_receipt_explanation_only_projects_existing_public_reason(reason):
+    owner = _user()
+    _, _, _, payload, _ = _post_completed(owner)
+    source = _events(owner)[0]
+    raw = {**source["decision"], "reason": reason}
+    with store.engine.begin() as connection:
+        connection.execute(delete(store.training_progression_events).where(store.training_progression_events.c.id != source["id"]))
+        connection.execute(update(store.training_progression_events).where(
+            store.training_progression_events.c.id == source["id"]).values(decision=raw))
+    [projected] = store.get_workout_adaptation(owner, payload)["decisions"]
+    assert projected["reason_code"] == reason
+    assert _events(owner)[0]["decision"] == raw
+    assert not {"reason", "policy_version", "decision_id"}.intersection(projected)
 
 
 def test_missing_events_are_not_inferred():

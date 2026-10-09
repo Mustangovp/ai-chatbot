@@ -118,7 +118,7 @@ for (const language of ['bg', 'en']) {
       });
       await expect(page.locator('[data-workout-result="completed"]')).toBeVisible();
       await expect(page.locator('[data-completion-section="adjustment"]')).toContainText(language === 'bg'
-        ? 'Няма потвърдена промяна' : 'No training adjustment');
+        ? 'Няма потвърдена тренировъчна корекция' : 'No training adjustment');
       await expect(page.locator('.wo-summary h2')).toBeInViewport({ ratio: 1 });
       const geometry = await page.locator('.wo-summary h2').evaluate(item => ({
         top: item.getBoundingClientRect().top, stageTop: item.closest('.wo-stage').getBoundingClientRect().top }));

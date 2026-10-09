@@ -62,20 +62,21 @@ for(const language of ['bg','en']){
     await expect(page.locator('.completion-adjustments li')).toHaveCount(6);
     const root=page.locator('.wo-summary'),recorded=root.locator('[data-completion-section="recorded"]');
     await expect(root.locator('[data-completion-section]')).toHaveCount(3);
-    await expect(recorded).toContainText(language==='bg'?'APEX отчете':'APEX recorded');
+    await expect(root.locator('[data-completion-save-status]')).toHaveText(language==='bg'?'Запазено в профила ти.':'Saved to your account.');
+    await recorded.locator('summary').click();
     await expect(recorded).toContainText('10 '+(language==='bg'?'повт.':'reps'));
     await expect(recorded).toContainText('32 '+(language==='bg'?'сек':'sec'));
     await expect(recorded).toContainText('16 '+(language==='bg'?'кг':'kg'));
     await expect(recorded).toContainText(language==='bg'?'Точно както трябва':'About right');
     await expect(recorded).toContainText('RPE 7');await expect(recorded).toContainText('RIR 3');
     const hold=recorded.locator('li').nth(1);
-    await expect(hold).not.toContainText(/RPE|RIR|kg|кг|reps|повт\.|About right|Точно както трябва/);
+    await expect(hold).not.toContainText(/RPE \d|RIR \d|kg|кг|reps|повт\.|About right|Точно както трябва/);
     await expect(recorded).not.toContainText(/0 kg|0 кг|8–12|20–40/);
     const next=root.locator('[data-completion-section="adjustment"]');
     const replacement=await page.evaluate(language=>ApexExerciseInstructions.display(ApexExerciseInstructions.findByExerciseId('bodyweight.push_up'),language),language);
     for(const text of (language==='bg'?['1.25 кг','2 повторения','1 серия','Запази текущата схема','по-леко',replacement]:
       ['1.25 kg','2 repetitions','1 set','Keep the current prescription','lighter',replacement]))await expect(next).toContainText(text);
-    await expect(root).not.toContainText(/policy|reason|fatigue|recovery|readiness|calories|decision_id|🏁/i);
+    await expect(root).not.toContainText(/policy|fatigue|recovery|readiness|calories|decision_id|🏁/i);
     await expect(root.locator('img,.wo-ex-glyph')).toHaveCount(0);
     expect(calls.writes).toHaveLength(1);expect(calls.chat).toBe(0);
     expect(calls.writes[0]).not.toHaveProperty('recovery');
@@ -84,7 +85,7 @@ for(const language of ['bg','en']){
   test(`no event means no confirmed adjustment in ${language}`,async({page})=>{
     await setup(page,{language,adjustments:[]});await complete(page);
     await expect(page.locator('[data-completion-section="adjustment"]')).toContainText(language==='bg'?
-      'Тренировката е записана. Няма потвърдена промяна в програмата.':'Workout recorded. No training adjustment has been confirmed.');
+      'Няма потвърдена тренировъчна корекция.':'No training adjustment has been confirmed.');
   });
 }
 test('anonymous completion is usable and never invents server adaptation',async({page})=>{
@@ -112,7 +113,7 @@ test('completion actions never auto-send and My Training reads persisted adjustm
 });
 test('failed account save does not claim a recorded adjustment or block completion',async({page})=>{
   await setup(page,{fail:true});await complete(page);
-  await expect(page.locator('[data-completion-section="adjustment"]')).toContainText('Account save has not been confirmed.');
+  await expect(page.locator('[data-completion-save-status]')).toContainText('Account save has not been confirmed.');
   await expect(page.locator('.completion-adjustments')).toHaveCount(0);
   await expect(page.locator('button[onclick="finishToCoach()"]')).toBeEnabled();
 });
