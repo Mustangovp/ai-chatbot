@@ -1958,7 +1958,10 @@ def save_nutrition_plan(user_id, plan: dict):
     with engine.begin() as c:
         c.execute(insert(nutrition_plans).values(
             id=nid, user_id=_as_uuid(user_id), plan_id=str(plan["id"]),
-            version=str(plan["version"]), plan=plan))
+            version=str(plan["version"]), plan=plan,
+            # SQLite's server default has second precision; consecutive revisions
+            # must remain ordered by their real save time on both runtimes.
+            created_at=_dt.datetime.now(_dt.timezone.utc)))
         c.execute(insert(coach_memory).values(id=uuid.uuid4(), user_id=_as_uuid(user_id),
             kind="nutrition", source="app", payload={"plan_id": plan["id"], "version": plan["version"]}))
     return str(nid)

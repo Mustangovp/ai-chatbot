@@ -88,6 +88,67 @@ def parse_revision_operation(message: str) -> nutrition_plan.RevisionOperation |
     return None
 
 
+@dataclass(frozen=True)
+class PlanRevisionRequest:
+    operation: nutrition_plan.RevisionOperation | None = None
+    restrictions: tuple[str, ...] = ()
+    simpler_preparation: bool = False
+    supported: bool = True
+
+
+def parse_plan_revision(message: str) -> PlanRevisionRequest | None:
+    """Route explicit plan edits, never turn unknown edits into model prose.
+
+    Food exclusions are accepted only through the existing closed constraint
+    vocabulary. An unrecognized exclusion is clarification, not a guessed fact.
+    """
+    from nutrition_constraints import ConstraintKind, canonical_constraints
+
+    text = str(message or "").strip().casefold()
+    if (re.search(r"workout|\bwod\b|exercise|трениров|упражнен", text)
+            and not re.search(r"nutrition|meals?|foods?|diet|dairy|хран|млеч|меню", text)):
+        return None
+    operation = parse_revision_operation(text)
+    simpler = bool(re.search(
+        r"\b(?:simplify|easier|simpler)\b.*\b(?:plan|meals?|prepar\w*|cook\w*)\b"
+        r"|\b(?:по-лес\w*|опрости)\b.*\b(?:приготв\w*|план\w*|хранения\w*)\b", text))
+    plan_edit = bool(re.search(
+        r"\b(?:change|modify|revise|update|simplify|replace|remove)\b.*\b(?:plan|meals?|menu)\b"
+        r"|\b(?:промени|преработи|редактирай|опрости|замени|премахни)\b.*\b(?:план\w*|меню\w*|хранения\w*)\b", text))
+    if not plan_edit and not simpler and (
+            is_plan_request(text) or re.match(r"(?:what|which|how|какво|как|кои)\b", text)):
+        return None
+    restrictions = []
+    unsupported = False
+    # Negation is clause-local; a later clause about keeping targets is not
+    # interpreted as another food exclusion.
+    for clause in re.split(r"[.;!?,]|\b(?:but|но)\b", text):
+        match = re.search(
+            r"\b(?:no|without(?:\s+reintroducing)?|remove|exclude|avoid|"
+            r"i\s+(?:do\s+not|don't)\s+want|без(?:\s+да\s+връщаш)?|"
+            r"не\s+искам|премахни|изключи|избягвай|не\s+връщай)\s+(.+)", clause)
+        if not match:
+            continue
+        food_text = re.split(r"\s+(?:from|от)\s+", match[1], maxsplit=1)[0].strip(" ,")
+        food_text = re.sub(r"\b(?:products?|продукти|the)\b", "", food_text).strip()
+        food_text = food_text.replace("овесените ядки", "овесени ядки")
+        for food in re.split(r"\s+(?:and|or|и|или)\s+", food_text):
+            food = re.sub(r"^(?:no|без)\s+", "", food)
+            candidate = "no " + food
+            constraints = canonical_constraints((candidate,))
+            if constraints and all(item.kind is not ConstraintKind.UNSUPPORTED for item in constraints):
+                restrictions.append(candidate)
+            elif plan_edit or simpler or restrictions:
+                unsupported = True
+    if not (operation or restrictions or simpler or plan_edit or unsupported):
+        return None
+    # A compound request must not silently apply just the first typed operation.
+    if operation and not simpler and not unsupported and len(restrictions) <= 1:
+        return PlanRevisionRequest(operation=operation)
+    return PlanRevisionRequest(restrictions=tuple(restrictions), simpler_preparation=simpler,
+                               supported=not unsupported and bool(restrictions or simpler))
+
+
 _PROFILE_FIELDS = (
     ("age", "age", "\u0432\u044a\u0437\u0440\u0430\u0441\u0442"),
     ("gender", "sex", "\u043f\u043e\u043b"),

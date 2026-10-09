@@ -923,6 +923,48 @@ def apply_revision(plan: NutritionPlan, operation: RevisionOperation) -> Nutriti
     raise NutritionPlanError("revision is unsupported")
 
 
+def _preparation_ingredients(plan: NutritionPlan) -> frozenset[str]:
+    from recipe_engine.recipe_matcher import ingredient_key
+
+    return frozenset(ingredient_key(food.display_name) for meal in plan.meals for food in meal.foods)
+
+
+def validate_regenerated_revision(candidate: NutritionPlan, active: NutritionPlan, *,
+                                  simpler_preparation: bool) -> NutritionPlan:
+    """Keep target/restriction authority and reject copy-only simplification."""
+    if candidate.targets != active.targets or not set(active.restrictions).issubset(candidate.restrictions):
+        raise NutritionPlanError("revision must preserve targets and recorded restrictions")
+    if simpler_preparation:
+        # This bounded, observable policy reduces ingredient preparation work;
+        # it makes no invented cooking-time or physiological claim.
+        if (any(len(meal.foods) > 3 for meal in candidate.meals)
+                or len(_preparation_ingredients(candidate)) >= len(_preparation_ingredients(active))):
+            raise NutritionPlanError("simpler preparation requires fewer distinct ingredients and at most three foods per meal")
+    provenance = dict(candidate.provenance)
+    provenance.update({"parent_plan_id": active.id, "revision": "whole_plan"})
+    if simpler_preparation:
+        provenance["preparation_policy"] = "fewer_distinct_ingredients"
+    return replace(candidate, provenance=tuple(sorted(provenance.items())))
+
+
+def revision_generation_contract(active: NutritionPlan, restrictions: tuple[str, ...], *,
+                                 simpler_preparation: bool) -> str:
+    """Bound regeneration to the persisted plan, not conversational arithmetic."""
+    context = [{"meal_type": meal.meal_type,
+                "foods": [food.display_name for food in meal.foods]} for meal in active.meals]
+    return (
+        "\n[AUTHORITATIVE NUTRITION PLAN REVISION]\n"
+        "Regenerate ONE complete structured plan. Keep ALL confirmed targets unchanged. "
+        "Recorded exclusions (must all be respected): " + json.dumps(restrictions, ensure_ascii=False)
+        + ". Active meal context: " + json.dumps(context, ensure_ascii=False)
+        + ". Return only canonical JSON, never a conversational meal plan, summary, ELITE STATUS footer or pain disclaimer."
+        + (f" Use fewer than {len(_preparation_ingredients(active))} distinct ingredients across the day, "
+           "at most three foods per meal. Reuse practical ingredients across meals to reduce preparation; "
+           "do not merely rename meals or claim they are simpler."
+           if simpler_preparation else "")
+    )
+
+
 def parse_generation_response(response: object) -> Mapping[str, object]:
     """Read a JSON generation response, never a rendered plan response."""
     try:
