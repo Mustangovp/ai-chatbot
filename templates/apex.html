@@ -408,7 +408,7 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 .ei-section>summary:focus-visible,.start-wo:focus-visible{outline:2px solid var(--text);outline-offset:4px;}
 .workout-start{display:flex;justify-content:flex-end;margin-top:18px;padding-top:14px;border-top:1px solid var(--border);}
 .wo-technique{width:100%;max-width:620px;flex-shrink:0;text-align:left;margin-top:16px;}
-.wo-stage:has(.wo-technique){justify-content:flex-start;}
+.wo-stage:has(.wo-technique),.wo-stage:has(.wo-summary){justify-content:flex-start;}
 @media(max-width:560px){.ei-card{padding:14px;}.ei-top{align-items:flex-start;flex-direction:column;gap:4px;}.ei-prescription{white-space:normal;}}
 @media(max-width:560px){.workout-start .start-wo{width:100%;justify-content:center;}}
 
@@ -435,11 +435,17 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
   font-family:'Unbounded';font-weight:700;font-size:15px;color:var(--muted);transition:.2s;}
 .set-dot.done{background:var(--pulse);border-color:transparent;color:#fff;box-shadow:0 6px 18px rgba(245,33,45,.4);}
 .set-dot.current{border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 0 3px rgba(56,224,255,.15);}
-.wo-weight{display:flex;align-items:center;gap:8px;justify-content:center;margin-bottom:20px;}
-.wo-weight input{width:110px;text-align:center;background:var(--surface2);border:1.5px solid var(--border);border-radius:12px;padding:10px 12px;color:var(--text);font-size:15px;font-weight:600;outline:none;}
+.wo-weight{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:end;gap:12px;width:100%;max-width:430px;margin-bottom:8px;}
+.wo-weight label{display:flex;flex-direction:column;gap:6px;text-align:left;font-size:13px;line-height:1.4;color:var(--text);}
+.wo-weight input{width:100%;min-width:0;text-align:center;background:var(--surface2);border:1.5px solid var(--border);border-radius:12px;padding:10px 12px;color:var(--text);font-size:15px;font-weight:600;outline:none;}
 .wo-weight input:focus{border-color:rgba(56,224,255,.5);}
 .wo-weight span{font-size:11.5px;color:var(--faint);font-weight:600;}
-.wo-effort{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin:-6px 0 20px;}
+.wo-input-note,.wo-effort-scope{width:100%;max-width:430px;font-size:12px;line-height:1.5;color:var(--muted);margin:0 0 14px;}
+.wo-effort{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin:0 0 14px;width:100%;max-width:620px;}
+.wo-effort>label{font-size:13px;color:var(--text);}
+.wo-effort>details>summary{min-height:44px;display:flex;align-items:center;justify-content:center;}
+.wo-effort-scope{margin:0;}
+.wo-controls+.wo-effort{margin-top:14px;}
 .wo-effort>span{font-size:11.5px;color:var(--faint);font-weight:600;}
 .wo-effort label{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);font-weight:700;}
 .wo-effort select{min-width:54px;background:var(--surface2);border:1.5px solid var(--border);border-radius:9px;padding:7px 8px;color:var(--text);font:inherit;outline:none;}
@@ -460,7 +466,10 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 .rest-ring .rt-num .n{font-family:'Unbounded';font-weight:700;font-size:46px;}
 .rest-ring .rt-num .l{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--faint);}
 /* summary */
-.wo-summary{width:100%;max-width:620px;margin:auto;text-align:left;letter-spacing:0;}
+.wo-summary{width:100%;max-width:620px;margin:0 auto;flex-shrink:0;text-align:left;letter-spacing:0;}
+.wo-summary h2{overflow-wrap:break-word;}
+.wo-rest-context{width:100%;max-width:620px;margin:0 0 16px;color:var(--muted);font-size:14px;line-height:1.5;overflow-wrap:anywhere;}
+#workout :is(button,input,select,summary,[tabindex]):focus-visible{outline:2px solid var(--text);outline-offset:4px;}
 .wo-summary h2{font-family:'Unbounded';font-size:22px;line-height:1.4;border-left:3px solid var(--pulse);padding-left:14px;margin:0 0 12px;}
 .wo-summary h3{font-size:15px;margin:0 0 10px;}
 .wo-result-section{padding:18px 0;border-bottom:1px solid var(--border);}
@@ -701,7 +710,7 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 </div>
 
 <!-- ═══ WORKOUT MODE ═══ -->
-<div id="workout">
+<div id="workout" role="dialog" aria-modal="true" aria-labelledby="wo-current-step">
   <div class="wo-bar">
     <button class="wo-quit" onclick="quitWorkout()" id="wo-quit-btn">✕ Exit</button>
     <div class="wo-progress-wrap">
@@ -3143,11 +3152,49 @@ function renderWorkout(header,body){
    WORKOUT MODE — full protocol engine with rest timer & summary
    ═══════════════════════════════════════════════════════════════════ */
 let WO=null,restTimer=null,sessionStart=0,lastWorkoutCompletion=null,lastWorkoutSummary=null;
+let workoutUI=null;
+function rememberWorkoutDisclosure(){
+  const stage=document.getElementById('wo-stage'),index=stage.dataset.exerciseIndex;
+  if(!workoutUI||index===undefined||!stage.querySelector('.wo-technique'))return;
+  workoutUI.details[index]={technique:[...stage.querySelectorAll('.wo-technique,.wo-technique details')].map(item=>item.open),
+    effort:!!stage.querySelector('.wo-effort details[open]')};
+}
+function focusWorkoutStep(){
+  const heading=document.getElementById('wo-current-step');
+  if(heading)heading.focus({preventScroll:true});
+}
+function restoreWorkoutFocus(){
+  const target=workoutUI&&workoutUI.returnFocus;workoutUI=null;
+  if(target&&target.isConnected&&target.getClientRects().length)target.focus({preventScroll:true});
+}
+document.addEventListener('keydown',event=>{
+  const overlay=document.getElementById('workout');
+  if(!overlay.classList.contains('on'))return;
+  if(event.key==='Escape'){event.stopPropagation();return;}
+  if(event.key!=='Tab')return;
+  const controls=[...overlay.querySelectorAll('button,input,select,summary,[tabindex="0"]')].filter(item=>{
+    if(item.disabled||!item.getClientRects().length||getComputedStyle(item).visibility==='hidden')return false;
+    for(let parent=item.parentElement;parent&&parent!==overlay;parent=parent.parentElement){
+      if(parent.tagName==='DETAILS'&&!parent.open&&parent.firstElementChild!==item)return false;
+    }
+    return true;
+  });
+  const index=controls.indexOf(document.activeElement);
+  if(!controls.length){event.preventDefault();focusWorkoutStep();return;}
+  if(index<0||(event.shiftKey&&index===0)||(!event.shiftKey&&index===controls.length-1)){
+    event.preventDefault();controls[event.shiftKey?controls.length-1:0].focus();
+  }
+},true);
+document.addEventListener('focusin',event=>{
+  const overlay=document.getElementById('workout');
+  if(overlay.classList.contains('on')&&!overlay.contains(event.target))focusWorkoutStep();
+});
 function startWorkout(workoutKey=null){
   if(medicalHoldActive)return;
   const source=workoutKey?pendingWorkoutContracts[workoutKey]:null;
   const exercises=workoutKey?pendingWorkouts[workoutKey]:pendingWorkout;
   if(!exercises||!exercises.length)return;
+  workoutUI={returnFocus:document.activeElement,details:{},lastWork:null};
   witness('sessionBegan');
   WO={ex:JSON.parse(JSON.stringify(exercises)).map(e=>({...e,observedReps:[],currentActualReps:null,skipped:false,completedSets:0,completedRepetitions:null})),contract:source,i:0,set:0,phase:'work',startMs:Date.now(),recorded:false};
   lastWorkoutCompletion=null;lastWorkoutSummary=null;
@@ -3156,7 +3203,7 @@ function startWorkout(workoutKey=null){
   document.getElementById('wo-quit-btn').textContent='✕ '+tr().woExit;
   renderWO();
 }
-function quitWorkout(){if(WO&&!WO.recorded){const evidence=workoutExecutionEvidence('abandoned');WO.recorded=true;logWorkout(evidence.session,evidence.completion);}clearInterval(restTimer);witness('restEnded');document.getElementById('workout').classList.remove('on');WO=null;}
+function quitWorkout(){if(WO&&!WO.recorded){const evidence=workoutExecutionEvidence('abandoned');WO.recorded=true;logWorkout(evidence.session,evidence.completion);}clearInterval(restTimer);witness('restEnded');document.getElementById('workout').classList.remove('on');WO=null;restoreWorkoutFocus();}
 function woEstRemaining(){
   let sec=0; for(let k=WO.i;k<WO.ex.length;k++){const e=WO.ex[k];const sets=parseInt(e.sets)||3;const rest=parseInt((e.rest+'').replace(/[^\d]/g,''))||60;
     const remSets=k===WO.i?sets-WO.set:sets; sec+=remSets*(40+rest);} return Math.max(1,Math.round(sec/60));
@@ -3231,6 +3278,7 @@ function captureExerciseEffort(){
   exercise[duration?'currentActualSeconds':'currentActualReps']=boundedWorkoutEffort(reps&&reps.value,0,999,true);
 }
 function renderWO(){
+  rememberWorkoutDisclosure();
   const t=tr(),e=WO.ex[WO.i],mu=inferMuscle(e.name),sets=parseInt(e.sets)||3,prescription=workoutPrescription(e);
   const duration=e.completion&&e.completion.prescription_type==='duration',actual=duration?e.currentActualSeconds:e.currentActualReps;
   document.getElementById('wo-ptop-l').textContent=t.woEx+' '+(WO.i+1)+'/'+WO.ex.length;
@@ -3239,28 +3287,42 @@ function renderWO(){
   document.getElementById('wo-fill').style.width=(pct||0)+'%';
   const stage=document.getElementById('wo-stage');
   if(WO.phase==='work'){
-    let dots='';for(let s=0;s<sets;s++)dots+='<div class="set-dot '+(s<WO.set?'done':(s===WO.set?'current':''))+'">'+(s+1)+'</div>';
+    let dots='';for(let s=0;s<sets;s++)dots+='<div role="listitem" aria-label="'+(lang==='bg'?'Серия':'Set')+' '+(s+1)+': '+
+      (s<WO.set?(lang==='bg'?'отбелязана':'recorded'):s===WO.set?(lang==='bg'?'сега':'now'):(lang==='bg'?'предстои':'upcoming'))+
+      '" class="set-dot '+(s<WO.set?'done':(s===WO.set?'current':''))+'">'+(s+1)+'</div>';
     const nextEx=WO.i+1<WO.ex.length?WO.ex[WO.i+1].name:(lang==='bg'?'Завършек':'Finish');
-    stage.innerHTML='<div class="wo-step">'+(lang==='bg'?'Серия':'Set')+' '+(WO.set+1)+'/'+sets+' · ~'+woEstRemaining()+(lang==='bg'?'мин остават':'min left')+'</div>'+
+    stage.dataset.exerciseIndex=String(WO.i);
+    if(workoutUI)workoutUI.lastWork={index:WO.i,set:WO.set};
+    stage.innerHTML='<div class="wo-step" id="wo-current-step" tabindex="-1" role="heading" aria-level="2" aria-label="'+esc(e.name)+' · '+(lang==='bg'?'Серия':'Set')+' '+(WO.set+1)+'/'+sets+'">'+(lang==='bg'?'Серия':'Set')+' '+(WO.set+1)+'/'+sets+' · ~'+woEstRemaining()+(lang==='bg'?'мин остават':'min left')+'</div>'+
       renderExerciseVisual(e,'protocol')+
       '<div class="wo-ex-name">'+esc(e.name)+'</div>'+
-      '<div class="wo-ex-target">'+esc(prescription.value)+(prescription.type==='duration'?'':' '+(lang==='bg'?'повторения':'reps'))+'</div>'+
+      '<div class="wo-ex-target">'+(lang==='bg'?'Предписано: ':'Prescribed: ')+esc(prescription.value)+(prescription.type==='duration'?'':' '+(lang==='bg'?'повторения':'reps'))+'</div>'+
       '<div class="wo-ex-meta">'+esc(workoutKeyCue(e))+'</div>'+
-      '<div class="wo-weight"><input type="number" id="wo-reps-in" inputmode="numeric" min="0" placeholder="'+(duration?(lang==='bg'?'секунди':'seconds'):(lang==='bg'?'повторения':'reps'))+'" value="'+(actual==null?'':actual)+'"><span>'+(duration?(lang==='bg'?'реално задържани секунди':'held seconds'):(lang==='bg'?'реално изпълнени':'completed reps'))+'</span><input type="number" id="wo-weight-in" inputmode="decimal" placeholder="'+(lang==='bg'?'кг (по избор)':'kg (optional)')+'" value="'+(e.weight||'')+'" oninput="WO.ex[WO.i].weight=this.value"></div>'+
-      '<div class="wo-effort"><span>'+(lang==='bg'?'Как се почувства упражнението?':'How did that exercise feel?')+'</span><select id="wo-effort-in" onchange="captureExerciseEffort()"><option value="">'+(lang==='bg'?'Избери':'Choose')+'</option><option value="easy"'+(e.completedEffort==='easy'?' selected':'')+'>'+(lang==='bg'?'Лесно':'Easy')+'</option><option value="productive"'+(e.completedEffort==='productive'?' selected':'')+'>'+(lang==='bg'?'Точно както трябва':'About right')+'</option><option value="hard"'+(e.completedEffort==='hard'?' selected':'')+'>'+(lang==='bg'?'Трудно':'Hard')+'</option><option value="incomplete"'+(e.completedEffort==='incomplete'?' selected':'')+'>'+(lang==='bg'?'Не успях да завърша':'Couldn’t finish')+'</option></select><details><summary>'+(lang==='bg'?'Разширено: RPE / RIR':'Advanced: RPE / RIR')+'</summary><small>'+(lang==='bg'?'RPE = колко трудно се усещаше. RIR = колко чисти повторения оставаха.':'RPE = how hard it felt. RIR = clean reps left.')+'</small><label>RPE <select id="wo-rpe-in" onchange="captureExerciseEffort()">'+workoutEffortOptions(1,10,boundedWorkoutEffort(e.completedRpe,1,10,false))+'</select></label><label>RIR <select id="wo-rir-in" onchange="captureExerciseEffort()">'+workoutEffortOptions(0,10,boundedWorkoutEffort(e.completedRir,0,10,true))+'</select></label></details></div>'+
-      '<div class="set-dots">'+dots+'</div>'+
+      '<div class="wo-weight"><label for="wo-reps-in">'+(duration?(lang==='bg'?'Реално време (сек)':'Actual time (sec)'):(lang==='bg'?'Реални повторения':'Actual reps'))+'<input type="number" id="wo-reps-in" inputmode="numeric" min="0" placeholder="'+(duration?(lang==='bg'?'секунди':'seconds'):(lang==='bg'?'повторения':'reps'))+'" aria-describedby="wo-actual-note" value="'+(actual==null?'':actual)+'"></label><label for="wo-weight-in">'+(lang==='bg'?'Реална тежест (кг, по избор)':'Actual load (kg, optional)')+'<input type="number" id="wo-weight-in" inputmode="decimal" aria-describedby="wo-actual-note" value="'+(e.weight||'')+'" oninput="WO.ex[WO.i].weight=this.value"></label></div>'+
+      '<p class="wo-input-note" id="wo-actual-note">'+(lang==='bg'?'Празно поле = неизвестно / незаписано, не нула.':'Blank = unknown / not recorded, not zero.')+'</p>'+
+      '<div class="wo-effort"><label for="wo-effort-in">'+(lang==='bg'?'Усещане за упражнението':'Exercise effort')+'</label><select id="wo-effort-in" aria-describedby="wo-effort-scope" onchange="captureExerciseEffort()"><option value="">'+(lang==='bg'?'Избери':'Choose')+'</option><option value="easy"'+(e.completedEffort==='easy'?' selected':'')+'>'+(lang==='bg'?'Лесно':'Easy')+'</option><option value="productive"'+(e.completedEffort==='productive'?' selected':'')+'>'+(lang==='bg'?'Точно както трябва':'About right')+'</option><option value="hard"'+(e.completedEffort==='hard'?' selected':'')+'>'+(lang==='bg'?'Трудно':'Hard')+'</option><option value="incomplete"'+(e.completedEffort==='incomplete'?' selected':'')+'>'+(lang==='bg'?'Не успях да завърша':'Couldn’t finish')+'</option></select><p class="wo-effort-scope" id="wo-effort-scope">'+(lang==='bg'?'Последният избор важи за упражнението и остава между сериите.':'Your last choice applies to this exercise and carries across sets.')+'</p><details><summary>'+(lang==='bg'?'Разширено: RPE / RIR':'Advanced: RPE / RIR')+'</summary><small>'+(lang==='bg'?'RPE = колко трудно се усещаше. RIR = колко чисти повторения оставаха.':'RPE = how hard it felt. RIR = clean reps left.')+'</small><label>RPE <select id="wo-rpe-in" onchange="captureExerciseEffort()">'+workoutEffortOptions(1,10,boundedWorkoutEffort(e.completedRpe,1,10,false))+'</select></label><label>RIR <select id="wo-rir-in" onchange="captureExerciseEffort()">'+workoutEffortOptions(0,10,boundedWorkoutEffort(e.completedRir,0,10,true))+'</select></label></details></div>'+
+      '<div class="set-dots" role="list" aria-label="'+(lang==='bg'?'Отбелязани и предстоящи серии':'Recorded and upcoming sets')+'">'+dots+'</div>'+
       '<div class="wo-controls"><button class="wo-btn primary" onclick="completeSet()">'+t.woDone+' →</button>'+
-      ('<button class="wo-btn ghost" onclick="skipExercise()">'+(lang==='bg'?'Следващо':'Next')+' »</button>')+'</div>'+
+      ('<button class="wo-btn ghost" onclick="skipExercise()">'+(lang==='bg'?'Пропусни упражнението':'Skip exercise')+' »</button>')+'</div>'+
       '<div class="wo-next"><b>'+t.woNext+':</b> '+esc(nextEx)+'</div>'+workoutExecutionDetails(e,true,true);
+    const saved=workoutUI&&workoutUI.details[WO.i];
+    if(saved){stage.querySelectorAll('.wo-technique,.wo-technique details').forEach((item,index)=>item.open=!!saved.technique[index]);stage.querySelector('.wo-effort details').open=saved.effort;}
+    stage.querySelector('.wo-controls').after(stage.querySelector('.wo-effort'));
   } else {
     const rest=parseInt((e.rest+'').replace(/[^\d]/g,''))||60;
-    stage.innerHTML='<div class="wo-step">'+t.woRest+'</div>'+
-      '<div class="rest-ring"><svg width="200" height="200"><circle class="rt-track" cx="100" cy="100" r="92"/>'+
+    const previous=workoutUI&&workoutUI.lastWork,previousExercise=previous&&WO.ex[previous.index];
+    const marked=previousExercise?(lang==='bg'?'Отбелязана серия ':'Recorded set ')+(previous.set+1)+'/'+(parseInt(previousExercise.sets)||3)+' · '+previousExercise.name:'';
+    const next=(previous&&previous.index===WO.i?(lang==='bg'?'Следваща серия: ':'Next set: '):(lang==='bg'?'Следващо упражнение: ':'Next exercise: '))+e.name+' · '+(lang==='bg'?'Серия ':'Set ')+(WO.set+1)+'/'+sets;
+    stage.innerHTML='<div class="wo-step" id="wo-current-step" tabindex="-1" role="heading" aria-level="2">'+t.woRest+'</div>'+
+      '<p class="wo-rest-context">'+esc(marked)+'</p><p class="wo-rest-context">'+esc(next)+'</p>'+
+      '<div class="rest-ring" role="timer" aria-label="'+(lang==='bg'?'Оставаща почивка':'Remaining rest')+'"><svg aria-hidden="true" width="200" height="200"><circle class="rt-track" cx="100" cy="100" r="92"/>'+
       '<circle class="rt-fill" id="rt-fill" cx="100" cy="100" r="92" stroke-dasharray="578" stroke-dashoffset="0"/></svg>'+
       '<div class="rt-num"><span class="n" id="rt-n">'+rest+'</span><span class="l">'+t.sec+'</span></div></div>'+
+      '<p class="wo-rest-context">'+(lang==='bg'?'След таймера APEX показва следващата серия.':'APEX shows the next set when the timer ends.')+'</p>'+
       '<div class="wo-controls"><button class="wo-btn ghost" onclick="endRest()">'+t.woSkip+' »</button></div>';
     runRest(rest);
   }
+  stage.scrollTop=0;focusWorkoutStep();
 }
 function completeSet(){
   if(!WO||WO.recorded||WO.phase!=='work')return;
@@ -3320,16 +3382,22 @@ function renderWorkoutResult(session,minutes,state,decisions=[]){
   else if(state==='error')next='<p class="wo-result-note" role="status">'+(bg?'Записът в профила не е потвърден. Няма потвърдена корекция.':'Account save has not been confirmed. No adjustment has been confirmed.')+'</p>';
   else if(session.execution_state!=='completed')next='<p class="wo-result-note">'+(bg?'Няма потвърдена промяна в програмата.':'No training adjustment has been confirmed.')+'</p>';
   else next=renderRecordedAdjustments(decisions);
-  document.getElementById('wo-stage').innerHTML='<div class="wo-summary" data-workout-result="'+session.execution_state+'">'+
-    '<section class="wo-result-section" data-completion-section="completed"><h2>'+labels[session.execution_state]+'</h2><p class="wo-result-meta">'+esc(meta.join(' · '))+'</p></section>'+
-    '<section class="wo-result-section" data-completion-section="recorded"><h3>'+(bg?'APEX отчете':'APEX recorded')+'</h3><ul class="wo-recorded-list">'+rows+'</ul></section>'+
+  const stage=document.getElementById('wo-stage'),updating=!!stage.querySelector('.wo-summary'),scroll=updating?stage.scrollTop:0;
+  const action=stage.contains(document.activeElement)&&document.activeElement.getAttribute('onclick');
+  const focusedOutside=updating&&!stage.contains(document.activeElement)&&document.getElementById('workout').contains(document.activeElement);
+  stage.innerHTML='<div class="wo-summary" data-workout-result="'+session.execution_state+'">'+
+    '<section class="wo-result-section" data-completion-section="completed"><h2 id="wo-current-step" tabindex="-1">'+labels[session.execution_state]+'</h2><p class="wo-result-meta">'+esc(meta.join(' · '))+'</p></section>'+
+    '<section class="wo-result-section" data-completion-section="recorded"><h3>'+(bg?'APEX отчете':'APEX recorded')+'</h3><p class="wo-result-note">'+(bg?'Повт./сек: минимумът сред потвърдените серии, не общият сбор.':'Reps/seconds: the minimum across confirmed sets, not the total.')+'</p><ul class="wo-recorded-list">'+rows+'</ul></section>'+
     '<section class="wo-result-section" data-completion-section="adjustment"><h3>'+(bg?'Следваща корекция':'Next adjustment')+'</h3>'+next+'</section>'+
     '<div class="wo-controls"><button class="wo-btn primary" onclick="finishToMyTraining()">'+(bg?'Към Моите тренировки':'Go to My Training')+'</button>'+
     '<button class="wo-btn ghost" onclick="finishToCoach()">'+(bg?'Към треньора':'Back to coach')+'</button></div></div>';
+  stage.scrollTop=scroll;
+  const replacement=action&&[...stage.querySelectorAll('button')].find(item=>item.getAttribute('onclick')===action);
+  if(replacement)replacement.focus({preventScroll:true});else if(!focusedOutside)focusWorkoutStep();
 }
-function closeWorkoutResult(){document.getElementById('workout').classList.remove('on');WO=null;lastWorkoutCompletion=null;lastWorkoutSummary=null;applyReadout();}
-function finishToMyTraining(){closeWorkoutResult();showMyTraining();}
-function finishToCoach(){closeWorkoutResult();if(!consultOn)enterConsult();}
+function closeWorkoutResult(){document.getElementById('workout').classList.remove('on');WO=null;lastWorkoutCompletion=null;lastWorkoutSummary=null;applyReadout();restoreWorkoutFocus();}
+function finishToMyTraining(){closeWorkoutResult();showMyTraining();document.getElementById('panel-close').focus();}
+function finishToCoach(){closeWorkoutResult();if(!consultOn)enterConsult();document.getElementById('user-in').focus();}
 
 /* ═══════════════════════════════════════════════════════════════════
    CHAT MESSAGES + AI ENGINE
