@@ -29,6 +29,7 @@ async function setup(page, { language = 'en', authenticated = true, data = popul
   await page.route('**/api/history', route => route.fulfill({ json: { workouts: [] } }));
   await page.route('**/api/conversations?*', route => route.fulfill({ json: { messages: [] } }));
   await page.route('**/api/athlete-model', route => route.fulfill({ json: {} }));
+  await page.route('**/api/my-training', route => route.fulfill({ json: { latest_workout: null, last_completed: null, active_constraints: [] } }));
   await page.route('**/api/progress', route => {
     calls.reads++;
     if (route.request().method() !== 'GET') calls.writes++;
@@ -52,6 +53,20 @@ async function openProgress(page, language = 'en') {
 }
 
 for (const language of ['en', 'bg']) {
+  test(`Progress keeps direction visible and secondary evidence collapsed in ${language}`, async ({ page }) => {
+    const calls = await setup(page, { language });
+    await openProgress(page, language);
+    const root = page.locator('#training-progress');
+    await expect(root.locator('[data-progress-records]')).not.toHaveAttribute('open');
+    await expect(root.locator('[data-progress-records] li')).toHaveCount(5);
+    await expect(root.locator('.training-progress-direction')).toHaveCount(3);
+    await expect(root.locator('.training-progress-direction .training-progress-note')).toHaveCount(0);
+    await expect(root).toContainText(language === 'bg' ? 'една и съща версия на плана' : 'same plan version');
+    await root.locator('#progress-training').click();
+    await expect(page.locator('#my-training')).toBeVisible();
+    expect(calls.chat).toBe(0);
+  });
+
   test(`Progress is three factual sections, not Consultation, in ${language}`, async ({ page }) => {
     const calls = await setup(page, { language });
     await openProgress(page, language);
@@ -59,7 +74,9 @@ for (const language of ['en', 'bg']) {
     await expect(root.locator('[data-progress-block]')).toHaveCount(3);
     await expect(root.locator('h3')).toHaveText(language === 'bg' ?
       ['Тренировъчен запис', 'Посока по упражнения', 'Последни корекции'] : ['Training record', 'Exercise direction', 'Recent adjustments']);
-    await expect(root.locator('button, canvas, svg, .ex-glyph, .wo-ex-glyph, .card, .gauge, .chart')).toHaveCount(0);
+    await expect(root.locator('canvas, svg, .ex-glyph, .wo-ex-glyph, .card, .gauge, .chart')).toHaveCount(0);
+    await expect(root.locator('button')).toHaveCount(1);
+    await expect(root.locator('#progress-training')).toHaveText(language === 'bg' ? 'Отвори Моите тренировки' : 'Open My Training');
     await expect(page.locator('#consult')).not.toHaveClass(/\bon\b/);
     await expect(page.locator('#user-in')).toHaveValue('');
     expect(calls).toEqual({ chat: 0, reads: 1, writes: 0 });
@@ -76,21 +93,25 @@ for (const language of ['en', 'bg']) {
     await openProgress(page, language);
     const labels = language === 'bg' ? ['Напредва', 'Стабилно', 'Нужни са още сравними сесии'] : ['Progressing', 'Stable', 'More comparable sessions needed'];
     await expect(page.locator('.training-progress-state')).toHaveText(labels);
-    await expect(page.locator('[data-progress-exercise-id="dumbbell.front_squat"]')).toContainText(language === 'bg' ?
+    await expect(page.locator('[data-progress-evidence]')).not.toHaveAttribute('open');
+    await expect(page.locator('[data-progress-evidence]')).toContainText(language === 'bg' ?
       'APEX има достатъчно сравними сесии и е регистрирал прогресиращи корекции.' : 'APEX has enough comparable sessions and has recorded forward training adjustments.');
-    await expect(page.locator('[data-progress-exercise-id="bodyweight.hollow_hold"]')).toContainText(language === 'bg' ?
+    await expect(page.locator('[data-progress-evidence]')).toContainText(language === 'bg' ?
       'Сравнимите сесии поддържат текущата тренировъчна схема.' : 'Comparable sessions support keeping the current training prescription.');
     await expect(page.locator('[data-progress-exercise-id="bodyweight.wall_push_up"]')).not.toContainText(/failed|failure|no progress|plateau|застой|регрес/i);
   });
 
-  test(`Task05 adjustment text is reused exactly in ${language}`, async ({ page }) => {
+  test(`persisted Task05 adjustments are dated decisions, not current commands, in ${language}`, async ({ page }) => {
     const data = populated();
     data.recent_adjustments[4] = { ...identity('dumbbell.front_squat'), occurred_at: '2026-10-01T10:00:00Z',
       decision_type: 'replace_exercise', replacement: identity('bodyweight.push_up'), reason: 'PRIVATE_REASON', policy_version: 'PRIVATE_POLICY' };
     await setup(page, { language, data });
     await openProgress(page, language);
-    const expected = await page.evaluate(items => items.map(item => adjustmentText(item)), data.recent_adjustments);
+    const expected = await page.evaluate(items => items.map(item => historicalAdjustmentText(item)), data.recent_adjustments);
     await expect(page.locator('[data-progress-block="adjustments"] li p')).toHaveText(expected);
+    await expect(page.locator('[data-progress-decisions]')).not.toHaveAttribute('open');
+    await expect(page.locator('[data-progress-decisions] time')).toHaveCount(5);
+    await expect(page.locator('[data-progress-decisions]')).not.toContainText(/next time|при следващо изпълнение/i);
     await expect(page.locator('#training-progress')).not.toContainText(/PRIVATE|increase_repetitions|replace_exercise|policy_version/);
   });
 
@@ -107,9 +128,11 @@ for (const language of ['en', 'bg']) {
 }
 
 test('canonical thumbnail localization and neutral fallback are reused', async ({ page }) => {
-  await setup(page);
+  const data = populated();
+  data.exercise_trajectories.push({ ...identity('unknown.historical_exercise'), state: 'insufficient_evidence' });
+  await setup(page, { data });
   await openProgress(page);
-  for (const id of ['dumbbell.front_squat', 'bodyweight.hollow_hold']) {
+  for (const id of ['dumbbell.front_squat', 'bodyweight.hollow_hold', 'bodyweight.wall_push_up']) {
     const row = page.locator(`[data-progress-exercise-id="${id}"]`), image = row.locator('img');
     const visual = await page.evaluate(id => ApexExerciseVisuals.resolve(id), id);
     await expect(image).toHaveAttribute('src', visual.thumb);
@@ -117,7 +140,7 @@ test('canonical thumbnail localization and neutral fallback are reused', async (
     await image.scrollIntoViewIfNeeded();
     await expect.poll(() => image.evaluate(element => element.complete && element.naturalWidth > 0)).toBe(true);
   }
-  const fallback = page.locator('[data-progress-exercise-id="bodyweight.wall_push_up"] .exercise-visual');
+  const fallback = page.locator('[data-progress-exercise-id="unknown.historical_exercise"] .exercise-visual');
   await expect(fallback).toHaveClass('exercise-visual is-fallback');
   await expect(fallback).toHaveAttribute('aria-hidden', 'true');
   await expect(fallback.locator('img, svg')).toHaveCount(0);
@@ -170,12 +193,12 @@ test('a response arriving after owner change is discarded', async ({ page }) => 
   await expect(page.locator('#training-progress')).not.toContainText('7 completed workouts');
 });
 
-for (const width of [1440, 390, 360]) {
-  test(`Progress geometry at ${width}px preserves Core and supports scrolling`, async ({ page }) => {
+for (const language of ['bg', 'en']) for (const width of [1440, 390, 360]) {
+  test(`Progress geometry at ${width}px in ${language} preserves Core and supports scrolling`, async ({ page }) => {
     await page.setViewportSize({ width, height: width === 1440 ? 900 : width === 390 ? 844 : 800 });
-    await setup(page, { language: 'bg' });
+    await setup(page, { language });
     const before = await page.locator('#core').boundingBox();
-    await openProgress(page, 'bg');
+    await openProgress(page, language);
     const sheet = page.locator('#panel-modal .sheet');
     expect(await sheet.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -183,9 +206,9 @@ for (const width of [1440, 390, 360]) {
       expect(await row.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
     }
     if (process.env.APEX_PROGRESS_SCREENSHOTS) {
-      await page.screenshot({ path: require('path').join(process.env.APEX_PROGRESS_SCREENSHOTS, `progress-${width}.png`) });
+      await page.screenshot({ path: require('path').join(process.env.APEX_PROGRESS_SCREENSHOTS, `progress-${language}-${width}.png`), animations: 'disabled' });
       await page.locator('[data-progress-block="direction"]').scrollIntoViewIfNeeded();
-      await page.screenshot({ path: require('path').join(process.env.APEX_PROGRESS_SCREENSHOTS, `progress-direction-${width}.png`) });
+      await page.screenshot({ path: require('path').join(process.env.APEX_PROGRESS_SCREENSHOTS, `progress-direction-${language}-${width}.png`), animations: 'disabled' });
     }
     await page.locator('#panel-close').scrollIntoViewIfNeeded();
     await page.locator('#panel-close').click();

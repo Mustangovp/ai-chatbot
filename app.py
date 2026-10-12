@@ -1985,11 +1985,13 @@ def api_history():
         return jsonify({"error": "unauthenticated"}), 401
     if request.method == "POST":
         return api_workout()
-    return jsonify({
+    response = jsonify({
         "workouts": store.list_workouts(u["id"]),
         "nutrition": store.list_nutrition(u["id"]),
         "timeline": store.list_timeline(u["id"]),
     })
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
 
 
 @app.route("/api/conversations")

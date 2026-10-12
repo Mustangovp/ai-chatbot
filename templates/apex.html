@@ -176,6 +176,10 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 .training-progress h4{font-size:14px;line-height:1.5;font-weight:650;letter-spacing:0;overflow-wrap:anywhere;}
 .training-progress-state{font-weight:650;margin:3px 0;color:var(--text);}
 .training-progress time{font-size:13px;line-height:1.6;color:var(--muted);}
+.record-disclosure{margin-top:10px;}
+.record-disclosure>summary{cursor:pointer;font-size:14px;line-height:1.5;padding:10px 0;font-weight:600;}
+.record-actions .save{border-radius:8px;font-size:14px;line-height:1.5;}
+#panel-close{min-height:44px;}
 .saved-nutrition{margin-top:20px;}
 .saved-nutrition-section{padding:18px 0;border-top:1px solid var(--border);}
 .saved-nutrition-section:first-child{padding-top:0;border-top:0;}
@@ -205,10 +209,15 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 .info-body h4{font-family:'Unbounded';font-weight:600;font-size:13px;color:var(--gold);margin:14px 0 6px;}
 .info-body p{margin:8px 0;} .info-body ul{margin:8px 0 8px 4px;list-style:none;} .info-body li{padding:4px 0 4px 16px;position:relative;}
 .info-body li::before{content:'';position:absolute;left:0;top:11px;width:5px;height:5px;border-radius:50%;background:var(--ember);}
-.hist-item{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--border);}
+.hist-item{padding:12px 0;border-top:1px solid var(--border);}
 .hist-item:first-child{border-top:none;}
-.hist-ico{width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:19px;background:rgba(255,255,255,.04);border:1px solid var(--border);flex-shrink:0;}
-.hist-b{flex:1;min-width:0;} .hist-t{font-weight:700;font-size:13.5px;} .hist-s{font-size:11.5px;color:var(--muted);margin-top:2px;}
+.hist-item>summary{cursor:pointer;min-height:44px;}
+.hist-t{font-weight:700;font-size:14px;overflow-wrap:anywhere;}
+.hist-s{font-size:14px;line-height:1.6;color:var(--muted);margin-top:4px;overflow-wrap:anywhere;}
+.hist-state{font-weight:650;color:var(--text);}
+.hist-exercises{list-style:none;padding:0;margin:12px 0 0;}
+.hist-exercises li{border-top:1px solid var(--border);padding:12px 0;}
+.hist-exercises h4{font-size:14px;line-height:1.5;overflow-wrap:anywhere;}
 .hist-empty{text-align:center;color:var(--faint);font-size:13px;padding:24px 0;}
 .training-constraints{margin:16px 0 4px;padding:12px 13px;border:1px solid rgba(255,177,60,.26);border-radius:10px;background:rgba(255,177,60,.05);}
 .training-constraints h3{font-family:'Unbounded';font-size:11px;letter-spacing:.5px;color:var(--gold);margin:0 0 7px;}
@@ -833,9 +842,9 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 </nav>
 
 <!-- ═══ GENERIC PANEL (subscription / history / settings / privacy / about) ═══ -->
-<div class="modal" id="panel-modal">
+<div class="modal" id="panel-modal" role="dialog" aria-modal="true" aria-labelledby="panel-title">
   <div class="sheet">
-    <h2 id="panel-title"></h2>
+    <h2 id="panel-title" tabindex="-1"></h2>
     <p class="sd" id="panel-desc" style="display:none"></p>
     <div id="panel-body"></div>
     <button class="mlink" onclick="closePanel()" id="panel-close">Close</button>
@@ -1534,7 +1543,7 @@ const T={
       access:'Access until',oneTime:'One-time 30-day pass (not a recurring subscription)',
       eu:'Refund requests are handled under the Refund Policy and applicable consumer-law rules.',
       confirmCancel:'Cancel your subscription and request a refund? This cannot be undone.'},
-    hist:{title:'History',desc:'Your completed sessions and coaching activity.',empty:'No completed workouts yet. Finish a session and it appears here.',
+    hist:{title:'History',desc:'What was recorded in individual training sessions.',empty:'No training sessions have been recorded yet.',
       sets:'sets',exercises:'exercises'},
     settings:{title:'Settings',lang:'Language',theme:'Theme',dark:'Dark (default)',reset:'Reset local data',
       resetDesc:'Clears profile, memory and history on this device.',resetConfirm:'Erase all local APEX data on this device?',reset2:'Local data cleared.'},
@@ -1594,7 +1603,7 @@ const T={
       access:'Достъп до',oneTime:'Еднократен 30-дневен достъп (не е повтарящ се абонамент)',
       eu:'Исканията за възстановяване се разглеждат съгласно Политиката за възстановяване и приложимите правила за защита на потребителите.',
       confirmCancel:'Да откажа абонамента и да поискам възстановяване? Това е необратимо.'},
-    hist:{title:'История',desc:'Твоите завършени сесии и треньорска активност.',empty:'Още няма завършени тренировки. Завърши сесия и тя ще се появи тук.',
+    hist:{title:'История',desc:'Какво е записано в отделните тренировъчни сесии.',empty:'Още няма записани тренировъчни сесии.',
       sets:'серии',exercises:'упражнения'},
     settings:{title:'Настройки',lang:'Език',theme:'Тема',dark:'Тъмна (по подразбиране)',reset:'Изчисти локалните данни',
       resetDesc:'Изтрива профил, памет и история на това устройство.',resetConfirm:'Да изтрия всички локални данни на APEX на това устройство?',reset2:'Локалните данни са изчистени.'},
@@ -1856,14 +1865,46 @@ function menuAction(k){
 /* ═══════════════════════════════════════════════════════════════════
    PANELS  (subscription / history / settings / privacy / about)
    ═══════════════════════════════════════════════════════════════════ */
+let panelReturnFocus=null;
+function setPanelBody(bodyHtml){
+  const body=document.getElementById('panel-body'),focused=document.activeElement;
+  const restore=body.contains(focused),id=restore&&focused.id;
+  body.innerHTML=bodyHtml;
+  if(restore){const target=id&&document.getElementById(id);(target||document.getElementById('panel-title')).focus({preventScroll:true});}
+}
 function showPanel(title,bodyHtml){
+  const panel=document.getElementById('panel-modal');
+  if(!panel.classList.contains('on'))panelReturnFocus=document.activeElement;
   document.getElementById('panel-title').textContent=title;
   document.getElementById('panel-desc').style.display='none';
-  document.getElementById('panel-body').innerHTML=bodyHtml;
+  setPanelBody(bodyHtml);
   document.getElementById('panel-close').textContent=(lang==='bg'?'Затвори':'Close');
-  document.getElementById('panel-modal').classList.add('on');
+  panel.classList.add('on');
+  document.getElementById('panel-title').focus({preventScroll:true});
 }
-function closePanel(){ document.getElementById('panel-modal').classList.remove('on'); }
+function closePanel(){
+  const panel=document.getElementById('panel-modal');
+  if(!panel.classList.contains('on'))return;
+  panel.classList.remove('on');
+  const rect=panelReturnFocus&&panelReturnFocus.isConnected&&panelReturnFocus.getBoundingClientRect();
+  const drawer=panelReturnFocus&&panelReturnFocus.closest&&panelReturnFocus.closest('#drawer');
+  const visible=(!drawer||drawer.classList.contains('on'))&&rect&&rect.width&&rect.height&&rect.right>0&&rect.bottom>0&&rect.left<innerWidth&&rect.top<innerHeight;
+  const target=visible?panelReturnFocus:document.getElementById('menu-btn');
+  panelReturnFocus=null;if(target)target.focus({preventScroll:true});
+}
+function panelKeydown(event){
+  const panel=document.getElementById('panel-modal');
+  if(!panel.classList.contains('on'))return false;
+  if(event.key==='Escape'){event.preventDefault();closePanel();return true;}
+  if(event.key!=='Tab')return false;
+  const controls=Array.from(panel.querySelectorAll('button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),summary,[tabindex]:not([tabindex="-1"])')).filter(item=>item.getClientRects().length);
+  const index=controls.indexOf(document.activeElement);
+  if(!controls.length){event.preventDefault();document.getElementById('panel-title').focus();}
+  else if(index<0||(event.shiftKey&&index===0)||(!event.shiftKey&&index===controls.length-1)){
+    event.preventDefault();controls[event.shiftKey?controls.length-1:0].focus();
+  }
+  return true;
+}
 const MY_TRAINING_COPY={
   bg:{title:'Моите тренировки',latest:'Последно създадена тренировка',completed:'Последно завършена',remembers:'APEX помни',
     emptyLatest:'Още няма създадена тренировка.',emptyCompleted:'Още няма завършена тренировка.',emptyConstraints:'Няма запазени активни тренировъчни ограничения.',
@@ -2029,19 +2070,25 @@ async function showMyTraining(){
     if(!response.ok)throw new Error('training_read_unavailable');
     const data=await response.json();
     if(owner!==dataOwnerToken()||!SESSION.authenticated||!document.getElementById('my-training'))return;
-    document.getElementById('panel-body').innerHTML=renderMyTraining(data);
+    setPanelBody(renderMyTraining(data));
   }catch(e){
-    if(owner===dataOwnerToken()&&SESSION.authenticated&&document.getElementById('my-training'))document.getElementById('panel-body').innerHTML=renderMyTraining(null,'error');
+    if(owner===dataOwnerToken()&&SESSION.authenticated&&document.getElementById('my-training'))setPanelBody(renderMyTraining(null,'error'));
   }
 }
 function createFromMyTraining(){closePanel();enterConsult(tr().seed.workouts);}
 const PROGRESS_COPY={
   bg:{title:'Прогрес',record:'Тренировъчен запис',direction:'Посока по упражнения',adjustments:'Последни корекции',
+    purpose:'Какво се променя между потвърдените тренировъчни сесии.',
+    scope:'Посоката е от записани сравними изпълнения на една и съща версия на плана, не оценка на общата физическа форма.',
+    records:'Последни записи',basis:'Основа на посоката',decisions:'Записани решения',openTraining:'Отвори Моите тренировки',
     emptyRecord:'Още няма достатъчно завършени тренировки за прогрес отчет.',emptyDirection:'Още няма достатъчно сравними тренировъчни данни.',
     emptyAdjustments:'Още няма потвърдени тренировъчни корекции.',signIn:'Влез в профила си, за да виждаш потвърдена тренировъчна тенденция между сесиите.',
     states:{progressing:['Напредва','APEX има достатъчно сравними сесии и е регистрирал прогресиращи корекции.'],
       stable:['Стабилно','Сравнимите сесии поддържат текущата тренировъчна схема.'],insufficient_evidence:['Нужни са още сравними сесии','']}},
   en:{title:'Progress',record:'Training record',direction:'Exercise direction',adjustments:'Recent adjustments',
+    purpose:'What is changing across verified training sessions.',
+    scope:'Direction comes from recorded comparable execution of the same plan version, not an assessment of overall fitness.',
+    records:'Recent records',basis:'Direction evidence',decisions:'Recorded decisions',openTraining:'Open My Training',
     emptyRecord:'There are not enough completed workouts for a progress record yet.',emptyDirection:'There is not enough comparable training data yet.',
     emptyAdjustments:'No training adjustments have been confirmed yet.',signIn:'Sign in to see verified training direction across sessions.',
     states:{progressing:['Progressing','APEX has enough comparable sessions and has recorded forward training adjustments.'],
@@ -2052,31 +2099,47 @@ function progressRecordText(count,local){
     count+' завършени тренировки са записани '+(local?'в този браузър.':'в APEX.');
   return count+' completed workout'+(count===1?' is':'s are')+' recorded '+(local?'in this browser.':'in APEX.');
 }
+function historicalAdjustmentText(item){
+  if(!adjustmentText(item))return '';
+  const bg=lang==='bg',prefix=bg?'Записано решение: ':'Recorded decision: ';
+  if(item.decision_type==='increase_load')return prefix+(bg?'увеличение на тежестта с ':'increase load by ')+item.load_delta_kg+(bg?' кг.':' kg.');
+  if(item.decision_type==='increase_repetitions')return prefix+(bg?'добавяне на повторения: ':'add repetitions: ')+item.repetition_delta+'.';
+  if(item.decision_type==='increase_sets')return prefix+(bg?'добавяне на серии: ':'add sets: ')+item.set_delta+'.';
+  if(item.decision_type==='maintain')return prefix+(bg?'запазване на схемата.':'maintain the prescription.');
+  if(item.decision_type==='deload')return prefix+(bg?'по-леко следващо изпълнение.':'a lighter next exposure.');
+  if(item.decision_type==='replace_exercise')return prefix+(bg?'замяна с ':'replace with ')+myTrainingExerciseName(item.replacement)+'.';
+  return '';
+}
+function openTrainingFromRecord(){showMyTraining();}
 function renderProgress(data,state='ready',local=false){
   const copy=PROGRESS_COPY[lang],note=text=>'<p class="training-progress-note">'+esc(text)+'</p>';
   const unavailable=state==='error'?MY_TRAINING_COPY[lang].unavailable:MY_TRAINING_COPY[lang].loading;
   const record=data&&data.record,count=record&&Number.isInteger(record.completed_sessions)?record.completed_sessions:0;
   const sessions=record&&Array.isArray(record.recent_sessions)?record.recent_sessions.slice(0,5):[];
-  const recordBody=count>0?'<p>'+esc(progressRecordText(count,local))+'</p><ol class="training-progress-list">'+sessions.map(item=>{
+  const datedSessions=sessions.map(item=>{
     const date=myTrainingDate(item.completed_at),n=Array.isArray(item.exercises)?item.exercises.length:null;
     const facts=n===null?'':n+' '+(lang==='bg'?(n===1?'упражнение':'упражнения'):(n===1?'exercise':'exercises'));
     return date?'<li class="training-progress-session"><time datetime="'+esc(item.completed_at)+'">'+esc(date)+'</time><span class="training-progress-note">'+esc(facts)+'</span></li>':'';
-  }).join('')+'</ol>':note(copy.emptyRecord);
+  }).join('');
+  const recordBody=count>0?'<p>'+esc(progressRecordText(count,local))+'</p>'+(datedSessions?
+    '<details class="record-disclosure" data-progress-records><summary>'+esc(copy.records)+'</summary><ol class="training-progress-list">'+datedSessions+'</ol></details>':''):note(copy.emptyRecord);
   const directions=!local&&data&&Array.isArray(data.exercise_trajectories)?data.exercise_trajectories.filter(item=>item&&Object.hasOwn(copy.states,item.state)):[];
   const directionBody=directions.length?'<ul class="training-progress-list">'+directions.map(item=>{
-    const [label,support]=copy.states[item.state];
+    const [label]=copy.states[item.state];
     return '<li class="training-progress-direction" data-progress-exercise-id="'+esc(item.exercise_id)+'">'+renderExerciseVisual({completion:item},'thumb')+
-      '<div><h4>'+esc(myTrainingExerciseName(item))+'</h4><p class="training-progress-state">'+esc(label)+'</p>'+(support?note(support):'')+'</div></li>';
-  }).join('')+'</ul>':note(local?copy.signIn:copy.emptyDirection);
+      '<div><h4>'+esc(myTrainingExerciseName(item))+'</h4><p class="training-progress-state">'+esc(label)+'</p></div></li>';
+  }).join('')+'</ul>'+note(copy.scope)+'<details class="record-disclosure" data-progress-evidence><summary>'+esc(copy.basis)+'</summary>'+
+    [copy.states.progressing[1],copy.states.stable[1]].map(note).join('')+'</details>':note(local?copy.signIn:copy.emptyDirection);
   const adjustments=!local&&data&&Array.isArray(data.recent_adjustments)?data.recent_adjustments.slice(0,5):[];
   const rows=adjustments.map(item=>{
-    const text=adjustmentText(item),date=myTrainingDate(item.occurred_at);
+    const text=historicalAdjustmentText(item),date=myTrainingDate(item.occurred_at);
     return text&&date?'<li><time datetime="'+esc(item.occurred_at)+'">'+esc(date)+'</time><h4>'+esc(myTrainingExerciseName(item))+'</h4><p>'+esc(text)+'</p></li>':'';
   }).filter(Boolean);
   const sections=[['record',copy.record,recordBody],['direction',copy.direction,directionBody],
-    ['adjustments',copy.adjustments,rows.length?'<ol class="training-progress-list">'+rows.join('')+'</ol>':note(copy.emptyAdjustments)]];
-  return '<div class="training-progress" id="training-progress" aria-busy="'+(state==='loading')+'">'+sections.map(([key,title,body])=>
-    '<section class="training-progress-section" data-progress-block="'+key+'" aria-labelledby="progress-'+key+'"><h3 id="progress-'+key+'">'+esc(title)+'</h3>'+(state==='ready'?body:note(unavailable))+'</section>').join('')+'</div>';
+    ['adjustments',copy.adjustments,rows.length?'<details class="record-disclosure" data-progress-decisions><summary>'+esc(copy.decisions)+'</summary><ol class="training-progress-list">'+rows.join('')+'</ol></details>':note(copy.emptyAdjustments)]];
+  return '<div class="training-progress" id="training-progress" aria-busy="'+(state==='loading')+'">'+note(copy.purpose)+sections.map(([key,title,body])=>
+    '<section class="training-progress-section" data-progress-block="'+key+'" aria-labelledby="progress-'+key+'"><h3 id="progress-'+key+'">'+esc(title)+'</h3>'+(state==='ready'?body:note(unavailable))+'</section>').join('')+
+    '<div class="record-actions"><button class="save" id="progress-training" onclick="openTrainingFromRecord()">'+esc(copy.openTraining)+'</button></div></div>';
 }
 function browserProgress(){
   let log=[];try{log=JSON.parse(ownedStorageGet('apexWorkoutLog')||'[]');}catch(e){}
@@ -2098,9 +2161,9 @@ async function showProgress(){
     if(!response.ok)throw new Error('progress_read_unavailable');
     const data=await response.json();
     if(owner!==dataOwnerToken()||!SESSION.authenticated||!document.getElementById('training-progress'))return;
-    document.getElementById('panel-body').innerHTML=renderProgress(data);
+    setPanelBody(renderProgress(data));
   }catch(e){
-    if(owner===dataOwnerToken()&&SESSION.authenticated&&document.getElementById('training-progress'))document.getElementById('panel-body').innerHTML=renderProgress(null,'error');
+    if(owner===dataOwnerToken()&&SESSION.authenticated&&document.getElementById('training-progress'))setPanelBody(renderProgress(null,'error'));
   }
 }
 const SAVED_NUTRITION_COPY={
@@ -2166,9 +2229,9 @@ async function showNutrition(){
     if(!response.ok)throw new Error('nutrition_read_unavailable');
     const data=await response.json();
     if(owner!==dataOwnerToken()||!SESSION.authenticated||!document.getElementById('saved-nutrition'))return;
-    document.getElementById('panel-body').innerHTML=renderSavedNutrition(data);
+    setPanelBody(renderSavedNutrition(data));
   }catch(e){
-    if(owner===dataOwnerToken()&&SESSION.authenticated&&document.getElementById('saved-nutrition'))document.getElementById('panel-body').innerHTML=renderSavedNutrition(null,'error');
+    if(owner===dataOwnerToken()&&SESSION.authenticated&&document.getElementById('saved-nutrition'))setPanelBody(renderSavedNutrition(null,'error'));
   }
 }
 function createFromNutrition(){closePanel();enterConsult(tr().seed.nutrition);}
@@ -2196,21 +2259,84 @@ async function showSubscription(){
   }
   showPanel(s.title,body);
 }
-function showHistory(){
-  witness('historyOpened');   // fact: the shared past is being touched
-  const h=tr().hist; let log=[];try{log=JSON.parse(ownedStorageGet('apexWorkoutLog')||'[]');}catch(e){}
-  let body='<p class="sd" style="margin-bottom:16px">'+h.desc+'</p>';
-  if(!log.length){ body+='<div class="hist-empty">'+h.empty+'</div>'; }
+const HISTORY_COPY={
+  bg:{session:'Тренировъчна сесия',saved:'Запазено в акаунта',cached:'Кеширан запис',local:'Локален запис',
+    pending:'Все още непотвърдено',browser:'Само в този браузър',unavailable:'Историята в акаунта не е достъпна в момента.',
+    sets:'Записани серии',execution:'Записано изпълнение',dose:'Минимум на записана серия',missing:'Повторенията или времето не са записани.',
+    feedback:'Твоя самооценка',openTraining:'Отвори Моите тренировки',
+    states:{completed:'Завършена',partial:'Частично завършена',skipped:'Пропусната',abandoned:'Прекъсната',unknown:'Статусът не е потвърден'}},
+  en:{session:'Training session',saved:'Saved to account',cached:'Cached record',local:'Local record',
+    pending:'Not yet confirmed',browser:'Only in this browser',unavailable:'Account history is unavailable at the moment.',
+    sets:'Recorded sets',execution:'Recorded execution',dose:'Minimum recorded per set',missing:'Repetitions or time were not recorded.',
+    feedback:'Your self-reported feedback',openTraining:'Open My Training',
+    states:{completed:'Completed',partial:'Partially completed',skipped:'Skipped',abandoned:'Interrupted',unknown:'Status not confirmed'}}
+};
+function historyCache(){
+  let log=[];try{log=JSON.parse(ownedStorageGet('apexWorkoutLog')||'[]');}catch(e){}
+  return Array.isArray(log)?log.filter(item=>item&&typeof item==='object').map(truthfulWorkoutRecord):[];
+}
+function historyExerciseName(item){
+  const api=window.ApexExerciseInstructions,record=api&&item.exercise_id&&api.findByExerciseId(item.exercise_id);
+  return record?api.display(record,lang):(item.name||item.display_name||MY_TRAINING_COPY[lang].exercise);
+}
+function historyExerciseFacts(item){
+  const copy=HISTORY_COPY[lang],kind=item.prescription_type==='duration'?'duration':'repetitions';
+  // Missing observations stay missing; prescribed reps, sets and weight never fill them.
+  const work=kind==='duration'?(Object.hasOwn(item,'actual_duration_seconds')?item.actual_duration_seconds:item.completed_duration_seconds):
+    (Object.hasOwn(item,'actual_repetitions')?item.actual_repetitions:item.completed_repetitions);
+  const facts=[];
+  if(Number.isInteger(item.completed_sets)&&item.completed_sets>=0)facts.push(copy.sets+': '+item.completed_sets);
+  if(Number.isInteger(work)&&work>=0)facts.push(copy.dose+': '+work+' '+(kind==='duration'?(lang==='bg'?'сек':'sec'):(lang==='bg'?'повт.':'reps')));
+  else facts.push(copy.missing);
+  if(typeof item.completed_load==='number'&&Number.isFinite(item.completed_load)&&item.completed_load>=0)facts.push(item.completed_load+' '+(lang==='bg'?'кг':'kg'));
+  return facts.join(' · ');
+}
+function renderHistory(entries,state='ready',authenticated=SESSION.authenticated){
+  const h=tr().hist,copy=HISTORY_COPY[lang];
+  let body='<p class="sd">'+esc(h.desc)+'</p>';
+  if(state==='loading')body+='<p class="hist-s">'+esc(MY_TRAINING_COPY[lang].loading)+'</p>';
   else{
-    body+=log.slice().reverse().map(s=>{
-      const mu=inferMuscle((s.exercises&&s.exercises[0]&&s.exercises[0].name)||'');
-      const nEx=(s.exercises||[]).length, nSets=(s.exercises||[]).reduce((a,e)=>a+(parseInt(e.sets)||0),0);
-      return '<div class="hist-item"><div class="hist-ico">'+mu.e+'</div><div class="hist-b">'+
-        '<div class="hist-t">'+esc(s.type||'training')+'</div>'+
-        '<div class="hist-s">'+esc(s.date||'')+' · '+nEx+' '+h.exercises+' · '+nSets+' '+h.sets+'</div></div></div>';
+    if(state==='error')body+='<p class="hist-s" role="status">'+esc(copy.unavailable)+'</p>';
+    if(!entries.length&&state!=='error')body+='<p class="hist-empty">'+esc(h.empty)+'</p>';
+    body+=entries.slice().sort((a,b)=>(b.record.ts||0)-(a.record.ts||0)).map(entry=>{
+      const s=entry.record,exercises=Array.isArray(s.exercises)?s.exercises.filter(item=>item&&typeof item==='object'):[],status=Object.hasOwn(copy.states,s.execution_state)?s.execution_state:'unknown';
+      const knownSets=exercises.map(item=>item.completed_sets).filter(value=>Number.isInteger(value)&&value>=0);
+      const facts=[exercises.length+' '+(exercises.length===1?(lang==='bg'?'упражнение':'exercise'):h.exercises)];
+      if(knownSets.length)facts.push(copy.sets+': '+knownSets.reduce((sum,value)=>sum+value,0));
+      const date=typeof s.ts==='number'&&Number.isFinite(new Date(s.ts).getTime())?myTrainingDate(new Date(s.ts).toISOString()):(s.date||'');
+      const canonical=exercises.some(item=>item.exercise_id&&window.ApexExerciseInstructions&&ApexExerciseInstructions.findByExerciseId(item.exercise_id));
+      const title=canonical?copy.session:(s.type||copy.session);
+      const authority=entry.confirmed?copy.saved+(entry.cached?' · '+copy.cached:''):copy.local+' · '+(authenticated?copy.pending:copy.browser);
+      return '<details class="hist-item" data-history-state="'+status+'" data-history-authority="'+(entry.confirmed?'account':'local')+'"><summary>'+
+        '<span class="hist-t">'+esc(title)+'</span><p class="hist-s hist-state">'+esc(copy.states[status])+'</p>'+
+        '<p class="hist-s">'+esc([date,...facts].filter(Boolean).join(' · '))+'</p><p class="hist-s" data-history-save>'+esc(authority)+'</p></summary>'+
+        '<ul class="hist-exercises">'+exercises.map(item=>{
+          const feedback=recordedFeedbackFacts(item);
+          return '<li><h4>'+esc(historyExerciseName(item))+'</h4><p class="hist-s" data-history-execution>'+esc(copy.execution+': '+historyExerciseFacts(item))+'</p>'+
+            (feedback.length?'<p class="hist-s" data-history-feedback>'+esc(copy.feedback+': '+feedback.join(' · '))+'</p>':'')+'</li>';
+        }).join('')+'</ul></details>';
     }).join('');
   }
-  showPanel(h.title,body);
+  return '<div id="training-history" aria-busy="'+(state==='loading')+'">'+body+
+    '<div class="record-actions"><button class="save" id="history-training" onclick="openTrainingFromRecord()">'+esc(copy.openTraining)+'</button></div></div>';
+}
+let historyReadSequence=0;
+async function showHistory(){
+  witness('historyOpened');
+  const owner=dataOwnerToken(),authenticated=SESSION.authenticated,sequence=++historyReadSequence;
+  const local=()=>historyCache().map(record=>({record,confirmed:authenticated&&!!record.serverId,cached:true}));
+  if(!authenticated){showPanel(tr().hist.title,renderHistory(local(),'ready',false));return;}
+  showPanel(tr().hist.title,renderHistory([],'loading',true));
+  const current=()=>sequence===historyReadSequence&&owner===dataOwnerToken()&&SESSION.authenticated&&document.getElementById('training-history');
+  try{
+    const response=await fetch('/api/history',{credentials:'same-origin',cache:'no-store'});
+    if(!response.ok)throw new Error('history_read_unavailable');
+    const data=await response.json();if(!Array.isArray(data.workouts))throw new Error('history_read_invalid');
+    if(!current())return;
+    const server=mergeAccountWorkoutHistory(data.workouts);
+    const pending=historyCache().filter(record=>!record.serverId&&!server.some(saved=>record.workout_id&&saved.workout_id===record.workout_id));
+    setPanelBody(renderHistory([...server.map(record=>({record,confirmed:true})),...pending.map(record=>({record,confirmed:false}))]));
+  }catch(e){if(current())setPanelBody(renderHistory(local(),'error',true));}
 }
 function showSettings(){
   const st=tr().settings;
@@ -2310,6 +2436,32 @@ async function loadSession(tokenAccess){
   return SESSION;
 }
 function isElite(){ return SESSION.plan==='core'||SESSION.plan==='pro'; }
+function accountWorkoutRecord(row){
+  const timestamp=Date.parse(row.occurred_at);
+  return truthfulWorkoutRecord({ts:Number.isFinite(timestamp)?timestamp:null,date:(row.occurred_at||'').slice(0,10),
+    serverId:row.id,workout_id:row.completion_evidence&&row.completion_evidence.workout_id,type:row.type,
+    exercises:Array.isArray(row.exercises)?row.exercises:[],diff:row.difficulty,completion:row.completion,
+    execution_schema:row.execution_state?'workout-execution-v1':null,execution_state:row.execution_state||'unknown'});
+}
+function mergeAccountWorkoutHistory(workouts){
+  const server=workouts.filter(row=>row&&typeof row==='object').map(accountWorkoutRecord).reverse();
+  const merged=historyCache();
+  const key=record=>[record.ts,record.type||'',JSON.stringify(record.exercises||[])].join('|');
+  server.forEach(saved=>{
+    const match=merged.findIndex(local=>(saved.serverId&&local.serverId===saved.serverId)||
+      (saved.workout_id&&local.workout_id===saved.workout_id)||(!local.serverId&&key(local)===key(saved)));
+    if(match>=0)merged[match]=saved;else merged.push(saved);
+  });
+  merged.sort((a,b)=>(a.ts||0)-(b.ts||0));
+  ownedStorageSet('apexWorkoutLog',JSON.stringify(merged.slice(-60)));
+  return server;
+}
+function markWorkoutAccountSaved(session,result,owner){
+  if(owner!==dataOwnerToken()||!SESSION.authenticated||!result||result.ok!==true||typeof result.id!=='string'||!result.id)return;
+  const log=historyCache(),index=log.findIndex(row=>session.workout_id?row.workout_id===session.workout_id:
+    row.ts===session.ts&&row.type===session.type&&JSON.stringify(row.exercises)===JSON.stringify(session.exercises));
+  if(index>=0){log[index].serverId=result.id;ownedStorageSet('apexWorkoutLog',JSON.stringify(log));}
+}
 async function syncFromAccount(){
   // Read account truth without uploading anonymous/browser state. For fields
   // present in both places, the server copy is authoritative.
@@ -2334,26 +2486,7 @@ async function syncFromAccount(){
     if(historyResponse.ok){
       const d=await historyResponse.json();
       if(d&&Array.isArray(d.workouts)){
-        // Account timeline is newest-first; the browser cache is oldest-first.
-        const serverLog=d.workouts.map(w=>({ts:Date.parse(w.occurred_at)||Date.now(),date:(w.occurred_at||'').slice(0,10),
-          serverId:w.id,workout_id:w.completion_evidence&&w.completion_evidence.workout_id,type:w.type,exercises:w.exercises||[],diff:w.difficulty,completion:w.completion,execution_schema:w.execution_state?'workout-execution-v1':null,execution_state:w.execution_state||'unknown'})).reverse();
-        let local=[];try{local=JSON.parse(ownedStorageGet('apexWorkoutLog')||'[]');}catch(e){}
-        const key=w=>{
-          if(w.workout_id)return w.workout_id;
-          const day=w.ts?new Date(w.ts).toISOString().slice(0,10):String(w.date||'');
-          const exercises=(w.exercises||[]).map(e=>[e.name,e.sets,e.reps,e.weight||''].join(':')).join(',');
-          return [day,w.type||'',w.completion||0,exercises].join('|');
-        };
-        const merged=Array.isArray(local)?local.map(truthfulWorkoutRecord):[];
-        serverLog.map(truthfulWorkoutRecord).forEach(serverWorkout=>{
-          const match=merged.findIndex(localWorkout=>
-            (serverWorkout.serverId&&localWorkout.serverId===serverWorkout.serverId)||
-            (!localWorkout.serverId&&key(localWorkout)===key(serverWorkout)));
-          if(match>=0)merged[match]=Object.assign({},merged[match],serverWorkout);
-          else merged.push(serverWorkout);
-        });
-        merged.sort((a,b)=>(a.ts||0)-(b.ts||0));
-        ownedStorageSet('apexWorkoutLog',JSON.stringify(merged.slice(-60)));
+        mergeAccountWorkoutHistory(d.workouts);
       }
     }
     if(conversationResponse.ok){
@@ -2387,11 +2520,12 @@ function accountSaveProfile(p){
 }
 function accountLogWorkout(s,workoutCompletion=null,onRecorded=null){
   if(!SESSION.authenticated)return Promise.resolve(false);
+  const owner=dataOwnerToken();
   const body={session:s};if(workoutCompletion)body.workout_completion=workoutCompletion;
   return fetch('/api/workout',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body)})
     .then(async response=>{
       if(!response.ok){if(onRecorded)onRecorded(null);return false;}
-      const result=await response.json();if(onRecorded)onRecorded(result);
+      const result=await response.json();markWorkoutAccountSaved(s,result,owner);if(onRecorded)onRecorded(result);
       return refreshAthleteCoreProjection();
     }).catch(()=>{if(onRecorded)onRecorded(null);return false;});
 }
@@ -4185,7 +4319,7 @@ async function startApp(){
   // reaching the bottom re-arms auto-follow and hides the button.
   document.getElementById('feed').addEventListener('scroll',()=>ChatLifecycle.userScrolled(),{passive:true});
   // Esc closes drawer/panels
-  document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeMenu();closePanel();}});
+  document.addEventListener('keydown',e=>{if(panelKeydown(e))return;if(e.key==='Escape'){closeMenu();closePanel();}});
   // ── Server-authoritative session on every load ──
   const q=new URLSearchParams(location.search);
   if(q.get('auth')==='ok'){ toast(tr().auth.welcome); }
