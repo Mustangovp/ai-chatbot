@@ -367,13 +367,15 @@ def _account_training_constraint_patterns(user_id):
     return _load_account_training_constraints(user_id).require_available()
 
 
-def _account_training_constraint_records(user_id):
+def _account_training_constraint_records(user_id, *, strict=False):
     """Expose only active, canonical account constraints and their removal eligibility."""
     if not user_id:
         return ()
     try:
         records = store.list_account_training_constraint_records(user_id)
     except Exception as error:
+        if strict:
+            raise
         print(f"[api] account training constraint read unavailable: {type(error).__name__}")
         return ()
     return tuple({
@@ -1611,6 +1613,8 @@ def verify_token(token: str):
 
 @app.after_request
 def add_security_headers(response):
+    if request.path in ("/auth/me", "/auth/logout", "/api/profile", "/api/history", "/api/conversations"):
+        response.headers["Cache-Control"] = "private, no-store"
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
@@ -1812,7 +1816,9 @@ def auth_logout():
     sid = request.cookies.get(SESSION_COOKIE)
     if sid:
         try: store.revoke_session(sid)
-        except Exception: pass
+        except Exception as error:
+            print(f"[auth] logout unavailable: {type(error).__name__}")
+            return jsonify({"error": "logout_unavailable"}), 503
     resp = make_response(jsonify({"ok": True}))
     resp.delete_cookie(SESSION_COOKIE, samesite="Lax", secure=COOKIE_SECURE)
     return resp
@@ -1890,16 +1896,23 @@ def api_profile():
     if request.method == "GET":
         constraint_load = _load_account_training_constraints(u["id"])
         try:
+            constraint_records = list(_account_training_constraint_records(u["id"], strict=True))
+            constraint_unavailable = (constraint_load.state is ConstraintLoadState.UNAVAILABLE or
+                                      {row["pattern"] for row in constraint_records} != set(constraint_load.patterns))
+        except Exception as error:
+            print(f"[api] account training constraint read unavailable: {type(error).__name__}")
+            constraint_records = None
+            constraint_unavailable = True
+        try:
             athlete_core = athlete_store.core_presence_projection(u["id"])
         except Exception as error:
             print(f"[api] athlete core projection unavailable: {type(error).__name__}")
             athlete_core = None
         return jsonify({
             "profile": store.get_profile(u["id"]),
-            "training_constraints": (list(constraint_load.patterns)
-                                     if constraint_load.state is not ConstraintLoadState.UNAVAILABLE else None),
-            "training_constraint_load_state": constraint_load.state.value,
-            "training_constraint_records": list(_account_training_constraint_records(u["id"])),
+            "training_constraints": None if constraint_unavailable else list(constraint_load.patterns),
+            "training_constraint_load_state": "unavailable" if constraint_unavailable else constraint_load.state.value,
+            "training_constraint_records": None if constraint_unavailable else constraint_records,
             "athlete_core": athlete_core,
         })
     data = request.get_json(silent=True) or {}
@@ -1909,12 +1922,16 @@ def api_profile():
     # Account constraints are written only from validated explicit chat turns.
     prof = dict(prof)
     prof.pop("training_constraints", None)
-    store.save_profile(u["id"], prof)
+    try:
+        saved_profile = store.merge_profile(u["id"], prof)
+    except Exception as error:
+        print(f"[api] profile save unavailable: {type(error).__name__}")
+        return jsonify({"error": "profile_save_unavailable"}), 503
     # M0: self-report evidence for the Athlete Model (only the consumed fields).
     _sr = {k: prof[k] for k in ("sleepQuality", "stressLevel", "recoveryFeel", "frequency") if k in prof}
     if _sr:
         athlete_store.observe(u["id"], "self_report", _sr)
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "profile": saved_profile})
 
 
 @app.route("/api/training-constraints/<constraint_id>", methods=["DELETE"])

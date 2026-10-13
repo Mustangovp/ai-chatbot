@@ -1673,10 +1673,14 @@ test.describe('APEX approved app shell — UX regression', () => {
     expect(requests).toContainEqual(['GET', '/api/history']);
     expect(requests).not.toContainEqual(['POST', '/api/sync']);
     expect(restored.profile).toMatchObject({
-      goal: 'server-goal', age: '42', localOnly: 'kept'
+      goal: 'server-goal', age: '42'
     });
+    expect(restored.profile).not.toHaveProperty('localOnly');
     expect(restored.workouts).toEqual([
       { ts: Date.parse('2026-07-23T08:00:00Z'), type: 'local-only', exercises: [], completion: null, execution_schema: 'workout-execution-v1', execution_state: 'unknown' },
+      { ts: Date.parse('2026-07-24T07:59:30Z'), date: '7/24/2026', type: 'strength',
+        exercises: [{ name: 'Squat', completed_sets: null, actual_repetitions: null, completed_repetitions: null, execution_state: 'unknown' }],
+        diff: 'local-difficulty', completion: null, localOnly: 'kept', execution_schema: 'workout-execution-v1', execution_state: 'unknown' },
       {
         ts: Date.parse('2026-07-24T08:00:00Z'),
         date: '2026-07-24',
@@ -1684,8 +1688,7 @@ test.describe('APEX approved app shell — UX regression', () => {
         type: 'strength',
         exercises: [{ name: 'Squat', completed_sets: null, actual_repetitions: null, completed_repetitions: null, execution_state: 'unknown' }],
         diff: 'medium',
-        completion: null, execution_schema: 'workout-execution-v1', execution_state: 'unknown',
-        localOnly: 'kept'
+        completion: null, execution_schema: 'workout-execution-v1', execution_state: 'unknown'
       }
     ]);
   });
@@ -1720,6 +1723,7 @@ test.describe('APEX approved app shell — UX regression', () => {
   test('AUTH-4: authenticated profile save and workout completion write to account APIs', async ({ page }) => {
     const calls = await page.evaluate(async () => {
       SESSION.authenticated = true;
+      activateDataOwner('account', 'write-test@example.com');
       const sent = [];
       const originalFetch = window.fetch;
       window.fetch = async (url, options = {}) => {
@@ -1767,6 +1771,7 @@ test.describe('APEX approved app shell — UX regression', () => {
   test('ATH-CORE-REFRESH: successful profile and workout persistence refresh the bounded Core projection once', async ({ page }) => {
     const result = await page.evaluate(async () => {
       SESSION.authenticated = true;
+      activateDataOwner('account', 'projection-test@example.com');
       core.presence.serverProjection = null;
       const originalFetch = window.fetch;
       const calls = [];
@@ -1791,7 +1796,10 @@ test.describe('APEX approved app shell — UX regression', () => {
         return originalFetch(url, options);
       };
 
+      const originalRefresh = refreshAthleteCoreProjection, refreshes = [];
+      refreshAthleteCoreProjection = (...args) => { const job = originalRefresh(...args); refreshes.push(job); return job; };
       const profileRefreshed = await accountSaveProfile({ sleepQuality: 'poor' });
+      await Promise.all(refreshes);
       const afterProfile = core.presence.serverProjection;
       const workoutRefreshed = await accountLogWorkout({ type: 'strength', exercises: [], completion: 100 });
       const afterWorkout = core.presence.serverProjection;
@@ -1801,6 +1809,7 @@ test.describe('APEX approved app shell — UX regression', () => {
       SESSION.authenticated = false;
       const anonymous = await refreshAthleteCoreProjection();
       window.fetch = originalFetch;
+      refreshAthleteCoreProjection = originalRefresh;
       return { calls, profileRefreshed, afterProfile, workoutRefreshed, afterWorkout, unchanged, malformed, failed, anonymous };
     });
 
@@ -1822,6 +1831,7 @@ test.describe('APEX approved app shell — UX regression', () => {
   test('ATH-CORE-REFRESH: terminal persisted chat turn refreshes the Core without refreshing a session greeting', async ({ page }) => {
     const result = await page.evaluate(async () => {
       SESSION.authenticated = true;
+      activateDataOwner('account', 'turn-test@example.com');
       core.presence.serverProjection = null;
       const originalFetch = window.fetch;
       const originalLifecycle = {

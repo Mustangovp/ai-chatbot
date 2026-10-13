@@ -1780,6 +1780,37 @@ def save_profile(user_id, data: dict):
             c.execute(insert(profiles).values(id=uuid.uuid4(), user_id=_as_uuid(user_id), data=data))
 
 
+def merge_profile(user_id, changes: dict):
+    """Explicit fields update; omissions preserve account truth, including learning.
+
+    Compare-and-swap prevents a concurrent profile/learning write from being
+    overwritten by a merge based on an older read. Empty values are explicit.
+    """
+    user_uuid = _as_uuid(user_id)
+    for _attempt in range(8):
+        try:
+            with engine.begin() as c:
+                row = c.execute(select(
+                    profiles.c.id, profiles.c.data,
+                    profiles.c.data.cast(String).label("serialized_data"),
+                ).where(profiles.c.user_id == user_uuid)).mappings().first()
+                if row is None:
+                    merged = dict(changes)
+                    c.execute(insert(profiles).values(
+                        id=uuid.uuid4(), user_id=user_uuid, data=merged))
+                    return merged
+                merged = {**dict(row["data"] or {}), **changes}
+                result = c.execute(update(profiles).where(
+                    profiles.c.id == row["id"],
+                    profiles.c.data.cast(String) == row["serialized_data"],
+                ).values(data=merged))
+                if result.rowcount == 1:
+                    return merged
+        except (IntegrityError, OperationalError):
+            continue
+    raise RuntimeError("profile_merge_unavailable")
+
+
 def save_profile_learning(user_id, previous: dict, learned: dict) -> bool:
     """Merge detached learning only if its source learning state is still current.
 

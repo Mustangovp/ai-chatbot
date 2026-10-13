@@ -164,12 +164,15 @@ test('a late save acknowledgement cannot mark the next owner cache', async ({ pa
   await page.route('**/api/workout', async route => { await wait; await route.fulfill({ json: { ok: true, id: 'previous-owner-record' } }); });
   await page.evaluate(row => {
     window.historyTestAcknowledged = false;
+    const original = accountLogWorkout;
+    accountLogWorkout = (...args) => { window.historyTestReceipt = original(...args); return window.historyTestReceipt; };
     logWorkout(row, null, () => { window.historyTestAcknowledged = true; });
   }, local(session()));
   await expect.poll(() => page.evaluate(() => historyCache().length)).toBe(1);
   await page.evaluate(() => { SESSION.authenticated = false; rotateAnonymousOwner(); });
   release();
-  await expect.poll(() => page.evaluate(() => window.historyTestAcknowledged)).toBe(true);
+  expect(await page.evaluate(() => window.historyTestReceipt)).toBe(false);
+  expect(await page.evaluate(() => window.historyTestAcknowledged)).toBe(false);
   expect(await page.evaluate(() => historyCache())).toEqual([]);
 });
 

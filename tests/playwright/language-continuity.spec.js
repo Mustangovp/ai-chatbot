@@ -22,9 +22,10 @@ async function prepare(page, { saved = null, accountLanguage = null, legacyLangu
   } }));
   await page.route('**/api/profile', async route => {
     if (route.request().method() === 'PUT') {
-      state.profile = route.request().postDataJSON().profile;
-      state.writes.push(state.profile);
-      await route.fulfill({ json: { ok: true } });
+      const patch = route.request().postDataJSON().profile;
+      state.profile = { ...state.profile, ...patch };
+      state.writes.push(patch);
+      await route.fulfill({ json: { ok: true, profile: state.profile } });
     } else {
       state.reads++;
       await route.fulfill({ json: { profile: state.profile, training_constraints: [] } });
@@ -87,7 +88,7 @@ for (const language of ['en', 'bg']) {
     await expect.poll(() => state.profile.language).toBe(language);
     await expectLanguage(page, language);
     await expect(page).toHaveURL(/\/app$/);
-    expect(state.writes).toEqual([{ ...profile, language }]);
+    expect(state.writes).toEqual([{ language }]);
     await page.evaluate(() => loadSession(null));
     await expectLanguage(page, language);
     expect(state.writes).toHaveLength(1);
