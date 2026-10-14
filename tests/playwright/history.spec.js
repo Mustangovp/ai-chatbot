@@ -190,9 +190,9 @@ test('shared dialog has initial focus, Tab containment, Escape and focus restora
   await page.keyboard.press('Escape'); await expect(dialog).not.toHaveClass(/\bon\b/);
   await expect(page.locator('#menu-btn')).toBeFocused();
   await page.evaluate(() => {
-    const trigger = document.getElementById('status-pill'); trigger.focus(); showPanel('Test', '<p>Read-only fixture</p>');
+    const trigger = document.getElementById('menu-btn'); trigger.focus(); showPanel('Test', '<p>Read-only fixture</p>');
   });
-  await page.locator('#panel-close').click(); await expect(page.locator('#status-pill')).toBeFocused();
+  await page.locator('#panel-close').click(); await expect(page.locator('#menu-btn')).toBeFocused();
 });
 
 for (const language of ['bg', 'en']) for (const width of [1440, 390, 360]) {

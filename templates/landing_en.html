@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Apex Pulse PRO — Your AI Coach. Your goal, your plan, in 60 seconds.</title>
+<title>Apex Pulse PRO — Your AI Coach. Your goal. Your next step.</title>
 <meta name="description" content="Coach-grade nutrition and training plans, generated from your goal and your daily reality. No app. No gym contract. GDPR-aligned. Try free.">
 <meta property="og:title" content="APEX Pulse PRO">
 <meta property="og:description" content="AI fitness that remembers, adapts and trains around you.">
@@ -59,6 +59,7 @@ gtag('config', 'G-B3WLGXE2XM');
   --brand:#F5212D; --ember:#FF6A3C; --gold:#FFB13C;
   --cyan:#38E0FF; --lime:#B6FF3C;
   --pulse:linear-gradient(90deg,#F5212D,#FF6A3C);
+  --action-pulse:linear-gradient(90deg,#D81624,#C5441D);
   --radius:20px;
 }
 *{margin:0;padding:0;box-sizing:border-box;}
@@ -83,7 +84,7 @@ nav{position:sticky;top:0;z-index:50;background:rgba(5,5,12,0.92);backdrop-filte
 .nav-cta:hover{transform:translateY(-1px);box-shadow:0 6px 22px rgba(245,33,45,.48);}
 
 /* HERO — editorial */
-.hero{padding:72px 0 48px;text-align:center;position:relative;isolation:isolate;}
+.hero{padding:56px 0 48px;text-align:center;position:relative;isolation:isolate;}
 .hero-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);background-size:56px 56px;mask-image:radial-gradient(ellipse at center,#000 30%,transparent 75%);-webkit-mask-image:radial-gradient(ellipse at center,#000 30%,transparent 75%);pointer-events:none;z-index:0;}
 .eyebrow{display:inline-flex;align-items:center;gap:14px;font-family:'Manrope';font-weight:800;font-size:11px;letter-spacing:3.5px;text-transform:uppercase;color:var(--gold);margin-bottom:28px;position:relative;z-index:2;opacity:0;animation:hero-fadeup .8s .15s cubic-bezier(.2,.7,.2,1) forwards;}
 .eyebrow::before,.eyebrow::after{content:'';width:34px;height:1px;background:linear-gradient(90deg,transparent,rgba(255,177,60,.55),transparent);}
@@ -115,6 +116,8 @@ h1 .grad{background:linear-gradient(90deg,#F5212D 0%,#FF6A3C 45%,#FFB13C 100%);b
 .gl-chips button:hover{color:var(--text);border-color:rgba(255,255,255,.3);transform:translateY(-1px);}
 .gl-chips button[aria-checked="true"]{color:#fff;border-color:rgba(245,33,45,.65);background:linear-gradient(135deg,rgba(245,33,45,.22),rgba(255,106,60,.14));box-shadow:0 6px 20px rgba(245,33,45,.25);}
 .gl-other{color:var(--text);font-weight:700;min-height:52px;align-items:center;}
+#gl-other[hidden]{display:none;}
+.goal-line select{min-height:44px;}
 /* THINK CARD — proof that the recommendation changes when the facts change */
 .think-card{margin:34px auto 0;max-width:min(560px,100%);text-align:left;background:linear-gradient(160deg,rgba(26,33,51,.92),rgba(18,23,36,.96));border:1px solid rgba(255,255,255,.13);border-radius:var(--radius);padding:22px 22px 20px;position:relative;z-index:2;box-shadow:0 18px 60px rgba(0,0,0,.45);opacity:0;animation:hero-fadeup .8s 1.15s cubic-bezier(.2,.7,.2,1) forwards;}
 .tc-label{font-family:'Unbounded';font-weight:800;font-size:10.5px;letter-spacing:2.2px;text-transform:uppercase;color:var(--gold);display:flex;align-items:center;justify-content:space-between;}
@@ -215,9 +218,11 @@ header.hero .ph-badge img{height:42px;max-width:154px;object-fit:contain;}
 
 /* PHONE */
 .phone-stage{display:flex;justify-content:center;padding:40px 0 8px;position:relative;overflow:hidden;}
-.ring{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:min(370px,90vw);height:min(370px,90vw);border-radius:50%;border:2px solid transparent;background:conic-gradient(from 180deg,var(--brand),var(--ember),var(--gold),var(--cyan),var(--lime),var(--brand)) border-box;-webkit-mask:linear-gradient(#fff 0 0) padding-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;opacity:.3;animation:spin 14s linear infinite;}
+.ring{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:min(370px,90vw);height:min(370px,90vw);border-radius:50%;border:2px solid var(--brand);opacity:.2;}
 @keyframes spin{to{transform:translate(-50%,-50%) rotate(360deg);}}
-.phone{position:relative;width:min(308px,94vw);background:var(--bg);border:1px solid rgba(255,255,255,.12);border-radius:36px;padding:12px 0 0;box-shadow:0 30px 80px rgba(0,0,0,.6),0 0 60px rgba(245,33,45,.14);overflow:hidden;}
+.phone{position:relative;width:min(308px,94vw);background:var(--bg);border:1px solid rgba(255,255,255,.12);border-radius:36px;box-shadow:0 30px 80px rgba(0,0,0,.6),0 0 60px rgba(245,33,45,.14);overflow:hidden;}
+.app-preview{display:block;width:100%;height:auto;aspect-ratio:390/844;}
+.preview-caption{padding:12px 16px;font-size:12px;color:#C9D0DF;text-align:center;}
 .phone .notch{width:90px;height:5px;background:rgba(255,255,255,.15);border-radius:3px;margin:0 auto 10px;}
 .ph-nav{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.1);background:var(--surface);}
 .ph-brand{display:flex;align-items:center;gap:8px;}
@@ -360,7 +365,7 @@ footer a:hover{color:var(--text);}
 @keyframes drift1{from{transform:translate3d(0,0,0) scale(1);}to{transform:translate3d(90px,60px,0) scale(1.15);}}
 @keyframes drift2{from{transform:translate3d(0,0,0) scale(1.05);}to{transform:translate3d(-80px,90px,0) scale(.92);}}
 @keyframes drift3{from{transform:translate3d(-50%,0,0) scale(1);}to{transform:translate3d(-44%,-60px,0) scale(1.12);}}
-@media (prefers-reduced-motion:reduce){.aurora i{animation:none;}}
+@media (prefers-reduced-motion:reduce){.aurora i{animation:none!important;}}
 @media (max-width:480px){.aurora i{filter:blur(70px);}}
 @media (max-width:640px){
   .nav-inner{padding:10px 14px;gap:8px;}
@@ -371,22 +376,37 @@ footer a:hover{color:var(--text);}
   .nav-right{gap:7px;flex-shrink:0;}
   .lang-toggle{font-size:11px;}
   .lang-toggle a,.lang-toggle span{padding:5px 8px;}
-  .nav-cta{font-size:12px;padding:9px 11px;}
-  .hero{padding:26px 0 38px;}
+  .nav-cta{font-size:12px;padding:9px 11px;min-height:44px;display:inline-flex;align-items:center;}
+  .hero{padding:22px 0 38px;}
   .eyebrow{margin-bottom:16px;}
   h1{font-size:clamp(28px,7.8vw,33px);line-height:1.04;}
-  .hero .sub{font-size:14px;line-height:1.45;max-width:34ch;margin-top:14px;}
-  .goal-line{margin-top:14px;padding:12px;border-radius:16px;}
-  .gl-chips{gap:6px;margin-bottom:12px;}
-  .gl-chips button{font-size:12.5px;min-height:40px;padding:9px 11px;}
+  .hero .sub{font-size:14px;line-height:1.45;max-width:34ch;margin-top:12px;}
+  .goal-line{margin-top:12px;padding:12px;border-radius:16px;}
+  .gl-chips{gap:6px;margin-bottom:10px;}
+  .gl-chips button{font-size:12.5px;min-height:44px;padding:9px 11px;}
   .goal-line .gl-text{font-size:15px;gap:6px;line-height:1.55;}
   .goal-line select{font-size:13px;padding:6px 24px 6px 10px;background-position:right 8px center;}
-  .goal-line .gl-btn{margin-top:10px;font-size:16px;padding:14px;}
-  .micro{font-size:10.5px;letter-spacing:1.2px;margin-top:16px;}
+  .goal-line .gl-btn{margin-top:8px;font-size:16px;padding:14px;}
+  .micro{font-size:12px;letter-spacing:.4px;margin-top:12px;}
+  .cookiebar{padding:12px;gap:8px;}
+  .cookiebar .cb-text{flex-basis:100%;}
+  .cookiebar button{flex:1;min-height:44px;}
   header.hero .ph-badge{gap:8px;max-width:320px;margin-top:24px;}
   header.hero .ph-badge img{height:34px;max-width:132px;}
 }
-@media (max-width:380px){.hero{padding-top:22px;}}
+@media (max-width:380px){
+  .hero{padding-top:20px;}
+  .nav-inner{padding-left:10px;padding-right:10px;}
+  .logo{font-size:11.5px;gap:6px;}
+  .logo img{width:28px;height:28px;}
+  .nav-right{gap:4px;}
+  .nav-cta{font-size:11.5px;padding-left:9px;padding-right:9px;}
+}
+.nav-cta,.goal-line .gl-btn,.final-btn,.cookiebar .cb-accept,.to-top{background:var(--action-pulse);}
+.lang-toggle a,.lang-toggle span{display:flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;text-decoration:none;}
+.lang-toggle span.active,.lang-toggle a.active{background:var(--action-pulse);color:#fff;}
+.lang-toggle a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(--text);outline-offset:3px;}
+@media(min-width:1000px){.hero{padding-top:40px;}h1{font-size:60px;max-width:1040px;}.hero .sub{max-width:640px;}}
 </style>
 </head>
 <body>
@@ -445,13 +465,13 @@ footer a:hover{color:var(--text);}
       </select>
     </div>
     <div class="gl-text gl-other" id="gl-other" hidden></div>
-    <button class="gl-btn" onclick="heroGo()">Get my plan — free →</button>
+    <button class="gl-btn" onclick="heroGo()">Discuss my goal — free →</button>
   </div>
-  <div class="micro">10 free plans every day · No credit card · GDPR-aligned</div>
+  <div class="micro">10 free messages every day · No credit card</div>
 
   <!-- PRODUCT PROOF: the recommendation visibly changes when the facts change -->
   <div class="think-card" id="think-card">
-    <div class="tc-label">APEX analyses your profile <span class="tc-live">● live</span></div>
+    <div class="tc-label">Example: how APEX adapts <span class="tc-live">illustration</span></div>
     <div class="tc-goal">Share your goal, experience, recovery and limitations to receive more accurate and safer guidance.</div>
     <div class="tc-facts">
       <div class="tc-fact f1"><span class="ic">🏋️</span> Heavy training yesterday</div>
@@ -488,42 +508,17 @@ footer a:hover{color:var(--text);}
 
 <div class="phone-stage">
   <div class="ring"></div>
-  <div class="phone" aria-hidden="true">
-    <div class="notch"></div>
-    <div class="ph-nav">
-      <div class="ph-brand">
-        <div class="ph-logo"></div>
-        <div><div class="ph-title"><span class="ra">APEX</span> PULSE PRO</div><div class="ph-sub">AI Fitness Coach</div></div>
-      </div>
-      <span class="ph-badge">● FREE</span>
-    </div>
-    <div class="chat">
-      <div class="bub u">I want to drop a few kilos — no gym, no crash diets. Where do I begin?</div>
-      <div class="bub a">Right where I work best. 💪 Share your goal, experience, recovery and limitations so I can give you more accurate and safer guidance.</div>
-      <div class="plan-card">
-        <div class="pc-head">
-          <div class="pc-title">Day 1 · Your plan</div>
-          <div class="pc-kcal">balanced ✓</div>
-        </div>
-        <div class="plan-row"><span>Breakfast: oats + apple</span><span>340</span></div>
-        <div class="plan-row"><span>Lunch: chicken + quinoa + salad</span><span>520</span></div>
-        <div class="plan-row"><span>Dinner: fish + vegetables</span><span>430</span></div>
-        <div class="plan-row"><span>Movement: 30 min brisk walk</span><span>🔥</span></div>
-      </div>
-      <div class="typing"><i></i><i></i><i></i></div>
-    </div>
-    <div class="ph-input">
-      <div class="ph-field">Describe your goal…</div>
-      <div class="ph-send">➤</div>
-    </div>
-  </div>
+  <figure class="phone">
+    <img class="app-preview" src="/static/landing/apex-app-preview-en.webp" width="390" height="844" alt="The real APEX Core and profile-setup starting screen" loading="lazy" decoding="async">
+    <figcaption class="preview-caption">Example: APEX before profile setup</figcaption>
+  </figure>
 </div>
 
 <!-- ═══ SECTION 2 — WHAT YOU RECEIVE ═══ -->
 <section class="wrap" id="receive">
   <div class="sec-label">What you receive</div>
   <h2>Workouts and meals you can actually follow.</h2>
-  <p class="sec-sub">Not just an answer. A plan built for your body, your level, and your day.</p>
+  <p class="sec-sub">Workout and nutrition examples. Your plan depends on the context you share.</p>
   <div class="rc-grid">
     <div class="rc-card rv">
       <div class="rc-head"><span class="rc-title">Today's workout</span><span class="rc-meta">40 min · Moderate · Home</span></div>
@@ -593,7 +588,7 @@ footer a:hover{color:var(--text);}
       <ul>
         <li>10 messages per day</li>
         <li>Nutrition &amp; training plans</li>
-        <li class="off">AI memory of your goals</li>
+        <li>Saved profile and history when signed in</li>
         <li class="off">PDF export of plans</li>
       </ul>
       <a href="/app?lang=en" class="p-btn" onclick="track('cta_click',{place:'plan_free'})">Try for free</a>
@@ -629,9 +624,9 @@ footer a:hover{color:var(--text);}
 <!-- ═══ FINAL START FREE ═══ -->
 <section class="wrap final-cta rv" id="start">
   <h2>Start free. Continue when you're ready.</h2>
-  <p class="sec-sub" style="margin:10px auto 0;">Say your goal in your own words — your first plan is ready in a minute.</p>
+  <p class="sec-sub" style="margin:10px auto 0;">Share your goal and context to discuss a personalized next step.</p>
   <a class="gl-btn final-btn" href="/app?lang=en" onclick="track('cta_click',{place:'final'})">Start Free →</a>
-  <div class="micro" style="animation:none;opacity:1;">10 free plans every day · No credit card · GDPR-aligned</div>
+  <div class="micro" style="animation:none;opacity:1;">10 free messages every day · No credit card</div>
 </section>
 
 <footer class="wrap">
@@ -650,7 +645,7 @@ footer a:hover{color:var(--text);}
 <button class="to-top" id="to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">↑</button>
 
 <div class="cookiebar" id="cookiebar">
-  <span class="cb-text">We use cookies for analytics and to improve the service. Choose:</span>
+  <span class="cb-text">Analytics cookies only with your consent.</span>
   <button class="cb-decline" onclick="setConsent(false)">Essential only</button>
   <button class="cb-accept" onclick="setConsent(true)">Accept</button>
 </div>
@@ -768,7 +763,7 @@ const LEGAL = {
     <p><strong>Data we collect:</strong> Apex Pulse PRO collects only what is needed to operate the service:</p>
     <ul>
       <li>Content of your questions to the AI (for processing by OpenAI)</li>
-      <li>Email address — only upon payment (provided to Stripe)</li>
+      <li>Email address — for passwordless sign-in and, when paid access is available, payment processing</li>
       <li>Anonymous analytics via Google Analytics (no individual identification)</li>
       <li>Technical data such as IP address and browser type — standard server logs</li>
     </ul>
@@ -776,9 +771,9 @@ const LEGAL = {
     <ul>
       <li>Personal financial data — processed exclusively by Stripe</li>
       <li>Card numbers, PINs, or CVV codes — we never see any of these</li>
-      <li>Sensitive personal data (national ID, passport, home address)</li>
+      <li>National ID numbers, passport documents, or home addresses</li>
     </ul>
-    <p><strong>How we store data:</strong> All connections are SSL/TLS encrypted. LocalStorage in your browser remembers only your language choice, subscription status, and disclaimer acceptance — this data does not leave your device.</p>
+    <p><strong>How we store data:</strong> Connections use SSL/TLS encryption. Before sign-in, browser storage may hold local preferences and coaching context. When signed in, APEX stores your account profile and conversation, workout, and nutrition history so they can persist across sessions and devices. Coaching context supports personalized APEX functionality.</p>
     <p><strong>Third-party processors:</strong></p>
     <ul>
       <li><strong>OpenAI</strong> — processes AI conversations (policy: openai.com/privacy)</li>

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>APEX — Your living AI coach</title>
 <meta name="robots" content="noindex">
 <meta name="referrer" content="origin">
@@ -66,6 +66,7 @@ gtag('config','G-B3WLGXE2XM',{
   --brand:#F5212D; --ember:#FF6A3C; --gold:#FFB13C;
   --cyan:#38E0FF; --lime:#B6FF3C;
   --pulse:linear-gradient(90deg,#F5212D,#FF6A3C);
+  --action-pulse:linear-gradient(90deg,#D81624,#C5441D);
   --radius:18px; --radius-lg:24px;
   --ease:cubic-bezier(.2,.7,.2,1);
   --shadow-soft:0 14px 50px rgba(0,0,0,.45);
@@ -633,6 +634,10 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
      it; factual inputs remain available below the first mobile viewport. */
   #ui{overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch;}
   .topbar{padding:calc(14px + env(safe-area-inset-top)) 16px 14px;} .brand .bs{display:none;}
+  .brand{gap:7px;min-width:0;}
+  .brand img{width:30px;height:30px;flex-shrink:0;}
+  .brand .bt{font-size:12px;letter-spacing:.25px;white-space:nowrap;}
+  .topbar,.top-right{gap:6px;}
   .menu-btn{width:44px;height:44px;}
   .pill{padding:8px 11px;}
   .center{flex:0 0 auto;min-height:calc(var(--app-viewport-height) - 72px - env(safe-area-inset-top));justify-content:flex-start;padding:4px 20px calc(24px + env(safe-area-inset-bottom));}
@@ -666,6 +671,10 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
   .position-note{order:9;margin-top:10px;padding-bottom:4px;}
   .ex-glyph{width:58px;height:58px;font-size:24px;}
 }
+@media(max-height:650px){ #ui{overflow-x:hidden;overflow-y:auto;}}
+.cta:not(.ghost),.start-wo,.wo-btn.primary,.wiz-nav .next,.sheet .save,.send-btn,.mic-btn[data-state="speaking"]{background:var(--action-pulse);}
+.pill.live{cursor:default;white-space:nowrap;}
+.pill.live:hover{transform:none;border-color:var(--border);color:var(--muted);}
 @media (prefers-reduced-motion:reduce){ #grain{animation:none;} .msg{animation:none;} }
 </style>
 </head>
@@ -685,8 +694,8 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
       <span class="bt"><span class="rd">APEX</span> PULSE PRO<br><span class="bs" id="brand-tagline">Your peak. Your pulse.</span></span>
     </a>
     <div class="top-right">
-      <button class="pill live" id="status-pill">LIVE</button>
-      <button class="menu-btn" id="menu-btn" onclick="openMenu()" aria-label="Menu"><span></span><span></span><span></span></button>
+      <span class="pill live" id="status-pill" role="status">LIVE</span>
+      <button class="menu-btn" id="menu-btn" onclick="openMenu()" aria-label="Menu" aria-controls="drawer" aria-expanded="false"><span></span><span></span><span></span></button>
     </div>
   </div>
 
@@ -714,7 +723,7 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
   <div class="consult-head">
     <button class="back-btn" onclick="exitConsult()">← <span id="back-label">Back</span></button>
     <span class="ch-label" id="ch-label">APEX COACH ENGINE</span>
-    <button class="coach-menu-btn menu-btn" id="coach-menu-btn" onclick="openMenu()" aria-label="Menu"><span></span><span></span><span></span></button>
+    <button class="coach-menu-btn menu-btn" id="coach-menu-btn" onclick="openMenu()" aria-label="Menu" aria-controls="drawer" aria-expanded="false"><span></span><span></span><span></span></button>
   </div>
   <div id="feed"></div>
   <button id="jump-latest" onclick="jumpToLatest()">↓ <span id="jump-label">Jump to latest</span></button>
@@ -845,14 +854,14 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 
 <!-- ═══ SLIDE-OUT MENU ═══ -->
 <div id="drawer-scrim" onclick="closeMenu()"></div>
-<nav id="drawer" aria-label="Main menu">
+<div id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" aria-hidden="true" inert>
   <div class="drawer-head">
-    <span class="dh-t"><span class="rd">APEX</span> PULSE PRO</span>
-    <button class="drawer-close" onclick="closeMenu()">✕</button>
+    <span class="dh-t" id="drawer-title"><span class="rd">APEX</span> PULSE PRO</span>
+    <button class="drawer-close" onclick="closeMenu()" aria-label="Close menu">✕</button>
   </div>
-  <div class="drawer-nav" id="drawer-nav"></div>
+  <nav class="drawer-nav" id="drawer-nav" aria-label="Main menu"></nav>
   <div class="drawer-foot" id="drawer-foot">APEX PULSE PRO · v3.3</div>
-</nav>
+</div>
 
 <!-- ═══ GENERIC PANEL (subscription / history / settings / privacy / about) ═══ -->
 <div class="modal" id="panel-modal" role="dialog" aria-modal="true" aria-labelledby="panel-title">
@@ -1731,6 +1740,9 @@ function setOpts(id,map){const el=document.getElementById(id);if(!el)return;[...
 function txt(id,v){const e=document.getElementById(id);if(e)e.textContent=v;}
 function applyLang(){
   const t=tr(),w=t.wiz; document.documentElement.lang=lang;
+  document.querySelector('.brand').href=lang==='en'?'/en':'/';
+  document.querySelector('.drawer-close').setAttribute('aria-label',lang==='bg'?'Затвори менюто':'Close menu');
+  document.getElementById('drawer-nav').setAttribute('aria-label',lang==='bg'?'Главно меню':'Main menu');
   txt('ov-eyebrow',t.eyebrow); txt('brand-tagline',t.tagline); txt('cta-train',t.ctaTrain); txt('cta-consult',t.ctaConsult);
   txt('back-label',t.back); document.getElementById('status-pill').childNodes[0].nodeValue=t.live;
   txt('ch-label',t.chEngine);
@@ -1959,8 +1971,30 @@ function buildMenu(){
   }
   nav.innerHTML=html;
 }
-function openMenu(){ buildMenu(); document.getElementById('drawer').classList.add('on'); document.getElementById('drawer-scrim').classList.add('on'); }
-function closeMenu(){ document.getElementById('drawer').classList.remove('on'); document.getElementById('drawer-scrim').classList.remove('on'); }
+let menuReturnFocus=null,menuBackground=[];
+function openMenu(){
+  const drawer=document.getElementById('drawer');if(drawer.classList.contains('on'))return;
+  menuReturnFocus=document.activeElement;buildMenu();
+  menuBackground=Array.from(document.body.children).filter(el=>!['drawer','drawer-scrim'].includes(el.id)&&!['SCRIPT','STYLE','SVG'].includes(el.tagName)).map(el=>[el,el.inert]);
+  menuBackground.forEach(([el])=>{el.inert=true;});
+  drawer.inert=false;drawer.setAttribute('aria-hidden','false');drawer.classList.add('on');
+  document.getElementById('drawer-scrim').classList.add('on');
+  document.querySelectorAll('[aria-controls="drawer"]').forEach(el=>el.setAttribute('aria-expanded','true'));
+  drawer.querySelector('.drawer-close').focus({preventScroll:true});
+}
+function closeMenu(){
+  const drawer=document.getElementById('drawer');if(!drawer.classList.contains('on'))return;
+  drawer.classList.remove('on');drawer.inert=true;drawer.setAttribute('aria-hidden','true');
+  document.getElementById('drawer-scrim').classList.remove('on');
+  menuBackground.forEach(([el,previous])=>{el.inert=previous;});menuBackground=[];
+  document.querySelectorAll('[aria-controls="drawer"]').forEach(el=>el.setAttribute('aria-expanded','false'));
+  restoreDialogFocus(menuReturnFocus);menuReturnFocus=null;
+}
+document.addEventListener('keydown',event=>{
+  const drawer=document.getElementById('drawer');if(!drawer.classList.contains('on'))return;
+  if(event.key==='Escape'){event.preventDefault();event.stopImmediatePropagation();closeMenu();}
+  else if(event.key==='Tab'){event.stopImmediatePropagation();containDialogFocus(event,drawer,drawer.querySelector('.drawer-close'));}
+},true);
 function menuAction(k){
   closeMenu();
   const seed=tr().seed;
