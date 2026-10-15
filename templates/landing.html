@@ -289,22 +289,32 @@ h2{font-family:'Unbounded';font-weight:700;font-size:clamp(21px,4vw,32px);line-h
 .goal.elite .go{color:#FFB13C;}
 
 /* PRICING */
-.plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;margin-top:30px;align-items:start;}
-.plan{background:var(--surface);border:1px solid rgba(255,255,255,.1);border-radius:var(--radius);padding:28px 24px;}
-.plan .p-name{font-family:'Unbounded';font-weight:700;font-size:14px;letter-spacing:1px;}
-.plan .p-price{font-family:'Unbounded';font-weight:900;font-size:36px;margin:12px 0 2px;}
-.plan .p-price span{font-size:14px;color:var(--muted);font-weight:500;font-family:'Manrope';}
-.plan .p-day{font-size:12.5px;color:var(--lime);font-weight:700;margin-bottom:16px;}
-.plan ul{list-style:none;margin:0 0 22px;}
-.plan li{font-size:14px;padding:7px 0;color:#C9D0DF;display:flex;gap:9px;align-items:flex-start;}
-.plan li::before{content:'✓';color:var(--lime);font-weight:800;flex-shrink:0;}
-.plan li.off{color:var(--muted);opacity:.55;}
-.plan li.off::before{content:'—';}
-.p-btn{display:block;text-align:center;font-weight:800;font-size:15px;padding:14px;border-radius:14px;text-decoration:none;color:#fff;border:1px solid rgba(255,255,255,.2);cursor:pointer;background:none;width:100%;font-family:'Manrope';transition:transform .15s,border-color .15s,box-shadow .15s;}
-.p-btn:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.4);}
-.p-btn.unavailable{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.16);color:var(--muted);cursor:default;}
-.p-btn.unavailable:hover{transform:none;border-color:rgba(255,255,255,.16);}
-.plan-unavailable{color:var(--muted)!important;min-height:34px;line-height:1.35;}
+#pricing{--pricing-surface:#111316;--pricing-border:#35383F;--pricing-muted:#B7BDC8;scroll-margin-top:110px;padding-bottom:32px;}
+#pricing .sec-label{color:#FF7782;letter-spacing:0;}
+#pricing h2{letter-spacing:0;}
+#pricing>.sec-sub{max-width:720px;color:var(--pricing-muted);}
+#pricing .plans{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:1fr;gap:16px;margin-top:28px;align-items:stretch;}
+#pricing .plan{display:flex;flex-direction:column;min-width:0;background:var(--pricing-surface);border:1px solid var(--pricing-border);border-radius:8px;padding:26px 24px;box-shadow:0 12px 28px rgba(0,0,0,.18);}
+#pricing .plan--core{border-color:#614049;}
+#pricing .plan--pro{border-color:#8A414B;box-shadow:inset 0 3px 0 var(--brand),0 12px 28px rgba(0,0,0,.18);}
+#pricing .p-name{font-family:'Unbounded';font-weight:700;font-size:14px;line-height:1.5;letter-spacing:0;}
+#pricing .plan--pro .p-name{color:#FF8590;}
+#pricing .p-price{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 8px;font-family:'Unbounded';font-weight:900;font-size:36px;line-height:1.25;letter-spacing:0;margin:16px 0 8px;min-height:45px;}
+#pricing .p-price span{font-size:13px;line-height:1.5;color:var(--pricing-muted);font-weight:500;font-family:'Manrope';white-space:nowrap;}
+#pricing .p-day{font-size:13px;line-height:1.6;color:var(--pricing-muted);font-weight:500;min-height:21px;}
+#pricing .plan--free .p-day{color:#FF8590;}
+#pricing .plan ul{list-style:none;margin:22px 0 24px;flex:1;}
+#pricing .plan li{font-size:14px;line-height:1.6;color:#C5CBD4;font-weight:500;overflow-wrap:break-word;}
+#pricing .plan li+li{margin-top:10px;}
+#pricing .plan li:first-child{color:var(--text);font-weight:800;}
+#pricing .p-btn{display:flex;align-items:center;justify-content:center;min-height:48px;text-align:center;font-weight:800;font-size:14px;line-height:1.4;padding:12px 16px;border-radius:6px;text-decoration:none;color:#fff;border:1px solid #D91D2C;cursor:pointer;background:#D91D2C;width:100%;font-family:'Manrope';transition:background .15s,border-color .15s;}
+#pricing a.p-btn:hover{background:#E0212F;border-color:#E0212F;}
+#pricing a.p-btn:focus-visible{outline:2px solid #FF8590;outline-offset:4px;}
+#pricing .p-btn.unavailable{justify-content:flex-start;background:none;border:0;border-top:1px solid var(--pricing-border);border-radius:0;color:var(--pricing-muted);cursor:default;padding:12px 0;}
+#pricing .pricing-shared{margin-top:18px;max-width:760px;font-size:13px;line-height:1.6;color:var(--pricing-muted);}
+@media(max-width:860px){ #pricing .plans{grid-template-columns:minmax(0,1fr);max-width:600px;gap:14px;}}
+@media(max-width:480px){ #pricing h2{font-size:26px;line-height:1.4;}#pricing .plan{padding:22px;}#pricing .p-price{font-size:34px;}}
+@media(prefers-reduced-motion:reduce){ #pricing .p-btn{transition:none;}}
 
 /* TRUST BLOCK */
 .trustblock{margin-top:24px;background:var(--surface);border:1px solid rgba(255,255,255,.1);border-radius:var(--radius);padding:20px;text-align:center;}
@@ -584,49 +594,49 @@ footer a:hover{color:var(--text);}
 
 <svg class="divider" viewBox="0 0 1200 44" preserveAspectRatio="none" aria-hidden="true"><path d="M0 22 H400 L430 6 L465 38 L495 14 L515 22 H1200"/></svg>
 
-<section class="wrap" id="pricing">
-  <div class="sec-label" data-key="pr-label">Платен достъп</div>
-  <h2 data-key="pr-title">APEX е достъпен безплатно.</h2>
-  <p class="sec-sub" data-key="pr-sub">CORE и PRO идват скоро: еднократен достъп за 30 дни, без автоматично подновяване. FREE остава достъпен.</p>
+<section class="wrap" id="pricing" aria-labelledby="pricing-title">
+  <div class="sec-label" data-key="pr-label">Достъп до APEX</div>
+  <h2 id="pricing-title" data-key="pr-title">Започни с FREE.</h2>
+  <p class="sec-sub" data-key="pr-sub">FREE е достъпен сега. CORE и PRO предстоят: еднократен достъп за 30 дни, без автоматично подновяване.</p>
   <div class="plans">
-    <div class="plan">
-      <div class="p-name">FREE</div>
+    <article class="plan plan--free" aria-labelledby="pricing-free-title">
+      <h3 class="p-name" id="pricing-free-title">FREE</h3>
       <div class="p-price">€0</div>
-      <div class="p-day" data-key="pr-free-day">Безплатен достъп</div>
+      <div class="p-day" data-key="pr-free-day">Достъпен сега</div>
       <ul>
-        <li data-key="pr-f1">10 съобщения за подвижен период от 24 часа</li>
-        <li data-key="pr-f2">Планове за хранене и тренировки</li>
-        <li data-key="pr-f3">Запазен профил и история при вход</li>
+        <li data-key="pr-f2">Тренировки и хранене</li>
+        <li data-key="pr-f1">10 съобщения за 24 часа</li>
+        <li data-key="pr-f3">Профил и история след вход</li>
         <li data-key="pr-f4">GPT-6 Luna</li>
       </ul>
       <a href="/app?lang=bg" class="p-btn" data-key="pr-free-btn" onclick="track('cta_click',{place:'plan_free'})">Пробвай безплатно</a>
-    </div>
-    <div class="plan">
-      <div class="p-name">CORE</div>
+    </article>
+    <article class="plan plan--core" aria-labelledby="pricing-core-title">
+      <h3 class="p-name" id="pricing-core-title">CORE</h3>
       <div class="p-price">€9.99<span data-key="pr-per">/30 дни</span></div>
-      <div class="p-day plan-unavailable" data-key="pr-core-day">Платеният достъп е временно недостъпен.</div>
+      <div class="p-day" data-key="pr-core-day">Еднократен достъп</div>
       <ul>
-        <li data-key="pr-c1">Без дневния FREE лимит за съобщения</li>
+        <li data-key="pr-c1">Без дневния лимит на FREE</li>
         <li data-key="pr-c2">По-дълги съобщения към APEX</li>
-        <li data-key="pr-c3">Запазен профил и история при вход</li>
+        <li data-key="pr-c3">Профил и история след вход</li>
         <li data-key="pr-c4">GPT-6 Luna</li>
       </ul>
       <span class="p-btn unavailable" data-paid-unavailable="core" data-key="pr-core-btn">Очаквайте скоро</span>
-    </div>
-    <div class="plan">
-      <div class="p-name">PRO</div>
+    </article>
+    <article class="plan plan--pro" aria-labelledby="pricing-pro-title">
+      <h3 class="p-name" id="pricing-pro-title">PRO</h3>
       <div class="p-price">€14.99<span data-key="pr-per2">/30 дни</span></div>
-      <div class="p-day plan-unavailable" data-key="pr-pro-day">Платеният достъп е временно недостъпен.</div>
+      <div class="p-day" data-key="pr-pro-day">Еднократен достъп</div>
       <ul>
-        <li data-key="pr-p1">По-дълъг контекст на разговора</li>
         <li data-key="pr-p2">GPT-6.1 Sol</li>
-        <li data-key="pr-p3">По-голям обем на отговорите</li>
-        <li data-key="pr-p4">Същите валидирани тренировки и хранене</li>
+        <li data-key="pr-p1">По-дълъг контекст на разговора</li>
+        <li data-key="pr-p3">По-обширни отговори</li>
+        <li data-key="pr-p4">Същите тренировки и хранене</li>
       </ul>
       <span class="p-btn unavailable" data-paid-unavailable="pro" data-key="pr-pro-btn">Очаквайте скоро</span>
-    </div>
+    </article>
   </div>
-
+  <p class="pricing-shared" data-key="pr-shared">Тренировки и хранене във всеки план. Профилът и историята се запазват след вход.</p>
 </section>
 
 <!-- ═══ FINAL START FREE ═══ -->
@@ -695,11 +705,12 @@ const T={
     'g2-t':'From zero','g2-p':"Never trained? Step-by-step plan, no embarrassment, no pain.",'g2-go':"I'm starting →",
     'g3-t':'Build muscle','g3-p':'Strength and mass with progressive overload and precise macros.','g3-go':'Show me →',
     'g4-t':'Elite mode','g4-p':'Advanced: precise macros, periodization, maximum results.','g4-go':"I'm in →",
-    'pr-label':'Premium access','pr-title':'APEX is available for free.','pr-sub':'CORE and PRO are coming soon: one-time 30-day access, with no automatic renewal. FREE remains available.',
-    'pr-free-day':'Free access','pr-f1':'10 messages per rolling 24 hours','pr-f2':'Nutrition & training plans','pr-f3':'Saved profile and history when signed in','pr-f4':'GPT-6 Luna','pr-free-btn':'Try for free',
+    'pr-label':'APEX access','pr-title':'Start with FREE.','pr-sub':'FREE is available now. CORE and PRO are coming soon: one-time 30-day access, with no automatic renewal.',
+    'pr-free-day':'Available now','pr-f1':'10 messages per 24-hour window','pr-f2':'Training and nutrition','pr-f3':'Profile and history after sign-in','pr-f4':'GPT-6 Luna','pr-free-btn':'Try for free',
     'pr-per':'/30 days','pr-per2':'/30 days',
-    'pr-core-day':'Premium access is temporarily unavailable.','pr-c1':'No FREE daily message quota','pr-c2':'Longer message input','pr-c3':'Saved profile and history when signed in','pr-c4':'GPT-6 Luna','pr-core-btn':'Coming soon',
-    'pr-pro-day':'Premium access is temporarily unavailable.','pr-p1':'Longer conversation context','pr-p2':'GPT-6.1 Sol','pr-p3':'Larger response budget','pr-p4':'The same validated Training and Nutrition','pr-pro-btn':'Coming soon',
+    'pr-core-day':'One-time access','pr-c1':'No FREE daily message limit','pr-c2':'Longer messages to APEX','pr-c3':'Profile and history after sign-in','pr-c4':'GPT-6 Luna','pr-core-btn':'Coming soon',
+    'pr-pro-day':'One-time access','pr-p1':'Longer conversation context','pr-p2':'GPT-6.1 Sol','pr-p3':'More room for detailed answers','pr-p4':'The same Training and Nutrition','pr-pro-btn':'Coming soon',
+    'pr-shared':'Training and Nutrition in every plan. Your profile and history are saved after sign-in.',
     'faq-title':'Honest answers',
     'fq1':'Is the payment safe?','fa1':'Yes. Payments are processed entirely by Stripe — the same system Amazon and Google use. We never see or store your card number. Refund requests are handled under the Refund Policy.',
     'fq2':'What exactly is the AI coach?','fa2':'An AI trained to build personal nutrition and movement programs. You ask in plain language, it asks back what it needs, and you get a plan for your body and your day — not a magazine template.',

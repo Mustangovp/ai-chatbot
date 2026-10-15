@@ -289,22 +289,32 @@ h2{font-family:'Unbounded';font-weight:700;font-size:clamp(21px,4vw,32px);line-h
 .goal.elite .go{color:#FFB13C;}
 
 /* PRICING */
-.plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px;margin-top:30px;align-items:start;}
-.plan{background:var(--surface);border:1px solid rgba(255,255,255,.1);border-radius:var(--radius);padding:28px 24px;}
-.plan .p-name{font-family:'Unbounded';font-weight:700;font-size:14px;letter-spacing:1px;}
-.plan .p-price{font-family:'Unbounded';font-weight:900;font-size:36px;margin:12px 0 2px;}
-.plan .p-price span{font-size:14px;color:var(--muted);font-weight:500;font-family:'Manrope';}
-.plan .p-day{font-size:12.5px;color:var(--lime);font-weight:700;margin-bottom:16px;}
-.plan ul{list-style:none;margin:0 0 22px;}
-.plan li{font-size:14px;padding:7px 0;color:#C9D0DF;display:flex;gap:9px;align-items:flex-start;}
-.plan li::before{content:'✓';color:var(--lime);font-weight:800;flex-shrink:0;}
-.plan li.off{color:var(--muted);opacity:.55;}
-.plan li.off::before{content:'—';}
-.p-btn{display:block;text-align:center;font-weight:800;font-size:15px;padding:14px;border-radius:14px;text-decoration:none;color:#fff;border:1px solid rgba(255,255,255,.2);cursor:pointer;background:none;width:100%;font-family:'Manrope';transition:transform .15s,border-color .15s,box-shadow .15s;}
-.p-btn:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.4);}
-.p-btn.unavailable{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.16);color:var(--muted);cursor:default;}
-.p-btn.unavailable:hover{transform:none;border-color:rgba(255,255,255,.16);}
-.plan-unavailable{color:var(--muted)!important;min-height:34px;line-height:1.35;}
+#pricing{--pricing-surface:#111316;--pricing-border:#35383F;--pricing-muted:#B7BDC8;scroll-margin-top:110px;padding-bottom:32px;}
+#pricing .sec-label{color:#FF7782;letter-spacing:0;}
+#pricing h2{letter-spacing:0;}
+#pricing>.sec-sub{max-width:720px;color:var(--pricing-muted);}
+#pricing .plans{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:1fr;gap:16px;margin-top:28px;align-items:stretch;}
+#pricing .plan{display:flex;flex-direction:column;min-width:0;background:var(--pricing-surface);border:1px solid var(--pricing-border);border-radius:8px;padding:26px 24px;box-shadow:0 12px 28px rgba(0,0,0,.18);}
+#pricing .plan--core{border-color:#614049;}
+#pricing .plan--pro{border-color:#8A414B;box-shadow:inset 0 3px 0 var(--brand),0 12px 28px rgba(0,0,0,.18);}
+#pricing .p-name{font-family:'Unbounded';font-weight:700;font-size:14px;line-height:1.5;letter-spacing:0;}
+#pricing .plan--pro .p-name{color:#FF8590;}
+#pricing .p-price{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 8px;font-family:'Unbounded';font-weight:900;font-size:36px;line-height:1.25;letter-spacing:0;margin:16px 0 8px;min-height:45px;}
+#pricing .p-price span{font-size:13px;line-height:1.5;color:var(--pricing-muted);font-weight:500;font-family:'Manrope';white-space:nowrap;}
+#pricing .p-day{font-size:13px;line-height:1.6;color:var(--pricing-muted);font-weight:500;min-height:21px;}
+#pricing .plan--free .p-day{color:#FF8590;}
+#pricing .plan ul{list-style:none;margin:22px 0 24px;flex:1;}
+#pricing .plan li{font-size:14px;line-height:1.6;color:#C5CBD4;font-weight:500;overflow-wrap:break-word;}
+#pricing .plan li+li{margin-top:10px;}
+#pricing .plan li:first-child{color:var(--text);font-weight:800;}
+#pricing .p-btn{display:flex;align-items:center;justify-content:center;min-height:48px;text-align:center;font-weight:800;font-size:14px;line-height:1.4;padding:12px 16px;border-radius:6px;text-decoration:none;color:#fff;border:1px solid #D91D2C;cursor:pointer;background:#D91D2C;width:100%;font-family:'Manrope';transition:background .15s,border-color .15s;}
+#pricing a.p-btn:hover{background:#E0212F;border-color:#E0212F;}
+#pricing a.p-btn:focus-visible{outline:2px solid #FF8590;outline-offset:4px;}
+#pricing .p-btn.unavailable{justify-content:flex-start;background:none;border:0;border-top:1px solid var(--pricing-border);border-radius:0;color:var(--pricing-muted);cursor:default;padding:12px 0;}
+#pricing .pricing-shared{margin-top:18px;max-width:760px;font-size:13px;line-height:1.6;color:var(--pricing-muted);}
+@media(max-width:860px){ #pricing .plans{grid-template-columns:minmax(0,1fr);max-width:600px;gap:14px;}}
+@media(max-width:480px){ #pricing h2{font-size:26px;line-height:1.4;}#pricing .plan{padding:22px;}#pricing .p-price{font-size:34px;}}
+@media(prefers-reduced-motion:reduce){ #pricing .p-btn{transition:none;}}
 
 /* FAQ */
 .faq-item{background:var(--surface);border:1px solid rgba(255,255,255,.1);border-radius:14px;margin-bottom:10px;overflow:hidden;}
@@ -576,49 +586,49 @@ footer a:hover{color:var(--text);}
 
 <svg class="divider" viewBox="0 0 1200 44" preserveAspectRatio="none" aria-hidden="true"><path d="M0 22 H400 L430 6 L465 38 L495 14 L515 22 H1200"/></svg>
 
-<section class="wrap" id="pricing">
-  <div class="sec-label">Premium access</div>
-  <h2>APEX is available for free.</h2>
-  <p class="sec-sub">CORE and PRO are coming soon: one-time 30-day access, with no automatic renewal. FREE remains available.</p>
+<section class="wrap" id="pricing" aria-labelledby="pricing-title">
+  <div class="sec-label">APEX access</div>
+  <h2 id="pricing-title">Start with FREE.</h2>
+  <p class="sec-sub">FREE is available now. CORE and PRO are coming soon: one-time 30-day access, with no automatic renewal.</p>
   <div class="plans">
-    <div class="plan">
-      <div class="p-name">FREE</div>
+    <article class="plan plan--free" aria-labelledby="pricing-free-title">
+      <h3 class="p-name" id="pricing-free-title">FREE</h3>
       <div class="p-price">€0</div>
-      <div class="p-day">Free access</div>
+      <div class="p-day">Available now</div>
       <ul>
-        <li>10 messages per rolling 24 hours</li>
-        <li>Nutrition &amp; training plans</li>
-        <li>Saved profile and history when signed in</li>
+        <li>Training and nutrition</li>
+        <li>10 messages per 24-hour window</li>
+        <li>Profile and history after sign-in</li>
         <li>GPT-6 Luna</li>
       </ul>
       <a href="/app?lang=en" class="p-btn" onclick="track('cta_click',{place:'plan_free'})">Try for free</a>
-    </div>
-    <div class="plan">
-      <div class="p-name">CORE</div>
+    </article>
+    <article class="plan plan--core" aria-labelledby="pricing-core-title">
+      <h3 class="p-name" id="pricing-core-title">CORE</h3>
       <div class="p-price">€9.99<span>/30 days</span></div>
-      <div class="p-day plan-unavailable">Premium access is temporarily unavailable.</div>
+      <div class="p-day">One-time access</div>
       <ul>
-        <li>No FREE daily message quota</li>
-        <li>Longer message input</li>
-        <li>Saved profile and history when signed in</li>
+        <li>No FREE daily message limit</li>
+        <li>Longer messages to APEX</li>
+        <li>Profile and history after sign-in</li>
         <li>GPT-6 Luna</li>
       </ul>
       <span class="p-btn unavailable" data-paid-unavailable="core">Coming soon</span>
-    </div>
-    <div class="plan">
-      <div class="p-name">PRO</div>
+    </article>
+    <article class="plan plan--pro" aria-labelledby="pricing-pro-title">
+      <h3 class="p-name" id="pricing-pro-title">PRO</h3>
       <div class="p-price">€14.99<span>/30 days</span></div>
-      <div class="p-day plan-unavailable">Premium access is temporarily unavailable.</div>
+      <div class="p-day">One-time access</div>
       <ul>
-        <li>Longer conversation context</li>
         <li>GPT-6.1 Sol</li>
-        <li>Larger response budget</li>
-        <li>The same validated Training and Nutrition</li>
+        <li>Longer conversation context</li>
+        <li>More room for detailed answers</li>
+        <li>The same Training and Nutrition</li>
       </ul>
       <span class="p-btn unavailable" data-paid-unavailable="pro">Coming soon</span>
-    </div>
+    </article>
   </div>
-
+  <p class="pricing-shared">Training and Nutrition in every plan. Your profile and history are saved after sign-in.</p>
 </section>
 
 <!-- ═══ FINAL START FREE ═══ -->
