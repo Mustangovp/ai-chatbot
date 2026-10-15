@@ -16,14 +16,15 @@ UTC = dt.timezone.utc
 
 def _expiry(token):
     padded = token + "=" * (-len(token) % 4)
-    return int(base64.urlsafe_b64decode(padded).decode().split(".")[0])
+    fields = base64.urlsafe_b64decode(padded).decode().split(".")
+    return int(fields[1] if fields[0] == "v3" else fields[0])
 
 
-def _paid_session(session_id, email="poll@example.com", plan="core"):
+def _paid_session(session_id, email="poll@example.com", plan="core", uid=None):
     return types.SimpleNamespace(
         id=session_id,
         payment_status="paid",
-        metadata={"plan": plan},
+        metadata={"plan": plan, "account_id": str(uid)},
         customer_details=types.SimpleNamespace(email=email),
         customer=None,
         amount_total=999,
@@ -44,8 +45,11 @@ def client():
 
 def test_first_redemption_creates_one_entitlement_period(client, monkeypatch):
     session_id = "cs_test_first_redemption"
+    uid = store.get_or_create_user("poll@example.com")
+    client.set_cookie("apex_session", store.create_session(uid))
+    store.bind_pending_checkout(uid, session_id, "core", 999)
     monkeypatch.setattr(appmod.stripe.checkout.Session, "retrieve",
-                        lambda supplied_id: _paid_session(supplied_id))
+                        lambda supplied_id: _paid_session(supplied_id, uid=uid))
 
     before = int(time.time())
     response = client.get(f"/poll-token?session_id={session_id}")
@@ -65,6 +69,7 @@ def test_first_redemption_creates_one_entitlement_period(client, monkeypatch):
 def test_replay_uses_the_recorded_expiry(client, monkeypatch):
     session_id = "cs_test_replay"
     uid = store.get_or_create_user("replay@example.com")
+    client.set_cookie("apex_session", store.create_session(uid))
     expiry = dt.datetime.now(UTC) + dt.timedelta(days=9)
     store.upsert_subscription(uid, "pro", expiry, stripe_session_id=session_id)
     store.record_payment(uid, session_id, 1499, "eur", "pro")
@@ -81,6 +86,7 @@ def test_replay_uses_the_recorded_expiry(client, monkeypatch):
 def test_replay_after_expiry_returns_not_ready(client, monkeypatch):
     session_id = "cs_test_expired"
     uid = store.get_or_create_user("expired@example.com")
+    client.set_cookie("apex_session", store.create_session(uid))
     expired = dt.datetime.now(UTC) - dt.timedelta(seconds=1)
     store.upsert_subscription(uid, "core", expired, stripe_session_id=session_id)
     store.record_payment(uid, session_id, 999, "eur", "core")
@@ -95,6 +101,7 @@ def test_replay_after_expiry_returns_not_ready(client, monkeypatch):
 def test_malformed_subscription_cannot_fall_through_to_new_entitlement(client, monkeypatch):
     session_id = "cs_test_malformed"
     uid = store.get_or_create_user("malformed@example.com")
+    client.set_cookie("apex_session", store.create_session(uid))
     store.record_payment(uid, session_id, 999, "eur", "core")
 
     monkeypatch.setattr(appmod.store, "get_subscription", lambda _: {

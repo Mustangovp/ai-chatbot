@@ -22,6 +22,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.types import Uuid
 from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 # ── Engine ────────────────────────────────────────────────────────────────────
 def _normalize_url(url: str) -> str:
@@ -106,7 +108,17 @@ payments = Table("payments", metadata,
     Column("amount_cents", Integer),
     Column("currency", String(8), default="eur"),
     Column("plan", String(16)),
+    Column("state", String(24), nullable=False, server_default="paid"),
+    Column("period_end", DateTime(timezone=True)),
+    Column("paid_at", DateTime(timezone=True)),
+    Column("payment_intent_id", String(120)),
+    Column("refund_id", String(120)),
     Column("created_at", DateTime(timezone=True), server_default=func.now()),
+)
+
+payment_token_revocations = Table("payment_token_revocations", metadata,
+    Column("token_hash", String(64), primary_key=True),
+    Column("revoked_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
 # Free usage belongs to the account when logged in; before login it is keyed by a
@@ -546,7 +558,30 @@ _MIGRATIONS = [
     (26, lambda c: _ensure_free_activation_analytics_state_width(c)),
     (27, lambda c: _ensure_nutrition_plan_schema(c)),
     (28, lambda c: _add_training_completion_duration(c)),
+    (29, lambda c: _ensure_payment_security_schema(c)),
 ]
+
+
+def _ensure_payment_security_schema(connection):
+    """Add purchase lifecycle facts; existing paid rows and ownership stay intact."""
+    payment_token_revocations.create(connection, checkfirst=True)
+    timestamp = "TIMESTAMP WITH TIME ZONE" if connection.dialect.name == "postgresql" else "DATETIME"
+    columns = {item["name"] for item in inspect(connection).get_columns("payments")}
+    for name, definition in (("state", "VARCHAR(24) NOT NULL DEFAULT 'paid'"),
+            ("period_end", timestamp), ("paid_at", timestamp),
+            ("payment_intent_id", "VARCHAR(120)"), ("refund_id", "VARCHAR(120)")):
+        if name not in columns:
+            connection.execute(text(f"ALTER TABLE payments ADD COLUMN {name} {definition}"))
+    inspector = inspect(connection)
+    columns = {item["name"]: item for item in inspector.get_columns("payments")}
+    revoked = {item["name"] for item in inspector.get_columns("payment_token_revocations")}
+    if not {"state", "period_end", "paid_at", "payment_intent_id", "refund_id"} <= columns.keys() or not {"token_hash", "revoked_at"} <= revoked:
+        raise RuntimeError("payment security schema is incomplete")
+    state = columns["state"]
+    if (state["nullable"] or (getattr(state["type"], "length", 0) or 0) < 24
+            or "paid" not in str(state["default"])
+            or inspector.get_pk_constraint("payment_token_revocations")["constrained_columns"] != ["token_hash"]):
+        raise RuntimeError("payment security schema constraints are invalid")
 
 
 def _add_execution_evidence(connection):
@@ -1056,12 +1091,18 @@ def get_subscription(user_id):
     try:
         with engine.begin() as c:
             row = c.execute(select(subscriptions).where(subscriptions.c.user_id == _as_uuid(user_id))).mappings().first()
+            purchase = (c.execute(select(payments.c.state).where(
+                payments.c.user_id == _as_uuid(user_id),
+                payments.c.stripe_session_id == row["stripe_session_id"])).scalar()
+                if row and row["stripe_session_id"] else None)
     except Exception as e:
         print(f"[db] get_subscription degraded to FREE (DB unavailable): {e}")
         return dict(_FREE_SUB)
     if not row:
         return {"plan": "free", "status": "free", "current_period_end": None}
     plan, status, cpe = row["plan"], row["status"], row["current_period_end"]
+    if status in ("revoked", "refunded", "refund_pending") or purchase in ("revoked", "refunded", "refund_pending"):
+        return {"plan": "free", "status": "revoked", "current_period_end": cpe.isoformat() if cpe else None}
     # Derive live status from the period end — never trust a stale row.
     if plan != "free" and cpe is not None:
         end = _aware(cpe)
@@ -1069,7 +1110,7 @@ def get_subscription(user_id):
             status = "cancelled" if end < _now() else "grace"   # cancelled but still paid through period
         elif end < _now():
             status, plan = "expired", "free"
-    return {"plan": plan if status in ("active", "grace") else ("free" if status in ("expired", "free") else plan),
+    return {"plan": plan if status in ("active", "grace") else "free",
             "status": status, "current_period_end": cpe.isoformat() if cpe else None}
 
 def upsert_subscription(user_id, plan, period_end, stripe_customer_id=None, stripe_session_id=None, status="active"):
@@ -1111,6 +1152,145 @@ def list_payments(user_id):
         rows = c.execute(select(payments).where(payments.c.user_id == _as_uuid(user_id))
                          .order_by(payments.c.created_at.desc())).mappings().all()
     return [dict(r) for r in rows]
+
+
+def get_owned_payment(user_id, session_id=None):
+    """A client reference can select a purchase, never establish its owner."""
+    uid = _as_uuid(user_id)
+    with engine.begin() as c:
+        if not session_id:
+            session_id = c.execute(select(subscriptions.c.stripe_session_id).where(
+                subscriptions.c.user_id == uid)).scalar()
+        if not session_id:
+            return None
+        row = c.execute(select(payments).where(payments.c.user_id == uid,
+            payments.c.stripe_session_id == session_id)).mappings().first()
+        if not row:
+            return None
+        result = dict(row)
+        if result["period_end"] is None and result["state"] == "paid":
+            sub = c.execute(select(subscriptions).where(subscriptions.c.user_id == uid,
+                subscriptions.c.stripe_session_id == session_id)).mappings().first()
+            result["period_end"] = (sub["current_period_end"] if sub else None)
+            if result["period_end"] is None:
+                result["period_end"] = _aware(result["created_at"]) + _dt.timedelta(days=30)
+        result["paid_at"] = result["paid_at"] or result["created_at"]
+        return result
+
+
+def bind_pending_checkout(user_id, session_id, plan, amount_cents):
+    with engine.begin() as c:
+        c.execute(insert(payments).values(id=uuid.uuid4(), user_id=_as_uuid(user_id),
+            stripe_session_id=session_id, plan=plan, amount_cents=amount_cents,
+            currency="eur", state="pending"))
+
+
+def preserve_payment_period(user_id, session_id, period_end):
+    with engine.begin() as c:
+        c.execute(update(payments).where(payments.c.user_id == _as_uuid(user_id),
+            payments.c.stripe_session_id == session_id, payments.c.period_end.is_(None),
+            payments.c.state == "paid").values(period_end=period_end))
+
+
+def fulfill_bound_checkout(session_id, plan, amount_cents, currency, payment_intent_id, stripe_customer_id=None):
+    """Only a persisted checkout owner can receive access; replay never renews it."""
+    with engine.begin() as c:
+        query = select(payments).where(payments.c.stripe_session_id == session_id)
+        if not IS_SQLITE:
+            query = query.with_for_update()
+        row = c.execute(query).mappings().first()
+        if not row or row["plan"] != plan or currency != "eur":
+            return None
+        if row["state"] == "paid":
+            return str(row["user_id"])
+        if row["state"] != "pending":
+            return None
+        now = _now()
+        end = now + _dt.timedelta(days=30)
+        claimed = c.execute(update(payments).where(payments.c.id == row["id"],
+            payments.c.state == "pending").values(state="paid", paid_at=now,
+            period_end=end, amount_cents=amount_cents, payment_intent_id=payment_intent_id)
+            .returning(payments.c.id)).first()
+        if not claimed:
+            return None
+        granted = c.execute(update(subscriptions).where(subscriptions.c.user_id == row["user_id"])
+            .values(plan=plan, status="active", current_period_end=end,
+                stripe_customer_id=stripe_customer_id, stripe_session_id=session_id))
+        if granted.rowcount != 1:
+            raise RuntimeError("checkout account subscription is missing")
+        return str(row["user_id"])
+
+
+def _persist_token_revocations(connection, tokens):
+    statement = sqlite_insert if connection.dialect.name == "sqlite" else pg_insert
+    for token in set(tokens):
+        if token:
+            connection.execute(statement(payment_token_revocations).values(token_hash=_hash(token))
+                .on_conflict_do_nothing(index_elements=["token_hash"]))
+
+
+def revoke_payment_tokens(tokens):
+    with engine.begin() as c:
+        _persist_token_revocations(c, tokens)
+
+
+def payment_token_revoked(token):
+    with engine.begin() as c:
+        return c.execute(select(payment_token_revocations.c.token_hash).where(
+            payment_token_revocations.c.token_hash == _hash(token))).first() is not None
+
+
+def get_payment_by_id(payment_id):
+    with engine.begin() as c:
+        row = c.execute(select(payments).where(payments.c.id == _as_uuid(payment_id))).mappings().first()
+    return dict(row) if row else None
+
+
+def claim_owned_refund(user_id, session_id, tokens=(), payment_intent_id=None):
+    """Revoke before the external call; one DB claim owns the refund attempt."""
+    with engine.begin() as c:
+        row = c.execute(update(payments).where(payments.c.user_id == _as_uuid(user_id),
+            payments.c.stripe_session_id == session_id, payments.c.state == "paid")
+            .values(state="refund_pending", payment_intent_id=payment_intent_id)
+            .returning(payments.c.id)).first()
+        if not row:
+            return False
+        _persist_token_revocations(c, tokens)
+        c.execute(update(subscriptions).where(subscriptions.c.user_id == _as_uuid(user_id),
+            subscriptions.c.stripe_session_id == session_id).values(status="revoked"))
+        return True
+
+
+def complete_owned_refund(user_id, session_id, refund_id):
+    with engine.begin() as c:
+        c.execute(update(payments).where(payments.c.user_id == _as_uuid(user_id),
+            payments.c.stripe_session_id == session_id, payments.c.state == "refund_pending")
+            .values(state="refunded", refund_id=refund_id))
+
+
+def revoke_refunded_payment(payment_intent_id, session_id=None):
+    """Apply a verified full-refund event only to an existing purchase binding."""
+    if not payment_intent_id:
+        return False
+    with engine.begin() as c:
+        condition = payments.c.payment_intent_id == payment_intent_id
+        if session_id:
+            condition = and_(payments.c.stripe_session_id == session_id,
+                or_(payments.c.payment_intent_id.is_(None), condition))
+        rows = c.execute(update(payments).where(condition)
+            .values(state="refunded", payment_intent_id=payment_intent_id)
+            .returning(payments.c.user_id, payments.c.stripe_session_id)).all()
+        for uid, sid in rows:
+            c.execute(update(subscriptions).where(subscriptions.c.user_id == uid,
+                subscriptions.c.stripe_session_id == sid).values(status="revoked"))
+        return bool(rows)
+
+
+def cancel_owned_payment_access(user_id, session_id):
+    with engine.begin() as c:
+        c.execute(update(subscriptions).where(subscriptions.c.user_id == _as_uuid(user_id),
+            subscriptions.c.stripe_session_id == session_id,
+            subscriptions.c.status.in_(("active", "grace", "cancelled"))).values(status="cancelled"))
 
 # ── Free usage (server-authoritative, never client-trusted) ──────────────────
 def free_usage_state(subject_type, subject_id, limit, window_seconds, bonus_extra=0):

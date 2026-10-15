@@ -126,7 +126,7 @@ import coaching                                 # BUILD-003: Adaptive Coach (HSE
 import coaching.presentation_shadow as hse_presentation_shadow
 import voice as apex_voice                       # Sprint 10: provider-independent voice (TTS) transport
 import uuid as _uuid
-from flask import g
+from flask import g, has_request_context
 try:
     store.init_db()
     print(f"[db] ready ({'sqlite' if store.IS_SQLITE else 'postgres'})")
@@ -1533,28 +1533,36 @@ def _email_sequence_worker():
 threading.Thread(target=_email_sequence_worker, daemon=True, name='email-seq').start()
 
 
-def make_token(expiry_timestamp: int, plan: str = "core") -> str:
-    """Create a signed access token that ALSO encodes the paid plan.
-    Format v2: base64(expiry.plan.signature) — signature covers expiry+plan,
-    so the frontend can no longer claim PRO after paying for CORE."""
+def make_token(expiry_timestamp: int, plan: str = "core", purchase_id=None) -> str:
+    """Sign purchase-bound v3 access; v2 is retained for legacy replay/tests."""
     if plan not in PLANS:
         plan = "core"
-    payload = f"{expiry_timestamp}.{plan}"
+    payload = f"v3.{expiry_timestamp}.{plan}.{purchase_id}" if purchase_id else f"{expiry_timestamp}.{plan}"
     signature = hmac.new(SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()[:32]
     token = base64.urlsafe_b64encode(f"{payload}.{signature}".encode()).decode().rstrip("=")
     return token
 
 
+def _purchase_tokens(purchase):
+    expiry = int(store._aware(purchase["period_end"]).timestamp())
+    plan = purchase["plan"]
+    tokens = {make_token(expiry, plan, purchase["id"])}
+    payloads = [f"{expiry}.{plan}"] + ([str(expiry)] if plan == "core" else [])
+    for payload in payloads:
+        signature = hmac.new(SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
+        for length in (16, 32):
+            tokens.add(base64.urlsafe_b64encode(f"{payload}.{signature[:length]}".encode()).decode().rstrip("="))
+    return tokens
+
+
 # EU Directive 2023/2673 — tokens withdrawn under right-of-withdrawal are
 # added here so verify_token() rejects them even if the user kept a copy.
-# Persisted to disk within the same Railway instance; survives process restarts
-# but not redeployments (Railway ephemeral filesystem). The withdrawal email to
-# coach@apexpulse.pro remains the durable audit trail.
+# The file is a read-only legacy import. PostgreSQL/SQLite now carry the durable
+# hashed denylist shared by workers, restarts and deployments.
 _REVOKED_FILE = os.path.join(os.path.dirname(__file__), 'data', 'revoked_tokens.json')
 
 def _load_revoked():
     try:
-        os.makedirs(os.path.dirname(_REVOKED_FILE), exist_ok=True)
         with open(_REVOKED_FILE, 'r') as f:
             data = _json_lib.load(f)
             return set(data) if isinstance(data, list) else set()
@@ -1562,14 +1570,12 @@ def _load_revoked():
         return set()
 
 def _save_revoked(token_set):
-    try:
-        os.makedirs(os.path.dirname(_REVOKED_FILE), exist_ok=True)
-        with open(_REVOKED_FILE, 'w') as f:
-            _json_lib.dump(list(token_set), f)
-    except Exception as e:
-        print(f'[revoked] disk write failed: {e}')
+    store.revoke_payment_tokens(token_set)
 
 _revoked_tokens = _load_revoked()
+if _revoked_tokens:
+    # Import the old instance-local denylist; all subsequent checks use the DB.
+    _save_revoked(_revoked_tokens)
 
 
 def verify_token(token: str):
@@ -1577,17 +1583,30 @@ def verify_token(token: str):
     - DEV_TOKEN → (True, 'pro')
     - v2 tokens (expiry.plan.sig) → plan comes from the signed payload
     - v1 legacy tokens (expiry.sig) → treated as 'core' (existing customers keep access)
-    - Tokens in _revoked_tokens (user invoked withdrawal) → (False, None)
+    - v3 binds the signature to a persisted purchase and its authenticated owner.
+    - Persisted revocation and purchase state override every token version.
     """
     if DEV_TOKEN and token == DEV_TOKEN:
         return True, "pro"
-    if token in _revoked_tokens:
-        return False, None
     try:
+        if token in _revoked_tokens or store.payment_token_revoked(token):
+            return False, None
         padded = token + "=" * (-len(token) % 4)
         decoded = base64.urlsafe_b64decode(padded).decode()
         parts = decoded.split(".")
-        if len(parts) == 3:  # v2: expiry.plan.signature
+        purchase = None
+        if len(parts) == 5 and parts[0] == "v3":
+            _, expiry_str, plan, purchase_id, signature = parts
+            payload = ".".join(parts[:-1])
+            purchase = store.get_payment_by_id(purchase_id)
+            if (not purchase or purchase["state"] != "paid" or purchase["plan"] != plan
+                    or not purchase["period_end"]
+                    or int(store._aware(purchase["period_end"]).timestamp()) != int(expiry_str)):
+                return False, None
+            if (not has_request_context() or not g.get("user")
+                    or str(purchase["user_id"]) != str(g.user["id"])):
+                return False, None
+        elif len(parts) == 3:  # v2: expiry.plan.signature
             expiry_str, plan, signature = parts
             payload = f"{expiry_str}.{plan}"
         elif len(parts) == 2:  # v1 legacy: expiry.signature
@@ -1598,9 +1617,22 @@ def verify_token(token: str):
             return False, None
         if time.time() > int(expiry_str):
             return False, None
+        if has_request_context() and g.get("user"):
+            if store.get_subscription(g.user["id"])["status"] == "revoked":
+                return False, None
         full = hmac.new(SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
         # Try 32-char (new) first, then 16-char (legacy) for tokens issued before #12 fix
-        if hmac.compare_digest(signature, full[:32]) or hmac.compare_digest(signature, full[:16]):
+        if hmac.compare_digest(signature, full[:32]) or (purchase is None and hmac.compare_digest(signature, full[:16])):
+            # Legacy signatures remain readable, but a bearer token cannot replace
+            # passwordless identity or resurrect an unowned/revoked purchase.
+            if has_request_context() and purchase is None:
+                if not g.get("user"):
+                    return False, None
+                owned = store.get_owned_payment(g.user["id"])
+                if (not owned or owned["state"] != "paid" or owned["plan"] != plan
+                        or not owned["period_end"]
+                        or int(store._aware(owned["period_end"]).timestamp()) != int(expiry_str)):
+                    return False, None
             return True, (plan if plan in PLANS else "core")
         return False, None
     except Exception:
@@ -1613,7 +1645,8 @@ def verify_token(token: str):
 
 @app.after_request
 def add_security_headers(response):
-    if request.path in ("/auth/me", "/auth/logout", "/api/profile", "/api/history", "/api/conversations"):
+    if request.path in ("/auth/me", "/auth/logout", "/api/profile", "/api/history", "/api/conversations",
+                        "/poll-token", "/verify-token", "/create-checkout-session", "/withdraw"):
         response.headers["Cache-Control"] = "private, no-store"
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['X-Content-Type-Options'] = 'nosniff'
@@ -3212,7 +3245,7 @@ def chat():
         is_first_contact = bool(data.get("first_contact", False))
         
         # Plan is SERVER-AUTHORITATIVE: DB subscription first (logged-in accounts),
-        # then a signed legacy token as fallback for pre-account payers, then dev.
+        # then an account-owned payment token fallback, then dev.
         db_plan, db_status = _current_plan_status()
         tok_valid, token_plan = (verify_token(token) if token else (False, None))
         is_dev = bool(DEV_TOKEN) and token == DEV_TOKEN
@@ -5096,6 +5129,8 @@ def create_checkout_session():
     """
     if not _paid_access_enabled():
         return jsonify({'error': 'paid_access_unavailable'}), 503
+    if not g.get("user"):
+        return jsonify({'error': 'unauthenticated'}), 401
     try:
         data = request.json or {}
         plan_key = data.get('plan', 'core')
@@ -5119,13 +5154,16 @@ def create_checkout_session():
             }],
             mode='payment',
             allow_promotion_codes=True,
-            metadata={'plan': plan_key},  # plan travels server-side through Stripe
+            client_reference_id=str(g.user["id"]),
+            customer_email=g.user["email"],
+            metadata={'plan': plan_key, 'account_id': str(g.user["id"])},
             success_url=host_url + '/app/success?session_id={CHECKOUT_SESSION_ID}',
             cancel_url=host_url + '/app?success=false',
         )
+        store.bind_pending_checkout(g.user["id"], session.id, plan_key, plan['amount'])
         return jsonify({'url': session.url})
     except Exception as e:
-        print(f'[checkout] Stripe error: {e}')
+        print(f'[checkout] Stripe error: {type(e).__name__}')
         return jsonify({'error': 'checkout_failed'}), 403
 
 
@@ -5155,134 +5193,125 @@ def stripe_webhook():
         print('[webhook] Invalid signature — possible forgery attempt')
         return jsonify({'error': 'invalid signature'}), 400
     except Exception as e:
-        print(f'[webhook] Bad payload: {e}')
+        print(f'[webhook] Bad payload: {type(e).__name__}')
         return jsonify({'error': 'bad payload'}), 400
 
     if event['type'] == 'checkout.session.completed':
         session = event['data']['object']
         if session.payment_status == 'paid':
-            paid_plan = (session.metadata or {}).get('plan', 'core')
-            expiry = int(time.time()) + (30 * 24 * 60 * 60)
-            token = make_token(expiry, paid_plan)
-            uid = _provision_paid_account(session, paid_plan, expiry)
-            _pending_tokens[session.id] = (token, time.time(), uid)
-            print(f'[webhook] Paid session {session.id[:20]}... plan={paid_plan} user={uid}')
+            paid_plan = _checkout_metadata(session).get('plan', 'core')
+            try:
+                uid = _provision_paid_account(session, paid_plan)
+            except Exception as error:
+                print(f'[webhook] provisioning failed: {type(error).__name__}')
+                return jsonify({'error': 'provisioning_unavailable'}), 503
+            if not uid:
+                return jsonify({'error': 'checkout_owner_not_verified'}), 409
+    elif event['type'] == 'charge.refunded':
+        charge = event['data']['object']
+        if getattr(charge, 'refunded', False) is True:
+            try:
+                pi = getattr(charge, 'payment_intent', None)
+                if not isinstance(pi, str) or not pi:
+                    return jsonify({'error': 'refund_purchase_unresolved'}), 409
+                if not store.revoke_refunded_payment(pi):
+                    # Old ledger rows lack payment_intent_id. Resolve only through
+                    # Stripe's server-side Session -> PaymentIntent association.
+                    sessions = stripe.checkout.Session.list(payment_intent=pi, limit=2)
+                    matched = False
+                    for session in sessions.data:
+                        if session.payment_intent == pi:
+                            matched = store.revoke_refunded_payment(pi, session.id) or matched
+                    if not matched:
+                        return jsonify({'error': 'refund_purchase_unresolved'}), 409
+            except Exception as error:
+                print(f'[webhook] refund persistence failed: {type(error).__name__}')
+                return jsonify({'error': 'revocation_unavailable'}), 503
     return jsonify({'ok': True})
 
 
-def _provision_paid_account(session, paid_plan, expiry_ts):
-    """DB is the source of truth: bind the payment to an account keyed by the
-    Stripe customer email, create/refresh the subscription, and record the payment.
-    Returns user_id (or None if no email available)."""
-    try:
-        details = getattr(session, 'customer_details', None)
-        email = (getattr(details, 'email', None) if details else None) or getattr(session, 'customer_email', None)
-        if not email:
-            return None
-        cust = getattr(session, 'customer', None)
-        uid = store.get_or_create_user(email, stripe_customer_id=cust)
-        if not uid:
-            return None
-        import datetime as _d
-        period_end = _d.datetime.fromtimestamp(expiry_ts, _d.timezone.utc)
-        store.upsert_subscription(uid, paid_plan, period_end, stripe_customer_id=cust,
-                                  stripe_session_id=session.id, status='active')
-        amount = getattr(session, 'amount_total', None) or PLANS.get(paid_plan, {}).get('amount')
-        store.record_payment(uid, session.id, amount, getattr(session, 'currency', 'eur') or 'eur', paid_plan)
-        return uid
-    except Exception as e:
-        print(f'[webhook] account provisioning failed: {e}')
+def _checkout_metadata(session):
+    metadata = getattr(session, "metadata", None) or {}
+    return metadata if isinstance(metadata, dict) else metadata.to_dict()
+
+
+def _provision_paid_account(session, paid_plan):
+    """Fulfill an existing account-bound purchase, never authenticate billing email."""
+    sid = getattr(session, "id", "")
+    uid = store.get_checkout_session_user(sid)
+    if not uid or paid_plan not in PLANS:
         return None
+    purchase = store.get_owned_payment(uid, sid)
+    metadata = _checkout_metadata(session)
+    bound_uid = metadata.get("account_id")
+    if (not purchase or purchase["plan"] != paid_plan
+            or (bound_uid is not None and str(bound_uid) != str(uid))
+            or (purchase["state"] == "pending" and str(bound_uid) != str(uid))
+            or getattr(session, "mode", "payment") != "payment"
+            or getattr(session, "payment_status", None) != "paid"):
+        return None
+    amount = getattr(session, "amount_total", None)
+    if not isinstance(amount, int) or isinstance(amount, bool) or amount < 0:
+        return None
+    return store.fulfill_bound_checkout(sid, paid_plan, amount,
+        getattr(session, "currency", None), getattr(session, "payment_intent", None),
+        getattr(session, "customer", None))
 
 
-_poll_rate = {}  # session_id -> [timestamps] — limit Stripe API calls per session
+_poll_rate = {}
+
 
 @app.route('/poll-token')
 def poll_token():
-    """Browser polls this after returning from Stripe until the webhook delivers the token.
-    Falls back to direct Stripe API check if webhook hasn't arrived yet (network delays)."""
-    session_id = request.args.get('session_id', '')
-    # Only accept Stripe checkout session IDs (cs_live_... or cs_test_...)
-    if not session_id or not session_id.startswith('cs_'):
-        return jsonify({'ready': False})
-
-    # Evict stale pending tokens to keep memory bounded
-    now = time.time()
-    stale = [k for k, v in _pending_tokens.items() if now - v[1] > _PENDING_TOKEN_TTL]
-    for k in stale:
-        del _pending_tokens[k]
-
-    # Primary path: webhook already stored the token + provisioned the account.
-    entry = _pending_tokens.pop(session_id, None)
-    if entry:
-        token, _, uid = (entry + (None,))[:3]
-        return _poll_success(token, uid)
-
-    # A completed Checkout session may be replayed after its one-time pending token
-    # has been consumed or evicted. Never create a new 30-day period for it: only
-    # restore the entitlement already recorded for its account, if it is still live.
-    redeemed_uid = store.get_checkout_session_user(session_id)
-    if redeemed_uid:
-        sub = store.get_subscription(redeemed_uid)
-        period_end = sub.get("current_period_end")
-        if sub.get("plan") in PLANS and sub.get("status") in ("active", "grace") and period_end:
-            try:
-                recorded_end = _dt.datetime.fromisoformat(period_end)
-                if recorded_end.tzinfo is None:
-                    recorded_end = recorded_end.replace(tzinfo=_dt.timezone.utc)
-                expiry = int(recorded_end.timestamp())
-            except (TypeError, ValueError):
-                expiry = 0
-            if expiry > now:
-                return _poll_success(make_token(expiry, sub["plan"]), redeemed_uid)
-        return jsonify({'ready': False})
-
-    # Fallback: webhook may be slightly delayed — verify directly with Stripe.
-    # Rate-limit to 5 Stripe API calls per session_id to avoid hammering Stripe.
-    timestamps = _poll_rate.get(session_id, [])
-    timestamps = [t for t in timestamps if now - t < 60]
-    if len(timestamps) >= 5:
-        return jsonify({'ready': False})
-    timestamps.append(now)
-    _poll_rate[session_id] = timestamps
-    # Evict old entries from rate-limit tracker
-    if len(_poll_rate) > 2000:
-        cutoff = now - 120
-        for k in list(_poll_rate.keys()):
-            if not _poll_rate[k] or _poll_rate[k][-1] < cutoff:
-                del _poll_rate[k]
-
+    """Only the signed-in purchase owner can recover access; never mint a login."""
+    if not g.get("user"):
+        return jsonify({"error": "unauthenticated", "ready": False}), 401
+    sid = request.args.get("session_id", "")
+    if not sid.startswith("cs_") or len(sid) > 120:
+        return jsonify({"ready": False})
     try:
-        session = stripe.checkout.Session.retrieve(session_id)
-        if session.payment_status == 'paid':
-            paid_plan = (session.metadata or {}).get('plan', 'core')
-            expiry = int(time.time()) + (30 * 24 * 60 * 60)
-            token = make_token(expiry, paid_plan)
-            uid = _provision_paid_account(session, paid_plan, expiry)
-            print(f'[poll-token] Fallback: paid session {session_id[:20]}... user={uid}')
-            return _poll_success(token, uid)
-    except Exception as e:
-        print(f'[poll-token] Stripe error: {e}')
-    return jsonify({'ready': False})
-
-
-def _poll_success(token, uid):
-    """Return the legacy token AND — if we resolved an account — log the browser in
-    by minting a real session cookie, so the purchase flow is one continuous path."""
-    body = {'ready': True, 'token': token, 'authenticated': bool(uid)}
-    sid = None
-    if uid:
+        purchase = store.get_owned_payment(g.user["id"], sid)
+    except Exception:
+        return jsonify({"error": "payment_unavailable", "ready": False}), 503
+    if not purchase:
+        return jsonify({"error": "payment_not_owned", "ready": False}), 403
+    if purchase["state"] == "pending":
+        now = time.time()
+        stamps = [t for t in _poll_rate.get(sid, []) if now - t < 60]
+        if len(stamps) >= 5:
+            return jsonify({"ready": False})
+        stamps.append(now)
+        _poll_rate[sid] = stamps
         try:
-            sid = _create_reconciled_session(uid)
-            if not sid:
-                body['authenticated'] = False
-        except Exception as e:
-            print(f'[poll-token] session mint failed: {e}')
-            body['authenticated'] = False
-    resp = make_response(jsonify(body))
-    if sid:
-        _set_session_cookie(resp, sid)
-    return resp
+            session = stripe.checkout.Session.retrieve(sid)
+            if getattr(session, "id", None) != sid:
+                return jsonify({"error": "payment_confirmation_mismatch", "ready": False}), 409
+            if not _provision_paid_account(session, purchase["plan"]):
+                return jsonify({"ready": False})
+            purchase = store.get_owned_payment(g.user["id"], sid)
+        except Exception as error:
+            print(f"[poll-token] confirmation failed: {type(error).__name__}")
+            return jsonify({"ready": False})
+    sub = store.get_subscription(g.user["id"])
+    if (purchase["state"] != "paid" or sub["status"] not in ("active", "grace")
+            or purchase["plan"] not in PLANS or not purchase["period_end"]):
+        return jsonify({"ready": False})
+    try:
+        subscription_end = _dt.datetime.fromisoformat(sub["current_period_end"])
+        if store._aware(subscription_end).timestamp() <= time.time():
+            return jsonify({"ready": False})
+    except (TypeError, ValueError):
+        return jsonify({"ready": False})
+    expiry = int(store._aware(purchase["period_end"]).timestamp())
+    if expiry <= time.time():
+        return jsonify({"ready": False})
+    # Backfill the exact old recorded period once; v3 binds new tokens to purchase.
+    store.preserve_payment_period(g.user["id"], sid, purchase["period_end"])
+    return _poll_success(make_token(expiry, purchase["plan"], purchase["id"]))
+
+
+def _poll_success(token):
+    return jsonify({"ready": True, "token": token, "authenticated": True})
 
 
 @app.route('/success')
@@ -5335,7 +5364,8 @@ def verify_token_endpoint():
     if is_valid and not is_dev:
         try:
             padded = token + "=" * (-len(token) % 4)
-            expiry = int(base64.urlsafe_b64decode(padded).decode().split(".")[0])
+            fields = base64.urlsafe_b64decode(padded).decode().split(".")
+            expiry = int(fields[1] if fields[0] == "v3" else fields[0])
         except Exception:
             expiry = 0
     return jsonify({'valid': is_valid, 'isDev': is_dev, 'plan': plan or 'free', 'expiry': expiry})
@@ -5367,74 +5397,77 @@ def withdraw_endpoint():
     session_id = str(data.get('session_id', ''))[:200]
     user_lang = str(data.get('lang', 'bg'))[:5]
 
-    is_valid, plan = verify_token(token)
-    if not is_valid:
-        return jsonify({'ok': False, 'error': 'invalid_token'}), 401
+    if not g.get("user"):
+        return jsonify({'ok': False, 'error': 'unauthenticated'}), 401
     if DEV_TOKEN and token == DEV_TOKEN:
         return jsonify({'ok': False, 'error': 'dev_token_not_refundable'}), 400
-
-    # Decode expiry from the token to compute hours_since_payment server-side.
     try:
-        padded = token + '=' * (-len(token) % 4)
-        decoded = base64.urlsafe_b64decode(padded).decode()
-        expiry_ts = int(decoded.split('.')[0])
+        purchase = store.get_owned_payment(g.user["id"], session_id or None)
     except Exception:
-        return jsonify({'ok': False, 'error': 'invalid_token'}), 401
-
-    now_ts = int(time.time())
-    payment_ts = expiry_ts - (30 * 24 * 60 * 60)
+        return jsonify({'ok': False, 'error': 'payment_unavailable'}), 503
+    if not purchase or purchase["plan"] not in PLANS or not purchase["period_end"]:
+        return jsonify({'ok': False, 'error': 'payment_not_owned'}), 403
+    session_id = purchase["stripe_session_id"]
+    plan = purchase["plan"]
+    if purchase["state"] in ("refunded", "refund_pending", "revoked"):
+        return jsonify({'ok': True, 'refunded': purchase["state"] == "refunded",
+                        'access_revoked': True})
+    if purchase["state"] != "paid":
+        return jsonify({'ok': False, 'error': 'payment_not_completed'}), 409
+    tokens = _purchase_tokens(purchase)
+    if token and token not in tokens:
+        return jsonify({'ok': False, 'error': 'payment_token_mismatch'}), 403
+    now_ts = time.time()
+    payment_ts = store._aware(purchase["paid_at"]).timestamp()
     hours_since = (now_ts - payment_ts) / 3600.0
     if hours_since < 0:
-        return jsonify({'ok': False, 'error': 'invalid_token'}), 401
-
-    # Try to recover the customer's email from the Stripe session (best-effort,
-    # used for both the within-window refund flow and the waiver acknowledgment).
-    customer_email = ''
-    if session_id and session_id.startswith('cs_'):
-        try:
-            session = stripe.checkout.Session.retrieve(session_id)
-            cd = getattr(session, 'customer_details', None)
-            if cd:
-                customer_email = (cd.email if hasattr(cd, 'email') else cd.get('email', '')) or ''
-        except Exception as e:
-            print(f'[withdraw] Stripe session retrieve failed for {session_id[:24]}...: {e}')
-
+        return jsonify({'ok': False, 'error': 'invalid_payment_date'}), 409
+    customer_email = g.user["email"]
     ip = request.headers.get('X-Forwarded-For', request.remote_addr or '?').split(',')[0].strip()
     payment_date_str = time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime(payment_ts))
-    amount = PLAN_AMOUNTS_EUR.get(plan, '?')
+    amount = f'{purchase["amount_cents"] / 100:.2f}'
     admin_addr = os.getenv('LEAD_NOTIFY_EMAIL', os.getenv('GMAIL_USER', COACH_INBOX))
 
-    # Mark the account subscription cancelled in the DB (server truth), regardless
-    # of window — grace period keeps access until period end where applicable.
-    if g.get("user"):
-        try: store.cancel_subscription(g.user["id"])
-        except Exception as e: print(f"[withdraw] db cancel failed: {e}")
-
-    # ─────────── WITHIN 7-DAY WINDOW → revoke + refund ───────────
     if hours_since <= WITHDRAW_WINDOW_HOURS:
-        # Revoke immediately so the token stops working even if cached client-side.
-        _revoked_tokens.add(token)
-        _save_revoked(_revoked_tokens)
-
-        refund_id = None
-        refund_error = None
-        if session_id and session_id.startswith('cs_'):
+        pi = purchase["payment_intent_id"]
+        if not pi:
             try:
                 session = stripe.checkout.Session.retrieve(session_id)
-                pi = getattr(session, 'payment_intent', None)
-                if not pi:
-                    raise RuntimeError('session has no payment_intent')
-                refund = stripe.Refund.create(payment_intent=pi)
+                if getattr(session, "id", None) != session_id:
+                    return jsonify({'ok': False, 'error': 'payment_confirmation_mismatch'}), 409
+                metadata = _checkout_metadata(session)
+                if (metadata.get("plan", plan) != plan or
+                        (metadata.get("account_id") is not None and
+                         str(metadata["account_id"]) != str(g.user["id"]))):
+                    return jsonify({'ok': False, 'error': 'payment_confirmation_mismatch'}), 409
+                pi = getattr(session, "payment_intent", None)
+                if not pi or getattr(session, "payment_status", None) != "paid":
+                    return jsonify({'ok': False, 'error': 'payment_not_completed'}), 409
+            except Exception as error:
+                print(f'[withdraw] confirmation failed: {type(error).__name__}')
+                return jsonify({'ok': False, 'error': 'payment_unavailable'}), 503
+        try:
+            claimed = store.claim_owned_refund(g.user["id"], session_id, tokens, pi)
+        except Exception:
+            return jsonify({'ok': False, 'error': 'revocation_unavailable'}), 503
+        if not claimed:
+            return jsonify({'ok': True, 'refunded': False, 'access_revoked': True})
+        refund_id = None
+        refund_error = None
+        try:
+            refund = stripe.Refund.create(payment_intent=pi,
+                idempotency_key=f'apex-refund-{purchase["id"]}')
+            if getattr(refund, "status", None) == "succeeded":
                 refund_id = refund.id
-                print(f'[withdraw] Refund {refund_id} for session {session_id[:24]}... ({hours_since:.1f}h)')
-            except Exception as e:
-                refund_error = str(e)
-                print(f'[withdraw] Stripe refund failed: {e}')
-        else:
-            refund_error = 'no session_id stored'
+                store.complete_owned_refund(g.user["id"], session_id, refund_id)
+            else:
+                refund_error = 'refund_pending'
+        except Exception as error:
+            refund_error = type(error).__name__
+            print(f'[withdraw] refund failed: {refund_error}')
 
         # Confirmation to the user (best-effort if we have an email)
-        if customer_email and '@' in customer_email:
+        if refund_id and customer_email and '@' in customer_email:
             if user_lang == 'en':
                 subject = 'Subscription cancelled — refund on the way'
                 user_body = (
@@ -5484,7 +5517,7 @@ def withdraw_endpoint():
             f"Refund error:      {refund_error or '(none)'}\n"
             f"Customer email:    {customer_email or '(unknown)'}\n"
             f"User IP:           {ip}\n"
-            f"Token (revoked):   {token[:24]}...\n"
+            "Purchase access:  durably revoked\n"
             f"User language:     {user_lang}\n"
         )
         send_email(admin_addr, admin_subject, admin_body,
@@ -5497,6 +5530,7 @@ def withdraw_endpoint():
     # Token stays active until natural expiry. We honor the user's notice
     # by recording it and emailing both parties, but do not refund (per
     # Terms §4 — right of withdrawal waived for delivered digital content).
+    store.cancel_owned_payment_access(g.user["id"], session_id)
     if customer_email and '@' in customer_email:
         if user_lang == 'en':
             subject = 'Cancellation request received — APEX PULSE PRO'
@@ -5546,7 +5580,7 @@ def withdraw_endpoint():
         f"Stripe session_id: {session_id or '(not stored)'}\n"
         f"Customer email:    {customer_email or '(unknown)'}\n"
         f"User IP:           {ip}\n"
-        f"Token (KEPT ACTIVE until natural expiry): {token[:24]}...\n"
+        "Purchase access continues until recorded expiry.\n"
         f"User language:     {user_lang}\n\n"
         "Per Terms §4 + EU 2023/2673 waiver. No action required unless user disputes.\n"
     )
