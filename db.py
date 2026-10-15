@@ -1146,6 +1146,11 @@ def get_subscription(user_id):
     except Exception as e:
         print(f"[db] get_subscription degraded to FREE (DB unavailable): {e}")
         return dict(_FREE_SUB)
+    return _subscription_projection(row, purchase)
+
+
+def _subscription_projection(row, purchase):
+    """Shared read projection; billing never creates a second access policy."""
     if not row:
         return {"plan": "free", "status": "free", "current_period_end": None}
     plan, status, cpe = row["plan"], row["status"], row["current_period_end"]
@@ -1200,6 +1205,56 @@ def list_payments(user_id):
         rows = c.execute(select(payments).where(payments.c.user_id == _as_uuid(user_id))
                          .order_by(payments.c.created_at.desc())).mappings().all()
     return [dict(r) for r in rows]
+
+
+def get_billing_summary(user_id):
+    """Account-owned display facts only; no inferred charges, cards or renewals."""
+    uid = _as_uuid(user_id)
+    current_purchase = payments.alias("billing_current_purchase")
+    with engine.connect() as connection:
+        # One statement keeps access and purchase facts in the same DB snapshot.
+        rows = connection.execute(select(payments,
+            subscriptions.c.plan.label("access_plan"), subscriptions.c.status.label("access_status"),
+            subscriptions.c.current_period_end.label("access_end"),
+            subscriptions.c.stripe_session_id.label("access_reference"),
+            current_purchase.c.state.label("purchase_state"))
+            .select_from(users.outerjoin(subscriptions, subscriptions.c.user_id == users.c.id)
+                .outerjoin(current_purchase, and_(current_purchase.c.user_id == users.c.id,
+                    current_purchase.c.stripe_session_id == subscriptions.c.stripe_session_id))
+                .outerjoin(payments, payments.c.user_id == users.c.id))
+            .where(users.c.id == uid)
+            .order_by(payments.c.created_at.desc(), payments.c.id).limit(20)).mappings().all()
+    first = rows[0] if rows else None
+    sub = (dict(plan=first["access_plan"], status=first["access_status"],
+                current_period_end=first["access_end"], stripe_session_id=first["access_reference"])
+           if first and first["access_plan"] is not None else None)
+    entitlement = _subscription_projection(sub, first["purchase_state"] if first else None)
+    purchases = []
+    for row in rows:
+        if row["id"] is None:
+            continue
+        state = row["state"] if row["state"] in ("paid", "pending", "refund_pending", "refunded", "revoked") else "unknown"
+        # A pending checkout contains a quoted price, not a confirmed charge.
+        amount = row["amount_cents"] if state not in ("pending", "unknown") else None
+        if not isinstance(amount, int) or isinstance(amount, bool) or amount < 0:
+            amount = None
+        period = row["period_end"]
+        if (period is None and sub and sub["stripe_session_id"] == row["stripe_session_id"]
+                and sub["plan"] == row["plan"]):
+            period = sub["current_period_end"]
+        purchases.append(dict(reference=row["stripe_session_id"],
+            plan=row["plan"] if row["plan"] in ("core", "pro") else None,
+            state=state, recorded_at=_aware(row["created_at"]).isoformat() if row["created_at"] else None,
+            paid_at=_aware(row["paid_at"]).isoformat() if row["paid_at"] else None,
+            amount_cents=amount, currency=row["currency"] if amount is not None else None,
+            access_until=_aware(period).isoformat() if period else None,
+            refund_status=row["refund_status"] if row["refund_status"] in
+                ("pending", "succeeded", "failed", "canceled", "requires_action", "unconfirmed") else None,
+            can_request_refund=bool(state == "paid" and row["stripe_session_id"] and period
+                and (row["paid_at"] or row["created_at"]))))
+    end = sub["current_period_end"] if sub else None
+    return {"entitlement": {"plan": entitlement["plan"], "status": entitlement["status"],
+        "access_until": _aware(end).isoformat() if end else None}, "purchases": purchases}
 
 
 def get_owned_payment(user_id, session_id=None):

@@ -467,7 +467,7 @@ footer a:hover{color:var(--text);}
     <div class="gl-text gl-other" id="gl-other" hidden></div>
     <button class="gl-btn" onclick="heroGo()">Discuss my goal — free →</button>
   </div>
-  <div class="micro">10 free messages every day · No credit card</div>
+  <div class="micro">10 free messages / 24h · No card</div>
 
   <!-- PRODUCT PROOF: the recommendation visibly changes when the facts change -->
   <div class="think-card" id="think-card">
@@ -579,17 +579,17 @@ footer a:hover{color:var(--text);}
 <section class="wrap" id="pricing">
   <div class="sec-label">Premium access</div>
   <h2>APEX is available for free.</h2>
-  <p class="sec-sub">CORE and PRO are coming soon. FREE access remains available while paid plans are being prepared for launch.</p>
+  <p class="sec-sub">CORE and PRO are coming soon: one-time 30-day access, with no automatic renewal. FREE remains available.</p>
   <div class="plans">
     <div class="plan">
       <div class="p-name">FREE</div>
       <div class="p-price">€0</div>
-      <div class="p-day">forever</div>
+      <div class="p-day">Free access</div>
       <ul>
-        <li>10 messages per day</li>
+        <li>10 messages per rolling 24 hours</li>
         <li>Nutrition &amp; training plans</li>
         <li>Saved profile and history when signed in</li>
-        <li class="off">PDF export of plans</li>
+        <li>GPT-6 Luna</li>
       </ul>
       <a href="/app?lang=en" class="p-btn" onclick="track('cta_click',{place:'plan_free'})">Try for free</a>
     </div>
@@ -598,10 +598,10 @@ footer a:hover{color:var(--text);}
       <div class="p-price">€9.99<span>/30 days</span></div>
       <div class="p-day plan-unavailable">Premium access is temporarily unavailable.</div>
       <ul>
-        <li><b>Unlimited</b> messages</li>
-        <li>AI remembers your goals &amp; progress</li>
-        <li>PDF export for every plan</li>
-        <li>EN / BG interface</li>
+        <li>No FREE daily message quota</li>
+        <li>Longer message input</li>
+        <li>Saved profile and history when signed in</li>
+        <li>GPT-6 Luna</li>
       </ul>
       <span class="p-btn unavailable" data-paid-unavailable="core">Coming soon</span>
     </div>
@@ -610,10 +610,10 @@ footer a:hover{color:var(--text);}
       <div class="p-price">€14.99<span>/30 days</span></div>
       <div class="p-day plan-unavailable">Premium access is temporarily unavailable.</div>
       <ul>
-        <li>Everything in CORE</li>
-        <li><b>The most capable AI model</b></li>
-        <li>6× longer memory window</li>
-        <li>Programs detailed down to the gram</li>
+        <li>Longer conversation context</li>
+        <li>GPT-6.1 Sol</li>
+        <li>Larger response budget</li>
+        <li>The same validated Training and Nutrition</li>
       </ul>
       <span class="p-btn unavailable" data-paid-unavailable="pro">Coming soon</span>
     </div>
@@ -626,7 +626,7 @@ footer a:hover{color:var(--text);}
   <h2>Start free. Continue when you're ready.</h2>
   <p class="sec-sub" style="margin:10px auto 0;">Share your goal and context to discuss a personalized next step.</p>
   <a class="gl-btn final-btn" href="/app?lang=en" onclick="track('cta_click',{place:'final'})">Start Free →</a>
-  <div class="micro" style="animation:none;opacity:1;">10 free messages every day · No credit card</div>
+  <div class="micro" style="animation:none;opacity:1;">10 free messages / 24h · No card</div>
 </section>
 
 <footer class="wrap">
@@ -750,8 +750,8 @@ showCookieBar(false);
 const LEGAL = {
   terms: `<h2>Terms of Service</h2>
     <p><strong>1. Service:</strong> APEX PULSE PRO provides AI-based fitness and nutrition recommendations for informational purposes only. The service does not replace professional medical consultation or a personal dietitian.</p>
-    <p><strong>2. Registration:</strong> No registration is required for the free version. Paid plans require an email for receipt issuance via Stripe.</p>
-    <p><strong>3. Payments:</strong> A one-time payment unlocks PRO features for 30 days. Payments are processed securely by Stripe (PCI-DSS Level 1). Apex Pulse PRO has no access to card or bank data.</p>
+    <p><strong>2. Registration:</strong> No registration is required for the free version. Paid access requires a verified, signed-in account; the purchase is linked to that account.</p>
+    <p><strong>3. Payments:</strong> A one-time payment provides the selected CORE or PRO access for 30 days. Payments are processed securely by Stripe (PCI-DSS Level 1). Apex Pulse PRO has no access to card or bank data.</p>
     <p><strong>4. Access duration:</strong> Access is valid for 30 days from payment. After expiration, users may pay again for a new 30-day period. The service is not auto-renewing.</p>
     <p><strong>5. Disclaimer:</strong> All plans and advice are for informational purposes only. Apex Pulse PRO, its creators and owners are not liable for any health problems, injuries, adverse reactions or other consequences from using the service. Always consult a doctor before starting any diet or training program.</p>
     <p><strong>6. Right of withdrawal:</strong> Under Article 16(m) of EU Directive 2011/83/EU, for digital content not delivered on a tangible medium, the user waives the right of withdrawal upon commencement of content delivery with their explicit consent. By paying and beginning to use the service, the user provides this explicit consent.</p>

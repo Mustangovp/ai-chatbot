@@ -475,7 +475,7 @@ footer a:hover{color:var(--text);}
     <div class="gl-text gl-other" id="gl-other" hidden></div>
     <button class="gl-btn" onclick="heroGo()" data-key="gl-btn">Обсъди целта ми — безплатно →</button>
   </div>
-  <div class="micro" data-key="micro">10 безплатни съобщения всеки ден · без карта, без регистрация</div>
+  <div class="micro" data-key="micro">10 безплатни съобщения / 24ч · без карта</div>
 
   <!-- PRODUCT PROOF: the recommendation visibly changes when the facts change -->
   <div class="think-card" id="think-card">
@@ -587,17 +587,17 @@ footer a:hover{color:var(--text);}
 <section class="wrap" id="pricing">
   <div class="sec-label" data-key="pr-label">Платен достъп</div>
   <h2 data-key="pr-title">APEX е достъпен безплатно.</h2>
-  <p class="sec-sub" data-key="pr-sub">CORE и PRO идват скоро. FREE достъпът остава активен, докато подготвяме платените планове за пускане.</p>
+  <p class="sec-sub" data-key="pr-sub">CORE и PRO идват скоро: еднократен достъп за 30 дни, без автоматично подновяване. FREE остава достъпен.</p>
   <div class="plans">
     <div class="plan">
       <div class="p-name">FREE</div>
       <div class="p-price">€0</div>
-      <div class="p-day" data-key="pr-free-day">завинаги</div>
+      <div class="p-day" data-key="pr-free-day">Безплатен достъп</div>
       <ul>
-        <li data-key="pr-f1">10 съобщения на ден</li>
+        <li data-key="pr-f1">10 съобщения за подвижен период от 24 часа</li>
         <li data-key="pr-f2">Планове за хранене и тренировки</li>
         <li data-key="pr-f3">Запазен профил и история при вход</li>
-        <li class="off" data-key="pr-f4">PDF на плановете</li>
+        <li data-key="pr-f4">GPT-6 Luna</li>
       </ul>
       <a href="/app?lang=bg" class="p-btn" data-key="pr-free-btn" onclick="track('cta_click',{place:'plan_free'})">Пробвай безплатно</a>
     </div>
@@ -606,10 +606,10 @@ footer a:hover{color:var(--text);}
       <div class="p-price">€9.99<span data-key="pr-per">/30 дни</span></div>
       <div class="p-day plan-unavailable" data-key="pr-core-day">Платеният достъп е временно недостъпен.</div>
       <ul>
-        <li data-key="pr-c1"><b>Неограничени</b> съобщения</li>
-        <li data-key="pr-c2">AI помни целите и прогреса ти</li>
-        <li data-key="pr-c3">PDF на всеки план</li>
-        <li data-key="pr-c4">BG / EN</li>
+        <li data-key="pr-c1">Без дневния FREE лимит за съобщения</li>
+        <li data-key="pr-c2">По-дълги съобщения към APEX</li>
+        <li data-key="pr-c3">Запазен профил и история при вход</li>
+        <li data-key="pr-c4">GPT-6 Luna</li>
       </ul>
       <span class="p-btn unavailable" data-paid-unavailable="core" data-key="pr-core-btn">Очаквайте скоро</span>
     </div>
@@ -618,10 +618,10 @@ footer a:hover{color:var(--text);}
       <div class="p-price">€14.99<span data-key="pr-per2">/30 дни</span></div>
       <div class="p-day plan-unavailable" data-key="pr-pro-day">Платеният достъп е временно недостъпен.</div>
       <ul>
-        <li data-key="pr-p1">Всичко от CORE</li>
-        <li data-key="pr-p2"><b>Най-умният AI модел</b></li>
-        <li data-key="pr-p3">6× по-дълга памет</li>
-        <li data-key="pr-p4">Детайлни програми до последния грам</li>
+        <li data-key="pr-p1">По-дълъг контекст на разговора</li>
+        <li data-key="pr-p2">GPT-6.1 Sol</li>
+        <li data-key="pr-p3">По-голям обем на отговорите</li>
+        <li data-key="pr-p4">Същите валидирани тренировки и хранене</li>
       </ul>
       <span class="p-btn unavailable" data-paid-unavailable="pro" data-key="pr-pro-btn">Очаквайте скоро</span>
     </div>
@@ -634,7 +634,7 @@ footer a:hover{color:var(--text);}
   <h2>Започни безплатно. Продължи, когато си готов.</h2>
   <p class="sec-sub" style="margin:10px auto 0;">Сподели целта и контекста си, за да обсъдим персонализирана следваща стъпка.</p>
   <a class="gl-btn final-btn" href="/app?lang=bg" onclick="track('cta_click',{place:'final'})">Започни безплатно →</a>
-  <div class="micro" style="animation:none;opacity:1;">10 безплатни съобщения всеки ден · без карта, без регистрация</div>
+  <div class="micro" style="animation:none;opacity:1;">10 безплатни съобщения / 24ч · без карта</div>
 </section>
 
 <footer class="wrap">
@@ -678,7 +678,7 @@ const T={
     'gl-want':'I want to lose','gl-for':'in',
     'gl-btn':'Discuss my goal — free →',
     'gl-alt1':'Different goal?','gl-alt2':'Muscle, tone or starting from zero ↓',
-    'micro':'10 free messages every day · no card, no signup',
+    'micro':'10 free messages / 24h · No card',
     'proof-label':'plans created today',
     'mq-1':'Fat loss','mq-2':'Muscle','mq-3':'Tone','mq-4':'Nutrition','mq-5':'Cardio','mq-6':'Strength','mq-7':'Energy',
     'mq-1b':'Fat loss','mq-2b':'Muscle','mq-3b':'Tone','mq-4b':'Nutrition','mq-5b':'Cardio','mq-6b':'Strength','mq-7b':'Energy',
@@ -695,11 +695,11 @@ const T={
     'g2-t':'From zero','g2-p':"Never trained? Step-by-step plan, no embarrassment, no pain.",'g2-go':"I'm starting →",
     'g3-t':'Build muscle','g3-p':'Strength and mass with progressive overload and precise macros.','g3-go':'Show me →',
     'g4-t':'Elite mode','g4-p':'Advanced: precise macros, periodization, maximum results.','g4-go':"I'm in →",
-    'pr-label':'Premium access','pr-title':'APEX is available for free.','pr-sub':'CORE and PRO are coming soon. FREE access remains available while paid plans are being prepared for launch.',
-    'pr-free-day':'forever','pr-f1':'10 messages per day','pr-f2':'Nutrition & training plans','pr-f3':'Saved profile and history when signed in','pr-f4':'PDF of your plans','pr-free-btn':'Try for free',
+    'pr-label':'Premium access','pr-title':'APEX is available for free.','pr-sub':'CORE and PRO are coming soon: one-time 30-day access, with no automatic renewal. FREE remains available.',
+    'pr-free-day':'Free access','pr-f1':'10 messages per rolling 24 hours','pr-f2':'Nutrition & training plans','pr-f3':'Saved profile and history when signed in','pr-f4':'GPT-6 Luna','pr-free-btn':'Try for free',
     'pr-per':'/30 days','pr-per2':'/30 days',
-    'pr-core-day':'Premium access is temporarily unavailable.','pr-c1':'<b>Unlimited</b> messages','pr-c2':'AI remembers your goals & progress','pr-c3':'PDF for every plan','pr-c4':'BG / EN','pr-core-btn':'Coming soon',
-    'pr-pro-day':'Premium access is temporarily unavailable.','pr-p1':'Everything in CORE','pr-p2':'<b>The smartest AI model</b>','pr-p3':'6× longer memory','pr-p4':'Detailed programs down to the gram','pr-pro-btn':'Coming soon',
+    'pr-core-day':'Premium access is temporarily unavailable.','pr-c1':'No FREE daily message quota','pr-c2':'Longer message input','pr-c3':'Saved profile and history when signed in','pr-c4':'GPT-6 Luna','pr-core-btn':'Coming soon',
+    'pr-pro-day':'Premium access is temporarily unavailable.','pr-p1':'Longer conversation context','pr-p2':'GPT-6.1 Sol','pr-p3':'Larger response budget','pr-p4':'The same validated Training and Nutrition','pr-pro-btn':'Coming soon',
     'faq-title':'Honest answers',
     'fq1':'Is the payment safe?','fa1':'Yes. Payments are processed entirely by Stripe — the same system Amazon and Google use. We never see or store your card number. Refund requests are handled under the Refund Policy.',
     'fq2':'What exactly is the AI coach?','fa2':'An AI trained to build personal nutrition and movement programs. You ask in plain language, it asks back what it needs, and you get a plan for your body and your day — not a magazine template.',
@@ -832,8 +832,8 @@ const LEGAL = {
     bg: {
       terms: `<h2>Общи Условия</h2>
         <p><strong>1. Услуга:</strong> APEX PULSE PRO предоставя AI-базирани фитнес и хранителни препоръки с информативна цел. Услугата не заменя професионална медицинска консултация или индивидуален диетолог.</p>
-        <p><strong>2. Регистрация:</strong> Не се изисква регистрация за използване на безплатната версия. За платените планове се изисква имейл за издаване на касова бележка от Stripe.</p>
-        <p><strong>3. Плащания:</strong> Еднократно плащане отключва PRO функциите за 30 дни. Плащанията се обработват сигурно от Stripe (PCI-DSS Level 1). Apex Pulse PRO няма достъп до данни на карти или банкови сметки.</p>
+        <p><strong>2. Регистрация:</strong> Не се изисква регистрация за използване на безплатната версия. Платеният достъп изисква вход в потвърден акаунт; покупката се свързва с този акаунт.</p>
+        <p><strong>3. Плащания:</strong> Еднократно плащане предоставя избрания CORE или PRO достъп за 30 дни. Плащанията се обработват сигурно от Stripe (PCI-DSS Level 1). Apex Pulse PRO няма достъп до данни на карти или банкови сметки.</p>
         <p><strong>4. Срок на достъп:</strong> Достъпът е валиден 30 дни от датата на плащане. След изтичане потребителят може да заплати отново за нов 30-дневен период. Услугата не е автоматично подновяваща се (без auto-renewal).</p>
         <p><strong>5. Отказ от отговорност:</strong> Всички планове и съвети са с информативна цел. Apex Pulse PRO, неговите създатели и собственици не носят отговорност за здравословни проблеми, наранявания, нежелани реакции или други последствия от използването на услугата. Винаги се консултирай с лекар преди да започнеш диета или тренировъчна програма.</p>
         <p><strong>6. Право на отказ:</strong> Съгласно чл. 57, ал. 13 от Закона за защита на потребителите (ЗЗП), при предоставяне на цифрово съдържание, което не се доставя на материален носител, потребителят губи правото си на отказ след началото на предоставянето на съдържанието със изричното му съгласие. Чрез плащането и започването на използването на услугата потребителят дава своето изрично съгласие.</p>
@@ -913,8 +913,8 @@ const LEGAL = {
     en: {
       terms: `<h2>Terms of Service</h2>
         <p><strong>1. Service:</strong> APEX PULSE PRO provides AI-based fitness and nutrition recommendations for informational purposes only. The service does not replace professional medical consultation or a personal dietitian.</p>
-        <p><strong>2. Registration:</strong> No registration required for the free version. Paid plans require an email for receipt issuance via Stripe.</p>
-        <p><strong>3. Payments:</strong> A one-time payment unlocks PRO features for 30 days. Payments are processed securely by Stripe (PCI-DSS Level 1). Apex Pulse PRO has no access to card or bank data.</p>
+        <p><strong>2. Registration:</strong> No registration required for the free version. Paid access requires a verified, signed-in account; the purchase is linked to that account.</p>
+        <p><strong>3. Payments:</strong> A one-time payment provides the selected CORE or PRO access for 30 days. Payments are processed securely by Stripe (PCI-DSS Level 1). Apex Pulse PRO has no access to card or bank data.</p>
         <p><strong>4. Access duration:</strong> Access is valid for 30 days from payment. After expiration, users may pay again for a new 30-day period. The service is not auto-renewing.</p>
         <p><strong>5. Disclaimer:</strong> All plans and advice are for informational purposes only. Apex Pulse PRO, its creators and owners are not liable for any health problems, injuries, adverse reactions or other consequences from using the service. Always consult a doctor before starting any diet or training program.</p>
         <p><strong>6. Right of withdrawal:</strong> Under Article 57(13) of the Bulgarian Consumer Protection Act (transposing EU Directive 2011/83/EU), for digital content not delivered on a tangible medium, the user waives the right of withdrawal upon commencement of content delivery with their explicit consent. By paying and beginning to use the service, the user provides this explicit consent.</p>

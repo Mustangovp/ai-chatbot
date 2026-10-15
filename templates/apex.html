@@ -206,6 +206,24 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 .eu-note{margin:16px 0 4px;font-size:11.5px;color:var(--faint);line-height:1.5;background:rgba(56,224,255,.05);border:1px solid rgba(56,224,255,.15);border-radius:10px;padding:11px 13px;}
 .cancel-btn{width:100%;margin-top:14px;background:rgba(245,33,45,.12);border:1px solid rgba(245,33,45,.4);color:#ff6b6b;font-weight:800;font-size:14.5px;padding:14px;border-radius:14px;transition:.2s;}
 .cancel-btn:hover{background:rgba(245,33,45,.2);}
+#billing-surface .panel-row{align-items:flex-start;}
+#billing-surface .pr-l,#billing-surface .pr-v{min-width:0;overflow-wrap:anywhere;}
+#billing-surface dd{margin:0;}
+#billing-surface h3{font-size:15px;margin:22px 0 10px;}
+#billing-surface h4{font-size:14px;margin:0 0 8px;}
+#billing-surface .billing-note,#billing-status{font-size:13px;line-height:1.6;color:var(--muted);margin:12px 0;}
+#billing-status:empty{display:none;}
+.billing-purchase{padding:16px 0;border-top:1px solid var(--border);}
+.billing-tiers{margin-top:20px;border-top:1px solid var(--border);padding-top:8px;}
+.billing-tiers summary{cursor:pointer;min-height:44px;padding:12px 0;font-weight:700;font-size:14px;}
+.billing-tiers section{padding:12px 0;border-top:1px solid var(--border);}
+.billing-tiers ul{padding-left:18px;font-size:13px;line-height:1.6;color:var(--muted);}
+#billing-surface button{min-height:44px;}
+#billing-surface button:disabled{opacity:.7;cursor:wait;}
+@media(max-width:480px){
+  #billing-surface .panel-row{display:grid;grid-template-columns:minmax(0,1fr);gap:5px;}
+  #billing-surface .pr-v{text-align:left;}
+}
 .info-body{font-size:13.5px;line-height:1.6;color:#cdd4e2;}
 .info-body h4{font-family:'Unbounded';font-weight:600;font-size:13px;color:var(--gold);margin:14px 0 6px;}
 .info-body p{margin:8px 0;} .info-body ul{margin:8px 0 8px 4px;list-style:none;} .info-body li{padding:4px 0 4px 16px;position:relative;}
@@ -845,7 +863,7 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
       <div class="field"><label id="l-notes" for="pf-notes">Additional notes</label><input type="text" id="pf-notes" placeholder="anything the coach should know"></div>
       <div class="safety-note" id="safety-note">This information is used only to personalize coaching. APEX does not diagnose, prescribe or replace medical professionals.</div>
       <div class="wiz-nav"><button class="prev" onclick="wizGo(1)" id="w3-prev">←</button><button class="next" onclick="saveProfile()" id="w3-save">Save & calibrate</button></div>
-      <button class="mlink danger" id="cancel-sub" onclick="cancelSub()" style="display:none">Cancel subscription</button>
+      <button class="mlink" id="cancel-sub" onclick="cancelSub()" style="display:none">Access &amp; payments</button>
     </div>
     <p id="profile-status" role="status" aria-live="polite" aria-atomic="true"></p>
     <button class="mlink" id="profile-cancel" onclick="closeProfile()">Cancel</button>
@@ -1575,8 +1593,8 @@ const T={
         smoking:{'':'—',no:'No',occasional:'Occasional',yes:'Yes'},alcohol:{'':'—',none:'None',social:'Social',regular:'Regular'},
         nicotine:{'':'—',no:'No',yes:'Yes'},caffeine:{'':'—',none:'None',moderate:'Moderate',high:'High'},
         freq:{'2':'2 days','3':'3 days','4':'4 days','5':'5 days','6':'6 days'}}},
-    saved:'Calibrated to your signals.',cancelSub:'Cancel subscription',
-    limitTitle:"You've hit today's free limit",limitDesc:'Come back in about {h}h — or unlock unlimited coaching anytime.',unlock:'Unlock Unlimited →',
+    saved:'Calibrated to your signals.',cancelSub:'Access & payments',
+    limitTitle:'Free message allowance reached',limitDesc:'Your rolling 24-hour allowance resets in about {h}h. CORE and PRO are currently unavailable.',unlock:'View access options',
     auth:{signin:'Sign in',signout:'Sign out',title:'Sign in to APEX',desc:'Enter your email — we send a one-time sign-in link. No password.',
       email:'you@email.com',send:'Send link',sent:'Check your inbox — we sent a sign-in link to <strong>{email}</strong>. It expires in 20 minutes.',
       rate:'Too many requests. Try again in a few minutes.',err:'Something went wrong. Try again.',
@@ -1588,17 +1606,28 @@ const T={
     woSummary:{ex:'Exercises',sets:'Sets',time:'Minutes'},todayWO:'Build me a workout for today',
     nutriTotal:'Daily totals',sec:'sec',jumpLatest:'Jump to latest',
     menu:{home:'Home',consult:'Consultation',workouts:'My Training',nutrition:'Nutrition',progress:'Progress',
-      history:'History',profile:'Profile',feedback:'Feedback',subscription:'Subscription',language:'Language',
+      history:'History',profile:'Profile',feedback:'Feedback',subscription:'Access & payments',language:'Language',
       settings:'Settings',privacy:'Privacy & Safety',about:'About APEX'},
     seed:{workouts:'Build me a workout for today',nutrition:'Build me a nutrition plan',progress:'How am I progressing? Analyze my training.'},
-    sub:{title:'Subscription',plan:'Current plan',billing:'Next billing date',method:'Payment method',
-      history:'Billing history',cancel:'Cancel subscription',free:'Free',card:'Card on file',none:'—',
-      statusL:'Status',statuses:{active:'Active',grace:'Active (cancels at period end)',cancelled:'Cancelled',expired:'Expired',free:'Free'},
-      freeDesc:'You are on the free plan. Premium access is temporarily unavailable while we prepare the next APEX release.',
-      upgrade:'View plans →',upgradePro:'PRO — €14.99 / 30 days',upgradeCore:'CORE — €9.99 / 30 days',comingSoon:'Coming soon',comingSoonNote:'Premium access is temporarily unavailable while we prepare the next APEX release.',
-      access:'Access until',oneTime:'One-time 30-day pass (not a recurring subscription)',
-      eu:'Refund requests are handled under the Refund Policy and applicable consumer-law rules.',
-      confirmCancel:'Cancel your subscription and request a refund? This cannot be undone.'},
+    sub:{title:'Access & payments',plan:'Confirmed access',history:'Latest payment records',free:'FREE',none:'Not available',
+      statusL:'Access status',statuses:{active:'Active',grace:'Available until expiry',cancelled:'Access ended',expired:'Expired',free:'FREE',revoked:'Paid access revoked'},
+      access:'Access expires',oneTime:'CORE and PRO use one-time 30-day access. No automatic renewal or recurring charge.',
+      comingSoon:'Coming soon',comingSoonNote:'Paid sales are currently unavailable. FREE remains available.',
+      loading:'Checking account records…',unavailable:'Access and payment records could not be verified. Try again.',retry:'Try again',
+      signin:'Sign in to view your account access and payment records.',empty:'No payment records are available for this account.',
+      purchase:'Access purchase',amount:'Recorded amount',paidAt:'Confirmed payment date',recordedAt:'Record date',purchaseState:'Payment record',
+      purchaseStates:{paid:'Payment recorded',pending:'Awaiting payment confirmation',refund_pending:'Refund outcome pending',refunded:'Refund confirmed',revoked:'Access revoked',unknown:'Status not available'},
+      refund:'Refund status',refundStates:{pending:'Awaiting confirmation',succeeded:'Confirmed',failed:'Failed — review required',canceled:'Not completed — review required',requires_action:'Action required',unconfirmed:'Not confirmed — review required'},
+      request:'Request a refund',sending:'Checking your request…',confirmed:'Refund confirmed. Access from this purchase has ended.',
+      unconfirmed:'Access from this purchase has been revoked. The refund is not yet confirmed.',
+      paidThrough:'No refund was issued under the recorded policy decision. Access continues until its recorded expiry.',
+      failed:'The request outcome could not be confirmed. Check the payment status before retrying.',
+      confirmCancel:'Request a refund under the existing Refund Policy? If accepted within the refund window, access from this purchase is revoked.',
+      eu:'The existing Refund Policy applies. A request alone does not confirm a completed refund.',compare:'Compare access',
+      bonus:'Any message bonus already granted is additional.',
+      tiers:{free:['GPT-6 Luna','10 messages per rolling 24 hours','Training and Nutrition','Account profile and history when signed in'],
+        core:['GPT-6 Luna','No FREE daily message quota','Longer message input','Account profile and history when signed in'],
+        pro:['GPT-6.1 Sol','Longer conversation context','Larger response budget','The same validated Training and Nutrition rules']},days:'/30 days'},
     hist:{title:'History',desc:'What was recorded in individual training sessions.',empty:'No training sessions have been recorded yet.',
       sets:'sets',exercises:'exercises'},
     settings:{title:'Settings',lang:'Language',theme:'Theme',dark:'Dark (default)',reset:'Reset local data',
@@ -1636,8 +1665,8 @@ const T={
         smoking:{'':'—',no:'Не',occasional:'Понякога',yes:'Да'},alcohol:{'':'—',none:'Никакъв',social:'Социален',regular:'Редовен'},
         nicotine:{'':'—',no:'Не',yes:'Да'},caffeine:{'':'—',none:'Никакъв',moderate:'Умерен',high:'Висок'},
         freq:{'2':'2 дни','3':'3 дни','4':'4 дни','5':'5 дни','6':'6 дни'}}},
-    saved:'Калибрирано спрямо сигналите ти.',cancelSub:'Откажи абонамента',
-    limitTitle:'Достигна безплатния лимит за днес',limitDesc:'Върни се след около {h}ч — или отключи неограничен достъп по всяко време.',unlock:'Отключи неограничено →',
+    saved:'Калибрирано спрямо сигналите ти.',cancelSub:'Достъп и плащания',
+    limitTitle:'Безплатният лимит е достигнат',limitDesc:'Лимитът за последователния 24-часов прозорец се освобождава след около {h}ч. CORE и PRO все още не се предлагат.',unlock:'Виж вариантите за достъп',
     auth:{signin:'Вход',signout:'Изход',title:'Вход в APEX',desc:'Въведи имейла си — изпращаме еднократна връзка за вход. Без парола.',
       email:'ти@имейл.com',send:'Изпрати връзка',sent:'Провери пощата си — изпратихме връзка за вход до <strong>{email}</strong>. Валидна е 20 минути.',
       rate:'Твърде много заявки. Опитай отново след няколко минути.',err:'Нещо се обърка. Опитай отново.',
@@ -1649,17 +1678,28 @@ const T={
     woSummary:{ex:'Упражнения',sets:'Серии',time:'Минути'},todayWO:'Направи ми тренировка за днес',
     nutriTotal:'Дневни общо',sec:'сек',jumpLatest:'Към последното',
     menu:{home:'Начало',consult:'Консултация',workouts:'Моите тренировки',nutrition:'Хранене',progress:'Прогрес',
-      history:'История',profile:'Профил',feedback:'Обратна връзка',subscription:'Абонамент',language:'Език',
+      history:'История',profile:'Профил',feedback:'Обратна връзка',subscription:'Достъп и плащания',language:'Език',
       settings:'Настройки',privacy:'Поверителност и безопасност',about:'За APEX'},
     seed:{workouts:'Направи ми тренировка за днес',nutrition:'Направи ми хранителен план',progress:'Как напредвам? Анализирай тренировките ми.'},
-    sub:{title:'Абонамент',plan:'Текущ план',billing:'Следваща дата на плащане',method:'Метод на плащане',
-      history:'История на плащанията',cancel:'Откажи абонамента',free:'Безплатен',card:'Записана карта',none:'—',
-      statusL:'Статус',statuses:{active:'Активен',grace:'Активен (спира в края на периода)',cancelled:'Отказан',expired:'Изтекъл',free:'Безплатен'},
-      freeDesc:'Ти си на безплатния план. Платеният достъп е временно спрян, докато подготвяме следващото издание на APEX.',
-      upgrade:'Виж плановете →',upgradePro:'PRO — €14.99 / 30 дни',upgradeCore:'CORE — €9.99 / 30 дни',comingSoon:'Очаквайте скоро',comingSoonNote:'Платеният достъп е временно спрян, докато подготвяме следващото издание на APEX.',
-      access:'Достъп до',oneTime:'Еднократен 30-дневен достъп (не е повтарящ се абонамент)',
-      eu:'Исканията за възстановяване се разглеждат съгласно Политиката за възстановяване и приложимите правила за защита на потребителите.',
-      confirmCancel:'Да откажа абонамента и да поискам възстановяване? Това е необратимо.'},
+    sub:{title:'Достъп и плащания',plan:'Потвърден достъп',history:'Последни записи за плащания',free:'FREE',none:'Няма налични данни',
+      statusL:'Статус на достъпа',statuses:{active:'Активен',grace:'Достъп до изтичане',cancelled:'Достъпът е приключил',expired:'Изтекъл',free:'FREE',revoked:'Платеният достъп е прекратен'},
+      access:'Достъпът изтича',oneTime:'CORE и PRO са еднократен достъп за 30 дни. Без автоматично подновяване или повтарящо се плащане.',
+      comingSoon:'Очаквайте скоро',comingSoonNote:'Платеният достъп все още не се предлага. FREE остава достъпен.',
+      loading:'Проверяваме записите в акаунта…',unavailable:'Достъпът и плащанията не можаха да бъдат потвърдени. Опитай отново.',retry:'Опитай отново',
+      signin:'Влез, за да видиш достъпа и записите за плащания в акаунта си.',empty:'Няма налични записи за плащания в този акаунт.',
+      purchase:'Покупка на достъп',amount:'Записана сума',paidAt:'Потвърдена дата на плащане',recordedAt:'Дата на записа',purchaseState:'Запис за плащане',
+      purchaseStates:{paid:'Плащането е записано',pending:'Очаква се потвърждение на плащането',refund_pending:'Очаква се резултат за възстановяването',refunded:'Възстановяването е потвърдено',revoked:'Достъпът е прекратен',unknown:'Няма потвърден статус'},
+      refund:'Статус на възстановяването',refundStates:{pending:'Очаква се потвърждение',succeeded:'Потвърдено',failed:'Неуспешно — нужна е проверка',canceled:'Не е завършено — нужна е проверка',requires_action:'Нужно е действие',unconfirmed:'Непотвърдено — нужна е проверка'},
+      request:'Поискай възстановяване',sending:'Проверяваме заявката ти…',confirmed:'Възстановяването е потвърдено. Достъпът от тази покупка е прекратен.',
+      unconfirmed:'Достъпът от тази покупка е прекратен. Възстановяването още не е потвърдено.',
+      paidThrough:'Според записаното решение по политиката не е възстановена сума. Достъпът продължава до записаната дата на изтичане.',
+      failed:'Резултатът от заявката не можа да бъде потвърден. Провери статуса на плащането преди нов опит.',
+      confirmCancel:'Да поискам възстановяване според действащата политика? При одобрение в срока за възстановяване достъпът от тази покупка се прекратява.',
+      eu:'Прилага се действащата политика за възстановяване. Самата заявка не потвърждава върната сума.',compare:'Сравни достъпа',
+      bonus:'Вече предоставен бонус за съобщения е допълнителен.',
+      tiers:{free:['GPT-6 Luna','10 съобщения за подвижен период от 24 часа','Тренировки и хранене','Профил и история в акаунта при вход'],
+        core:['GPT-6 Luna','Без дневния FREE лимит за съобщения','По-дълги съобщения към APEX','Профил и история в акаунта при вход'],
+        pro:['GPT-6.1 Sol','По-дълъг контекст на разговора','По-голям обем на отговорите','Същите валидирани правила за тренировки и хранене']},days:'/30 дни'},
     hist:{title:'История',desc:'Какво е записано в отделните тренировъчни сесии.',empty:'Още няма записани тренировъчни сесии.',
       sets:'серии',exercises:'упражнения'},
     settings:{title:'Настройки',lang:'Език',theme:'Тема',dark:'Тъмна (по подразбиране)',reset:'Изчисти локалните данни',
@@ -1889,7 +1929,7 @@ function openProfile(jump){
   if(!modal.classList.contains('on'))profileReturnFocus=document.activeElement;
   resetProfileForm(pfLoad());
   renderTrainingConstraints(ACTIVE_TRAINING_CONSTRAINTS,trainingConstraintState);
-  document.getElementById('cancel-sub').style.display=apexStorageGet('apexToken')?'block':'none';
+  document.getElementById('cancel-sub').style.display=SESSION.authenticated?'block':'none';
   wizGo(jump||0);
   modal.classList.add('on');document.getElementById('w'+(wizStep+1)+'-title').focus({preventScroll:true});
   if(SESSION.authenticated&&trainingConstraintState==='unavailable')void syncFromAccount();
@@ -1937,14 +1977,7 @@ async function saveProfile(){
   witness('modelChanged');   // fact: the coach's model of you changed
   return true;
 }
-function cancelSub(){ doWithdraw(tr().sub.confirmCancel); }
-function doWithdraw(confirmMsg){
-  const token=apexStorageGet('apexToken')||'';
-  if(!token && !SESSION.authenticated){toast(tr().sub.free);return;}
-  if(!confirm(confirmMsg))return;
-  fetch('/withdraw',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({token,lang})})
-    .then(r=>r.json()).then(d=>{toast(d.message||(lang==='bg'?'Заявката е приета.':'Request received.'));closePanel();loadSession();}).catch(()=>toast('—'));
-}
+function cancelSub(){if(profilePending)return;closeProfile();void showSubscription();}
 
 /* ═══════════════════════════════════════════════════════════════════
    SLIDE-OUT MENU  (Hero stays minimal; everything lives here)
@@ -2406,30 +2439,100 @@ async function showNutrition(){
 }
 function createFromNutrition(){closePanel();enterConsult(tr().seed.nutrition);}
 function fmtDate(ts){ try{return new Date(ts*1000).toLocaleDateString(lang==='bg'?'bg-BG':'en-GB',{day:'numeric',month:'short',year:'numeric'});}catch(e){return '—';} }
-async function showSubscription(){
-  const owner=ownerRequestToken();
-  const s=tr().sub, a=tr().auth;
-  // Always re-verify against the server before showing anything.
-  await loadSession();
-  if(owner!==ownerRequestToken())return;
-  const plan=SESSION.plan, status=SESSION.status, paid=isElite();
-  const expiry=SESSION.current_period_end?Date.parse(SESSION.current_period_end)/1000:0;
-  const badge=paid?'<span class="plan-badge '+plan+'">'+plan.toUpperCase()+'</span>':'<span class="plan-badge free">'+s.free+'</span>';
-  let body='<div class="panel-row"><span class="pr-l">'+s.plan+'</span><span class="pr-v">'+badge+'</span></div>';
-  if(paid){
-    body+='<div class="panel-row"><span class="pr-l">'+s.statusL+'</span><span class="pr-v">'+(s.statuses[status]||status)+'</span></div>';
-    body+='<div class="panel-row"><span class="pr-l">'+s.access+'</span><span class="pr-v">'+(expiry?fmtDate(expiry):s.none)+'</span></div>';
-    body+='<div class="panel-row"><span class="pr-l">'+s.method+'</span><span class="pr-v">'+s.card+'</span></div>';
-    body+='<div class="panel-row"><span class="pr-l">'+s.history+'</span><span class="pr-v">'+(expiry?fmtDate(expiry-30*86400):s.none)+' · '+(plan==='pro'?'€14.99':'€9.99')+'</span></div>';
-    body+='<div class="eu-note">'+s.oneTime+'<br><br>'+s.eu+'</div>';
-    if(status!=='cancelled') body+='<button class="cancel-btn" onclick="doWithdraw(tr().sub.confirmCancel)">'+s.cancel+'</button>';
-  } else {
-    body+='<div class="eu-note">'+s.freeDesc+'</div>';
-    body+='<div class="panel-row"><span class="pr-l">'+s.upgradePro+'</span><span class="pr-v">'+s.comingSoon+'</span></div>';
-    body+='<div class="panel-row"><span class="pr-l">'+s.upgradeCore+'</span><span class="pr-v">'+s.comingSoon+'</span></div>';
-    if(!SESSION.authenticated) body+='<button class="mlink" onclick="showLogin()">'+a.haveAccount+'</button>';
+let billingSnapshot=null,billingOwner=null,billingReadSequence=0,billingPendingOwner=null;
+function billingDate(value){
+  const date=typeof value==='string'&&value?new Date(value):null;
+  return date&&Number.isFinite(date.getTime())?new Intl.DateTimeFormat(lang==='bg'?'bg-BG':'en-GB',{dateStyle:'medium',timeStyle:'short'}).format(date):tr().sub.none;
+}
+function billingMoney(purchase){
+  if(!Number.isInteger(purchase.amount_cents)||purchase.amount_cents<0||!(/^[a-z]{3}$/i).test(purchase.currency||''))return tr().sub.none;
+  try{return new Intl.NumberFormat(lang==='bg'?'bg-BG':'en-IE',{style:'currency',currency:purchase.currency.toUpperCase()}).format(purchase.amount_cents/100);}catch(e){return tr().sub.none;}
+}
+function billingRow(label,value){return '<div class="panel-row"><dt class="pr-l">'+esc(label)+'</dt><dd class="pr-v">'+value+'</dd></div>';}
+function billingTiers(open){
+  const s=tr().sub,prices={free:'€0',core:'€9.99 '+s.days,pro:'€14.99 '+s.days};
+  return '<details class="billing-tiers"'+(open?' open':'')+'><summary>'+esc(s.compare)+'</summary>'+
+    ['free','core','pro'].map(plan=>'<section data-billing-tier="'+plan+'"><h4>'+plan.toUpperCase()+' · '+esc(prices[plan])+'</h4>'+
+      (plan==='free'?'':'<p class="billing-note">'+esc(s.comingSoon)+'</p>')+
+      '<ul>'+s.tiers[plan].map(text=>'<li>'+esc(text)+'</li>').join('')+'</ul></section>').join('')+
+    '<p class="billing-note">'+esc(s.bonus)+'</p></details>';
+}
+function renderBilling(data,state='ready',message=''){
+  const s=tr().sub;
+  let body='<p id="billing-status" role="status" aria-live="polite">'+esc(message)+'</p>';
+  if(state==='anonymous')body+='<p class="billing-note">'+esc(s.signin)+'</p><button class="mlink" onclick="showLogin()">'+esc(tr().auth.signin)+'</button>';
+  else if(state==='loading')body+='<p class="billing-note" role="status">'+esc(s.loading)+'</p>';
+  else if(state==='error')body+='<p class="billing-note" role="alert">'+esc(s.unavailable)+'</p><button class="mlink" id="billing-retry" onclick="showSubscription()">'+esc(s.retry)+'</button>';
+  else{
+    const access=data.entitlement,plan=access.plan;
+    body+='<dl>'+billingRow(s.plan,'<span class="plan-badge '+plan+'" data-billing-access>'+plan.toUpperCase()+'</span>')+
+      billingRow(s.statusL,esc(s.statuses[access.status]||s.none))+
+      ((plan!=='free'||access.access_until)?billingRow(s.access,esc(billingDate(access.access_until))):'')+'</dl>';
+    body+='<section aria-labelledby="billing-history-title"><h3 id="billing-history-title">'+esc(s.history)+'</h3>';
+    if(!data.purchases.length)body+='<p class="billing-note" data-billing-empty>'+esc(s.empty)+'</p>';
+    body+=data.purchases.map((purchase,index)=>{
+      const refund=purchase.state==='refunded'?'succeeded':purchase.refund_status||(purchase.state==='refund_pending'?'pending':null);
+      return '<article class="billing-purchase" data-billing-purchase><h4>'+esc(purchase.plan?purchase.plan.toUpperCase():s.purchase)+'</h4><dl>'+
+        billingRow(s.purchaseState,esc(s.purchaseStates[purchase.state]||s.purchaseStates.unknown))+
+        billingRow(s.amount,'<span data-billing-amount>'+esc(billingMoney(purchase))+'</span>')+
+        billingRow(purchase.paid_at?s.paidAt:s.recordedAt,esc(billingDate(purchase.paid_at||purchase.recorded_at)))+
+        (purchase.access_until?billingRow(s.access,esc(billingDate(purchase.access_until))):'')+
+        (refund?billingRow(s.refund,'<span data-billing-refund>'+esc(s.refundStates[refund]||s.none)+'</span>'):'')+'</dl>'+
+        (purchase.can_request_refund===true&&typeof purchase.reference==='string'&&purchase.reference.startsWith('cs_')?
+          '<button class="cancel-btn" id="billing-refund-'+index+'" data-billing-request onclick="doWithdraw('+index+')"'+(billingPendingOwner?' disabled':'')+'>'+esc(s.request)+'</button>':'')+'</article>';
+    }).join('')+'</section><p class="billing-note">'+esc(s.eu)+'</p>';
   }
-  showPanel(s.title,body);
+  body+='<p class="billing-note">'+esc(s.oneTime)+'</p><p class="billing-note">'+esc(s.comingSoonNote)+'</p>'+billingTiers(!data||data.entitlement.plan==='free');
+  return '<div id="billing-surface" aria-busy="'+(state==='loading'||billingPendingOwner!==null)+'">'+body+'</div>';
+}
+function billingPayloadValid(data){
+  return data&&data.entitlement&&['free','core','pro'].includes(data.entitlement.plan)&&
+    typeof data.entitlement.status==='string'&&Array.isArray(data.purchases)&&
+    data.purchases.every(purchase=>purchase&&typeof purchase==='object'&&
+      (purchase.plan===null||['core','pro'].includes(purchase.plan)));
+}
+async function readBilling(owner,sequence,message=''){
+  const current=()=>sequence===billingReadSequence&&currentAccountRequest(owner)&&document.getElementById('billing-surface');
+  try{
+    const response=await fetch('/api/billing',{credentials:'same-origin',cache:'no-store'});
+    if(!current())return;
+    if(!response.ok)throw new Error('billing_unavailable');
+    const data=await response.json();if(!current())return;
+    if(!billingPayloadValid(data))throw new Error('billing_invalid');
+    billingSnapshot=data;billingOwner=owner;setPanelBody(renderBilling(data,'ready',message));
+  }catch(e){if(current()){billingSnapshot=null;setPanelBody(renderBilling(null,'error',message));}}
+}
+async function showSubscription(){
+  const owner=ownerRequestToken(),sequence=++billingReadSequence;
+  billingSnapshot=null;billingOwner=owner;
+  if(billingPendingOwner!==owner)billingPendingOwner=null;
+  showPanel(tr().sub.title,renderBilling(null,SESSION.authenticated?'loading':'anonymous'));
+  if(SESSION.authenticated)await readBilling(owner,sequence);
+}
+async function doWithdraw(index){
+  const owner=ownerRequestToken(),s=tr().sub;
+  if(!currentAccountRequest(owner)||billingOwner!==owner||billingPendingOwner||!billingSnapshot)return;
+  const purchase=Number.isInteger(index)&&billingSnapshot.purchases[index];
+  if(!purchase||purchase.can_request_refund!==true||!purchase.reference||!confirm(s.confirmCancel))return;
+  billingPendingOwner=owner;setPanelBody(renderBilling(billingSnapshot,'ready',s.sending));
+  let message=s.failed;
+  try{
+    const response=await fetch('/withdraw',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',
+      body:JSON.stringify({session_id:purchase.reference,lang})});
+    const result=await response.json();
+    if(!currentAccountRequest(owner))return;
+    if(!response.ok||result.ok!==true)throw new Error('withdraw_unconfirmed');
+    if(result.refunded===true&&result.access_revoked===true)message=s.confirmed;
+    else if(result.waiver_applied===true&&result.access_revoked===false)message=s.paidThrough;
+    else if(result.access_revoked===true)message=s.unconfirmed;
+  }catch(e){message=s.failed;}
+  finally{if(billingPendingOwner===owner)billingPendingOwner=null;}
+  if(!currentAccountRequest(owner))return;
+  await loadSession();
+  if(currentAccountRequest(owner)&&document.getElementById('billing-surface')){
+    const sequence=++billingReadSequence;
+    setPanelBody(renderBilling(null,'loading',message));await readBilling(owner,sequence,message);
+  }
 }
 const HISTORY_COPY={
   bg:{session:'Тренировъчна сесия',saved:'Запазено в акаунта',cached:'Кеширан запис',local:'Локален запис',

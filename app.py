@@ -1434,9 +1434,10 @@ def _send_seq_24h(seq: dict):
             "Питай директно — AI треньорът чака.\n\n"
             "https://apexpulse.pro/app\n\n"
             "─────────────────────────────────────\n"
-            "Ако искаш AI треньор без никакви лимити, който помни целите ти 30 дни наред:\n\n"
-            "→ APEX CORE — €9.99 / 30 дни  (€0.33/ден, неограничени съобщения)\n"
-            "→ APEX PRO  — €14.99 / 30 дни (по-детайлни програми)\n\n"
+            "CORE и PRO предстоят. FREE остава достъпен с профил и история след вход:\n\n"
+            "→ APEX CORE — €9.99 / 30 дни (без дневната квота на FREE, по-дълги съобщения)\n"
+            "→ APEX PRO  — €14.99 / 30 дни (по-дълъг контекст и по-голям обем на отговора)\n"
+            "Еднократен достъп без автоматично подновяване.\n\n"
             "https://apexpulse.pro/app\n"
             "─────────────────────────────────────\n\n"
             "Продължавай — резултатите идват с последователност. 🔥\n\n"
@@ -1451,9 +1452,10 @@ def _send_seq_24h(seq: dict):
             "Just ask — your AI coach is ready.\n\n"
             "https://apexpulse.pro/app\n\n"
             "─────────────────────────────────────\n"
-            "Want an AI coach with no limits that remembers your goals for 30 days straight:\n\n"
-            "→ APEX CORE — €9.99 / 30 days  (€0.33/day, unlimited messages)\n"
-            "→ APEX PRO  — €14.99 / 30 days (more detailed programs)\n\n"
+            "CORE and PRO are coming soon. FREE includes account profile and history after sign-in:\n\n"
+            "→ APEX CORE — €9.99 / 30 days (no FREE daily quota, longer messages)\n"
+            "→ APEX PRO  — €14.99 / 30 days (longer context and larger response budget)\n"
+            "One-time access with no automatic renewal.\n\n"
             "https://apexpulse.pro/app\n"
             "─────────────────────────────────────\n\n"
             "Stay consistent — results follow dedication. 🔥\n\n"
@@ -1466,39 +1468,27 @@ def _send_seq_24h(seq: dict):
 def _send_seq_72h(seq: dict):
     email, lang = seq['email'], seq['lang']
     if lang == 'bg':
-        subject = 'Специална оферта — 50% отстъпка за теб 🎁'
+        subject = 'FREE остава достъпен - CORE и PRO предстоят'
         body = (
             "Здравей!\n\n"
-            "Преди 3 дни опита APEX PULSE PRO. Исках да те наградя с нещо специално:\n\n"
-            "╔══════════════════════════════════╗\n"
-            "║   50% ОТСТЪПКА — ПРОМО КОД:     ║\n"
-            "║                                  ║\n"
-            "║           APEX50                 ║\n"
-            "║                                  ║\n"
-            "╚══════════════════════════════════╝\n\n"
-            "Приложи при плащане и вземи 30 дни на половин цена:\n"
-            "→ APEX CORE: €5.00 (вместо €9.99)\n"
-            "→ APEX PRO:  €7.50 (вместо €14.99)\n\n"
-            "Активирай тук: https://apexpulse.pro/app\n\n"
-            "Тази оферта е само за теб и е времеограничена.\n\n"
+            "Можеш да продължиш с FREE: тренировки, хранене и запазен профил и история при вход.\n\n"
+            "CORE и PRO предстоят; платеният достъп все още не се предлага.\n"
+            "→ APEX CORE: €9.99 / 30 дни, без дневната FREE квота, с по-дълги съобщения.\n"
+            "→ APEX PRO: €14.99 / 30 дни, с по-дълъг контекст и по-голям обем на отговорите.\n"
+            "Еднократен достъп, без автоматично подновяване.\n\n"
+            "Продължи с FREE: https://apexpulse.pro/app\n\n"
             "APEX PULSE PRO\n"
         )
     else:
-        subject = 'Special offer — 50% off just for you 🎁'
+        subject = 'FREE remains available - CORE and PRO are coming soon'
         body = (
             "Hey!\n\n"
-            "3 days ago you tried APEX PULSE PRO. I wanted to reward you:\n\n"
-            "╔══════════════════════════════════╗\n"
-            "║   50% OFF — PROMO CODE:          ║\n"
-            "║                                  ║\n"
-            "║           APEX50                 ║\n"
-            "║                                  ║\n"
-            "╚══════════════════════════════════╝\n\n"
-            "Apply at checkout for 30 days at half price:\n"
-            "→ APEX CORE: €5.00 (instead of €9.99)\n"
-            "→ APEX PRO:  €7.50 (instead of €14.99)\n\n"
-            "Activate here: https://apexpulse.pro/app\n\n"
-            "This offer is just for you and is time-limited.\n\n"
+            "You can continue with FREE: Training, Nutrition, and saved account profile and history after sign-in.\n\n"
+            "CORE and PRO are coming soon; paid sales are currently unavailable.\n"
+            "→ APEX CORE: €9.99 / 30 days, no FREE daily quota and longer messages.\n"
+            "→ APEX PRO: €14.99 / 30 days, longer context and a larger response budget.\n"
+            "One-time access, with no automatic renewal.\n\n"
+            "Continue with FREE: https://apexpulse.pro/app\n\n"
             "APEX PULSE PRO\n"
         )
     ok = send_email(email, subject, body)
@@ -1646,7 +1636,7 @@ def verify_token(token: str):
 @app.after_request
 def add_security_headers(response):
     if request.path in ("/auth/me", "/auth/logout", "/api/profile", "/api/history", "/api/conversations",
-                        "/poll-token", "/verify-token", "/create-checkout-session", "/withdraw"):
+                        "/poll-token", "/verify-token", "/create-checkout-session", "/withdraw", "/api/billing"):
         response.headers["Cache-Control"] = "private, no-store"
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['X-Content-Type-Options'] = 'nosniff'
@@ -1874,6 +1864,20 @@ def auth_me():
 
 def _require_user():
     return g.get("user")
+
+
+@app.route('/api/billing', methods=['GET'])
+def api_billing():
+    user = _require_user()
+    if not user:
+        return jsonify({'error': 'unauthenticated'}), 401
+    try:
+        data = store.get_billing_summary(user['id'])
+        data['paid_sales_enabled'] = _paid_access_enabled()
+        return jsonify(data)
+    except Exception as error:
+        print(f'[billing] read unavailable: {type(error).__name__}')
+        return jsonify({'error': 'billing_unavailable'}), 503
 
 
 # ═══════════════════════════════════════════════════════════
@@ -5518,10 +5522,10 @@ def withdraw_endpoint():
         # Confirmation to the user (best-effort if we have an email)
         if refund_id and customer_email and '@' in customer_email:
             if user_lang == 'en':
-                subject = 'Subscription cancelled — refund on the way'
+                subject = 'Refund confirmed - APEX access ended'
                 user_body = (
                     "Hi,\n\n"
-                    "We have received your cancellation request and processed your refund.\n\n"
+                    "Your refund is confirmed and your paid access has ended.\n\n"
                     f"Plan: APEX PULSE {plan.upper()}\n"
                     f"Amount: EUR {amount}\n"
                     f"Payment date: {payment_date_str}\n"
@@ -5533,10 +5537,10 @@ def withdraw_endpoint():
                     "APEX PULSE PRO\n"
                 )
             else:
-                subject = 'Абонаментът е отказан — възстановяване на сумата'
+                subject = 'Възстановяването е потвърдено - платеният достъп е прекратен'
                 user_body = (
                     "Здравей,\n\n"
-                    "Получихме твоето искане за отказ и обработихме възстановяването.\n\n"
+                    "Възстановяването е потвърдено и платеният ти достъп е прекратен.\n\n"
                     f"План: APEX PULSE {plan.upper()}\n"
                     f"Сума: EUR {amount}\n"
                     f"Дата на плащане: {payment_date_str}\n"
@@ -5700,9 +5704,9 @@ Source: free-limit email capture (granted +{LEAD_BONUS} bonus messages)
                 + (f"Ето последния план, който AI треньорът създаде за теб:\n\n{'─'*40}\n{plan_text}\n{'─'*40}\n\n" if plan_text else "")
                 + "Имаш +5 бонус съобщения днес — продължи разговора тук:\n"
                 "https://apexpulse.pro/app\n\n"
-                "А ако искаш AI треньор без никакви лимити, който помни целите ти\n"
-                "и ти прави персонални програми всеки ден:\n"
-                "→ APEX CORE — само €9.99 за 30 дни (€0.33/ден)\n"
+                "Профилът и историята са достъпни след вход и във FREE.\n"
+                "APEX CORE предстои: без дневната квота на FREE и с по-дълги съобщения.\n"
+                "→ €9.99 за еднократен достъп от 30 дни, без автоматично подновяване.\n"
                 "https://apexpulse.pro/app?plan=core\n\n"
                 "До скоро в залата (или вкъщи)! 🔥\n"
                 "APEX PULSE PRO\n"
@@ -5715,8 +5719,9 @@ Source: free-limit email capture (granted +{LEAD_BONUS} bonus messages)
                 + (f"Here is the latest plan your AI coach created for you:\n\n{'─'*40}\n{plan_text}\n{'─'*40}\n\n" if plan_text else "")
                 + "You have +5 bonus messages today — continue the conversation here:\n"
                 "https://apexpulse.pro/app\n\n"
-                "Want an AI coach with no limits that remembers your goals?\n"
-                "→ APEX CORE — just €9.99 for 30 days (€0.33/day)\n"
+                "Account profile and history are available in FREE after sign-in too.\n"
+                "APEX CORE is coming soon: no FREE daily quota and longer messages.\n"
+                "→ €9.99 for one-time 30-day access, with no automatic renewal.\n"
                 "https://apexpulse.pro/app?plan=core\n\n"
                 "See you at the gym (or at home)! 🔥\n"
                 "APEX PULSE PRO\n"
