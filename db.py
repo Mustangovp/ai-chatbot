@@ -113,12 +113,35 @@ payments = Table("payments", metadata,
     Column("paid_at", DateTime(timezone=True)),
     Column("payment_intent_id", String(120)),
     Column("refund_id", String(120)),
+    Column("refund_status", String(24)),
+    Column("refund_error_code", String(64)),
+    Column("refund_attempt_count", Integer, nullable=False, server_default="0"),
+    Column("refund_event_at", DateTime(timezone=True)),
     Column("created_at", DateTime(timezone=True), server_default=func.now()),
 )
 
 payment_token_revocations = Table("payment_token_revocations", metadata,
     Column("token_hash", String(64), primary_key=True),
     Column("revoked_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+stripe_event_receipts = Table("stripe_event_receipts", metadata,
+    Column("event_id", String(120), primary_key=True),
+    Column("event_type", String(80), nullable=False),
+    Column("facts_hash", String(64), nullable=False),
+    Column("facts", JSON, nullable=False),
+    Column("occurred_at", DateTime(timezone=True), nullable=False),
+    Column("status", String(24), nullable=False),
+    Column("attempt_count", Integer, nullable=False, server_default="0"),
+    Column("error_code", String(64)),
+    Column("purchase_id", Uuid(as_uuid=True), ForeignKey("payments.id", ondelete="SET NULL")),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+stripe_payment_intents = Table("stripe_payment_intents", metadata,
+    Column("payment_intent_id", String(120), primary_key=True),
+    Column("purchase_id", Uuid(as_uuid=True), ForeignKey("payments.id", ondelete="CASCADE"), nullable=False, unique=True),
 )
 
 # Free usage belongs to the account when logged in; before login it is keyed by a
@@ -559,7 +582,32 @@ _MIGRATIONS = [
     (27, lambda c: _ensure_nutrition_plan_schema(c)),
     (28, lambda c: _add_training_completion_duration(c)),
     (29, lambda c: _ensure_payment_security_schema(c)),
+    (30, lambda c: _ensure_stripe_fulfillment_schema(c)),
 ]
+
+
+def _ensure_stripe_fulfillment_schema(connection):
+    """No historical entitlement backfill: ambiguous purchases stay unchanged."""
+    stripe_event_receipts.create(connection, checkfirst=True)
+    stripe_payment_intents.create(connection, checkfirst=True)
+    timestamp = "TIMESTAMP WITH TIME ZONE" if connection.dialect.name == "postgresql" else "DATETIME"
+    columns = {column["name"] for column in inspect(connection).get_columns("payments")}
+    for name, definition in (("refund_status", "VARCHAR(24)"),
+            ("refund_error_code", "VARCHAR(64)"),
+            ("refund_attempt_count", "INTEGER NOT NULL DEFAULT 0"), ("refund_event_at", timestamp)):
+        if name not in columns:
+            connection.execute(text(f"ALTER TABLE payments ADD COLUMN {name} {definition}"))
+    inspector = inspect(connection)
+    for table in (stripe_event_receipts, stripe_payment_intents):
+        actual = {column["name"] for column in inspector.get_columns(table.name)}
+        if not set(table.c.keys()) <= actual or inspector.get_pk_constraint(table.name)["constrained_columns"] != [list(table.primary_key)[0].name]:
+            raise RuntimeError("stripe fulfillment schema is incomplete")
+    unique_columns = [item["column_names"] for item in inspector.get_unique_constraints("stripe_payment_intents")]
+    if ["purchase_id"] not in unique_columns:
+        raise RuntimeError("stripe purchase identity is not unique")
+    columns = {column["name"] for column in inspector.get_columns("payments")}
+    if not {"refund_status", "refund_error_code", "refund_attempt_count", "refund_event_at"} <= columns:
+        raise RuntimeError("stripe refund outcome schema is incomplete")
 
 
 def _ensure_payment_security_schema(connection):
@@ -1172,8 +1220,8 @@ def get_owned_payment(user_id, session_id=None):
             sub = c.execute(select(subscriptions).where(subscriptions.c.user_id == uid,
                 subscriptions.c.stripe_session_id == session_id)).mappings().first()
             result["period_end"] = (sub["current_period_end"] if sub else None)
-            if result["period_end"] is None:
-                result["period_end"] = _aware(result["created_at"]) + _dt.timedelta(days=30)
+            # No inferred historical expiry when the original entitlement is
+            # absent or belongs to a different purchase; report for review.
         result["paid_at"] = result["paid_at"] or result["created_at"]
         return result
 
@@ -1192,33 +1240,106 @@ def preserve_payment_period(user_id, session_id, period_end):
             payments.c.state == "paid").values(period_end=period_end))
 
 
-def fulfill_bound_checkout(session_id, plan, amount_cents, currency, payment_intent_id, stripe_customer_id=None):
-    """Only a persisted checkout owner can receive access; replay never renews it."""
-    with engine.begin() as c:
-        query = select(payments).where(payments.c.stripe_session_id == session_id)
-        if not IS_SQLITE:
-            query = query.with_for_update()
-        row = c.execute(query).mappings().first()
-        if not row or row["plan"] != plan or currency != "eur":
-            return None
-        if row["state"] == "paid":
-            return str(row["user_id"])
-        if row["state"] != "pending":
-            return None
-        now = _now()
-        end = now + _dt.timedelta(days=30)
-        claimed = c.execute(update(payments).where(payments.c.id == row["id"],
-            payments.c.state == "pending").values(state="paid", paid_at=now,
-            period_end=end, amount_cents=amount_cents, payment_intent_id=payment_intent_id)
-            .returning(payments.c.id)).first()
-        if not claimed:
-            return None
-        granted = c.execute(update(subscriptions).where(subscriptions.c.user_id == row["user_id"])
-            .values(plan=plan, status="active", current_period_end=end,
-                stripe_customer_id=stripe_customer_id, stripe_session_id=session_id))
-        if granted.rowcount != 1:
-            raise RuntimeError("checkout account subscription is missing")
-        return str(row["user_id"])
+def _insert_once(connection, table, values, key):
+    statement = sqlite_insert if connection.dialect.name == "sqlite" else pg_insert
+    connection.execute(statement(table).values(**values).on_conflict_do_nothing(index_elements=[key]))
+
+
+def _lock_payment(connection, condition):
+    row = connection.execute(select(payments).where(condition)).mappings().first()
+    if not row:
+        return None, None
+    query = select(subscriptions).where(subscriptions.c.user_id == row["user_id"])
+    if connection.dialect.name == "sqlite":
+        # SQLite has no row locks. Acquire its write lock before authoritative reads.
+        connection.execute(update(subscriptions).where(subscriptions.c.user_id == row["user_id"])
+            .values(updated_at=subscriptions.c.updated_at))
+    else:
+        query = query.with_for_update()
+    sub = connection.execute(query).mappings().first()
+    query = select(payments).where(payments.c.id == row["id"])
+    if connection.dialect.name != "sqlite":
+        query = query.with_for_update()
+    return connection.execute(query).mappings().one(), sub
+
+
+def _checkout_result(connection, facts, paid_at):
+    row, sub = _lock_payment(connection, payments.c.stripe_session_id == facts["session_id"])
+    result = {"outcome": "review", "code": "checkout_owner_not_verified", "purchase_id": row["id"] if row else None}
+    if not row or row["plan"] != facts["plan"] or facts["currency"] != "eur":
+        return result
+    owner = facts.get("account_id")
+    if ((owner is not None and str(owner) != str(row["user_id"]))
+            or (row["state"] == "pending" and str(owner) != str(row["user_id"]))):
+        return result
+    if row["state"] in ("refunded", "revoked", "refund_pending"):
+        return {**result, "outcome": "ignored", "code": "purchase_access_revoked"}
+    if row["state"] == "paid":
+        if row["paid_at"] is None or row["period_end"] is None:
+            if sub and sub["stripe_session_id"] and sub["stripe_session_id"] != row["stripe_session_id"]:
+                return {**result, "outcome": "ignored", "code": "historical_purchase_replay"}
+            if (not sub or sub["plan"] != row["plan"] or not sub["current_period_end"]):
+                return {**result, "code": "legacy_entitlement_requires_review"}
+            return {**result, "outcome": "ignored", "code": "legacy_entitlement_preserved"}
+        if row["paid_at"] is not None and (row["amount_cents"] != facts["amount_cents"]
+                or row["payment_intent_id"] != facts.get("payment_intent_id")):
+            return {**result, "code": "payment_facts_mismatch"}
+        return {**result, "outcome": "succeeded", "code": None, "user_id": str(row["user_id"])}
+    if row["state"] != "pending":
+        return result
+    amount = facts["amount_cents"]
+    if not isinstance(amount, int) or isinstance(amount, bool) or amount < 0 or amount > row["amount_cents"]:
+        return {**result, "code": "payment_amount_mismatch"}
+    if not sub:
+        raise RuntimeError("checkout account subscription is missing")
+    current = None
+    if sub["stripe_session_id"] and sub["stripe_session_id"] != row["stripe_session_id"]:
+        current = connection.execute(select(payments).where(payments.c.user_id == row["user_id"],
+            payments.c.stripe_session_id == sub["stripe_session_id"])).mappings().first()
+        if sub["plan"] in ("core", "pro") and (not current or not current["paid_at"]):
+            return {**result, "code": "legacy_entitlement_requires_review"}
+        if current and not current["paid_at"]:
+            current = None
+    pi = facts.get("payment_intent_id")
+    if pi:
+        # A unique DB binding prevents two accounts from consuming one payment.
+        existing = connection.execute(select(payments.c.id).where(
+            payments.c.payment_intent_id == pi, payments.c.id != row["id"])).first()
+        if existing:
+            return {**result, "code": "payment_intent_already_bound"}
+        _insert_once(connection, stripe_payment_intents,
+            {"payment_intent_id": pi, "purchase_id": row["id"]}, "payment_intent_id")
+        bound = connection.execute(select(stripe_payment_intents.c.purchase_id).where(
+            stripe_payment_intents.c.payment_intent_id == pi)).scalar_one()
+        if bound != row["id"]:
+            return {**result, "code": "payment_intent_already_bound"}
+    end = paid_at + _dt.timedelta(days=30)
+    fully_refunded = amount > 0 and _successful_refund_total(connection, row["id"], facts["currency"]) >= amount
+    connection.execute(update(payments).where(payments.c.id == row["id"])
+        .values(state="refunded" if fully_refunded else "paid", paid_at=paid_at, period_end=end, amount_cents=amount,
+            payment_intent_id=pi))
+    if fully_refunded:
+        return {**result, "outcome": "ignored", "code": "purchase_already_refunded"}
+    # Event time determines purchase order; a delayed older event cannot replace
+    # the newer account entitlement. Ties use the immutable checkout ID.
+    if not current or (_aware(current["paid_at"]), current["stripe_session_id"]) < (paid_at, row["stripe_session_id"]):
+        connection.execute(update(subscriptions).where(subscriptions.c.user_id == row["user_id"])
+            .values(plan=row["plan"], status="active", current_period_end=end,
+                stripe_customer_id=facts.get("stripe_customer_id"), stripe_session_id=row["stripe_session_id"]))
+    return {**result, "outcome": "succeeded", "code": None, "user_id": str(row["user_id"])}
+
+
+def fulfill_bound_checkout(session_id, plan, amount_cents, currency, payment_intent_id, stripe_customer_id=None,
+                           account_id=None, paid_at=None):
+    """Authenticated polling shares the webhook transaction and purchase authority."""
+    with engine.begin() as connection:
+        if account_id is None:
+            account_id = connection.execute(select(payments.c.user_id).where(
+                payments.c.stripe_session_id == session_id)).scalar()
+        result = _checkout_result(connection, dict(session_id=session_id, plan=plan,
+            amount_cents=amount_cents, currency=currency, payment_intent_id=payment_intent_id,
+            stripe_customer_id=stripe_customer_id, account_id=str(account_id)), paid_at or _now())
+    return result.get("user_id") if result["outcome"] == "succeeded" else None
 
 
 def _persist_token_revocations(connection, tokens):
@@ -1249,9 +1370,15 @@ def get_payment_by_id(payment_id):
 def claim_owned_refund(user_id, session_id, tokens=(), payment_intent_id=None):
     """Revoke before the external call; one DB claim owns the refund attempt."""
     with engine.begin() as c:
+        purchase, _ = _lock_payment(c, and_(payments.c.user_id == _as_uuid(user_id),
+            payments.c.stripe_session_id == session_id))
+        if not purchase or (purchase["payment_intent_id"] and purchase["payment_intent_id"] != payment_intent_id):
+            return False
         row = c.execute(update(payments).where(payments.c.user_id == _as_uuid(user_id),
             payments.c.stripe_session_id == session_id, payments.c.state == "paid")
-            .values(state="refund_pending", payment_intent_id=payment_intent_id)
+            .values(state="refund_pending", payment_intent_id=payment_intent_id,
+                refund_status="pending", refund_error_code=None,
+                refund_attempt_count=payments.c.refund_attempt_count + 1)
             .returning(payments.c.id)).first()
         if not row:
             return False
@@ -1262,10 +1389,27 @@ def claim_owned_refund(user_id, session_id, tokens=(), payment_intent_id=None):
 
 
 def complete_owned_refund(user_id, session_id, refund_id):
+    record_owned_refund_outcome(user_id, session_id, "succeeded", refund_id)
+
+
+def record_owned_refund_outcome(user_id, session_id, status, refund_id=None):
+    if status not in ("succeeded", "failed", "pending", "canceled", "requires_action", "unconfirmed"):
+        raise ValueError("unsupported refund outcome")
     with engine.begin() as c:
-        c.execute(update(payments).where(payments.c.user_id == _as_uuid(user_id),
-            payments.c.stripe_session_id == session_id, payments.c.state == "refund_pending")
-            .values(state="refunded", refund_id=refund_id))
+        row, _ = _lock_payment(c, and_(payments.c.user_id == _as_uuid(user_id),
+            payments.c.stripe_session_id == session_id))
+        if not row or row["state"] != "refund_pending":
+            return
+        if row["refund_status"] in ("failed", "canceled") and status not in ("succeeded", "failed", "canceled"):
+            return
+        values = dict(refund_status=status, refund_event_at=_now(),
+            refund_error_code=("provider_refund_failed" if status in ("failed", "canceled")
+                else "provider_request_failed" if status == "unconfirmed" else None))
+        if refund_id:
+            values["refund_id"] = refund_id
+        if status == "succeeded":
+            values["state"] = "refunded"
+        c.execute(update(payments).where(payments.c.id == row["id"]).values(**values))
 
 
 def revoke_refunded_payment(payment_intent_id, session_id=None):
@@ -1273,17 +1417,173 @@ def revoke_refunded_payment(payment_intent_id, session_id=None):
     if not payment_intent_id:
         return False
     with engine.begin() as c:
-        condition = payments.c.payment_intent_id == payment_intent_id
-        if session_id:
-            condition = and_(payments.c.stripe_session_id == session_id,
-                or_(payments.c.payment_intent_id.is_(None), condition))
-        rows = c.execute(update(payments).where(condition)
-            .values(state="refunded", payment_intent_id=payment_intent_id)
-            .returning(payments.c.user_id, payments.c.stripe_session_id)).all()
-        for uid, sid in rows:
-            c.execute(update(subscriptions).where(subscriptions.c.user_id == uid,
-                subscriptions.c.stripe_session_id == sid).values(status="revoked"))
-        return bool(rows)
+        result = _refund_result(c, dict(payment_intent_id=payment_intent_id,
+            session_id=session_id, full_refund=True, status="succeeded"), _now())
+    return result["outcome"] == "succeeded"
+
+
+def _successful_refund_total(connection, purchase_id, currency, current=None):
+    refunds = {}
+    receipts = connection.execute(select(stripe_event_receipts.c.facts).where(
+        stripe_event_receipts.c.purchase_id == purchase_id,
+        stripe_event_receipts.c.status.in_(("succeeded", "ignored")),
+        stripe_event_receipts.c.event_type.in_(("refund.created", "refund.updated", "refund.failed")))).scalars()
+    for facts in [*receipts, *([current] if current else [])]:
+        amount = facts.get("amount_cents")
+        if (facts.get("refund_id") and facts.get("status") == "succeeded"
+                and facts.get("currency") == currency and isinstance(amount, int)
+                and not isinstance(amount, bool) and amount > 0):
+            refunds[facts["refund_id"]] = amount
+    return sum(refunds.values())
+
+
+def _refund_result(connection, facts, occurred_at):
+    pi, sid = facts.get("payment_intent_id"), facts.get("session_id")
+    condition = payments.c.stripe_session_id == sid if sid else payments.c.payment_intent_id == pi
+    matches = connection.execute(select(payments.c.id).where(condition).limit(2)).all() if pi else []
+    result = {"outcome": "review", "code": "refund_purchase_unresolved", "purchase_id": None}
+    if len(matches) != 1:
+        return result
+    row, _ = _lock_payment(connection, payments.c.id == matches[0][0])
+    result["purchase_id"] = row["id"]
+    if row["payment_intent_id"] and row["payment_intent_id"] != pi:
+        return result
+    if row["state"] == "refunded":
+        return {**result, "outcome": "ignored", "code": "purchase_already_refunded"}
+    status = facts.get("status")
+    if status not in ("succeeded", "failed", "pending", "canceled", "requires_action"):
+        return {**result, "code": "refund_outcome_unsupported"}
+    full = facts.get("full_refund") is True or (row["paid_at"] is not None and row["amount_cents"] > 0
+        and _successful_refund_total(connection, row["id"], row["currency"], facts) >= row["amount_cents"])
+    if not full and row["state"] != "refund_pending":
+        return {**result, "outcome": "ignored", "code": "no_full_refund"}
+    if row["refund_id"] and facts.get("refund_id") and row["refund_id"] != facts["refund_id"]:
+        return {**result, "code": "refund_identity_mismatch"}
+    if not full and row["refund_event_at"] and _aware(row["refund_event_at"]) >= occurred_at:
+        return {**result, "outcome": "ignored", "code": "older_refund_outcome"}
+    if not full and row["refund_status"] in ("failed", "canceled") and status in ("pending", "requires_action"):
+        return {**result, "outcome": "ignored", "code": "terminal_refund_outcome"}
+    values = dict(refund_status=status, refund_event_at=occurred_at,
+        refund_error_code="provider_refund_failed" if status in ("failed", "canceled") else None)
+    if facts.get("refund_id"):
+        values["refund_id"] = facts["refund_id"]
+    if full:
+        values.update(state="refunded", payment_intent_id=pi, refund_status="succeeded", refund_error_code=None)
+        connection.execute(update(subscriptions).where(subscriptions.c.user_id == row["user_id"],
+            subscriptions.c.stripe_session_id == row["stripe_session_id"]).values(status="revoked"))
+    connection.execute(update(payments).where(payments.c.id == row["id"]).values(**values))
+    return {**result, "outcome": "succeeded", "code": None}
+
+
+def stripe_refund_session(payment_intent_id):
+    with engine.connect() as connection:
+        rows = connection.execute(select(payments.c.stripe_session_id).where(
+            payments.c.payment_intent_id == payment_intent_id).limit(2)).all()
+    return rows[0][0] if len(rows) == 1 else (False if rows else None)
+
+
+def _event_hash(event_type, facts, occurred_at):
+    source = dict(facts)
+    if not event_type.startswith("checkout.session."):
+        source.pop("session_id", None)  # Derived lookup can become available on a retry.
+    return _hash(json.dumps([event_type, source, occurred_at.isoformat()], sort_keys=True, separators=(",", ":")))
+
+
+def stripe_event_already_processed(event_id, event_type, facts, occurred_at):
+    with engine.connect() as connection:
+        receipt = connection.execute(select(stripe_event_receipts).where(
+            stripe_event_receipts.c.event_id == event_id)).mappings().first()
+    return bool(receipt and receipt["status"] in ("succeeded", "ignored")
+        and receipt["facts_hash"] == _event_hash(event_type, facts, occurred_at))
+
+
+def process_stripe_event(event_id, event_type, facts, occurred_at):
+    """Receipt and purchase/entitlement mutations commit together before ACK.
+
+    The unique event key and database locks serialize workers. No raw Stripe
+    payload, email, credential or exception text is persisted in this journal.
+    """
+    digest = _event_hash(event_type, facts, occurred_at)
+    with engine.begin() as connection:
+        _insert_once(connection, stripe_event_receipts, dict(event_id=event_id,
+            event_type=event_type, facts_hash=digest, facts=facts, occurred_at=occurred_at, status="processing"), "event_id")
+        query = select(stripe_event_receipts).where(stripe_event_receipts.c.event_id == event_id)
+        if connection.dialect.name != "sqlite":
+            query = query.with_for_update()
+        receipt = connection.execute(query).mappings().one()
+        if receipt["facts_hash"] != digest:
+            connection.execute(update(stripe_event_receipts).where(stripe_event_receipts.c.event_id == event_id)
+                .values(error_code="event_identity_conflict", updated_at=_now(),
+                    attempt_count=stripe_event_receipts.c.attempt_count + 1))
+            return {"outcome": "review", "code": "event_identity_conflict"}
+        if receipt["status"] in ("succeeded", "ignored"):
+            return {"outcome": "duplicate", "code": None}
+        connection.execute(update(stripe_event_receipts).where(stripe_event_receipts.c.event_id == event_id)
+            .values(attempt_count=stripe_event_receipts.c.attempt_count + 1, updated_at=_now()))
+        if event_type.startswith("checkout.session."):
+            result = (_checkout_result(connection, facts, occurred_at)
+                if facts.get("payment_status") == "paid" and facts.get("mode") == "payment"
+                else {"outcome": "ignored", "code": "checkout_not_paid"})
+        elif event_type == "charge.refunded" and not facts.get("full_refund"):
+            result = {"outcome": "ignored", "code": "no_full_refund"}
+        else:
+            result = _refund_result(connection, facts, occurred_at)
+        connection.execute(update(stripe_event_receipts).where(stripe_event_receipts.c.event_id == event_id)
+            .values(status=result["outcome"], error_code=result["code"],
+                purchase_id=result.get("purchase_id"), updated_at=_now()))
+    return result
+
+
+def record_stripe_event_failure(event_id, event_type, facts, occurred_at):
+    """Separate transaction after rollback; never overwrite a concurrent success."""
+    digest = _event_hash(event_type, facts, occurred_at)
+    with engine.begin() as connection:
+        _insert_once(connection, stripe_event_receipts, dict(event_id=event_id,
+            event_type=event_type, facts_hash=digest, facts=facts, occurred_at=occurred_at, status="retryable"), "event_id")
+        connection.execute(update(stripe_event_receipts).where(stripe_event_receipts.c.event_id == event_id,
+            stripe_event_receipts.c.facts_hash == digest,
+            stripe_event_receipts.c.status.not_in(("succeeded", "ignored")))
+            .values(status="retryable", error_code="processing_unavailable",
+                attempt_count=stripe_event_receipts.c.attempt_count + 1, updated_at=_now()))
+
+
+def payment_reconciliation_report(limit=200):
+    """Read-only operator report; historical ambiguity never changes access."""
+    findings = []
+    with engine.connect() as connection:
+        rows = connection.execute(select(payments).order_by(payments.c.created_at, payments.c.id).limit(limit + 1)).mappings().all()
+        for row in rows[:limit]:
+            issue = None
+            if row["state"] == "paid" and (not row["paid_at"] or not row["period_end"]):
+                issue = "legacy_payment_facts_incomplete"
+            elif row["state"] == "paid":
+                sub = connection.execute(select(subscriptions).where(
+                    subscriptions.c.user_id == row["user_id"])).mappings().first()
+                if not sub:
+                    issue = "payment_entitlement_missing"
+            elif row["state"] == "refund_pending":
+                issue = "refund_reconciliation_required"
+            elif row["state"] == "pending":
+                issue = "checkout_pending_confirmation"
+            if issue:
+                findings.append(dict(purchase_id=str(row["id"]), session_id=row["stripe_session_id"],
+                    plan=row["plan"], state=row["state"], issue=issue,
+                    refund_status=row["refund_status"], refund_error_code=row["refund_error_code"]))
+        receipts = connection.execute(select(stripe_event_receipts.c.event_id,
+            stripe_event_receipts.c.status, stripe_event_receipts.c.error_code,
+            stripe_event_receipts.c.attempt_count).where(or_(stripe_event_receipts.c.status.in_(("review", "retryable")),
+                stripe_event_receipts.c.error_code == "event_identity_conflict"))
+            .order_by(stripe_event_receipts.c.updated_at).limit(limit)).mappings().all()
+        duplicate_intents = connection.execute(select(payments.c.payment_intent_id).where(
+            payments.c.payment_intent_id.is_not(None)).group_by(payments.c.payment_intent_id)
+            .having(func.count() > 1).limit(limit)).scalars().all()
+        conflicting = connection.execute(select(subscriptions.c.id, subscriptions.c.stripe_session_id)
+            .join(payments, subscriptions.c.stripe_session_id == payments.c.stripe_session_id)
+            .where(subscriptions.c.user_id != payments.c.user_id).limit(limit)).all()
+    return {"purchases": findings, "events": [dict(row) for row in receipts], "read_only": True,
+        "ambiguous_payment_intents": duplicate_intents,
+        "conflicting_entitlements": [dict(subscription_id=str(row[0]), session_id=row[1]) for row in conflicting],
+        "purchase_scan_truncated": len(rows) > limit, "limit": limit}
 
 
 def cancel_owned_payment_access(user_id, session_id):

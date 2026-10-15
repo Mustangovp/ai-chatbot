@@ -143,7 +143,11 @@ def test_existing_paid_account_continues_without_payment_token(client):
 def signed_event(client, monkeypatch, event_type, payload, valid=True):
     secret = 'whsec_synthetic_only'
     monkeypatch.setenv('STRIPE_WEBHOOK_SECRET', secret)
-    body = json.dumps({'id': 'evt_test_security', 'object': 'event',
+    event_id = 'evt_test_' + hashlib.sha256(json.dumps([event_type, payload], sort_keys=True).encode()).hexdigest()[:24]
+    if not hasattr(client, 'event_times'):
+        client.event_times = {}
+    created = client.event_times.setdefault(event_id, int(time.time()))
+    body = json.dumps({'id': event_id, 'object': 'event', 'created': created,
         'type': event_type, 'data': {'object': payload}})
     timestamp = int(time.time())
     signature = hmac.new(secret.encode(), f'{timestamp}.{body}'.encode(), hashlib.sha256).hexdigest()
@@ -341,7 +345,7 @@ def test_signed_external_full_refund_revokes_only_owned_purchase(client, monkeyp
     assert store.get_subscription(uid)['status'] == 'revoked'
     assert client.post('/verify-token', json={'token': token}).get_json()['valid'] is False
     assert signed_event(client, monkeypatch, 'checkout.session.completed',
-        checkout_payload(uid, 'cs_test_owned')).status_code == 409
+        checkout_payload(uid, 'cs_test_owned')).status_code == 200
 
 
 def test_partial_refund_does_not_invent_new_revocation_policy(client, monkeypatch):

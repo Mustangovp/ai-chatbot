@@ -5196,38 +5196,75 @@ def stripe_webhook():
         print(f'[webhook] Bad payload: {type(e).__name__}')
         return jsonify({'error': 'bad payload'}), 400
 
-    if event['type'] == 'checkout.session.completed':
-        session = event['data']['object']
-        if session.payment_status == 'paid':
-            paid_plan = _checkout_metadata(session).get('plan', 'core')
-            try:
-                uid = _provision_paid_account(session, paid_plan)
-            except Exception as error:
-                print(f'[webhook] provisioning failed: {type(error).__name__}')
-                return jsonify({'error': 'provisioning_unavailable'}), 503
-            if not uid:
-                return jsonify({'error': 'checkout_owner_not_verified'}), 409
-    elif event['type'] == 'charge.refunded':
-        charge = event['data']['object']
-        if getattr(charge, 'refunded', False) is True:
-            try:
-                pi = getattr(charge, 'payment_intent', None)
-                if not isinstance(pi, str) or not pi:
-                    return jsonify({'error': 'refund_purchase_unresolved'}), 409
-                if not store.revoke_refunded_payment(pi):
-                    # Old ledger rows lack payment_intent_id. Resolve only through
-                    # Stripe's server-side Session -> PaymentIntent association.
-                    sessions = stripe.checkout.Session.list(payment_intent=pi, limit=2)
-                    matched = False
-                    for session in sessions.data:
-                        if session.payment_intent == pi:
-                            matched = store.revoke_refunded_payment(pi, session.id) or matched
-                    if not matched:
-                        return jsonify({'error': 'refund_purchase_unresolved'}), 409
-            except Exception as error:
-                print(f'[webhook] refund persistence failed: {type(error).__name__}')
-                return jsonify({'error': 'revocation_unavailable'}), 503
+    event_type = event['type']
+    if event_type not in ('checkout.session.completed', 'checkout.session.async_payment_succeeded',
+                          'charge.refunded', 'refund.created', 'refund.updated', 'refund.failed'):
+        return jsonify({'ok': True})
+    try:
+        event_id, created = event.id, event.created
+        if (not isinstance(event_id, str) or not event_id.startswith('evt_') or len(event_id) > 120
+                or not isinstance(created, int) or isinstance(created, bool) or created <= 0):
+            raise ValueError('invalid event identity')
+        occurred_at = _dt.datetime.fromtimestamp(created, _dt.timezone.utc)
+        facts = _stripe_payment_facts(event_type, event['data']['object'])
+    except (ValueError, TypeError, AttributeError, OverflowError):
+        return jsonify({'error': 'invalid_payment_event'}), 400
+    try:
+        if store.stripe_event_already_processed(event_id, event_type, facts, occurred_at):
+            return jsonify({'ok': True})
+        if not event_type.startswith('checkout.session.') and facts['payment_intent_id']:
+            pi = facts['payment_intent_id']
+            sid = store.stripe_refund_session(pi)
+            if sid is None and (facts.get('full_refund') or
+                    (event_type.startswith('refund.') and facts.get('status') == 'succeeded')):
+                # Only a unique, server-verified Stripe association may resolve
+                # old ledger rows. Emails never participate in reconciliation.
+                sessions = stripe.checkout.Session.list(payment_intent=pi, limit=2)
+                candidates = [session.id for session in sessions.data
+                    if session.payment_intent == pi and store.get_checkout_session_user(session.id)]
+                sid = candidates[0] if len(candidates) == 1 else None
+            facts['session_id'] = sid if isinstance(sid, str) else None
+        result = store.process_stripe_event(event_id, event_type, facts, occurred_at)
+    except Exception as error:
+        try:
+            store.record_stripe_event_failure(event_id, event_type, facts, occurred_at)
+        except Exception:
+            pass  # A DB outage cannot be durably logged until Stripe retries.
+        print(f'[webhook] processing unavailable: {type(error).__name__}')
+        return jsonify({'error': 'payment_processing_unavailable'}), 503
+    if result['outcome'] == 'review':
+        return jsonify({'error': result['code']}), 409
     return jsonify({'ok': True})
+
+
+def _stripe_payment_facts(event_type, resource):
+    if event_type.startswith('checkout.session.'):
+        metadata = _checkout_metadata(resource)
+        try:
+            account_id = str(_uuid.UUID(str(metadata.get('account_id'))))
+        except ValueError:
+            account_id = None
+        return dict(session_id=_stripe_resource_id(resource.id, 'cs_'), account_id=account_id,
+            plan=metadata.get('plan') if metadata.get('plan') in PLANS else None,
+            amount_cents=getattr(resource, 'amount_total', None),
+            currency=getattr(resource, 'currency', None), mode=getattr(resource, 'mode', None),
+            payment_status=getattr(resource, 'payment_status', None),
+            payment_intent_id=_stripe_resource_id(getattr(resource, 'payment_intent', None), 'pi_'),
+            stripe_customer_id=_stripe_resource_id(getattr(resource, 'customer', None), 'cus_'))
+    return dict(payment_intent_id=_stripe_resource_id(getattr(resource, 'payment_intent', None), 'pi_'),
+        session_id=None, full_refund=event_type == 'charge.refunded' and getattr(resource, 'refunded', False) is True,
+        status='succeeded' if event_type == 'charge.refunded' else getattr(resource, 'status', None),
+        refund_id=None if event_type == 'charge.refunded' else _stripe_resource_id(resource.id, 're_'),
+        amount_cents=getattr(resource, 'amount', None), currency=getattr(resource, 'currency', None))
+
+
+def _stripe_resource_id(value, prefix):
+    if value is None:
+        return None
+    identifier = value if isinstance(value, str) else getattr(value, 'id', None)
+    if not isinstance(identifier, str) or not identifier.startswith(prefix) or len(identifier) > 120:
+        raise ValueError('invalid Stripe resource identity')
+    return identifier
 
 
 def _checkout_metadata(session):
@@ -5255,7 +5292,7 @@ def _provision_paid_account(session, paid_plan):
         return None
     return store.fulfill_bound_checkout(sid, paid_plan, amount,
         getattr(session, "currency", None), getattr(session, "payment_intent", None),
-        getattr(session, "customer", None))
+        getattr(session, "customer", None), account_id=str(uid))
 
 
 _poll_rate = {}
@@ -5457,14 +5494,26 @@ def withdraw_endpoint():
         try:
             refund = stripe.Refund.create(payment_intent=pi,
                 idempotency_key=f'apex-refund-{purchase["id"]}')
-            if getattr(refund, "status", None) == "succeeded":
-                refund_id = refund.id
-                store.complete_owned_refund(g.user["id"], session_id, refund_id)
-            else:
-                refund_error = 'refund_pending'
         except Exception as error:
             refund_error = type(error).__name__
+            try:
+                store.record_owned_refund_outcome(g.user['id'], session_id, 'unconfirmed')
+            except Exception:
+                pass  # The existing refund_pending claim still prevents access.
             print(f'[withdraw] refund failed: {refund_error}')
+        else:
+            try:
+                if getattr(refund, 'status', None) == 'succeeded':
+                    store.complete_owned_refund(g.user['id'], session_id, refund.id)
+                    refund_id = refund.id
+                else:
+                    refund_error = 'refund_pending'
+                    store.record_owned_refund_outcome(g.user['id'], session_id,
+                        getattr(refund, 'status', 'pending'), getattr(refund, 'id', None))
+            except Exception as error:
+                print(f'[withdraw] outcome persistence failed: {type(error).__name__}')
+                return jsonify({'ok': False, 'access_revoked': True,
+                    'error': 'refund_reconciliation_required'}), 503
 
         # Confirmation to the user (best-effort if we have an email)
         if refund_id and customer_email and '@' in customer_email:
