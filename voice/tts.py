@@ -18,6 +18,16 @@ Config (all optional, env-driven):
 """
 import os
 
+MAX_INPUT_CHARACTERS = 1600
+
+
+def validate_input(text):
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError("invalid_tts_input")
+    if len(text) > MAX_INPUT_CHARACTERS:
+        raise ValueError("tts_input_too_long")
+    return text.strip()
+
 _MIME = {"mp3": "audio/mpeg", "opus": "audio/ogg", "aac": "audio/aac", "wav": "audio/wav", "flac": "audio/flac"}
 
 # The delivery style APEX should keep in its voice — calm, measured, warm but not
@@ -37,20 +47,25 @@ class _OpenAITTS:
         self.fmt = os.getenv("APEX_TTS_FORMAT", "mp3").lower()
 
     def synthesize(self, text, lang, client, voice=None):
+        text = validate_input(text)
         if client is None:
             raise RuntimeError("openai client not provided to TTS adapter")
         fmt = self.fmt if self.fmt in _MIME else "mp3"
-        # `instructions` (voice steering) is only honoured by the gpt-4o*-tts family;
-        # fall back cleanly for classic tts-1 models or older SDKs.
+        # Select supported arguments before submission. An error is not evidence
+        # that a billable request did not run, so never retry without instructions.
         kwargs = dict(model=self.model, voice=voice or self.voice, input=text, response_format=fmt)
+        locale = "English (en-US)" if str(lang).lower().startswith("en") else "Bulgarian (bg-BG)"
+        instructions = _STYLE + f" Speak the supplied text in {locale}. Do not translate it or switch languages."
+        if self.model not in {"tts-1", "tts-1-hd"}:
+            kwargs["instructions"] = instructions
+        configure = getattr(client, "with_options", None)
+        bounded = configure(max_retries=0, timeout=20) if callable(configure) else client
+        resp = bounded.audio.speech.create(**kwargs)
         try:
-            resp = client.audio.speech.create(instructions=_STYLE, **kwargs)
-        except TypeError:
-            resp = client.audio.speech.create(**kwargs)
-        except Exception:
-            # Some SDK/model combos reject `instructions` at the API layer, not as TypeError.
-            resp = client.audio.speech.create(**kwargs)
-        audio = resp.read() if hasattr(resp, "read") else getattr(resp, "content", None)
+            audio = resp.read() if hasattr(resp, "read") else getattr(resp, "content", None)
+        finally:
+            close = getattr(resp, "close", None)
+            if callable(close): close()
         if not audio:
             raise RuntimeError("TTS provider returned no audio")
         return audio, _MIME[fmt]

@@ -695,8 +695,18 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 .pill.live:hover{transform:none;border-color:var(--border);color:var(--muted);}
 @media (prefers-reduced-motion:reduce){ #grain{animation:none;} .msg{animation:none;} }
 </style>
+{% if live_voice_demo|default(false) %}
+<style>
+#local-demo-notice{position:fixed;inset:0 0 auto;height:40px;z-index:1000;display:flex;align-items:center;justify-content:center;padding:4px 12px;background:#151517;color:#fff;border-bottom:1px solid #f02238;font:12px/16px Manrope,sans-serif;text-align:center;pointer-events:none;}
+body:has(#local-demo-notice) :is(#ui,#consult,#workout){top:40px;height:calc(var(--app-viewport-height) - 40px);}
+body:has(#local-demo-notice) #apex-position-readout{display:none!important;}
+</style>
+{% endif %}
 </head>
 <body>
+{% if live_voice_demo|default(false) %}
+<aside id="local-demo-notice" role="note">DEMO · Synthetic profile and history. No real measurements.</aside>
+{% endif %}
 
 <div id="stage">
   <div id="grid"></div>
@@ -911,7 +921,12 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 {% set canonical_workout_revision = 'canonical-workout-r4' %}
 <script src="/static/exercise_instruction_library.js?v={{ canonical_workout_revision }}"></script>
 <script src="/static/exercise/visuals/v1/manifest.js?v={{ canonical_workout_revision }}"></script>
+{% if live_voice_config and live_voice_config.enabled %}
+<script src="/static/live_voice.js"></script>
+{% endif %}
 <script>
+const LIVE_VOICE_CONFIG={{ live_voice_config|default({'enabled': false, 'transport': 'disabled'})|tojson }};
+const LOCAL_DEMO={{ live_voice_demo|default(false)|tojson }};
 /* Account-owned browser data. Bare legacy keys are claimed only by the current
    anonymous browser identity and are never uploaded into an account. */
 const OWNED_STORAGE_KEYS=Object.freeze(['apexProfile','apexHistory','apexWorkoutLog','apexCoachMemory']);
@@ -1710,7 +1725,7 @@ const T={
 };
 function supportedLanguage(value){
   const normalized=typeof value==='string'?value.trim().toLowerCase():'';
-  return normalized==='bg'||normalized==='en'?normalized:null;
+  return /^(?:bg(?:-bg)?|en(?:-us|-gb)?)$/.test(normalized)?normalized.slice(0,2):null;
 }
 // Keep the explicit choice after applyIntent removes the navigation query.
 let navigationLanguage=supportedLanguage(new URLSearchParams(location.search).get('lang'));
@@ -1763,7 +1778,7 @@ function applyReadout(){
     [positionT.recovery,profileValue(t.wiz.opt.recovery,'recoveryFeel')],
     [positionT.load,load]
   ].map(([label,value])=>'<span>'+esc(label)+': '+esc(value)+'</span>').join('');
-  positionReadout.hidden=false;
+  positionReadout.hidden=LOCAL_DEMO;
   const value=(map,key)=>map[p[key]]||p[key];
   briefContext.textContent=[value(t.wiz.opt.goal,'goal'),value(t.wiz.opt.equip,'equipment')].filter(Boolean).join(' · ');
   briefContext.hidden=!briefContext.textContent;
@@ -1780,6 +1795,7 @@ function setOpts(id,map){const el=document.getElementById(id);if(!el)return;[...
 function txt(id,v){const e=document.getElementById(id);if(e)e.textContent=v;}
 function applyLang(){
   const t=tr(),w=t.wiz; document.documentElement.lang=lang;
+  txt('local-demo-notice',lang==='bg'?'DEMO · Синтетичен профил и история. Не са реални измервания.':'DEMO · Synthetic profile and history. No real measurements.');
   document.querySelector('.brand').href=lang==='en'?'/en':'/';
   document.querySelector('.drawer-close').setAttribute('aria-label',lang==='bg'?'Затвори менюто':'Close menu');
   document.getElementById('drawer-nav').setAttribute('aria-label',lang==='bg'?'Главно меню':'Main menu');
@@ -1788,6 +1804,7 @@ function applyLang(){
   txt('ch-label',t.chEngine);
   txt('jump-label',t.jumpLatest);
   const _ui=document.getElementById('user-in'); _ui.placeholder=t.placeholder; _ui.setAttribute('aria-label',t.placeholder);
+  const sendButton=document.querySelector('.send-btn');if(sendButton){const label=lang==='bg'?'Изпрати':'Send';sendButton.setAttribute('aria-label',label);sendButton.setAttribute('title',label);}
   buildMenu();
   // wizard chrome
   txt('w1-cat',w.c1);txt('w2-cat',w.c2);txt('w3-cat',w.c3);
@@ -1811,14 +1828,20 @@ function applyLang(){
   setOpts('pf-smoking',w.opt.smoking);setOpts('pf-alcohol',w.opt.alcohol);setOpts('pf-nicotine',w.opt.nicotine);setOpts('pf-caffeine',w.opt.caffeine);
   setOpts('pf-freq',w.opt.freq);
   applyReadout();
+  refreshRenderedWorkoutLanguage();
+  Voice.set(Voice.state);
 }
-function toggleLang(){
-  lang=lang==='en'?'bg':'en';navigationLanguage=lang;apexStorageSet('apexLang',lang);
+function selectAppLanguage(value){
+  const selected=supportedLanguage(value);if(!selected)return;
+  lang=selected;navigationLanguage=lang;apexStorageSet('apexLang',lang);
   const profile=pfLoad(),changes={language:lang};if('lang' in profile)changes.lang=lang;
   const owner=ownerRequestToken();
   if(SESSION.authenticated)accountSaveProfile(changes).then(ok=>{if(owner===ownerRequestToken()&&!ok)toast(PROFILE_COPY[lang].languageFailed);});
   else ownedStorageSet('apexProfile',JSON.stringify({...profile,...changes}));
-  applyLang();renderTrainingConstraints(ACTIVE_TRAINING_CONSTRAINTS,trainingConstraintState);if(consultOn)resetGreeting();
+  applyLang();renderTrainingConstraints(ACTIVE_TRAINING_CONSTRAINTS,trainingConstraintState);
+}
+function toggleLang(){
+  selectAppLanguage(lang==='en'?'bg':'en');if(consultOn)resetGreeting();
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -3555,6 +3578,25 @@ function renderWorkoutExerciseCard(exercise,diffLabel,includeOverview=false){
     '<span class="workout-card-stat workout-card-dose"><b>'+esc(exercise.sets)+' × '+esc(prescription.value)+displayUnit+'</b>'+labels.sets+' × '+displayTarget+'</span><span class="workout-card-stat"><b>'+esc(restWithUnit)+'</b>'+labels.rest+'</span></div>'+
     '<p class="workout-key-cue">'+esc(workoutKeyCue(exercise))+'</p>'+workoutExecutionDetails(exercise,includeOverview)+'</article>';
 }
+function refreshRenderedWorkoutLanguage(){
+  const api=window.ApexExerciseInstructions;if(!api)return;
+  document.querySelectorAll('.workout-protocol').forEach(protocol=>{
+    const exercises=renderedWorkoutExercises[decodeURIComponent(protocol.dataset.workoutKey||'')]||[];
+    const cards=protocol.querySelectorAll('.workout-exercise-card');
+    exercises.forEach((exercise,index)=>{
+      const record=instructionRecordFor(exercise);if(!record)return;
+      exercise.name=api.display(record,lang);
+      const card=cards[index];if(!card)return;
+      const opened=[...card.querySelectorAll('details')].map(detail=>detail.open);
+      const replacement=document.createElement('div');replacement.innerHTML=renderWorkoutExerciseCard(exercise);
+      const next=replacement.firstElementChild;
+      next.querySelectorAll('details').forEach((detail,i)=>detail.open=!!opened[i]);card.replaceWith(next);
+    });
+    const title=protocol.querySelector('.wt'),start=protocol.querySelector('.start-wo');
+    if(title)title.textContent=lang==='bg'?'Тренировъчен протокол':'Training protocol';
+    if(start)start.textContent='▶ '+tr().woStart;
+  });
+}
 function reopenWorkoutInstructions(){
   const protocol=latestWorkoutProtocol();if(!protocol)return false;
   const cards=protocol.querySelectorAll('.workout-exercise-card');if(!cards.length)return false;
@@ -4061,7 +4103,7 @@ const ChatLifecycle={
     this.transition(x,CHAT_STATES.COMPLETING);
     x.assistantBody.innerHTML=renderMarkdown(x.full);
     if(!x.options.sessionStart)saveHistory('assistant',x.full);
-    afterReply(x.full,x.speechText);
+    afterReply(x.full,x.speechText,x.responseLanguage||lang);
     this.transition(x,CHAT_STATES.COMPLETED);this.finish(x);
     const workoutStart=x.assistantBody.querySelector('.start-wo');
     if(x.follow&&workoutStart){workoutStart.scrollIntoView({block:'nearest'});smartScroll();}
@@ -4149,6 +4191,8 @@ async function runChatExchange(x,body){
     const res=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',signal:x.controller.signal,body:JSON.stringify(body)});
     if(owner!==ownerRequestToken())return;
     if(!res.ok)throw new Error('chat_http_'+res.status);
+    x.responseLanguage=supportedLanguage(res.headers.get('Content-Language'))||lang;
+    if(x.responseLanguage!==lang)selectAppLanguage(x.responseLanguage);
     const ct=res.headers.get('content-type')||'';
     if(ct.indexOf('text/event-stream')!==-1){
       const reader=res.body.getReader(),dec=new TextDecoder();x.reader=reader;let buf='',streamFailure=null,paintBatch=0;
@@ -4303,13 +4347,13 @@ window.addEventListener('storage',event=>{
 window.apexAnalyticsConsentChanged=()=>{
   if(apexSyncAnalyticsConsent())void maybeDeliverFreeActivationAnalytics();
 };
-function afterReply(text,speechText=''){
+function afterReply(text,speechText='',responseLanguage=lang){
   const m=memLoad();
   if(/ккал|kcal|калории|protein|протеин/i.test(text)&&/\|/.test(text)){m.lastNutritionAt=Date.now();witness('modelChanged');}
   m.lastConsultationAt=Date.now(); memSave(m);
   // Event-driven: the conversation pipeline announces a completed reply. The Voice
   // Controller (below) subscribes; nothing here knows or cares that voice exists.
-  try{ if(window.VoiceBus) window.VoiceBus.emit('reply',{text:speechText||text}); }catch(_){}
+  try{ if(window.VoiceBus) window.VoiceBus.emit('reply',{text:speechText||text,language:responseLanguage}); }catch(_){}
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -4329,12 +4373,12 @@ window.VoiceBus = { _l:{}, on(e,f){(this._l[e]=this._l[e]||[]).push(f);}, emit(e
 const VoiceOut = {
   _audio:null, _pulse:null, _gen:0, _res:null,
   get playing(){ return !!this._audio; },
-  async speak(text){
+  async speak(text,language=lang){
     this.stop();                                   // cancel whatever was playing — never queue
     const gen=++this._gen;
     if(!text) return;
     const r=await fetch('/speak',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',
-      body:JSON.stringify({text:text,lang:lang,voice:VoiceReg.ttsId()})});
+      body:JSON.stringify({text:text,lang:supportedLanguage(language)||lang,voice:VoiceReg.ttsId()})});
     if(gen!==this._gen) return;                    // superseded while the request was in flight
     if(!r.ok) throw new Error('tts_'+r.status);
     const url=URL.createObjectURL(await r.blob());
@@ -4365,10 +4409,10 @@ const VoiceIn = {
     r.lang=(lang==='en')?'en-US':'bg-BG'; r.interimResults=true; r.maxAlternatives=1; r.continuous=false;
     witness('keystroke');       // the Core visibly LISTENS (attention rises), same as when typing
     r.onresult=(e)=>{
-      let interim='', final='';
-      for(let i=e.resultIndex;i<e.results.length;i++){ const res=e.results[i], t=(res[0]&&res[0].transcript)||''; if(res.isFinal)final+=t; else interim+=t; }
+      let interim='', final='',confidence=null;
+      for(let i=e.resultIndex;i<e.results.length;i++){ const res=e.results[i], t=(res[0]&&res[0].transcript)||''; if(res.isFinal){final+=t;confidence=res[0]&&res[0].confidence;} else interim+=t; }
       if(interim.trim()&&cb.onInterim) cb.onInterim(interim.trim());
-      if(final.trim()&&cb.onFinal) cb.onFinal(final.trim());
+      if(final.trim()&&cb.onFinal) cb.onFinal(final.trim(),confidence);
     };
     r.onerror=(e)=>{ if(cb.onError) cb.onError((e&&e.error)||'error'); };
     r.onend=()=>{ if(this._rec===r) this._rec=null; if(cb.onEnd) cb.onEnd(); };
@@ -4403,6 +4447,29 @@ const VoiceReg = {
 const BARGE_GUARD_MS=650;   // ignore the mic for the first moment of playback (reduce self-trigger)
 const MAX_RECOG_RETRY=3;    // bounded mic auto-recovery on silence / soft errors
 
+let liveVoiceController=null;
+function getLiveVoice(){
+  if(!LIVE_VOICE_CONFIG.enabled||!SESSION.authenticated||typeof ApexLiveVoice==='undefined')return null;
+  if(!liveVoiceController)liveVoiceController=new ApexLiveVoice.Controller({
+    transportFactory:()=>LIVE_VOICE_CONFIG.transport==='mock'?new ApexLiveVoice.MockTransport():new ApexLiveVoice.RelayTransport(),
+    owner:()=>ownerRequestToken(),language:()=>lang,onState:state=>Voice.set(state),onFact:(fact)=>witness(fact),
+    onTranscript:async text=>{
+      if(isStopTurn(text)){Voice.stop();return;}
+      const input=document.getElementById('user-in');if(input){input.value=text;await send({voice:true});}
+    },
+    onUncertain:()=>clarifyVoiceTranscription(),
+    cancelAuthority:()=>{if(ChatLifecycle.busy())ChatLifecycle.cancel();},
+    onEnded:()=>Voice.stop(),
+    speak:(text,language)=>VoiceOut.speak(text,language),stopSpeaking:()=>VoiceOut.stop(),
+    fallback:()=>{if(Voice.on){Voice.set('LISTENING');Voice.listen();}}
+  });
+  return liveVoiceController;
+}
+async function clarifyVoiceTranscription(){
+  const text=lang==='bg'?'Не те разбрах ясно. Моля, повтори на български или напиши съобщението.':'I did not catch that clearly. Please repeat in English or type your message.';
+  appendCoach().textContent=text;hardScroll();await Voice.say(text,lang);
+}
+
 const Voice = {
   on:false, state:'IDLE', _spokeAt:0, _retry:0,
   _labels(){ return (lang==='bg')
@@ -4415,18 +4482,20 @@ const Voice = {
     const b=_helix(); if(!b) return;
     b.setAttribute('data-state', next.toLowerCase());
     b.setAttribute('aria-pressed', next==='IDLE'?'false':'true');
-    const lb=this._labels()[next]||''; b.setAttribute('aria-label', lb);
+    const lb=this._labels()[next]||''; b.setAttribute('aria-label', lb);b.setAttribute('title',lb);
     const st=document.getElementById('mic-status'); if(st) st.textContent=(next==='IDLE')?'':lb;
   },
 
   /* ── session control (mic button) ── */
-  start(){
+  async start(){
     if(this.on) return; this.on=true; this._retry=0;
     try{ new Audio().play().catch(()=>{}); }catch(_){}   // unlock audio inside the user gesture
+    const live=getLiveVoice();
+    if(live){await live.start();return;}
     if(!VoiceIn.supported) toast(lang==='bg'?'Разпознаването на реч не се поддържа тук — APEX ще говори, ти пиши.':'Speech recognition isn’t supported here — APEX will speak, you type.');
     this.greet();
   },
-  stop(){ this.on=false; VoiceIn.stop(); VoiceOut.stop(); this.set('IDLE'); },
+  stop(){ this.on=false;if(liveVoiceController)liveVoiceController.stop(); VoiceIn.stop(); VoiceOut.stop(); this.set('IDLE'); },
   toggle(){ this.on ? this.stop() : this.start(); },
 
   /* ── greeting via the SINGLE /chat entry point (SESSION_START) ── */
@@ -4443,13 +4512,14 @@ const Voice = {
   },
 
   /* ── SPEAK one reply — single stream, barge-in armed from the first word ── */
-  async say(text){
+  async say(text,language=lang){
     if(!this.on) return;
+    if(liveVoiceController&&liveVoiceController.active)return liveVoiceController.say(text,language);
     if(!text){ this.set('LISTENING'); this.listen(); return; }
     this.set('SPEAKING'); this._spokeAt=Date.now();
     this.listen();                       // arm recognizer NOW → barge-in possible immediately
     try{
-      await VoiceOut.speak(text);        // exactly one active stream; a new say() cancels this
+      await VoiceOut.speak(text,language); // exactly one active stream; a new say() cancels this
     }catch(e){
       if(this.on) this._ttsError(); return;
     }
@@ -4459,11 +4529,12 @@ const Voice = {
 
   /* ── LISTEN (arm/keep exactly one recognizer) ── */
   listen(){
+    if(liveVoiceController&&liveVoiceController.active)return;
     if(!this.on || !VoiceIn.supported) return;
     if(VoiceIn.active) return;            // barge-in shares this recognizer; don't double-arm
     VoiceIn.start({
       onInterim:(t)=>this._onInterim(t),
-      onFinal:(t)=>this._onFinal(t),
+      onFinal:(t,confidence)=>this._onFinal(t,confidence),
       onError:(err)=>this._onRecogError(err),
       onEnd:()=>this._onRecogEnd()
     });
@@ -4479,8 +4550,12 @@ const Voice = {
     }
   },
   /* final user utterance → THINKING, then the existing /chat pipeline */
-  _onFinal(t){
+  _onFinal(t,confidence){
     if(!this.on || !t) return;
+    if(LIVE_VOICE_CONFIG.enabled&&typeof ApexLiveVoice!=='undefined'&&
+       ApexLiveVoice.transcriptionIssue({transcript:t,recognitionConfidence:confidence},lang)){
+      VoiceIn.stop();void clarifyVoiceTranscription();return;
+    }
     if(this.state==='SPEAKING') VoiceOut.stop();   // barge-in caught only at the final result
     this._retry=0;
     VoiceIn.stop();
@@ -4510,7 +4585,16 @@ const Voice = {
 
 /* thin global wrappers — the mic button + reply bus keep their existing hooks */
 function voiceToggle(){ Voice.toggle(); }
-window.VoiceBus.on('reply', ({text})=>{ if(Voice.on) Voice.say(text); });
+window.VoiceBus.on('reply', ({text,language})=>{ if(Voice.on) Voice.say(text,language); });
+window.addEventListener('pagehide',()=>{if(liveVoiceController&&liveVoiceController.active)Voice.stop();});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&liveVoiceController&&liveVoiceController.active)Voice.stop();});
+if(LIVE_VOICE_CONFIG.enabled&&LIVE_VOICE_CONFIG.transport==='mock')window.ApexLiveVoiceLab=Object.freeze({
+  prepare:async()=>{await loadSession();enterConsult('');document.getElementById('profile-modal').classList.remove('on');},
+  start:()=>Voice.start(),stop:()=>Voice.stop(),state:()=>Voice.state,
+  emit:event=>{if(liveVoiceController&&liveVoiceController.active)liveVoiceController.transport.emit(event);},
+  disconnect:()=>{if(liveVoiceController&&liveVoiceController.active)liveVoiceController.transport.disconnect();},
+  switchOwner:()=>activateDataOwner('account','local-mock-'+Date.now())
+});
 
 /* ═══════════════════════════════════════════════════════════════════
    NOTICES + FEEDBACK

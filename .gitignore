@@ -65,6 +65,9 @@ test_*.py
 !tests/test_enforcement.py
 !tests/test_chat_enforcement.py
 !tests/test_voice_selection.py
+!tests/test_live_voice.py
+!tests/test_live_voice_security.py
+!tests/test_live_voice_media.py
 !tests/test_cold_start.py
 !tests/test_brain_analytics.py
 !tests/test_recommend.py
@@ -132,3 +135,6 @@ data/*.db
 !tests/test_individual_model_shadow.py
 !tests/test_workout_completion_contract.py
 !tests/test_recipe_engine.py
+!tests/test_live_voice_safety_controls.py
+!tests/test_live_voice_postgres_controls.py
+!tests/test_tts_budget.py

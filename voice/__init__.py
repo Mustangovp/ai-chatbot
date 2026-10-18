@@ -7,4 +7,4 @@ provider directly — they call `synthesize(...)`, so the provider can be replac
 (OpenAI → ElevenLabs → local) by adding one adapter and flipping an env flag,
 with zero change to reasoning or interface.
 """
-from voice.tts import synthesize, provider_name  # noqa: F401
+from voice.tts import synthesize, provider_name, validate_input  # noqa: F401

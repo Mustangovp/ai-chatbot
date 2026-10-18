@@ -3,7 +3,8 @@ const { test, expect } = require('@playwright/test');
 test.describe('authoritative prescription metadata', () => {
   async function mount(page, language, exercises) {
     await page.goto('/app?lang=' + language);
-    await page.evaluate(({language, exercises}) => {
+    await page.evaluate(async ({language, exercises}) => {
+      await loadSession(); // Finish account hydration before installing fixture state.
       lang=language;
       ownedStorageSet('apexProfile',JSON.stringify({goal:'muscle_gain',age:'30',weight:'75',height:'178',gender:'male',level:'intermediate',equip:'home'}));
       enterConsult('');document.getElementById('profile-modal').classList.remove('on');

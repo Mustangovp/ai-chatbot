@@ -5,3 +5,5 @@ stripe==15.5.1
 gunicorn==26.1.0
 SQLAlchemy==2.0.52
 psycopg[binary]==3.3.4
+simple-websocket==1.1.0
+websocket-client==1.9.0

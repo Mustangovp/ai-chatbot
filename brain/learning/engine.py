@@ -38,7 +38,8 @@ class HumanLearningEngine:
             return HumanLearningEngine._extract_facts_fallback(user_msg)
             
         try:
-            client = OpenAI(api_key=api_key)
+            from voice.charging import protect
+            client = protect(OpenAI(api_key=api_key))
             prompt = f"""
 Analyze the following conversation segment between a fitness user and APEX (the AI coach).
 Extract only CONFIRMED physical training facts, habits, equipment, preferences, constraints, or pain points.

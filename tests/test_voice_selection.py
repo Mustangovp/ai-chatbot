@@ -38,6 +38,16 @@ def test_openai_tts_uses_the_configured_default_when_voice_is_missing(monkeypatc
     assert client.calls[0]["voice"] == "default-voice"
 
 
+def test_tts_language_is_the_validated_response_language():
+    provider = tts._OpenAITTS()
+    client = _SpeechClient()
+    provider.synthesize("Ще отговарям на български.", "bg", client)
+    provider.synthesize("I will use English.", "en", client)
+    assert "Bulgarian (bg-BG)" in client.calls[0]["instructions"]
+    assert "English (en-US)" in client.calls[1]["instructions"]
+    assert "Do not translate" in client.calls[0]["instructions"]
+
+
 def test_speak_allows_only_selector_voice_ids(monkeypatch):
     calls = []
 

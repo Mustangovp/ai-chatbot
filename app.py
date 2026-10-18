@@ -125,11 +125,17 @@ import human_state.observatory as human_state_observatory  # BUILD-002: HSE Obse
 import coaching                                 # BUILD-003: Adaptive Coach (HSE consumer, flag-gated)
 import coaching.presentation_shadow as hse_presentation_shadow
 import voice as apex_voice                       # Sprint 10: provider-independent voice (TTS) transport
+from voice import realtime as live_voice
+from voice import charging as voice_charging
+client = voice_charging.protect(client)
 import uuid as _uuid
 from flask import g, has_request_context
+app.register_blueprint(live_voice.blueprint)
 try:
     store.init_db()
     print(f"[db] ready ({'sqlite' if store.IS_SQLITE else 'postgres'})")
+    if not store.IS_SQLITE and os.getenv("APEX_LIVE_VOICE_ENABLED", "false").lower() == "true":
+        live_voice.start_guardian()
 except Exception as _e:
     print(f"[db] init failed: {_e}")
 
@@ -514,6 +520,7 @@ def _load_identity():
     """Resolve the caller's account from the httpOnly session cookie (server truth),
     and ensure an anonymous device id exists for pre-login free-limit accounting."""
     g.user = None
+    g.identity_unavailable = False
     g.device_id = request.cookies.get(DEVICE_COOKIE) or ""
     g.set_device = False
     sid = request.cookies.get(SESSION_COOKIE)
@@ -521,10 +528,20 @@ def _load_identity():
         try:
             g.user = store.get_session_user(sid)
         except Exception as e:
+            g.identity_unavailable = True
             print(f"[auth] session lookup failed: {e}")
     if not g.device_id:
         g.device_id = _uuid.uuid4().hex
         g.set_device = True
+    if request.path in {"/chat", "/speak"}:
+        if g.identity_unavailable:
+            return jsonify(error="account_state_unavailable"), 503
+        try:
+            principal = voice_charging.capture()
+            if principal:
+                voice_charging.control.require(principal.account)
+        except Exception:
+            return jsonify(error="voice_test_control_unavailable"), 403
 
 
 @app.after_request
@@ -1669,7 +1686,7 @@ def landing_en():
 @app.route("/app")
 def app_chat():
     """APEX V3 — the AI Operating System shell. The landing page, alive."""
-    response = make_response(render_template("apex.html"))
+    response = make_response(render_template("apex.html", live_voice_config=live_voice.browser_config(request)))
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -1842,6 +1859,12 @@ def auth_logout():
         except Exception as error:
             print(f"[auth] logout unavailable: {type(error).__name__}")
             return jsonify({"error": "logout_unavailable"}), 503
+        if g.get("user") and os.getenv("APEX_LIVE_VOICE_ENABLED", "false").lower() == "true":
+            try:
+                if not live_voice.end_authenticated_session(sid, g.user["id"]):
+                    return jsonify({"error": "voice_termination_unconfirmed"}), 503
+            except Exception:
+                return jsonify({"error": "voice_termination_unconfirmed"}), 503
     resp = make_response(jsonify({"ok": True}))
     resp.delete_cookie(SESSION_COOKIE, samesite="Lax", secure=COOKIE_SECURE)
     return resp
@@ -2275,13 +2298,15 @@ def _update_learning_engine(uid, user_msg, assistant_reply, current_profile):
         return None
     try:
         profile_snapshot = deepcopy(current_profile)
+        learning_principal = voice_charging.capture()
 
         def work():
             try:
                 source = store.get_profile(uid) if uid else profile_snapshot
                 model = HumanModel(deepcopy(source))
                 previous = deepcopy(model.to_dict())
-                HumanLearningEngine.process_exchange(model, user_msg, assistant_reply)
+                with voice_charging.scope(learning_principal):
+                    HumanLearningEngine.process_exchange(model, user_msg, assistant_reply)
                 if uid:
                     store.save_profile_learning(uid, previous, model.to_dict())
             except Exception as error:
@@ -3267,6 +3292,9 @@ def chat():
         # (+ Brain, when enforced) as every other turn. Single reasoning entry point.
         requested_session_start = bool(data.get("session_start"))
         voice_requested = bool(data.get("voice"))
+        # Speech presentation is opt-in AND server-authorized. A text turn (or
+        # legacy voice with Live Voice OFF) retains the original chat contract.
+        _live_voice_request = voice_requested and live_voice.browser_config(request)["enabled"]
         daypart = str(data.get("daypart", ""))[:12]
 
         msg_limit = 4000 if is_elite else 1000
@@ -3279,6 +3307,10 @@ def chat():
         lang = str(data.get("lang", "bg")).lower()
         if lang not in ("bg", "en"):
             lang = "bg"
+        if _live_voice_request:
+            lang = live_voice.response_language(user_message, data.get("lang", "bg"))
+        _language_turn = (_live_voice_request and live_voice.is_language_turn(user_message)
+                          and decision_engine.classify_intent(user_message) != "medical")
 
         # Transport stop is intentionally not a coaching turn. It settles the
         # existing browser stream without invoking quota, persistence, or the LLM.
@@ -3306,9 +3338,9 @@ def chat():
         _workout_scope = _workout_conversation_scope(data, chat_uid, g.device_id)
         _previous_workout = _last_workout_for(_workout_scope)
         _nutrition_revision_request = nutrition_conversation.parse_plan_revision(user_message)
-        _active_workout_mutation = (None if _nutrition_revision_request is not None else
+        _active_workout_mutation = (None if _language_turn or _nutrition_revision_request is not None else
                                    active_workout_modification(user_message, previous=_previous_workout))
-        _workout_followup = (None if _nutrition_revision_request is not None else
+        _workout_followup = (None if _language_turn or _nutrition_revision_request is not None else
                             parse_workout_followup(user_message, previous=_previous_workout))
         _mixed_modal_request = parse_mixed_modal_request(user_message)
         if (_workout_followup is not None and _previous_workout is not None
@@ -3620,11 +3652,13 @@ def chat():
             _legacy_profile = profile if isinstance(profile, dict) else {}
             _legacy_history = history if isinstance(history, list) else []
             _shadow_intent = decision_engine.classify_intent(user_message)
+            if _language_turn:
+                _shadow_intent = "question"
             if _mixed_modal_topic_request(user_message):
                 _shadow_intent = "question"
             if _shadow_intent != "medical":
                 _shadow_intent = workout_context_advice_intent(user_message) or _shadow_intent
-            if (_explicit_workout_request(user_message)
+            if not _language_turn and (_explicit_workout_request(user_message)
                     or _workout_continuation_request(user_message, _legacy_history)):
                 _shadow_intent = "workout"
             if _recovering_light_session_requested:
@@ -3659,7 +3693,7 @@ def chat():
                 history = _legacy["history"]
             pers_workouts = _legacy["workouts"]
             _shadow_decision = decision_engine.decide(_snapshot, _shadow_intent)
-            _planning_request_intent = _planning_intent(
+            _planning_request_intent = None if _language_turn else _planning_intent(
                 user_message, history, _shadow_intent,
                 require_explicit_workout=brain_config.brain_enforce())
             if (_workout_followup is not None
@@ -3804,6 +3838,7 @@ def chat():
                 _controlled_reply = _restriction_controlled_reply
             if (_prior_workout_decision in _WORKOUT_DECISIONS
                     and _prior_workout_decision != "WORKOUT_APPROVED"
+                    and not _language_turn
                     and _workout_explanation_request(user_message)):
                 # An explanation turn inherits the unresolved deterministic
                 # outcome. It must never reopen generic streaming as a second
@@ -3839,16 +3874,18 @@ def chat():
         model_to_use = text_model_policy.model
         if is_first_contact:
             _first_intent = decision_engine.classify_intent(user_message)
+            if _language_turn:
+                _first_intent = "question"
             if _mixed_modal_topic_request(user_message):
                 _first_intent = "question"
             if _first_intent != "medical":
                 _first_intent = workout_context_advice_intent(user_message) or _first_intent
-            if (_explicit_workout_request(user_message)
+            if not _language_turn and (_explicit_workout_request(user_message)
                     or _workout_continuation_request(user_message, history)):
                 _first_intent = "workout"
             if _recovering_light_session_requested:
                 _first_intent = "workout"
-            _first_planning_intent = _planning_intent(
+            _first_planning_intent = None if _language_turn else _planning_intent(
                 user_message, history, _first_intent,
                 require_explicit_workout=brain_config.brain_enforce())
             # Coaching turns begin from verified Profile Cards. They never call
@@ -4017,6 +4054,8 @@ def chat():
             system_content = (personality_block + "\n\n" + base) if personality_block else base
 
         _nutrition_intent = decision_engine.classify_intent(user_message)
+        if _language_turn:
+            _nutrition_intent = "question"
         if _nutrition_intent != "medical":
             _nutrition_intent = workout_context_advice_intent(user_message) or _nutrition_intent
         _combined_coaching_request = _requests_workout_and_nutrition(user_message)
@@ -4330,6 +4369,9 @@ def chat():
         if _controlled_reply is None and _training_plan_blueprint is None:
             _controlled_reply = _active_workout_calorie_reply(user_message, _previous_workout, lang)
 
+        if _language_turn and not (_medical_hold and _medical_hold.get("status") == "ACTIVE_MEDICAL_HOLD"):
+            _controlled_reply = live_voice.language_reply(lang)
+
         if _health_scope.scope is HealthSafetyScope.DECLARED_HEALTH_CONTEXT:
             system_content = system_content + "\n\n" + declared_context_prompt(lang)
         if nutrition_delivery_targets is not None:
@@ -4451,8 +4493,14 @@ def chat():
                         print("[individual-model] consumer failed: "
                               f"{type(_individual_model_error).__name__}")
 
+        if _live_voice_request:
+            system_content += "\n\n" + live_voice.speaking_instructions(lang)
+
         if _brain_enforcement_prompt_addendum:
             system_content = system_content + "\n\n" + _brain_enforcement_prompt_addendum
+
+        if _live_voice_request:
+            system_content += "\n\n" + live_voice.response_language_instructions(lang)
 
         messages = [{"role": "system", "content": system_content}]
 
@@ -4683,6 +4731,7 @@ def chat():
                     speech_event = _speech_event(
                         _controlled_reply,
                         safety_response=getattr(_shadow_decision, "outcome", None) == "route",
+                        preserve_visible=_language_turn,
                     )
                     if speech_event:
                         yield sse(speech_event)
@@ -4923,6 +4972,9 @@ def chat():
                                 _bump_plans_today()
                                 raw_explanations = completion.choices[0].message.content or ""
                                 explanations = training_renderer.verified_explanations(raw_explanations)
+                                if (_live_voice_request and not all(
+                                        live_voice.explanation_language_matches(item, lang) for item in explanations)):
+                                    raise ValueError("training explanation language mismatch")
                             except Exception as explanation_error:
                                 print(f"[training-engine] explanation fallback: {type(explanation_error).__name__}")
                                 explanations = ()
@@ -5079,10 +5131,13 @@ def chat():
                               "Отговорът беше прекъснат. Моля, опитай отново.")
                 })
 
+        response_headers = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+        if _live_voice_request:
+            response_headers["Content-Language"] = "en-US" if lang == "en" else "bg-BG"
         return Response(
             stream_with_context(generate()),
             mimetype="text/event-stream",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+            headers=response_headers
         )
     except Exception as e:
         print(f"[chat] Server error: {e}")
@@ -5101,7 +5156,12 @@ _SELECTOR_TTS_VOICES = frozenset(("ash", "alloy"))
 @app.route("/speak", methods=["POST"])
 def speak():
     data = request.get_json(silent=True) or {}
-    text = str(data.get("text", "")).strip()[:1600]
+    if not isinstance(data, dict):
+        return jsonify({"error": "invalid_tts_input"}), 400
+    try:
+        text = apex_voice.validate_input(data.get("text", ""))
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
     lang = "en" if str(data.get("lang", "bg")).lower() == "en" else "bg"
     selected_voice = data.get("voice")
     if not text:
@@ -5109,7 +5169,8 @@ def speak():
     if (selected_voice is not None and
             (not isinstance(selected_voice, str) or selected_voice not in _SELECTOR_TTS_VOICES)):
         return jsonify({"error": "invalid_voice"}), 400
-    # Cost guard: cap synthesis calls per subject (account or httpOnly device / IP).
+    # Basic abuse guard only. Restricted tester cost/concurrency authority is
+    # PostgreSQL-backed in voice.charging, not this process-local rate limiter.
     subj = str(g.user["id"]) if g.get("user") else (g.device_id or _client_ip())
     now = time.time()
     stamps = [t for t in _speak_rate.get(subj, []) if now - t < 300]
@@ -5119,8 +5180,10 @@ def speak():
     try:
         audio, mime = apex_voice.synthesize(
             text, lang=lang, client=client, voice=selected_voice)
+    except voice_charging.Denied:
+        return jsonify({"error": "voice_test_limit"}), 429
     except Exception as e:
-        print(f"[speak] TTS failed: {e}")
+        print(f"[speak] TTS failed: {type(e).__name__}")
         return jsonify({"error": "tts_unavailable"}), 502
     return Response(audio, mimetype=mime, headers={"Cache-Control": "no-store"})
 

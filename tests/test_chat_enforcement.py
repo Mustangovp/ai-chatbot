@@ -118,6 +118,26 @@ def _isolated_learning_worker(monkeypatch):
         yield
 
 
+@pytest.fixture(autouse=True)
+def _close_streams_before_next_test(monkeypatch, _isolated_learning_worker):
+    # A failing prompt assertion can leave stream_with_context suspended. Its
+    # later GC then pops a DIFFERENT test's request context, producing flakes.
+    # Cancel outstanding streams before patches/learning workers are torn down.
+    responses = []
+    client_class = type(appmod.app.test_client())
+    original = client_class.open
+
+    def tracked_open(self, *args, **kwargs):
+        response = original(self, *args, **kwargs)
+        responses.append(response)
+        return response
+
+    monkeypatch.setattr(client_class, "open", tracked_open)
+    yield
+    for response in reversed(responses):
+        response.close()
+
+
 def _events(resp):
     out = []
     for line in resp.get_data(as_text=True).splitlines():
