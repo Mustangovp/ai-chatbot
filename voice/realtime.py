@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import math
 import os
 import re
 import time
@@ -20,6 +21,8 @@ from flask import Blueprint, Response, g, jsonify, request, render_template
 
 from voice.session_store import Denied, SessionStore
 from voice import charging
+from voice.errors import public_error
+from voice.safety import TTS_PILOT_LIMIT, TTS_PILOT_RESERVATION
 
 
 blueprint = Blueprint("live_voice", __name__)
@@ -90,37 +93,73 @@ def explanation_language_matches(text: str, language: str) -> bool:
     return normalize_language(language) != "bg" or bool(re.search(r"[А-Яа-я]", str(text)))
 
 
-def enabled_for(req) -> bool:
-    """A server flag AND verified account-ID policy are required everywhere."""
-    if os.getenv("APEX_LIVE_VOICE_ENABLED", "false").lower() != "true":
-        return False
+def control_error(account):
+    """Classify a refused shared-control check without granting or changing access."""
+    try:
+        charging.control.require(account)
+        return None
+    except Denied as error:
+        if str(error) == "test_disabled":
+            try:
+                policy = charging.control.read()
+                if policy.get("tester") != str(account):
+                    return public_error(Denied("tester_mismatch"))
+                expiry = policy.get("expires_at")
+                if type(expiry) not in (int, float) or not math.isfinite(expiry):
+                    return public_error(Denied("invalid_test_budget"))
+                reason = "pilot_expired" if charging.control.clock() >= expiry else "pilot_disabled"
+                return public_error(Denied(reason))
+            except Exception:
+                pass
+        return public_error(error)
+    except Exception:
+        return public_error(Denied("shared_state_unavailable"))
+
+
+def access_error(req):
+    """Same authorization boundary for UI, preflight and media, with safe reasons."""
     user = g.get("user")
     if not user:
-        return False
+        return {"error": "forbidden"}, 403
     try:
         if not sessions.authorized(user["id"]):
-            return False
-        if os.getenv("APEX_LIVE_VOICE_TRANSPORT", "relay") != "mock":
-            charging.control.require(user["id"])
+            return {"error": "forbidden"}, 403
         direct_local = (not any(name.lower().startswith(("x-forwarded-", "forwarded")) for name in req.headers.keys())
                         and urlsplit(req.host_url).hostname in {"localhost", "127.0.0.1", "::1"}
                         and ipaddress.ip_address(req.remote_addr).is_loopback)
-        if direct_local:
-            return True
-        if os.getenv("APEX_LIVE_VOICE_TRANSPORT", "relay") == "mock":
-            return False
-        origin = os.getenv("APP_URL", "").rstrip("/")
-        return bool(origin.startswith("https://") and req.host_url.rstrip("/") == origin)
+        if not direct_local:
+            origin = os.getenv("APP_URL", "").rstrip("/")
+            if (os.getenv("APEX_LIVE_VOICE_TRANSPORT", "relay") == "mock"
+                    or not origin.startswith("https://") or req.host_url.rstrip("/") != origin):
+                return {"error": "forbidden"}, 403
+        if os.getenv("APEX_LIVE_VOICE_ENABLED", "false").lower() != "true":
+            return public_error(Denied("pilot_disabled"))
+        if os.getenv("APEX_LIVE_VOICE_TRANSPORT", "relay") != "mock":
+            return control_error(user["id"])
+        return None
+    except Denied as error:
+        if str(error) == "tester_not_authorized":
+            return {"error": "forbidden"}, 403
+        return public_error(error)
     except Exception:
         # Shared state failure is never an authorization fallback.
-        return False
+        return public_error(Denied("shared_state_unavailable"))
+
+
+def enabled_for(req) -> bool:
+    return access_error(req) is None
 
 
 def browser_config(req) -> dict:
     # No model, account data, API key or client secret is projected into HTML.
     transport = os.getenv("APEX_LIVE_VOICE_TRANSPORT", "relay")
-    enabled = enabled_for(req) and transport in {"mock", "relay"}
-    return {"enabled": enabled, "transport": transport if enabled else "disabled"}
+    error = access_error(req)
+    enabled = error is None and transport in {"mock", "relay"}
+    result = {"enabled": enabled, "transport": transport if enabled else "disabled"}
+    if error and error[0]["error"] != "forbidden":
+        # An allowlisted but expired/disabled pilot must not start legacy voice.
+        result["pilot_error"] = error[0]["error"]
+    return result
 
 
 def speaking_instructions(language: str) -> str:
@@ -336,8 +375,9 @@ def _authorized_post():
 @blueprint.before_request
 def authorize_blueprint():
     # Covers UI and every present/future endpoint in this blueprint.
-    if not enabled_for(request):
-        return _reply({"error": "forbidden"}, 403)
+    error = access_error(request)
+    if error:
+        return _reply(*error)
 
 
 @blueprint.get("/live-voice-test")
@@ -346,6 +386,44 @@ def test_ui():
         return _reply({"error": "forbidden"}, 403)
     return Response(render_template("apex.html", live_voice_config=browser_config(request)),
                     headers={"Cache-Control": "no-store"})
+
+
+@blueprint.get("/api/live-voice/allowances")
+def allowances():
+    """Read-only UI hint. Atomic reservation remains the admission authority.
+
+    Never expose money, operation IDs, account IDs, auth sessions or provider
+    usage. Reading this endpoint cannot refill or reserve any allowance.
+    """
+    try:
+        policy = charging.control.require(g.user["id"])
+        media = sessions.read(g.user["id"])
+        limit = policy.get("tts_operation_limit")
+        if (policy.get("tts_pilot_approved") is not True or limit != 4
+                or policy.get("tts_pilot_limit") != TTS_PILOT_LIMIT):
+            raise ValueError("unconfigured_pilot")
+        attempts = [op for op in policy["operations"].values() if op.get("kind") == "tts"]
+        remaining = min(max(0, limit - len(attempts)),
+                        max(0, (TTS_PILOT_LIMIT - sum(op["reserved"] for op in attempts)) // TTS_PILOT_RESERVATION))
+        seconds, total, used = (media.get(key) for key in
+                                ("session_seconds", "aggregate_seconds", "used_seconds"))
+        if (any(type(value) is not int for value in (seconds, total, used))
+                or not 15 <= seconds <= total <= 1800 or used < 0):
+            raise ValueError("invalid_media_policy")
+        available_budget = min(policy["global_limit"] - policy["global_used"],
+                               policy["account_limit"] - policy["account_used"])
+        tts_error = ("tts_quota_exhausted" if not remaining else
+                     "tts_busy" if any(op.get("tts_open", True) for op in attempts) else
+                     "pilot_limit_reached" if available_budget < TTS_PILOT_RESERVATION else None)
+        media_error = ("media_session_active" if media.get("lease") else
+                       "media_quota_exhausted" if used + seconds > total else
+                       "pilot_limit_reached" if available_budget < (seconds + 256) * 1000 else None)
+        return _reply({"tts": {"remaining_requests": remaining, "available": tts_error is None,
+                               "error": tts_error},
+                       "media": {"remaining_seconds": max(0, total - used), "session_seconds": seconds,
+                                 "available": media_error is None, "error": media_error}}, 200)
+    except Exception:
+        return _reply({"error": "pilot_unavailable", "terminal": True}, 503)
 
 
 @blueprint.post("/api/live-voice/stop")
@@ -427,7 +505,8 @@ def media_socket():
     try:
         lease = sessions.reserve(g.user["id"], request.cookies.get("apex_session"))
     except Denied as error:
-        return _reply({"error": str(error)}, 429)
+        body, status = public_error(error, media=True)
+        return _reply(body, status)
     except Exception:
         return _reply({"error": "session_state_unavailable"}, 503)
     try:

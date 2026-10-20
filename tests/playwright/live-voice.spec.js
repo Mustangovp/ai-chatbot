@@ -8,13 +8,14 @@ async function harness(page) {
   await page.evaluate(() => {
     window.makeVoiceLab = (overrides = {}) => {
       const lab = { owner: 'synthetic-a', states: [], facts: [], turns: [], transports: [],
-        tasks: new Map(), nextTask: 0, fallbacks: 0, cancelled: 0, stopped: 0 };
+        tasks: new Map(), nextTask: 0, fallbacks: 0, errors: [], cancelled: 0, stopped: 0 };
       lab.controller = new ApexLiveVoice.Controller({
         transportFactory: () => { const t = new ApexLiveVoice.MockTransport(); lab.transports.push(t); return t; },
         owner: () => lab.owner, language: () => 'en', onState: s => lab.states.push(s),
         onFact: f => lab.facts.push(f), onTranscript: async t => { lab.turns.push(t); },
         cancelAuthority: () => { lab.cancelled++; }, speak: async () => {},
         stopSpeaking: () => { lab.stopped++; }, fallback: () => { lab.fallbacks++; },
+        onError: error => lab.errors.push(error.code),
         schedule: (fn, delay) => { const id = ++lab.nextTask; lab.tasks.set(id, { fn, delay }); return id; },
         unschedule: id => lab.tasks.delete(id), ...overrides
       });
@@ -39,7 +40,7 @@ test('mock: final transcript delegates once; autonomous responses/tools/private 
   });
   expect(result.turns).toEqual(['Avoid overhead pressing']);
   expect(result.facts).toContain('keystroke');
-  expect(result.seen).toBe(1); expect(result.fallbacks).toBe(1);
+  expect(result.seen).toBe(1); expect(result.fallbacks).toBe(0);
   expect(JSON.stringify(result)).not.toContain('private-provider-secret');
 });
 
@@ -62,24 +63,20 @@ test('mock: interruption cancels audio/backend and stale playback cannot finish 
   expect(result.tasks).toBe(0);
 });
 
-test('mock: reconnect is bounded, no replay, and old connection callbacks are discarded', async ({ page }) => {
+test('mock: pilot disconnect never reconnects or falls back; old callbacks are discarded', async ({ page }) => {
   await harness(page);
   const result = await page.evaluate(async () => {
     const lab = makeVoiceLab(); await lab.controller.start();
-    const old = lab.transports[0].onEvent; const delays = [];
-    for (let i = 0; i < 2; i++) {
-      lab.transports[i].disconnect(); delays.push(lab.runTask());
-      await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
-    }
+    const old = lab.transports[0].onEvent;
+    lab.transports[0].disconnect();
     old({ type: 'conversation.item.input_audio_transcription.completed', item_id: 'stale', transcript: 'must not send' });
-    lab.transports[2].disconnect();
-    return { delays, count: lab.transports.length, closed: lab.transports.every(t => t.closed),
+    return { count: lab.transports.length, closed: lab.transports.every(t => t.closed), errors: lab.errors,
       turns: lab.turns, fallbacks: lab.fallbacks, tasks: lab.tasks.size, active: lab.controller.active };
   });
-  expect(result).toEqual({ delays: [250, 1000], count: 3, closed: true, turns: [], fallbacks: 1, tasks: 0, active: false });
+  expect(result).toEqual({ count: 1, closed: true, errors: ['media_unavailable'], turns: [], fallbacks: 0, tasks: 0, active: false });
 });
 
-test('mock: blocked connection expires deterministically and falls back without replay', async ({ page }) => {
+test('mock: blocked connection expires deterministically without retry or fallback', async ({ page }) => {
   await harness(page);
   const result = await page.evaluate(async () => {
     const transport = { connect: () => new Promise(() => {}), close() { this.closed = true; } };
@@ -87,7 +84,7 @@ test('mock: blocked connection expires deterministically and falls back without 
     const pending = lab.controller.start(); const deadline = lab.runTask(); await pending;
     return { deadline, active: lab.controller.active, closed: transport.closed, fallbacks: lab.fallbacks, tasks: lab.tasks.size };
   });
-  expect(result).toEqual({ deadline: 20000, active: false, closed: true, fallbacks: 1, tasks: 0 });
+  expect(result).toEqual({ deadline: 20000, active: false, closed: true, fallbacks: 0, tasks: 0 });
 });
 
 test('mock: server-ended session releases resources without reconnect or fallback', async ({ page }) => {
@@ -163,6 +160,7 @@ test('mock relay: same-origin PCM only, no provider peer, microphone and context
     }
     class Worklet { constructor() { this.port = {}; } connect() {} disconnect() {} }
     const t = new ApexLiveVoice.RelayTransport({ Socket, Context, Worklet,
+      preflight: async () => ({ tts: { available: true }, media: { available: true } }),
       media: { getUserMedia: async () => ({ getTracks: () => [track], getAudioTracks: () => [track] }) },
     });
     const abort = new AbortController();
@@ -178,11 +176,12 @@ test('mock relay: same-origin PCM only, no provider peer, microphone and context
 test('mock relay: late microphone permission after Stop releases tracks', async ({ page }) => {
   await harness(page);
   const result = await page.evaluate(async () => {
-    let grant, stopped = 0;
-    const t = new ApexLiveVoice.RelayTransport({ media: { getUserMedia: () => new Promise(resolve => { grant = resolve; }) }, Socket: class {}, Context: class {}, Worklet: class {} });
+    let grant, requested, stopped = 0; const permissionRequested = new Promise(resolve => { requested = resolve; });
+    const t = new ApexLiveVoice.RelayTransport({ media: { getUserMedia: () => new Promise(resolve => { grant = resolve; requested(); }) }, Socket: class {}, Context: class {}, Worklet: class {},
+      preflight: async () => ({ tts: { available: true }, media: { available: true } }) });
     const abort = new AbortController();
     const pending = t.connect({ language: 'en', signal: abort.signal }).catch(() => 'cancelled');
-    abort.abort(); grant({ getTracks: () => [{ stop() { stopped++; } }] });
+    await permissionRequested; abort.abort(); grant({ getTracks: () => [{ stop() { stopped++; } }] });
     return { outcome: await pending, stopped, closed: t.closed };
   });
   expect(result).toEqual({ outcome: 'cancelled', stopped: 1, closed: true });
@@ -210,6 +209,7 @@ test('mock relay: abrupt worker socket loss cannot reconnect or submit queued au
     class Worklet { constructor() { this.port = {}; } connect() {} disconnect() {} }
     const lab = makeVoiceLab({
       transportFactory: () => new ApexLiveVoice.RelayTransport({ Socket, Context, Worklet,
+        preflight: async () => ({ tts: { available: true }, media: { available: true } }),
         media: { getUserMedia: async () => ({ getTracks: () => [{ stop() { tracksStopped++; } }] }) } }),
       onEnded: () => { ended++; }
     });
@@ -233,11 +233,12 @@ test('mock relay: denied microphone is isolated and no socket is opened', async 
   const result = await page.evaluate(async () => {
     let sent = 0;
     const t = new ApexLiveVoice.RelayTransport({ media: { getUserMedia: async () => { throw new Error('denied'); } },
-      Socket: class { constructor() { sent++; } }, Context: class {}, Worklet: class {} });
+      Socket: class { constructor() { sent++; } }, Context: class {}, Worklet: class {},
+      preflight: async () => ({ tts: { available: true }, media: { available: true } }) });
     const lab = makeVoiceLab({ transportFactory: () => t }); await lab.controller.start();
     return { sent, closed: t.closed, active: lab.controller.active, fallbacks: lab.fallbacks };
   });
-  expect(result).toEqual({ sent: 0, closed: true, active: false, fallbacks: 1 });
+  expect(result).toEqual({ sent: 0, closed: true, active: false, fallbacks: 0 });
 });
 
 for (const language of ['bg', 'en']) {
@@ -286,7 +287,7 @@ test('app: anonymous user cannot start account realtime; existing voice remains 
   expect(result).toEqual({ absent: true, originalInput: 'function', originalOutput: 'function' });
 });
 
-test('app: transport failure safely falls back to existing input without replay', async ({ page }) => {
+test('app: pilot transport failure stops voice without billable fallback or replay', async ({ page }) => {
   await page.goto('/app?lang=en');
   const result = await page.evaluate(async () => {
     await loadSession(); let nativeStarts = 0, greetings = 0;
@@ -298,14 +299,14 @@ test('app: transport failure safely falls back to existing input without replay'
     const result = { nativeStarts, greetings, active: liveVoiceController.active, state: Voice.state };
     Voice.stop(); return result;
   });
-  expect(result).toEqual({ nativeStarts: 1, greetings: 0, active: false, state: 'LISTENING' });
+  expect(result).toEqual({ nativeStarts: 0, greetings: 0, active: false, state: 'ERROR' });
 });
 
-test('app: pagehide stops the mock microphone session and queued reconnect', async ({ page }) => {
+test('app: pagehide stops the active mock microphone without queued reconnect', async ({ page }) => {
   await page.goto('/app?lang=en');
   const result = await page.evaluate(async () => {
     await loadSession(); await Voice.start(); const transport = liveVoiceController.transport;
-    transport.disconnect(); window.dispatchEvent(new Event('pagehide'));
+    window.dispatchEvent(new Event('pagehide'));
     return { closed: transport.closed, active: liveVoiceController.active, on: Voice.on,
       retry: liveVoiceController.retryTimer, state: Voice.state };
   });

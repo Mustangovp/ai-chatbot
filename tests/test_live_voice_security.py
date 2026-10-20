@@ -77,7 +77,10 @@ def test_shared_state_failure_never_falls_back_to_authorization(account, monkeyp
         raise RuntimeError("private-database-value")
     monkeypatch.setattr(realtime.sessions, "authorized", unavailable)
     response = offer(client)
-    assert response.status_code == 403
+    # Task 02.1 distinguishes unavailable authorization storage from a genuine
+    # non-tester (403), while still denying access before provider submission.
+    assert response.status_code == 503
+    assert response.json == {"error": "pilot_unavailable", "terminal": True}
     assert "private-database-value" not in response.get_data(as_text=True)
 
 

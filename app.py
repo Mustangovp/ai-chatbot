@@ -539,8 +539,16 @@ def _load_identity():
         try:
             principal = voice_charging.capture()
             if principal:
-                voice_charging.control.require(principal.account)
+                if request.path == "/speak":
+                    error = live_voice.control_error(principal.account)
+                    if error:
+                        body, status = error
+                        return jsonify(body), status, {"Cache-Control": "no-store"}
+                else:
+                    voice_charging.control.require(principal.account)
         except Exception:
+            if request.path == "/speak":
+                return jsonify(error="pilot_unavailable", terminal=True), 503
             return jsonify(error="voice_test_control_unavailable"), 403
 
 
@@ -5180,8 +5188,11 @@ def speak():
     try:
         audio, mime = apex_voice.synthesize(
             text, lang=lang, client=client, voice=selected_voice)
-    except voice_charging.Denied:
-        return jsonify({"error": "voice_test_limit"}), 429
+    except voice_charging.Denied as error:
+        refusal = (live_voice.control_error(g.user["id"])
+                   if str(error) == "test_disabled" and g.get("user") else None)
+        body, status = refusal or live_voice.public_error(error)
+        return jsonify(body), status, {"Cache-Control": "no-store"}
     except Exception as e:
         print(f"[speak] TTS failed: {type(e).__name__}")
         return jsonify({"error": "tts_unavailable"}), 502

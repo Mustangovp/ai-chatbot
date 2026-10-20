@@ -1,10 +1,12 @@
 """Local operational controls; no test claims a mini-TTS invoice ceiling."""
 from types import SimpleNamespace
+import copy
 
 import pytest
 
 import app as appmod
-from voice import charging, tts
+from voice import charging, tts, realtime
+from voice.errors import public_error
 from voice.session_store import Denied
 from test_live_voice_safety_controls import Client, controlled
 
@@ -260,3 +262,182 @@ def test_real_speak_route_enforces_pilot_before_fifth_provider_call(pilot, monke
         assert response.status_code == 200 and response.data == b"synthetic-audio"
     assert browser.post("/speak", json={"text": "Synthetic"}).status_code == 429
     assert len(raw.calls) == 4 and policy.read()["global_used"] == 400_000
+
+
+@pytest.fixture
+def pilot_browser(pilot, monkeypatch):
+    uid, sid, policy = pilot
+    monkeypatch.setenv("APEX_LIVE_VOICE_ENABLED", "true")
+    monkeypatch.setenv("APEX_LIVE_VOICE_TRANSPORT", "relay")
+    monkeypatch.setenv("APP_URL", "https://apexpulse.pro")
+    realtime.sessions.configure(uid, authorized=True, session_seconds=120, aggregate_seconds=120)
+    browser = appmod.app.test_client()
+    browser.set_cookie("apex_session", sid, domain="apexpulse.pro")
+    return uid, sid, policy, browser
+
+
+def pilot_status(browser):
+    return browser.get("/api/live-voice/allowances", base_url="https://apexpulse.pro")
+
+
+def test_preflight_is_read_only_and_exposes_only_allowances(pilot_browser):
+    uid, _, policy, browser = pilot_browser
+    before = copy.deepcopy((policy.read(), realtime.sessions.read(uid)))
+    response = pilot_status(browser)
+    assert response.status_code == 200
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.json == {
+        "tts": {"remaining_requests": 4, "available": True, "error": None},
+        "media": {"remaining_seconds": 120, "session_seconds": 120, "available": True, "error": None}}
+    assert (policy.read(), realtime.sessions.read(uid)) == before
+
+
+def test_four_tts_requests_exhaust_preflight_and_route_without_fifth_submission(pilot_browser, monkeypatch):
+    uid, sid, policy, browser = pilot_browser
+    raw = AudioClient()
+    with charging.scope(charging.Principal(str(uid), sid)):
+        for _ in range(4):
+            assert charging.protect(raw).audio.speech.create(**mini_parameters()).read()
+    monkeypatch.setattr(appmod, "client", charging.protect(raw))
+    monkeypatch.setattr(tts, "_active", tts._OpenAITTS())
+    before = copy.deepcopy(policy.read())
+    assert pilot_status(browser).json["tts"] == {
+        "remaining_requests": 0, "available": False, "error": "tts_quota_exhausted"}
+    result = browser.post("/speak", base_url="https://apexpulse.pro", json={"text": "Synthetic"})
+    assert result.status_code == 429
+    assert result.json == {"error": "tts_quota_exhausted", "terminal": True}
+    assert len(raw.calls) == 4 and policy.read() == before
+
+
+def test_media_reservation_is_not_actual_elapsed_time_and_status_never_refills(pilot_browser):
+    uid, sid, policy, browser = pilot_browser
+    lease = realtime.sessions.reserve(uid, sid)
+    assert pilot_status(browser).json["media"]["error"] == "media_session_active"
+    realtime.sessions.finish(uid, lease["id"], provider_confirmed=True)
+    before = copy.deepcopy((policy.read(), realtime.sessions.read(uid)))
+    for _ in range(2):
+        assert pilot_status(browser).json["media"] == {
+            "remaining_seconds": 0, "session_seconds": 120,
+            "available": False, "error": "media_quota_exhausted"}
+    with pytest.raises(Denied, match="usage_exhausted"):
+        realtime.sessions.reserve(uid, sid)
+    assert (policy.read(), realtime.sessions.read(uid)) == before
+
+
+def test_media_quota_response_denies_before_transcription_reservation(pilot_browser, monkeypatch):
+    from flask import g
+    uid, sid, policy, _ = pilot_browser
+    lease = realtime.sessions.reserve(uid, sid)
+    realtime.sessions.finish(uid, lease["id"], provider_confirmed=True)
+    before = copy.deepcopy((policy.read(), realtime.sessions.read(uid)))
+    monkeypatch.setattr(policy, "reserve", lambda *a, **kw: pytest.fail("exhausted media reached charging"))
+    with appmod.app.test_request_context("/api/live-voice/media?lang=bg", base_url="https://apexpulse.pro",
+            headers={"Origin": "https://apexpulse.pro", "Cookie": "apex_session=" + sid}):
+        g.user = appmod.store.get_session_user(sid)
+        response = appmod.app.make_response(realtime.media_socket())
+        assert response.status_code == 429
+        assert response.json == {"error": "media_quota_exhausted", "terminal": True}
+    assert (policy.read(), realtime.sessions.read(uid)) == before
+
+
+def test_preflight_allowlist_flag_and_kill_switch_remain_authoritative(pilot_browser, monkeypatch):
+    _, sid, policy, browser = pilot_browser
+    other = appmod.store.get_or_create_user("not-voice-tester@example.invalid")
+    other_session = appmod.store.create_session(other)
+    browser.set_cookie("apex_session", other_session, domain="apexpulse.pro")
+    response = pilot_status(browser)
+    assert response.status_code == 403 and response.json == {"error": "forbidden"}
+    browser.set_cookie("apex_session", sid, domain="apexpulse.pro")
+    policy.set_enabled(False)
+    assert pilot_status(browser).status_code == 403
+    policy.set_enabled(True)
+    monkeypatch.setenv("APEX_LIVE_VOICE_ENABLED", "false")
+    assert pilot_status(browser).status_code == 403
+
+
+def test_preflight_shared_state_outage_fails_closed_without_private_details(pilot_browser, monkeypatch):
+    _, _, _, browser = pilot_browser
+    def offline(*args):
+        raise RuntimeError("private-db-connection")
+    monkeypatch.setattr(realtime.sessions, "read", offline)
+    response = pilot_status(browser)
+    # An unavailable store is not evidence that the account is unauthorized.
+    assert response.status_code == 503 and response.json["error"] == "pilot_unavailable"
+    assert "private-db" not in response.get_data(as_text=True)
+
+
+@pytest.mark.parametrize("reason,code,status_code", [
+    ("tts_pilot_exhausted", "tts_quota_exhausted", 429),
+    ("tts_operation_limit", "tts_quota_exhausted", 429),
+    ("usage_exhausted", "media_quota_exhausted", 429),
+    ("unauthenticated", "forbidden", 403),
+    ("pilot_expired", "pilot_expired", 403),
+    ("test_disabled", "pilot_disabled", 403),
+    ("private-provider-detail", "pilot_unavailable", 503),
+])
+def test_public_error_allowlist(reason, code, status_code):
+    body, http = public_error(Denied(reason))
+    assert http == status_code and body == {"error": code, "terminal": True}
+
+
+def test_provider_failure_remains_distinct_from_quota_and_is_not_retried(pilot_browser, monkeypatch):
+    _, _, _, browser = pilot_browser
+    calls = []
+    def failed(*args, **kwargs):
+        calls.append(True)
+        raise ConnectionError("private provider details")
+    monkeypatch.setattr(appmod.apex_voice, "synthesize", failed)
+    response = browser.post("/speak", base_url="https://apexpulse.pro", json={"text": "Synthetic"})
+    assert response.status_code == 502 and response.json == {"error": "tts_unavailable"}
+    assert calls == [True]
+
+
+def test_expired_pilot_denies_preflight_and_speech_without_charging(pilot_browser, monkeypatch):
+    _, _, policy, browser = pilot_browser
+    policy.clock = lambda: policy.read()["expires_at"] + 1
+    before = copy.deepcopy(policy.read())
+    def forbidden(*args, **kwargs):
+        pytest.fail("expired access reached TTS")
+    monkeypatch.setattr(appmod.apex_voice, "synthesize", forbidden)
+    for response in (pilot_status(browser), browser.post("/speak", base_url="https://apexpulse.pro",
+                                                        json={"text": "Synthetic"})):
+        assert response.status_code == 403
+        assert response.json == {"error": "pilot_expired", "terminal": True}
+    html = browser.get("/app", base_url="https://apexpulse.pro").get_data(as_text=True)
+    assert '"pilot_error": "pilot_expired"' in html
+    assert policy.read() == before
+
+
+@pytest.mark.parametrize("reason", ["kill_switch", "flag_off"])
+def test_disabled_pilot_cannot_enter_legacy_voice_from_rendered_config(pilot_browser, monkeypatch, reason):
+    _, _, policy, browser = pilot_browser
+    if reason == "kill_switch":
+        policy.set_enabled(False)
+    else:
+        monkeypatch.setenv("APEX_LIVE_VOICE_ENABLED", "false")
+    before = copy.deepcopy(policy.read())
+    response = pilot_status(browser)
+    assert response.status_code == 403
+    assert response.json == {"error": "pilot_disabled", "terminal": True}
+    html = browser.get("/app", base_url="https://apexpulse.pro").get_data(as_text=True)
+    assert '"pilot_error": "pilot_disabled"' in html and '"enabled": false' in html
+    assert policy.read() == before
+
+
+def test_anonymous_preflight_reveals_no_pilot_state(pilot_browser):
+    _, _, policy, browser = pilot_browser
+    policy.set_enabled(False)
+    browser.delete_cookie("apex_session", domain="apexpulse.pro")
+    response = pilot_status(browser)
+    assert response.status_code == 403 and response.json == {"error": "forbidden"}
+
+
+def test_kill_switch_speech_response_is_not_misreported_as_unauthorized(pilot_browser, monkeypatch):
+    _, _, policy, browser = pilot_browser
+    policy.set_enabled(False)
+    before = copy.deepcopy(policy.read())
+    monkeypatch.setattr(appmod.apex_voice, "synthesize", lambda *a, **kw: pytest.fail("disabled pilot reached TTS"))
+    response = browser.post("/speak", base_url="https://apexpulse.pro", json={"text": "Synthetic"})
+    assert response.status_code == 403
+    assert response.json == {"error": "pilot_disabled", "terminal": True}
+    assert policy.read() == before

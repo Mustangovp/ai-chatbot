@@ -4366,34 +4366,67 @@ function afterReply(text,speechText='',responseLanguage=lang){
    ═══════════════════════════════════════════════════════════════════════════ */
 window.VoiceBus = { _l:{}, on(e,f){(this._l[e]=this._l[e]||[]).push(f);}, emit(e,d){(this._l[e]||[]).forEach(f=>{try{f(d);}catch(_){}});} };
 
-/* OUTPUT — provider-independent (talks to /speak). Exactly ONE active audio
-   stream: every speak() supersedes any previous request AND playback via a
-   generation counter, so responses are never queued or overlapped. Throws on
-   TTS failure so the state machine can surface ERROR + retry. */
+/* HTTP synthesis success is not playback success. Browser playing/ended/error
+   and explicit interruption produce distinct PLAYBACK_* facts.
+   Playback facts are local, content-free events, never billing acknowledgements. */
 const VoiceOut = {
-  _audio:null, _pulse:null, _gen:0, _res:null,
+  _audio:null, _pulse:null, _gen:0, _attempt:null,lastPlaybackOutcome:null,
   get playing(){ return !!this._audio; },
   async speak(text,language=lang){
-    this.stop();                                   // cancel whatever was playing — never queue
+    this.stop();
     const gen=++this._gen;
     if(!text) return;
-    const r=await fetch('/speak',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',
-      body:JSON.stringify({text:text,lang:supportedLanguage(language)||lang,voice:VoiceReg.ttsId()})});
-    if(gen!==this._gen) return;                    // superseded while the request was in flight
-    if(!r.ok) throw new Error('tts_'+r.status);
-    const url=URL.createObjectURL(await r.blob());
-    if(gen!==this._gen){ URL.revokeObjectURL(url); return; }
-    await new Promise((res)=>{
-      this._res=res;
-      const a=new Audio(url); this._audio=a;
-      this._pulse=setInterval(()=>witness('replyToken'),120);   // Core visibly SPEAKS while audio plays
-      const done=()=>{ if(this._pulse){clearInterval(this._pulse);this._pulse=null;} URL.revokeObjectURL(url); if(this._audio===a)this._audio=null; this._res=null; res(); };
-      a.onended=done; a.onerror=done; a.play().catch(done);
-    });
+    const attempt={request:new AbortController(),settled:false};this._attempt=attempt;this.lastPlaybackOutcome=null;
+    attempt.finish=outcome=>{
+      if(attempt.settled)return outcome;attempt.settled=true;
+      if(attempt.audio){attempt.audio.onplaying=null;attempt.audio.onended=null;attempt.audio.onerror=null;try{attempt.audio.pause();}catch(_){}}
+      if(attempt.url)URL.revokeObjectURL(attempt.url);
+      if(this._attempt===attempt){
+        if(this._pulse)clearInterval(this._pulse);this._pulse=null;this._audio=null;this._attempt=null;
+        this.lastPlaybackOutcome=outcome;
+      }
+      window.VoiceBus.emit('playback',{outcome});
+      if(attempt.resolve)attempt.resolve(outcome);
+      return outcome;
+    };
+    try{
+      if(LIVE_VOICE_CONFIG.enabled&&LIVE_VOICE_CONFIG.transport==='relay'){
+        const allowance=await ApexLiveVoice.pilotAllowances(attempt.request.signal);
+        if(!allowance.tts.available)throw ApexLiveVoice.voiceError(allowance.tts.error,'pilot_unavailable');
+      }
+      if(gen!==this._gen)return attempt.finish('PLAYBACK_CANCELLED');
+      const r=await fetch('/speak',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',
+        signal:attempt.request.signal,
+        body:JSON.stringify({text:text,lang:supportedLanguage(language)||lang,voice:VoiceReg.ttsId()})});
+      if(gen!==this._gen)return attempt.finish('PLAYBACK_CANCELLED');
+      if(!r.ok)throw await ApexLiveVoice.responseError(r,'tts_unavailable');
+      const blob=await r.blob();
+      if(gen!==this._gen)return attempt.finish('PLAYBACK_CANCELLED');
+      attempt.url=URL.createObjectURL(blob);
+      const outcome=await new Promise(resolve=>{
+        attempt.resolve=resolve;
+        const a=attempt.audio=new Audio(attempt.url);this._audio=a;
+        a.onplaying=()=>{
+          if(attempt.settled||attempt.started||gen!==this._gen)return;
+          attempt.started=true;this.lastPlaybackOutcome='PLAYBACK_STARTED';
+          window.VoiceBus.emit('playback',{outcome:'PLAYBACK_STARTED'});
+          this._pulse=setInterval(()=>witness('replyToken'),120);
+        };
+        a.onended=()=>attempt.finish('PLAYBACK_ENDED');a.onerror=()=>attempt.finish('PLAYBACK_ERROR');
+        try{a.play().catch(()=>attempt.finish('PLAYBACK_ERROR'));}catch(_){attempt.finish('PLAYBACK_ERROR');}
+      });
+      if(outcome==='PLAYBACK_ERROR')throw ApexLiveVoice.voiceError('playback_error');
+      return outcome;
+    }catch(error){
+      if(gen!==this._gen||attempt.request.signal.aborted)return attempt.finish('PLAYBACK_CANCELLED');
+      if(attempt.url&&!attempt.settled)attempt.finish('PLAYBACK_ERROR');
+      if(this._attempt===attempt)this._attempt=null;
+      throw error;
+    }
   },
   /* Instant cancel — also resolves any pending speak() promise (pause() alone
      never fires onended), so an interrupted turn unwinds cleanly. */
-  stop(){ this._gen++; if(this._pulse){clearInterval(this._pulse);this._pulse=null;} if(this._audio){try{this._audio.pause();}catch(_){}} this._audio=null; if(this._res){const r=this._res;this._res=null;r();} }
+  stop(){this._gen++;const attempt=this._attempt;if(attempt){attempt.request.abort();attempt.finish('PLAYBACK_CANCELLED');}}
 };
 
 /* INPUT — native SpeechRecognition. interimResults let the machine detect the
@@ -4460,6 +4493,7 @@ function getLiveVoice(){
     onUncertain:()=>clarifyVoiceTranscription(),
     cancelAuthority:()=>{if(ChatLifecycle.busy())ChatLifecycle.cancel();},
     onEnded:()=>Voice.stop(),
+    onError:error=>Voice.voiceError(error),
     speak:(text,language)=>VoiceOut.speak(text,language),stopSpeaking:()=>VoiceOut.stop(),
     fallback:()=>{if(Voice.on){Voice.set('LISTENING');Voice.listen();}}
   });
@@ -4471,7 +4505,8 @@ async function clarifyVoiceTranscription(){
 }
 
 const Voice = {
-  on:false, state:'IDLE', _spokeAt:0, _retry:0,
+  on:false, state:'IDLE', _spokeAt:0, _retry:0,_blockedCode:null,_blockedOwner:null,
+  get blockedCode(){return this._blockedOwner===ownerRequestToken()?this._blockedCode:null;},
   _labels(){ return (lang==='bg')
     ? {IDLE:'Говори с APEX',LISTENING:'Слушам те…',THINKING:'APEX мисли…',SPEAKING:'APEX говори — докосни за край',INTERRUPTED:'Слушам те…',ERROR:'Проблем с гласа — докосни за нов опит'}
     : {IDLE:'Talk to APEX',LISTENING:'Listening…',THINKING:'APEX is thinking…',SPEAKING:'APEX is speaking — tap to end',INTERRUPTED:'Listening…',ERROR:'Voice problem — tap to retry'}; },
@@ -4482,12 +4517,16 @@ const Voice = {
     const b=_helix(); if(!b) return;
     b.setAttribute('data-state', next.toLowerCase());
     b.setAttribute('aria-pressed', next==='IDLE'?'false':'true');
-    const lb=this._labels()[next]||''; b.setAttribute('aria-label', lb);b.setAttribute('title',lb);
+    const blocked=this.blockedCode;
+    const lb=blocked?ApexLiveVoice.errorMessage(blocked,lang):this._labels()[next]||'';
+    b.disabled=!!blocked;b.setAttribute('aria-label', lb);b.setAttribute('title',lb);
     const st=document.getElementById('mic-status'); if(st) st.textContent=(next==='IDLE')?'':lb;
   },
 
   /* ── session control (mic button) ── */
   async start(){
+    if(this.blockedCode)return;
+    if(LIVE_VOICE_CONFIG.pilot_error){this.voiceError(ApexLiveVoice.voiceError(LIVE_VOICE_CONFIG.pilot_error));return;}
     if(this.on) return; this.on=true; this._retry=0;
     try{ new Audio().play().catch(()=>{}); }catch(_){}   // unlock audio inside the user gesture
     const live=getLiveVoice();
@@ -4521,7 +4560,7 @@ const Voice = {
     try{
       await VoiceOut.speak(text,language); // exactly one active stream; a new say() cancels this
     }catch(e){
-      if(this.on) this._ttsError(); return;
+      if(this.on) this._ttsError(e); return;
     }
     if(!this.on) return;
     if(this.state==='SPEAKING'){ this.set('LISTENING'); this.listen(); }   // natural end → keep listening
@@ -4576,9 +4615,17 @@ const Voice = {
     // recognizer ended itself while we still want input → re-arm (bounded) so silence never locks the mic
     if(this.on && this.state==='LISTENING' && !VoiceIn.active && this._retry<MAX_RECOG_RETRY){ this._retry++; setTimeout(()=>{ if(this.on&&this.state==='LISTENING'&&!VoiceIn.active) this.listen(); },200); }
   },
-  _ttsError(){
+  voiceError(error){
+    const safe=ApexLiveVoice.voiceError(error&&error.code,'tts_unavailable');
+    if(safe.terminal){this._blockedOwner=ownerRequestToken();this._blockedCode=safe.code;}
+    this.stop();this.set('ERROR');
+    toast(ApexLiveVoice.errorMessage(safe.code,lang));
+  },
+  _ttsError(error){
+    if(LIVE_VOICE_CONFIG.enabled){this.voiceError(error);return;}
     this.set('ERROR');
-    toast(lang==='bg'?'Гласът е временно недостъпен — докосни, за да опиташ пак.':'Voice is temporarily unavailable — tap to retry.');
+    const code=error&&error.code==='playback_error'?'playback_error':'tts_unavailable';
+    toast(ApexLiveVoice.errorMessage(code,lang));
     if(this.on) this.listen();           // never lock the mic — keep the conversation open
   }
 };
