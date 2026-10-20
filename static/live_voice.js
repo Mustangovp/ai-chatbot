@@ -45,6 +45,96 @@
     return data;
   }
 
+  // Local, bounded diagnostics only. No transcripts, IDs, audio or wall-clock
+  // timestamps. playback_start measures the browser's playing event, not proof
+  // that a physical speaker was audible. coach_response includes validation.
+  const timingStages = new Set(['transcription', 'coach_response', 'tts_headers',
+    'tts_first_audio', 'tts_complete', 'playback_start']);
+  const timingRecords = [];
+  const timing = Object.freeze({
+    record(stage, milliseconds) {
+      if (!timingStages.has(stage) || !Number.isFinite(milliseconds) || milliseconds < 0 || milliseconds > 180000) return;
+      timingRecords.push(Object.freeze({ stage, milliseconds: Math.round(milliseconds) }));
+      if (timingRecords.length > 32) timingRecords.shift();
+    },
+    snapshot: () => timingRecords.map(item => ({ ...item })),
+  });
+
+  class SpeechPlayback {
+    static supported() {
+      return !!(root.MediaSource && root.MediaSource.isTypeSupported('audio/mpeg'));
+    }
+    constructor(audio, signal) {
+      this.audio = audio; this.signal = signal; this.complete = false;
+      this.source = new root.MediaSource();
+      this.url = URL.createObjectURL(this.source);
+      audio.src = this.url;
+    }
+    async wait(target, success, action) {
+      if (this.signal.aborted) throw voiceError('playback_error');
+      await new Promise((resolve, reject) => {
+        const cleanup = () => {
+          target.removeEventListener(success, done); target.removeEventListener('error', fail);
+          this.signal.removeEventListener('abort', fail);
+        };
+        const done = () => { cleanup(); resolve(); };
+        const fail = () => { cleanup(); reject(voiceError('playback_error')); };
+        target.addEventListener(success, done, { once: true });
+        target.addEventListener('error', fail, { once: true });
+        this.signal.addEventListener('abort', fail, { once: true });
+        try { if (action) action(); } catch (_) { fail(); }
+      });
+    }
+    async pump(response) {
+      if (this.source.readyState !== 'open') await this.wait(this.source, 'sourceopen');
+      if (this.signal.aborted) throw voiceError('playback_error');
+      const buffer = this.source.addSourceBuffer('audio/mpeg');
+      const reader = this.reader = response.body.getReader(), decoder = new TextDecoder();
+      let pending = '', bytes = 0, done = false;
+      try {
+        while (true) {
+          const part = await reader.read();
+          if (this.signal.aborted) throw voiceError('playback_error');
+          pending += decoder.decode(part.value || new Uint8Array(), { stream: !part.done });
+          const lines = pending.split('\n'); pending = lines.pop();
+          for (const line of lines) {
+            if (!line || line.length > 48000 || done) throw voiceError('playback_error');
+            const frame = JSON.parse(line);
+            if (frame.error) throw voiceError(frame.error, 'tts_unavailable');
+            if (frame.done === true) {
+              if (!bytes) throw voiceError('playback_error');
+              done = true;
+              for (const stage of ['tts_headers', 'tts_first_audio', 'tts_complete']) {
+                timing.record(stage, frame.timings && frame.timings[stage]);
+              }
+            } else {
+              if (typeof frame.audio !== 'string' || frame.audio.length > 44000) throw voiceError('playback_error');
+              const binary = atob(frame.audio), chunk = Uint8Array.from(binary, char => char.charCodeAt(0));
+              bytes += chunk.length;
+              if (!chunk.length || bytes > 4 * 1024 * 1024) throw voiceError('playback_error');
+              // Backpressure: one append at a time, no unbounded audio queue.
+              await this.wait(buffer, 'updateend', () => buffer.appendBuffer(chunk));
+            }
+          }
+          if (pending.length > 48000) throw voiceError('playback_error');
+          if (part.done) break;
+        }
+        // A clean HTTP EOF alone is not synthesis/playback completion. Require
+        // the server's marker after a fully read, authorized provider response.
+        if (!done || pending || this.signal.aborted) throw voiceError('playback_error');
+        this.complete = true; this.source.endOfStream();
+      } catch (error) {
+        throw voiceError(error.code, 'playback_error');
+      } finally {
+        this.reader = null; await reader.cancel().catch(() => {});
+      }
+    }
+    close() {
+      if (this.reader) void this.reader.cancel().catch(() => {});
+      this.audio.removeAttribute('src'); this.audio.load(); URL.revokeObjectURL(this.url);
+    }
+  }
+
   function transcriptionIssue(event, language) {
     const text = typeof event.transcript === 'string' ? event.transcript.trim() : '';
     if (!text || !/\p{L}|\p{N}/u.test(text)) return 'empty_transcription';
@@ -167,9 +257,10 @@
                   cancelAuthority, speak, stopSpeaking, fallback, onError = () => {}, onEnded = () => {},
                   schedule = (fn, delay) => root.setTimeout(fn, delay),
                   unschedule = id => root.clearTimeout(id),
+                  clock = () => root.performance.now(),
                   connectionTimeout = 20000 }) {
       Object.assign(this, { transportFactory, owner, language, onState, onFact, onTranscript, onUncertain,
-        cancelAuthority, speakOutput: speak, stopSpeaking, fallback, onError, onEnded, schedule, unschedule, connectionTimeout });
+        cancelAuthority, speakOutput: speak, stopSpeaking, fallback, onError, onEnded, schedule, unschedule, clock, connectionTimeout });
       this.active = false; this.generation = 0; this.turn = 0; this.reconnects = 0;
       this.seen = new Set(); this.state = 'IDLE';
     }
@@ -218,9 +309,11 @@
       if (typeof event.type === 'string' && event.type.startsWith('response.')) return;
       if (event.type === 'error') { this.fail(voiceError(event.code)); return; }
       if (event.type === 'input_audio_buffer.speech_started') {
+        this.transcriptionStart = null;
         if (['SPEAKING', 'THINKING'].includes(this.state)) this.interrupt();
         this.onFact('keystroke');
       }
+      if (event.type === 'input_audio_buffer.speech_stopped') this.transcriptionStart = this.clock();
       if (event.type !== 'conversation.item.input_audio_transcription.completed') return;
       const id = event.item_id, text = event.transcript;
       if (typeof id !== 'string' || !id || id.length > 200 || this.seen.has(id)
@@ -228,6 +321,8 @@
       // Bounded identity cache; never replay audio/turns when reconnecting.
       if (this.seen.size >= 128) { this.fail(); return; }
       this.seen.add(id);
+      if (this.transcriptionStart != null) timing.record('transcription', this.clock() - this.transcriptionStart);
+      this.transcriptionStart = null;
       if (['THINKING', 'SPEAKING'].includes(this.state)) this.interrupt();
       const generation = this.generation, turn = ++this.turn;
       const issue = transcriptionIssue(event, this.language());
@@ -272,9 +367,10 @@
       this.disposeConnection(); this.stopSpeaking();
       if (wasActive) this.cancelAuthority();
       this.seen.clear(); this.set('IDLE');
+      this.transcriptionStart = null;
     }
   }
   root.ApexLiveVoice = Object.freeze({ Controller, RelayTransport, MockTransport, transcriptionIssue,
-    voiceError, responseError, pilotAllowances,
+    voiceError, responseError, pilotAllowances, timing, SpeechPlayback,
     errorMessage: (code, language) => (messages[code] || messages.media_unavailable)[language === 'bg' ? 0 : 1] });
 })(window);

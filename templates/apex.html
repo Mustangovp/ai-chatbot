@@ -4178,6 +4178,7 @@ async function send(options={}){
 
 async function runChatExchange(x,body){
   const owner=ownerRequestToken();myTrainingDeliveryOwner=owner;
+  const voiceResponseStarted=body.voice===true?performance.now():null;
   // M-1: watchdog aborts a stalled request after 75s of inactivity so the UI is
   // never stuck. Each token resets it, so a long but active stream is never cut.
   const kick=()=>{if(x.watchdog)clearTimeout(x.watchdog);x.watchdog=setTimeout(()=>x.controller.abort(),75000);};
@@ -4217,6 +4218,7 @@ async function runChatExchange(x,body){
       if(owner!==ownerRequestToken())return;
       if(streamFailure)ChatLifecycle.fail(x,streamFailure,x.full?CHAT_STATES.INTERRUPTED:CHAT_STATES.FAILED);
       else if(x.done){
+        if(voiceResponseStarted!==null)ApexLiveVoice.timing.record('coach_response',performance.now()-voiceResponseStarted);
         if(ChatLifecycle.complete(x))void confirmFreeActivationPresentation(x);
         refreshCoreAfterPersistedTurn();
       }
@@ -4225,7 +4227,10 @@ async function runChatExchange(x,body){
       const data=await res.json();
       if(owner!==ownerRequestToken())return;
       if(data.limit_reached){showLimit(data.hours_left||24);ChatLifecycle.fail(x,tr().limitTitle,CHAT_STATES.FAILED);}
-      else if(data.reply){ChatLifecycle.content(x,data.reply);ChatLifecycle.complete(x);refreshCoreAfterPersistedTurn();}
+      else if(data.reply){
+        if(voiceResponseStarted!==null)ApexLiveVoice.timing.record('coach_response',performance.now()-voiceResponseStarted);
+        ChatLifecycle.content(x,data.reply);ChatLifecycle.complete(x);refreshCoreAfterPersistedTurn();
+      }
       else throw new Error('malformed_chat_response');
     }
   }catch(e){
@@ -4378,8 +4383,10 @@ const VoiceOut = {
     if(!text) return;
     const attempt={request:new AbortController(),settled:false};this._attempt=attempt;this.lastPlaybackOutcome=null;
     attempt.finish=outcome=>{
-      if(attempt.settled)return outcome;attempt.settled=true;
+      if(attempt.settled)return outcome;attempt.settled=true;attempt.outcome=outcome;
+      clearTimeout(attempt.timeout);attempt.request.abort();
       if(attempt.audio){attempt.audio.onplaying=null;attempt.audio.onended=null;attempt.audio.onerror=null;try{attempt.audio.pause();}catch(_){}}
+      if(attempt.stream)attempt.stream.close();
       if(attempt.url)URL.revokeObjectURL(attempt.url);
       if(this._attempt===attempt){
         if(this._pulse)clearInterval(this._pulse);this._pulse=null;this._audio=null;this._attempt=null;
@@ -4395,34 +4402,53 @@ const VoiceOut = {
         if(!allowance.tts.available)throw ApexLiveVoice.voiceError(allowance.tts.error,'pilot_unavailable');
       }
       if(gen!==this._gen)return attempt.finish('PLAYBACK_CANCELLED');
-      const r=await fetch('/speak',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',
+      attempt.startedAt=performance.now();
+      attempt.timeout=setTimeout(()=>{attempt.failure=ApexLiveVoice.voiceError('tts_unavailable');attempt.finish('PLAYBACK_ERROR');},30000);
+      const incremental=LIVE_VOICE_CONFIG.enabled&&ApexLiveVoice.SpeechPlayback.supported();
+      const r=await fetch('/speak',{method:'POST',headers:{'Content-Type':'application/json',
+        Accept:incremental?'application/x-ndjson':'audio/mpeg'},credentials:'same-origin',
         signal:attempt.request.signal,
         body:JSON.stringify({text:text,lang:supportedLanguage(language)||lang,voice:VoiceReg.ttsId()})});
       if(gen!==this._gen)return attempt.finish('PLAYBACK_CANCELLED');
       if(!r.ok)throw await ApexLiveVoice.responseError(r,'tts_unavailable');
-      const blob=await r.blob();
-      if(gen!==this._gen)return attempt.finish('PLAYBACK_CANCELLED');
-      attempt.url=URL.createObjectURL(blob);
+      const completedTiming=/\btts_complete;dur=(\d+(?:\.\d+)?)/.exec(r.headers.get('Server-Timing')||'');
+      if(completedTiming)ApexLiveVoice.timing.record('tts_complete',Number(completedTiming[1]));
+      const streamed=(r.headers.get('Content-Type')||'').includes('application/x-ndjson');
+      if(streamed&&!incremental)throw ApexLiveVoice.voiceError('playback_error');
+      if(!streamed){
+        const blob=await r.blob();
+        clearTimeout(attempt.timeout);
+        if(gen!==this._gen)return attempt.finish('PLAYBACK_CANCELLED');
+        attempt.url=URL.createObjectURL(blob);
+      }
       const outcome=await new Promise(resolve=>{
         attempt.resolve=resolve;
-        const a=attempt.audio=new Audio(attempt.url);this._audio=a;
+        const a=attempt.audio=streamed?new Audio():new Audio(attempt.url);this._audio=a;
+        if(streamed)attempt.stream=new ApexLiveVoice.SpeechPlayback(a,attempt.request.signal);
         a.onplaying=()=>{
           if(attempt.settled||attempt.started||gen!==this._gen)return;
           attempt.started=true;this.lastPlaybackOutcome='PLAYBACK_STARTED';
+          ApexLiveVoice.timing.record('playback_start',performance.now()-attempt.startedAt);
           window.VoiceBus.emit('playback',{outcome:'PLAYBACK_STARTED'});
           this._pulse=setInterval(()=>witness('replyToken'),120);
         };
-        a.onended=()=>attempt.finish('PLAYBACK_ENDED');a.onerror=()=>attempt.finish('PLAYBACK_ERROR');
+        a.onended=()=>attempt.finish(attempt.stream&&!attempt.stream.complete?'PLAYBACK_ERROR':'PLAYBACK_ENDED');
+        a.onerror=()=>attempt.finish('PLAYBACK_ERROR');
+        if(streamed)void attempt.stream.pump(r).then(()=>clearTimeout(attempt.timeout))
+          .catch(error=>{attempt.failure=error;attempt.finish('PLAYBACK_ERROR');});
         try{a.play().catch(()=>attempt.finish('PLAYBACK_ERROR'));}catch(_){attempt.finish('PLAYBACK_ERROR');}
       });
-      if(outcome==='PLAYBACK_ERROR')throw ApexLiveVoice.voiceError('playback_error');
+      if(outcome==='PLAYBACK_ERROR')throw attempt.failure||ApexLiveVoice.voiceError('playback_error');
       return outcome;
     }catch(error){
-      if(gen!==this._gen||attempt.request.signal.aborted)return attempt.finish('PLAYBACK_CANCELLED');
-      if(attempt.url&&!attempt.settled)attempt.finish('PLAYBACK_ERROR');
+      if(gen!==this._gen)return attempt.finish('PLAYBACK_CANCELLED');
+      if(attempt.failure)throw attempt.failure;
+      if(attempt.outcome==='PLAYBACK_ERROR')throw error;
+      if(attempt.request.signal.aborted)return attempt.finish('PLAYBACK_CANCELLED');
+      if(attempt.audio&&!attempt.settled)attempt.finish('PLAYBACK_ERROR');
       if(this._attempt===attempt)this._attempt=null;
       throw error;
-    }
+    }finally{clearTimeout(attempt.timeout);}
   },
   /* Instant cancel — also resolves any pending speak() promise (pause() alone
      never fires onended), so an interrupted turn unwinds cleanly. */

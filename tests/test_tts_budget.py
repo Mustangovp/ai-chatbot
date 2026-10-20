@@ -441,3 +441,195 @@ def test_kill_switch_speech_response_is_not_misreported_as_unauthorized(pilot_br
     assert response.status_code == 403
     assert response.json == {"error": "pilot_disabled", "terminal": True}
     assert policy.read() == before
+
+
+class StreamingAudioClient(AudioClient):
+    def __init__(self, chunks=None):
+        super().__init__()
+        self.closed = 0
+        self.chunks = chunks or (lambda: iter([b"first", b"second"]))
+        self.audio.speech.with_streaming_response = SimpleNamespace(create=self.streaming)
+
+    def streaming(self, **kwargs):
+        self.calls.append(kwargs)
+        client = self
+        class Context:
+            def __enter__(self):
+                return SimpleNamespace(iter_bytes=lambda chunk_size: client.chunks())
+            def __exit__(self, *args): client.closed += 1
+        return Context()
+
+
+@pytest.mark.parametrize("language,locale", [("bg", "Bulgarian (bg-BG)"), ("en", "English (en-US)")])
+def test_natural_pacing_preserves_model_language_and_pilot_instruction_bound(language, locale):
+    raw = AudioClient()
+    tts._OpenAITTS().synthesize("Synthetic", language, raw)
+    parameters = raw.calls[0]
+    assert parameters["model"] == "gpt-4o-mini-tts"
+    assert locale in parameters["instructions"] and "Do not translate" in parameters["instructions"]
+    assert "conversational pace" in parameters["instructions"]
+    assert "Measured pace" not in parameters["instructions"]
+    assert len(parameters["instructions"]) <= 512
+
+
+def test_streaming_yields_before_completion_and_reserves_only_once(pilot):
+    uid, sid, policy = pilot
+    raw = StreamingAudioClient()
+    with charging.scope(charging.Principal(uid, sid)):
+        stream = tts._OpenAITTS().stream("Synthetic", "bg", charging.protect(raw))
+    chunks = stream.chunks()
+    assert next(chunks) == b"first"  # No request context or principal scope remains.
+    assert "tts_complete" not in stream.timings
+    operation = next(iter(policy.read()["operations"].values()))
+    assert operation["tts_open"] is True and policy.read()["operation_count"] == 1
+    assert list(chunks) == [b"second"]
+    assert "tts_complete" in stream.timings and raw.closed == 1
+    assert policy.read()["global_used"] == 100_000  # No invented usage refund.
+    assert next(iter(policy.read()["operations"].values()))["tts_open"] is False
+    assert len(raw.calls) == 1 and raw.options == [dict(max_retries=0, timeout=20)] * 2
+
+
+@pytest.mark.parametrize("failure", ["cancel", "provider", "disabled", "empty"])
+def test_streaming_failure_or_disconnect_closes_provider_and_retains_uncertain_reservation(pilot, failure):
+    uid, sid, policy = pilot
+    def chunks():
+        if failure == "empty": return
+        yield b"first"
+        if failure == "provider": raise ConnectionError("private-provider-content")
+        yield b"second"
+    raw = StreamingAudioClient(chunks)
+    with charging.scope(charging.Principal(uid, sid)):
+        stream = tts._OpenAITTS().stream("Synthetic", "bg", charging.protect(raw))
+    iterator = stream.chunks()
+    if failure == "empty":
+        with pytest.raises(RuntimeError): next(iterator)
+    else:
+        assert next(iterator) == b"first"
+        if failure == "cancel": iterator.close()
+        else:
+            if failure == "disabled": policy.set_enabled(False)
+            with pytest.raises((ConnectionError, Denied)): next(iterator)
+    assert raw.closed == 1 and "tts_complete" not in stream.timings
+    data = policy.read()
+    assert data["operation_count"] == 1 and data["global_used"] == 100_000
+    assert next(iter(data["operations"].values()))["tts_open"] is True
+
+
+def test_streaming_fifth_request_denied_before_provider(pilot):
+    uid, sid, policy = pilot
+    raw = StreamingAudioClient()
+    with charging.scope(charging.Principal(uid, sid)):
+        for _ in range(4):
+            assert list(tts._OpenAITTS().stream("Synthetic", "en", charging.protect(raw)).chunks())
+        with pytest.raises(Denied, match="tts_pilot_exhausted"):
+            tts._OpenAITTS().stream("Synthetic", "en", charging.protect(raw))
+    assert len(raw.calls) == policy.read()["operation_count"] == 4
+
+
+def test_tts_stream_timings_are_deterministic_and_content_free():
+    now = [10.0]
+    def chunks(chunk_size):
+        now[0] = 10.2; yield b"first"
+        now[0] = 10.4; yield b"second"
+        now[0] = 10.6
+    context = SimpleNamespace(__exit__=lambda *args: None)
+    stream = tts.SpeechStream(SimpleNamespace(iter_bytes=chunks), context, 9.9, clock=lambda: now[0])
+    assert list(stream.chunks()) == [b"first", b"second"]
+    assert stream.timings == {"tts_headers": 100, "tts_first_audio": 300, "tts_complete": 700}
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_speak_stream_frames_have_explicit_completion_or_safe_error(pilot_browser, monkeypatch, fail):
+    import json
+    _, _, policy, browser = pilot_browser
+    def chunks():
+        yield b"first"
+        if fail: raise ConnectionError("private-provider-content")
+        yield b"second"
+    raw = StreamingAudioClient(chunks)
+    monkeypatch.setattr(appmod, "client", charging.protect(raw))
+    monkeypatch.setattr(tts, "_active", tts._OpenAITTS())
+    response = browser.post("/speak", base_url="https://apexpulse.pro", json={"text": "Synthetic"},
+                            headers={"Accept": "application/x-ndjson"}, buffered=False)
+    assert response.status_code == 200 and response.mimetype == "application/x-ndjson"
+    assert response.headers["Cache-Control"] == "no-store"
+    iterator = iter(response.response)
+    first = json.loads(next(iterator))
+    assert first == {"audio": "Zmlyc3Q="}
+    assert next(iter(policy.read()["operations"].values()))["tts_open"] is True
+    rest = [json.loads(frame) for frame in iterator]
+    if fail:
+        assert rest == [{"error": "tts_unavailable"}]
+    else:
+        assert rest[0] == {"audio": "c2Vjb25k"} and rest[1]["done"] is True
+        assert set(rest[1]["timings"]) == {"tts_headers", "tts_first_audio", "tts_complete"}
+    response.close()
+    assert raw.closed == 1 and len(raw.calls) == 1
+
+
+def test_speak_stream_client_cancellation_never_acknowledges_or_retries(pilot_browser, monkeypatch):
+    _, _, policy, browser = pilot_browser
+    raw = StreamingAudioClient()
+    monkeypatch.setattr(appmod, "client", charging.protect(raw))
+    monkeypatch.setattr(tts, "_active", tts._OpenAITTS())
+    response = browser.post("/speak", base_url="https://apexpulse.pro", json={"text": "Synthetic"},
+                            headers={"Accept": "application/x-ndjson"}, buffered=False)
+    assert next(iter(response.response))
+    response.close()
+    assert raw.closed == 1 and len(raw.calls) == 1
+    operation = next(iter(policy.read()["operations"].values()))
+    assert operation["tts_open"] is True and operation["reserved"] == 100_000
+
+
+def test_installed_openai_sdk_stream_is_incremental_without_network(pilot):
+    import httpx2
+    import openai
+    uid, sid, policy = pilot
+    visited, closed = [], []
+    class AudioBytes(httpx2.SyncByteStream):
+        def __iter__(self):
+            visited.append("first"); yield b"a" * 4096
+            visited.append("second"); yield b"b" * 4096
+        def close(self): closed.append(True)
+    requests = []
+    def provider(request):
+        requests.append(request)
+        return httpx2.Response(200, headers={"Content-Type": "audio/mpeg"}, stream=AudioBytes())
+    raw = openai.OpenAI(api_key="mock-not-a-credential", http_client=httpx2.Client(transport=httpx2.MockTransport(provider)))
+    try:
+        with charging.scope(charging.Principal(uid, sid)):
+            stream = tts._OpenAITTS().stream("Synthetic", "bg", charging.protect(raw))
+        assert visited == []  # Headers do not force a full binary download.
+        iterator = stream.chunks()
+        assert next(iterator) == b"a" * 4096 and visited == ["first"]
+        assert policy.read()["operation_count"] == 1
+        iterator.close()
+        assert closed == [True] and len(requests) == 1
+        assert next(iter(policy.read()["operations"].values()))["tts_open"] is True
+    finally:
+        raw.close()
+
+
+@pytest.mark.parametrize("limit", ["bytes", "time"])
+def test_stream_limits_discard_incomplete_audio_without_completion(limit):
+    now, closed = [0.0], []
+    def chunks(chunk_size):
+        if limit == "time": now[0] = 21.0
+        yield b"x" * (4 * 1024 * 1024 + 1 if limit == "bytes" else 1)
+    context = SimpleNamespace(__exit__=lambda *args: closed.append(True))
+    stream = tts.SpeechStream(SimpleNamespace(iter_bytes=chunks), context, 0, clock=lambda: now[0])
+    with pytest.raises(RuntimeError, match="tts_stream_limit"):
+        next(stream.chunks())
+    assert closed == [True] and "tts_complete" not in stream.timings
+
+
+def test_original_buffered_speech_reports_numeric_synthesis_timing_only(pilot_browser, monkeypatch):
+    _, _, _, browser = pilot_browser
+    raw = AudioClient()
+    monkeypatch.setattr(appmod, "client", charging.protect(raw))
+    monkeypatch.setattr(tts, "_active", tts._OpenAITTS())
+    response = browser.post("/speak", base_url="https://apexpulse.pro", json={"text": "Synthetic"})
+    assert response.status_code == 200 and response.data == b"synthetic-audio"
+    assert response.headers["Server-Timing"].startswith("tts_complete;dur=")
+    assert response.headers["Server-Timing"].split("=")[1].isdigit()
+    assert len(raw.calls) == 1

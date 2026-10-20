@@ -485,3 +485,24 @@ inputs. No production activation is authorized by this prototype.
 
 Official contracts consulted: [server-owned Realtime WebSockets](https://developers.openai.com/api/docs/guides/voice-websockets?voice-api=realtime)
 and [disabling automatic Realtime responses](https://developers.openai.com/api/docs/guides/realtime-conversations).
+
+## Local natural-speech optimization (not released)
+
+The Coach response still completes validation before speech synthesis. MP3-capable
+MediaSource browsers can request incremental audio on the same POST `/speak`.
+The SDK's `with_streaming_response` uses one provider request and the same shared
+pre-reservation. NDJSON audio frames end with an explicit successful-read marker;
+missing markers, errors and interruptions never imply playback completion. There
+is no retry or second synthesis request. Other browsers retain the original
+buffered single-request path. Unknown provider outcomes retain their reservations.
+
+Content-free diagnostics are available in `ApexLiveVoice.timing.snapshot()`:
+the last 32 stage/duration pairs, held only in memory. Transcription is measured
+from browser receipt of speech-stop to completed transcript; `coach_response`
+includes server validation and persistence, not just model compute. TTS timings
+are server-monotonic header/first-byte/complete intervals. `playback_start` is
+POST start to the browser's `playing` event, not independently verified audibility.
+Mock and muted silent-MP3 tests do not establish live speech quality or latency.
+The existing TTS model, voices and pilot allocations are unchanged.
+
+Speech streaming contract: [OpenAI Speech API](https://developers.openai.com/api/docs/guides/text-to-speech).

@@ -161,7 +161,9 @@ class ProtectedClient:
     def __init__(self, raw):
         self.raw = raw
         self.chat = SimpleNamespace(completions=SimpleNamespace(create=lambda **kwargs: self.call("gpt6", kwargs)))
-        self.audio = SimpleNamespace(speech=SimpleNamespace(create=lambda **kwargs: self.call("tts", kwargs)))
+        self.audio = SimpleNamespace(speech=SimpleNamespace(
+            create=lambda **kwargs: self.call("tts", kwargs),
+            with_streaming_response=SimpleNamespace(create=lambda **kwargs: self.call("tts", kwargs, streaming=True))))
 
     def __getattr__(self, name): return getattr(self.raw, name)
 
@@ -169,11 +171,11 @@ class ProtectedClient:
         # Returning the raw SDK client here would bypass account budget checks.
         return ProtectedClient(self.raw.with_options(**kwargs))
 
-    def call(self, kind, parameters):
+    def call(self, kind, parameters, *, streaming=False):
         principal = capture()
         if principal is None:
             target = self.raw.chat.completions if kind == "gpt6" else self.raw.audio.speech
-            return target.create(**parameters)
+            return (target.with_streaming_response if streaming else target).create(**parameters)
         policy = control.require(principal.account)
         tts_pilot = kind == "tts" and policy.get("tts_pilot_approved") is True
         maximum, inputs, outputs = quote(kind, parameters, tts_pilot=tts_pilot)
@@ -193,14 +195,23 @@ class ProtectedClient:
             except Exception:
                 control.finish_tts(grant, unused=True)
                 raise
-        result = target.create(**options)  # Failure/unknown usage keeps the full reservation.
+        context = target.with_streaming_response.create(**options) if streaming else None
+        result = context.__enter__() if streaming else target.create(**options)
+        # Failure/unknown usage keeps the full reservation, including streaming.
         if kind == "gpt6" and options.get("stream"):
             return self.stream(result, principal, grant, options["model"], inputs, outputs)
-        control.require(principal.account, grant["epoch"])
+        try:
+            control.require(principal.account, grant["epoch"])
+        except Exception:
+            if context: context.__exit__(None, None, None)
+            else:
+                close = getattr(result, "close", None)
+                if callable(close): close()
+            raise
         if kind == "gpt6":
             settle_text(grant, options["model"], getattr(result, "usage", None), inputs, outputs)
         else:
-            return ReservedSpeech(result, principal, grant)
+            return ReservedSpeech(result, principal, grant, context=context)
         return result
 
     @staticmethod
@@ -224,8 +235,14 @@ class ReservedSpeech:
     Binary audio has no trustworthy numeric usage: retain the cost reservation.
     Failed/abandoned reads also retain the slot, including across worker restart.
     """
-    def __init__(self, result, principal, grant):
+    def __init__(self, result, principal, grant, context=None):
         self.result, self.principal, self.grant = result, principal, grant
+        self.context = context
+        self.closed = False
+
+    def __enter__(self): return self
+
+    def __exit__(self, *args): self.close()
 
     def read(self):
         audio = self.result.read()
@@ -233,7 +250,25 @@ class ReservedSpeech:
         control.finish_tts(self.grant)
         return audio
 
+    def iter_bytes(self, chunk_size=4096):
+        # No Flask request context is needed after the route returns. The server
+        # principal and shared authorization epoch were captured before I/O.
+        received = False
+        for chunk in self.result.iter_bytes(chunk_size=chunk_size):
+            control.require(self.principal.account, self.grant["epoch"])
+            received = received or bool(chunk)
+            yield chunk
+        if not received: raise RuntimeError("empty_tts_stream")
+        control.require(self.principal.account, self.grant["epoch"])
+        control.finish_tts(self.grant)
+
     def close(self):
+        if self.closed: return
+        self.closed = True
+        if self.context is not None:
+            context, self.context = self.context, None
+            context.__exit__(None, None, None)
+            return
         close = getattr(self.result, "close", None)
         if callable(close): close()
 

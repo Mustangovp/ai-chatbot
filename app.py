@@ -5185,7 +5185,31 @@ def speak():
     if len(stamps) >= 60:
         return jsonify({"error": "rate_limited"}), 429
     stamps.append(now); _speak_rate[subj] = stamps
+    synthesis_started = time.monotonic()
     try:
+        if (request.accept_mimetypes.best == "application/x-ndjson"
+                and apex_voice.stream_supported()):
+            # Open exactly one reserved provider request before sending headers.
+            # The UI submits its completed, validated Coach projection, not
+            # progressively generated model text.
+            audio_stream = apex_voice.stream(text, lang=lang, client=client, voice=selected_voice)
+
+            def frames():
+                try:
+                    for chunk in audio_stream.chunks():
+                        yield _json_lib.dumps({"audio": base64.b64encode(chunk).decode("ascii")}) + "\n"
+                    yield _json_lib.dumps({"done": True, "timings": audio_stream.timings}) + "\n"
+                except voice_charging.Denied as error:
+                    yield _json_lib.dumps(live_voice.public_error(error)[0]) + "\n"
+                except Exception:
+                    yield '{"error":"tts_unavailable"}\n'
+                finally:
+                    audio_stream.close()
+
+            response = Response(frames(), mimetype="application/x-ndjson",
+                headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+            response.call_on_close(audio_stream.close)
+            return response
         audio, mime = apex_voice.synthesize(
             text, lang=lang, client=client, voice=selected_voice)
     except voice_charging.Denied as error:
@@ -5196,7 +5220,9 @@ def speak():
     except Exception as e:
         print(f"[speak] TTS failed: {type(e).__name__}")
         return jsonify({"error": "tts_unavailable"}), 502
-    return Response(audio, mimetype=mime, headers={"Cache-Control": "no-store"})
+    elapsed_ms = max(0, round((time.monotonic() - synthesis_started) * 1000))
+    return Response(audio, mimetype=mime, headers={"Cache-Control": "no-store",
+        "Server-Timing": f"tts_complete;dur={elapsed_ms}"})
 
 
 @app.route('/create-checkout-session', methods=['POST'])
