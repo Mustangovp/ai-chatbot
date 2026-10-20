@@ -68,16 +68,12 @@ test.describe('stable APEX mobile shell', () => {
       await page.setViewportSize(viewport);
       await page.reload();
 
-      const position = await page.locator('.position-head').boundingBox();
       const context = await page.locator('#brief-context').boundingBox();
       const message = await page.locator('#read-state').boundingBox();
       const why = await page.locator('#read-sub').boundingBox();
       const action = await page.locator('.cta-row .cta').first().boundingBox();
-      const facts = await page.locator('#calibration-facts').boundingBox();
-      const signals = await page.locator('#position-signals').boundingBox();
       const core = await page.locator('#core').boundingBox();
 
-      expect(position).not.toBeNull();
       expect(context).not.toBeNull();
       expect(message).not.toBeNull();
       expect(why).not.toBeNull();
@@ -89,12 +85,14 @@ test.describe('stable APEX mobile shell', () => {
       expect(core).not.toBeNull();
       expect(action.y + action.height).toBeLessThanOrEqual(viewport.height);
       expect(why.y + why.height).toBeLessThanOrEqual(viewport.height);
-      expect(position.y).toBeGreaterThanOrEqual(action.y + action.height);
-      expect(facts.y).toBeGreaterThanOrEqual(viewport.height);
-      expect(signals.y).toBeGreaterThanOrEqual(action.y + action.height);
+      await expect(page.locator('#overview-context')).not.toHaveAttribute('open', '');
+      await expect(page.locator('#calibration-facts')).not.toBeVisible();
+      const disclosure = await page.locator('#overview-context > summary').boundingBox();
+      expect(disclosure.y).toBeGreaterThanOrEqual(action.y + action.height);
       await expect(page.locator('#calibration-facts')).not.toContainText('Goal: Lose fat');
       await expect(page.locator('#calibration-facts')).not.toContainText('Equipment: Full gym');
       expect(await page.locator('.cta-row .cta').evaluateAll(elements => elements.filter(element => getComputedStyle(element).display !== 'none').length)).toBe(2);
+      await page.locator('#overview-context > summary').click();
       await page.locator('#calibration-facts').scrollIntoViewIfNeeded();
       await expect(page.locator('#calibration-facts')).toBeVisible();
       await expect(page.locator('#position-signals')).toBeVisible();

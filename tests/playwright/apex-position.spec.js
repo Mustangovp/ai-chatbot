@@ -35,6 +35,7 @@ test.describe('APEX Position', () => {
   test('is bounded, deterministic, explained, and does not restore percentage labels', async ({page}) => {
     await page.addInitScript(seed,{profile:completeProfile});
     await page.goto('/app?lang=en');
+    await page.locator('#overview-context > summary').click();
     await expect(page.locator('#apex-position-readout')).toBeVisible();
     await expect(page.locator('#position-label')).toHaveText('APEX POSITION');
     await expect(page.locator('#position-zone')).toHaveText(/REBUILD|UNDER LOAD|BUILDING|STRONG|PEAK RANGE/);
@@ -51,6 +52,7 @@ test.describe('APEX Position', () => {
   test('responds consistently to better inputs and recent completed training load', async ({page}) => {
     await page.addInitScript(seed,{profile:completeProfile});
     await page.goto('/app?lang=en');
+    await page.locator('#overview-context > summary').click();
     const strong=await positionFor(page,{...completeProfile,sleepQuality:'good',stressLevel:'low',recoveryFeel:'fresh'});
     const poor=await positionFor(page,{...completeProfile,sleepQuality:'poor',stressLevel:'high',recoveryFeel:'tired'});
     const baseline=await positionFor(page,completeProfile);
@@ -63,6 +65,7 @@ test.describe('APEX Position', () => {
   test('localizes the readout and retains Core visibility without horizontal overflow', async ({page}) => {
     await page.addInitScript(seed,{profile:completeProfile});
     await page.goto('/app?lang=bg');
+    await page.locator('#overview-context > summary').click();
     await expect(page.locator('#apex-position-readout')).toBeVisible();
     await expect(page.locator('#position-label')).toHaveText('APEX ПОЗИЦИЯ');
     await expect(page.locator('#position-note')).toContainText('Не е медицинско измерване');
