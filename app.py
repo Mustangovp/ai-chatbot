@@ -160,6 +160,14 @@ _WORKOUT_DECISIONS = frozenset({
     "WORKOUT_RESTRICTION_UNSUPPORTED",
     "WORKOUT_PLANNING_FAILURE",
 })
+_WORKOUT_DECISION_CODES = {
+    "A": "WORKOUT_APPROVED", "C": "WORKOUT_CLARIFICATION_REQUIRED",
+    "R": "WORKOUT_RESTRICTION_UNSUPPORTED", "F": "WORKOUT_PLANNING_FAILURE",
+}
+_WORKOUT_DECISION_REASONS = frozenset({
+    "plan", "validation", "goal", "level", "equipment", "split", "selection",
+    "constraints", "safety", "brain", "medical", "restriction", "withheld",
+})
 
 
 def _workout_conversation_scope(payload, user_id, device_id):
@@ -227,6 +235,7 @@ def _remember_workout(scope, plan):
     with _workout_conversation_lock:
         _workout_conversation_state[scope] = state_for(plan)
         _workout_conversation_stale.discard(scope)
+        _workout_conversation_decisions[scope] = "WORKOUT_APPROVED"
     try:
         store.update_conversation_runtime_state(
             *scope, workout_blueprint=serialize_conversation_plan(plan),
@@ -242,25 +251,55 @@ def _conversation_has_delivered_workout(scope):
     return bool(_durable_workout_state(scope).get("workout_delivered"))
 
 
-def _conversation_workout_decision(scope):
+def _conversation_workout_outcome(scope):
+    """Read a closed decision plus an optional hash of its pending request.
+
+    The versioned marker fits the existing VARCHAR(40); no profile, assistant
+    prose or raw request is stored here. Legacy decision markers remain valid.
+    """
     if scope is None:
-        return None
+        return None, None, None
     with _workout_conversation_lock:
         local = _workout_conversation_decisions.get(scope)
-    if local in _WORKOUT_DECISIONS:
-        return local
-    durable = _durable_workout_state(scope).get("workout_decision")
-    return durable if durable in _WORKOUT_DECISIONS else None
+    marker = _durable_workout_state(scope).get("workout_decision", local)
+    if marker in _WORKOUT_DECISIONS:
+        return marker, None, None
+    parts = str(marker or "").split(":")
+    if (len(parts) == 4 and parts[0] == "1" and parts[1] in _WORKOUT_DECISION_CODES
+            and parts[2] in _WORKOUT_DECISION_REASONS
+            and re.fullmatch(r"[0-9a-f]{16}|-", parts[3])):
+        return _WORKOUT_DECISION_CODES[parts[1]], parts[2], parts[3]
+    return None, None, None
 
 
-def _record_conversation_workout_decision(scope, decision):
+def _conversation_workout_decision(scope):
+    return _conversation_workout_outcome(scope)[0]
+
+
+def _record_conversation_workout_decision(scope, decision, *, reason=None, pending_request=None):
     """Persist only a closed authority outcome, never assistant prose."""
     if scope is None or decision not in _WORKOUT_DECISIONS:
         return
+    marker = decision
+    if reason in _WORKOUT_DECISION_REASONS:
+        code = next(key for key, value in _WORKOUT_DECISION_CODES.items() if value == decision)
+        digest = _workout_request_digest(pending_request) if pending_request else "-"
+        marker = f"1:{code}:{reason}:{digest}"
     with _workout_conversation_lock:
-        _workout_conversation_decisions[scope] = decision
+        _workout_conversation_decisions[scope] = marker
     try:
-        store.update_conversation_runtime_state(*scope, workout_decision=decision)
+        store.update_conversation_runtime_state(*scope, workout_decision=marker)
+    except Exception as error:
+        print(f"[chat] conversation workout decision unavailable: {type(error).__name__}")
+
+
+def _clear_conversation_workout_decision(scope):
+    if scope is None:
+        return
+    with _workout_conversation_lock:
+        _workout_conversation_decisions.pop(scope, None)
+    try:
+        store.update_conversation_runtime_state(*scope, workout_decision=None)
     except Exception as error:
         print(f"[chat] conversation workout decision unavailable: {type(error).__name__}")
 
@@ -809,11 +848,11 @@ FOLLOW-UP — НЕ ИЗСИПВАЙ НОВИ ПЛАНОВЕ
 Таблици → само при план/режим. Разговор и обяснения → обикновен текст.
 Максимум 6 колони (мобилни устройства). Кратки параграфи, конкретни числа.
 
-ВСЕКИ отговор завършва с:
-🔱 **ELITE STATUS: ACTIVE**
+При тренировъчен план запази предупреждението:
 ⚠️ *Този план е с информативна цел. Слушай тялото си. При болка или дискомфорт — спри.*
 
-EN disclaimer: 🔱 **ELITE STATUS: ACTIVE** ⚠️ *This plan is for informational purposes. Listen to your body. Stop if you feel pain or discomfort.*
+EN disclaimer: ⚠️ *This plan is for informational purposes. Listen to your body. Stop if you feel pain or discomfort.*
+Не добавяй декоративни твърдения за статус, абонамент или разрешения без потвърдени сървърни данни.
 
 ═══════════════════════════════════════════════════════════
 RECOVERY VERDICT — ДЕЙСТВАЙ ПРЕДИ ВСЯКА ПРЕПОРЪКА
@@ -2432,11 +2471,13 @@ def _requests_workout_and_nutrition(message):
     return workout and nutrition
 
 
-def _combined_request_follow_up(lang):
+def _combined_request_follow_up(lang, *, workout_delivered=True):
     if str(lang).lower() == "en":
-        return ("\n\nYour workout is ready. A daily nutrition plan is delivered as a separate "
+        return ("\n\n" + ("Your workout is ready. " if workout_delivered else "")
+                + "A daily nutrition plan is delivered as a separate "
                 "validated request; send: Give me a nutrition plan.")
-    return ("\n\nТренировката е готова. Дневният хранителен режим се доставя като отделна "
+    return ("\n\n" + ("Тренировката е готова. " if workout_delivered else "")
+            + "Дневният хранителен режим се доставя като отделна "
             "валидирана заявка; изпрати: Направи ми хранителен режим.")
 
 
@@ -2560,6 +2601,10 @@ def _explicit_workout_request(message):
     if mixed_intent.negated_formats or mixed_intent.negated_style:
         return False
     text = re.sub(r"\s+", " ", str(message or "").casefold()).strip()
+    if re.fullmatch(
+            r"(?:workout|training session|training plan|тренировка|тренировъчен план)"
+            r"(?:\s+(?:(?:for\s+)?today|за\s+днес))?[\s?!.]*", text):
+        return True
     return (any(term in text for term in _WORKOUT_REQUEST_TERMS)
             and (any(text.startswith(prefix) for prefix in _WORKOUT_REQUEST_PREFIXES)
                  or any(f" {prefix}" in text for prefix in _WORKOUT_REQUEST_PREFIXES)))
@@ -2580,6 +2625,45 @@ _WORKOUT_EXPLANATION_TERMS = (
     "why", "what do you mean", "why not", "what is it",
     "защо", "каква е тя", "какво имаш предвид", "защо не можеш",
 )
+_WORKOUT_CONFIRMATIONS = frozenset({"направи го", "дай я", "go ahead", "do it"})
+
+
+def _workout_request_digest(message):
+    return hashlib.sha256(str(message).encode("utf-8")).hexdigest()[:16]
+
+
+def _workout_confirmation_request(message):
+    return re.sub(r"\s+", " ", str(message or "").casefold()).strip(" ?!.") in _WORKOUT_CONFIRMATIONS
+
+
+def _pending_workout_request(outcome, history):
+    """Only the last unambiguous user request may resume a stored decision."""
+    decision, _reason, digest = outcome
+    if decision == "WORKOUT_APPROVED" or digest in (None, "-"):
+        return None
+    for turn in reversed(history or ()):
+        if not isinstance(turn, dict) or turn.get("role") != "user":
+            continue
+        content = turn.get("content", "")
+        if _workout_explanation_request(content) or _workout_confirmation_request(content):
+            continue
+        return content if _workout_request_digest(content) == digest else None
+    return None
+
+
+def _consume_pending_workout_request(scope, outcome):
+    decision, reason, digest = outcome
+    code = next(key for key, value in _WORKOUT_DECISION_CODES.items() if value == decision)
+    consumed = f"1:{code}:{reason}:-"
+    try:
+        if store.consume_conversation_workout_decision(
+                *scope, f"1:{code}:{reason}:{digest}", consumed):
+            with _workout_conversation_lock:
+                _workout_conversation_decisions[scope] = consumed
+            return True
+    except Exception as error:
+        print(f"[chat] pending workout unavailable: {type(error).__name__}")
+    return False
 
 
 def _workout_continuation_request(message, history):
@@ -2589,19 +2673,22 @@ def _workout_continuation_request(message, history):
     authoritative deterministic route to ``предложи ми я`` without treating
     ordinary pronouns or coaching questions as exercise prescriptions.
     """
-    text = re.sub(r"\s+", " ", str(message or "").casefold()).strip()
-    if not any(term in text for term in _WORKOUT_CONTINUATION_TERMS):
+    text = re.sub(r"\s+", " ", str(message or "").casefold()).strip(" ?!.")
+    if text not in _WORKOUT_CONTINUATION_TERMS:
         return False
-    return any(
-        _explicit_workout_request(turn.get("content"))
-        for turn in (history or ())
-        if isinstance(turn, dict) and turn.get("role") == "user"
-    )
+    for turn in reversed(history or ()):
+        if not isinstance(turn, dict) or turn.get("role") != "user":
+            continue
+        content = turn.get("content", "")
+        if _workout_explanation_request(content):
+            continue
+        return _explicit_workout_request(content)
+    return False
 
 
 def _workout_explanation_request(message):
     text = re.sub(r"\s+", " ", str(message or "").casefold()).strip(" ?!.")
-    return any(term == text or term in text for term in _WORKOUT_EXPLANATION_TERMS)
+    return text in _WORKOUT_EXPLANATION_TERMS
 
 
 def _active_workout_calorie_reply(message, previous_workout, lang):
@@ -2619,18 +2706,82 @@ def _active_workout_calorie_reply(message, previous_workout, lang):
             "усилие и паузи. Без измерени данни от изпълнението няма да измислям калорийна стойност.")
 
 
-def _workout_decision_reply(decision, lang):
+def _workout_decision_reply(decision, lang, reason=None):
     """Bounded explanation for an unresolved authoritative workout turn."""
     english = str(lang).lower() == "en"
+    if decision == "WORKOUT_APPROVED":
+        return ("The workout was built and validated using your confirmed profile and training restrictions. "
+                "It is already available above; you don't need to generate it again."
+                if english else
+                "Тренировката е изградена и валидирана според потвърдения профил и тренировъчните ограничения. "
+                "Вече е показана по-горе; не е нужно да я генерираш отново.")
+    if reason in {"goal", "level", "equipment"}:
+        return (("A supported training profile detail is missing or invalid. " if english else
+                 "Не е налична валидна потвърдена стойност от тренировъчния профил. ")
+                + recommendation_planning.clarification_message(reason, lang))
+    if reason == "medical":
+        return _medical_hold_reply(lang)
+    if reason == "withheld":
+        return (_brain_enforcement_withheld_reply({}, lang) +
+                (" Tell me how you are feeling now before requesting another workout."
+                 if english else " Сподели как се чувстваш сега, преди да поискаш нова тренировка."))
+    if reason == "safety":
+        return (_shoulder_safety_failure_reply(lang) +
+                (" Please request another workout that keeps the recorded restriction."
+                 if english else " Поискай друга тренировка със запазване на записаното ограничение."))
+    if reason in {"brain", "constraints"}:
+        return (_brain_enforcement_failure_reply(lang) + (" Please try again once the safety checks are available."
+                if english else " Опитай отново, когато проверките за безопасност са достъпни."))
+    if reason == "selection":
+        return ("No validated exercise selection fits the available equipment and active restrictions. "
+                "Please confirm what equipment is available."
+                if english else
+                "Няма валидиран подбор на упражнения за наличното оборудване и активните ограничения. "
+                "Потвърди с какво оборудване разполагаш.")
+    if reason == "split":
+        return ("The saved training split is unsupported. Please choose a supported split in your profile."
+                if english else
+                "Записаното тренировъчно разпределение не е поддържано. Избери поддържано разпределение в профила.")
     if decision == "WORKOUT_CLARIFICATION_REQUIRED":
         return ("I still need the specific missing training detail before I can build a workout."
                 if english else
                 "Все още ми липсва конкретният тренировъчен детайл, за да изградя тренировка.")
     if decision == "WORKOUT_RESTRICTION_UNSUPPORTED":
         return _explicit_health_restriction_reply(lang)
-    return ("I couldn't build a validated workout from the current training constraints. I won't invent one."
-            if english else
-            "Не успях да изградя валидирана тренировка според текущите тренировъчни ограничения. Няма да измисля такава.")
+    if reason == "validation":
+        return ("The candidate did not pass deterministic training validation. No workout was delivered. "
+                "Please request a new workout; the same safety checks will apply."
+                if english else
+                "Кандидатът не премина детерминистичното тренировъчно валидиране. Не е доставена тренировка. "
+                "Поискай нова тренировка; същите проверки за безопасност остават в сила.")
+    if reason == "plan":
+        explanation = ("The workout planner did not return a validated workout. " if english else
+                       "Тренировъчният конструктор не върна валидирана тренировка. ")
+    else:
+        explanation = ("No validated workout was recorded. The saved decision does not identify a more specific cause. "
+                       if english else
+                       "Не е записана валидирана тренировка. Запазеното решение не посочва по-конкретна причина. ")
+    return explanation + (
+        "Please request a new workout with your available equipment; the same safety checks will apply."
+        if english else
+        "Поискай нова тренировка с наличното оборудване; същите проверки за безопасност остават в сила.")
+
+
+def _training_failure_reason(error):
+    text = str(error)
+    if text.startswith("training selection rejected:") or text == "all required movement patterns are excluded":
+        return "selection"
+    if "equipment" in text:
+        return "equipment"
+    if "experience level" in text:
+        return "level"
+    if "training goal" in text:
+        return "goal"
+    if "training split" in text:
+        return "split"
+    if text == "explicit health restriction is unsupported":
+        return "restriction"
+    return "plan"
 
 
 def _planning_intent(message, history, classified_intent, *, require_explicit_workout=False):
@@ -3408,6 +3559,39 @@ def chat():
         persist_analytics_subject = (("user", str(g.user["id"])) if g.get("user")
                                      else ("device", g.device_id or _client_ip()))
         _workout_scope = _workout_conversation_scope(data, chat_uid, g.device_id)
+        if chat_uid:
+            try:
+                history = store.list_conversation(chat_uid, limit=60 if is_pro else 10 if is_elite else 12)
+            except Exception as _ce:
+                print(f"[chat] conversation load failed: {_ce}")
+                history = []  # A supplied history cannot authorize an account continuation.
+        _submitted_message = user_message
+        _prior_workout_outcome = _conversation_workout_outcome(_workout_scope)
+        _prior_workout_decision = _prior_workout_outcome[0]
+        if (_prior_workout_decision is not None
+                and (_workout_explanation_request(user_message) or _workout_confirmation_request(user_message))):
+            is_first_contact = False  # Existing authority must not re-enter profile extraction.
+        _pending_request = _pending_workout_request(_prior_workout_outcome, history)
+        _confirmation_reply = None
+        _resumed_workout_request = False
+        if _workout_confirmation_request(user_message) and _prior_workout_decision:
+            if (_pending_request is not None
+                    and _prior_workout_outcome[1] not in {"medical", "safety", "brain", "constraints", "restriction", "withheld"}
+                    and _consume_pending_workout_request(_workout_scope, _prior_workout_outcome)):
+                # Re-run the original request through CURRENT profile, Brain and
+                # constraint authority, not through the prior assistant prose.
+                user_message = _pending_request
+                _resumed_workout_request = True
+            else:
+                _confirmation_reply = _workout_decision_reply(
+                    _prior_workout_decision, lang, _prior_workout_outcome[1])
+        elif (_prior_workout_decision is not None
+              and not _workout_explanation_request(user_message)
+              and not _explicit_workout_request(user_message)
+              and not _workout_continuation_request(user_message, history)):
+            _clear_conversation_workout_decision(_workout_scope)
+            _prior_workout_outcome = (None, None, None)
+            _prior_workout_decision = None
         _previous_workout = _last_workout_for(_workout_scope)
         _nutrition_revision_request = nutrition_conversation.parse_plan_revision(user_message)
         _active_workout_mutation = (None if _language_turn or _nutrition_revision_request is not None else
@@ -3430,7 +3614,6 @@ def chat():
               and _previous_workout.plan.sessions[0].mixed_modal is not None):
             _mixed_modal_request = MixedModalRequest(
                 _previous_workout.plan.sessions[0].mixed_modal.format)
-        _prior_workout_decision = _conversation_workout_decision(_workout_scope)
         _followup_reply = None
         _followup_failure_reply = None
         if _workout_followup is not None:
@@ -3507,12 +3690,6 @@ def chat():
             memory_cap = 60 if is_pro else 10
         else:
             memory_cap = 12
-
-        if chat_uid:
-            try:
-                history = store.list_conversation(chat_uid, limit=memory_cap)
-            except Exception as _ce:
-                print(f"[chat] conversation load failed: {_ce}")
 
         # Temporary self-reported limitations have their own lifecycle. They are
         # never promoted into permanent clinician/medical restrictions.
@@ -3704,6 +3881,8 @@ def chat():
         _training_engine_active_for_request = _training_engine_active()
         _training_plan_blueprint = None
         _training_engine_failure = None
+        _training_failure_detail = None
+        _planning_request_intent = None
         _shoulder_safety_validation = None
         _brain_enforcement_decision = None
         _brain_enforcement_directive = None
@@ -3847,6 +4026,7 @@ def chat():
                         else:
                             _recommendation_path = "deterministic_training"
                 except TrainingRuntimeError as _training_error:
+                    _training_failure_detail = _training_failure_reason(_training_error)
                     print(f"[training-engine] construction rejected: {type(_training_error).__name__}")
                     if not (_brain_enforcement_failure or
                             (_brain_enforcement_directive is not None and
@@ -3894,31 +4074,33 @@ def chat():
             if _followup_failure_reply is not None:
                 _controlled_reply = _followup_failure_reply
             if _training_engine_failure is not None:
-                # An incomplete or legacy browser profile must never turn an
-                # explicit workout request into the generic clarify message.
-                # The bounded starter session is safe, deterministic, and keeps
-                # the coaching turn actionable while the profile is completed.
-                if _training_engine_failure == "training_engine_safety_constraints_unavailable":
+                # A failed constructor is not authority for a fabricated starter
+                # workout. Return its verified reason and one next step instead.
+                if _training_failure_detail in {"goal", "level", "equipment", "split", "selection"}:
+                    _controlled_reply = _workout_decision_reply(
+                        "WORKOUT_PLANNING_FAILURE", lang, _training_failure_detail)
+                elif _training_engine_failure == "training_engine_safety_constraints_unavailable":
                     _controlled_reply = _safety_constraints_unavailable_reply(lang)
                 elif _training_engine_failure == "training_engine_shoulder_safety_contract":
                     _controlled_reply = _shoulder_safety_failure_reply(lang)
                 elif _training_engine_failure == "training_engine_explicit_health_restriction":
                     _controlled_reply = _explicit_health_restriction_reply(lang)
                 else:
-                    _controlled_reply = _cold_start_workout_reply(lang)
-                    if _requests_workout_and_nutrition(user_message):
-                        _controlled_reply += _combined_request_follow_up(lang)
+                    _controlled_reply = _workout_decision_reply(
+                        "WORKOUT_PLANNING_FAILURE", lang, _training_failure_detail)
+                if _requests_workout_and_nutrition(user_message):
+                    _controlled_reply += _combined_request_follow_up(lang, workout_delivered=False)
             if (_restriction_controlled_reply is not None and
                     not (_medical_hold and _medical_hold.get("status") == "ACTIVE_MEDICAL_HOLD")):
                 _controlled_reply = _restriction_controlled_reply
             if (_prior_workout_decision in _WORKOUT_DECISIONS
-                    and _prior_workout_decision != "WORKOUT_APPROVED"
                     and not _language_turn
                     and _workout_explanation_request(user_message)):
                 # An explanation turn inherits the unresolved deterministic
                 # outcome. It must never reopen generic streaming as a second
                 # workout authority.
-                _controlled_reply = _workout_decision_reply(_prior_workout_decision, lang)
+                _controlled_reply = _workout_decision_reply(
+                    _prior_workout_decision, lang, _prior_workout_outcome[1])
             if _conversation_composer_active_for_request:
                 try:
                     _conversation_policy = conversation_composer.build_policy(
@@ -3963,6 +4145,7 @@ def chat():
             _first_planning_intent = None if _language_turn else _planning_intent(
                 user_message, history, _first_intent,
                 require_explicit_workout=brain_config.brain_enforce())
+            _planning_request_intent = _first_planning_intent
             # Coaching turns begin from verified Profile Cards. They never call
             # the legacy extraction model before deterministic planning; ordinary
             # first-contact conversation retains its established extraction path.
@@ -4056,6 +4239,7 @@ def chat():
                         else:
                             _recommendation_path = "deterministic_training"
                 except TrainingRuntimeError as _training_error:
+                    _training_failure_detail = _training_failure_reason(_training_error)
                     print(f"[training-engine] construction rejected: {type(_training_error).__name__}")
                     if not (_brain_enforcement_failure or
                             (_brain_enforcement_directive is not None and
@@ -4099,16 +4283,20 @@ def chat():
             system_content = prompts[decision_state]
             _controlled_reply = _planning_reply
             if _training_engine_failure is not None:
-                if _training_engine_failure == "training_engine_safety_constraints_unavailable":
+                if _training_failure_detail in {"goal", "level", "equipment", "split", "selection"}:
+                    _controlled_reply = _workout_decision_reply(
+                        "WORKOUT_PLANNING_FAILURE", lang, _training_failure_detail)
+                elif _training_engine_failure == "training_engine_safety_constraints_unavailable":
                     _controlled_reply = _safety_constraints_unavailable_reply(lang)
                 elif _training_engine_failure == "training_engine_shoulder_safety_contract":
                     _controlled_reply = _shoulder_safety_failure_reply(lang)
                 elif _training_engine_failure == "training_engine_explicit_health_restriction":
                     _controlled_reply = _explicit_health_restriction_reply(lang)
                 else:
-                    _controlled_reply = _cold_start_workout_reply(lang)
-                    if _requests_workout_and_nutrition(user_message):
-                        _controlled_reply += _combined_request_follow_up(lang)
+                    _controlled_reply = _workout_decision_reply(
+                        "WORKOUT_PLANNING_FAILURE", lang, _training_failure_detail)
+                if _requests_workout_and_nutrition(user_message):
+                    _controlled_reply += _combined_request_follow_up(lang, workout_delivered=False)
             profile_block = _build_profile_block(profile, lang) if isinstance(profile, dict) else ""
             
             # 5. Memory: Write confirmed profile facts to store (logged-in accounts)
@@ -4382,6 +4570,12 @@ def chat():
                         _brain_enforcement_prompt_addendum = (
                             _brain_enforcement_directive["system_prompt_addendum"])
 
+        # A missing profile field is a question, not permission for generic
+        # workout prose. Brain/medical terminal decisions above still win.
+        if (_training_engine_active_for_request and _controlled_reply is None and _planning_reply is not None
+                and _planning_request_intent == "workout"):
+            _controlled_reply = _planning_reply
+
         # Persisted completion evidence may revise this already-authoritative
         # deterministic plan through the same bounded lifecycle policy used for
         # explicit workout completion. It never runs on a follow-up or alongside
@@ -4446,6 +4640,10 @@ def chat():
 
         if _language_turn and not (_medical_hold and _medical_hold.get("status") == "ACTIVE_MEDICAL_HOLD"):
             _controlled_reply = live_voice.language_reply(lang)
+
+        if (_confirmation_reply is not None and _controlled_reply is None
+                and _training_plan_blueprint is None):
+            _controlled_reply = _confirmation_reply
 
         if _health_scope.scope is HealthSafetyScope.DECLARED_HEALTH_CONTEXT:
             system_content = system_content + "\n\n" + declared_context_prompt(lang)
@@ -4643,7 +4841,7 @@ def chat():
         # Captured for post-stream persistence (no request context inside generator).
         persist_uid = chat_uid
         persist_device_id = g.device_id
-        persist_user_msg = user_message
+        persist_user_msg = _submitted_message
         persist_lang = lang
         persist_profile = profile if isinstance(profile, dict) else {}
         persist_conversation = history if isinstance(history, list) else []  # recent window (Addendum 02 A2-1)
@@ -4778,16 +4976,42 @@ def chat():
         # Preserve unresolved outcomes before streaming starts. This is bounded
         # operational state, not assistant content, and keeps later "why" turns
         # under the same deterministic authority.
-        if not (_medical_hold and _medical_hold.get("status") == "ACTIVE_MEDICAL_HOLD"):
+        _pending_workout_message = (
+            user_message if not _resumed_workout_request and _planning_request_intent == "workout" else None)
+        if _medical_hold and _medical_hold.get("status") == "ACTIVE_MEDICAL_HOLD":
+            _record_conversation_workout_decision(
+                _workout_scope, "WORKOUT_PLANNING_FAILURE", reason="medical")
+        elif _brain_enforcement_failure:
+            _record_conversation_workout_decision(
+                _workout_scope, "WORKOUT_PLANNING_FAILURE", reason="brain")
+        elif (_brain_enforcement_directive is not None
+              and not _brain_enforcement_directive["should_generate_workout"]):
+            _record_conversation_workout_decision(
+                _workout_scope, "WORKOUT_PLANNING_FAILURE",
+                reason="medical" if _brain_enforcement_directive.get("mode") == "route" else "withheld")
+        else:
             if _training_engine_failure == "training_engine_explicit_health_restriction":
                 _record_conversation_workout_decision(
-                    _workout_scope, "WORKOUT_RESTRICTION_UNSUPPORTED")
+                    _workout_scope, "WORKOUT_RESTRICTION_UNSUPPORTED", reason="restriction")
             elif _training_engine_failure is not None:
+                _failure_reason = _training_failure_detail or {
+                    "training_engine_safety_constraints_unavailable": "constraints",
+                    "training_engine_shoulder_safety_contract": "safety",
+                    "training_engine_mixed_modal_safety": "selection",
+                }.get(_training_engine_failure, "plan")
                 _record_conversation_workout_decision(
-                    _workout_scope, "WORKOUT_PLANNING_FAILURE")
+                    _workout_scope, "WORKOUT_PLANNING_FAILURE", reason=_failure_reason,
+                    pending_request=_pending_workout_message)
             elif _planning_reply is not None and _planning_request_intent == "workout":
+                _missing_field = getattr(_recommendation_plan, "clarification_field", None)
+                if not _missing_field:
+                    _missing_field = next(iter(getattr(_recommendation_plan, "missing_fields", ())), None)
+                if _missing_field == "experience_level":
+                    _missing_field = "level"
                 _record_conversation_workout_decision(
-                    _workout_scope, "WORKOUT_CLARIFICATION_REQUIRED")
+                    _workout_scope, "WORKOUT_CLARIFICATION_REQUIRED",
+                    reason=_missing_field if _missing_field in {"goal", "level", "equipment"} else "plan",
+                    pending_request=_pending_workout_message)
 
         def generate():
             full = []
@@ -5068,9 +5292,11 @@ def chat():
                             recommendation_rationale=recommendation_rationale)
                     except Exception as training_error:
                         print(f"[training-engine] delivery rejected: {type(training_error).__name__}")
-                        reply_text = decision_engine.controlled_response(
-                            decision_engine.DecisionResult("clarify", "workout",
-                                                           "training_engine_delivery_contract", (), 1.0), lang)
+                        _record_conversation_workout_decision(
+                            _workout_scope, "WORKOUT_PLANNING_FAILURE", reason="validation",
+                            pending_request=_pending_workout_message)
+                        reply_text = _workout_decision_reply(
+                            "WORKOUT_PLANNING_FAILURE", lang, "validation")
                     yield sse({"t": reply_text})
                     if training_completion is not None:
                         _remember_workout(_workout_scope, _training_plan_blueprint)
@@ -5146,7 +5372,11 @@ def chat():
                             active_workout_context=_active_training_context,
                         )
                     except TrainingRuntimeError:
-                        reply_text = (_workout_decision_reply("WORKOUT_VALIDATION_FAILED", lang)
+                        _record_conversation_workout_decision(
+                            _workout_scope, "WORKOUT_PLANNING_FAILURE", reason="validation",
+                            pending_request=(user_message if _explicit_workout_request(user_message)
+                                             and not _resumed_workout_request else None))
+                        reply_text = (_workout_decision_reply("WORKOUT_PLANNING_FAILURE", lang, "validation")
                                       if _previous_workout is None else
                                       followup_message("workout change unavailable", lang))
                 yield sse({"t": reply_text})

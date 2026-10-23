@@ -2605,6 +2605,17 @@ def update_conversation_runtime_state(subject, conversation_id, **values):
                 conversation_runtime_state.c.conversation_id == conversation_id,
             ).values(**changes))
 
+def consume_conversation_workout_decision(subject, conversation_id, expected, replacement):
+    """Consume one pending continuation before work starts, across workers."""
+    with engine.begin() as c:
+        result = c.execute(update(conversation_runtime_state).where(
+            conversation_runtime_state.c.subject == str(subject),
+            conversation_runtime_state.c.conversation_id == str(conversation_id),
+            conversation_runtime_state.c.workout_decision == expected,
+        ).values(workout_decision=replacement))
+        return result.rowcount == 1
+
+
 def list_workouts(user_id, limit=60):
     with engine.begin() as c:
         rows = c.execute(select(workout_history).where(workout_history.c.user_id == _as_uuid(user_id))

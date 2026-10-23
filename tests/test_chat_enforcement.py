@@ -2751,7 +2751,7 @@ def test_training_engine_accepts_each_browser_equipment_value(client, captured, 
     assert events[1]["training_completion"]["plan_id"]
 
 
-def test_training_engine_profile_contract_failure_delivers_actionable_starter_workout(
+def test_training_engine_profile_contract_failure_asks_for_equipment_without_inventing_workout(
         client, captured, monkeypatch):
     profile = _profile(equipment="office")
     monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
@@ -2759,21 +2759,24 @@ def test_training_engine_profile_contract_failure_delivers_actionable_starter_wo
 
     response = _post(client, "build a workout", profile=profile)
 
-    assert _events(response) == [{"t": appmod._cold_start_workout_reply("en")}, {"done": True}]
-    assert "| Exercise | Sets | Reps | Rest | Note |" in appmod._cold_start_workout_reply("en")
-    assert "| Wall push-up | 2 | 6–8 | 60s |" in appmod._cold_start_workout_reply("en")
+    assert _events(response) == [{"t": appmod._workout_decision_reply(
+        "WORKOUT_PLANNING_FAILURE", "en", "equipment")}, {"done": True}]
+    assert not any("training_completion" in event or "|" in event.get("t", "")
+                   for event in _events(response))
     assert captured == {}
 
 
-def test_exact_bulgarian_workout_prompt_generates_on_its_first_turn(client, captured, monkeypatch):
+def test_exact_bulgarian_workout_prompt_reports_unsupported_equipment_on_its_first_turn(client, captured, monkeypatch):
     monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
     monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_kwargs: pytest.fail("LLM ran"))
     message = "\u041d\u0430\u043f\u0440\u0430\u0432\u0438 \u043c\u0438 \u0442\u0440\u0435\u043d\u0438\u0440\u043e\u0432\u043a\u0430 \u0437\u0430 \u0434\u043d\u0435\u0441"
 
     response = _post(client, message, profile=_profile(equipment="office"), lang="bg")
 
-    assert _events(response) == [{"t": appmod._cold_start_workout_reply("bg")}, {"done": True}]
-    assert "Bird-dog" in appmod._cold_start_workout_reply("bg")
+    assert _events(response) == [{"t": appmod._workout_decision_reply(
+        "WORKOUT_PLANNING_FAILURE", "bg", "equipment")}, {"done": True}]
+    assert not any("training_completion" in event or "|" in event.get("t", "")
+                   for event in _events(response))
     assert "\u0421 \u043a\u0430\u043a\u0432\u043e \u0434\u0430 \u043f\u043e\u043c\u043e\u0433\u043d\u0430 \u0434\u043d\u0435\u0441?" not in _events(response)[0]["t"]
     assert captured == {}
 
@@ -2890,6 +2893,295 @@ def test_bulgarian_light_workout_with_context_uses_deterministic_authority_acros
                for exercise in _completion_exercises(proposed))
 
 
+@pytest.mark.parametrize("lang", ["bg", "en"])
+@pytest.mark.parametrize("authenticated", [False, True])
+@pytest.mark.parametrize("equipment", ["home", "gym"])
+def test_nutrition_then_workout_why_and_confirmation_keep_training_authority(
+        client, monkeypatch, lang, authenticated, equipment):
+    profile = _profile(goal="hypertrophy", equipment=equipment,
+                       recoveryFeel="fresh", sleepQuality="good", stressLevel="low",
+                       frequency="3", activityLevel="active")
+    if authenticated:
+        _login_for_chat(client, profile)
+    monkeypatch.setenv("BRAIN_ENFORCE", "true")
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod, "_build_profile_block", lambda *_args:
+                        "Calorie target: 2800 kcal\nProtein target: minimum 175g/day")
+    nutrition = _structured_plan_payload()
+    if lang == "bg":
+        names = {"Whole eggs": "Яйца", "Oats": "Овесени ядки",
+                 "Chicken breast": "Пилешко филе", "Rice": "Ориз",
+                 "Salmon": "Сьомга", "Potatoes": "Картофи"}
+        for meal in nutrition["meals"]:
+            for food in meal["foods"]:
+                food["display_name"] = names[food["display_name"]]
+    calls = []
+
+    def provider(**kwargs):
+        calls.append(kwargs)
+        if kwargs.get("stream"):
+            # Reproduces the model prescription that the global guard correctly
+            # rejects when a real request accidentally escapes construction.
+            return iter([_Chunk("Dumbbell Bench Press: 3 sets of 10 repetitions")])
+        return _StructuredCompletion(nutrition if len(calls) == 1 else {"explanations": []})
+
+    monkeypatch.setattr(appmod.client.chat.completions, "create", provider)
+    conversation_id = f"nutrition-workout-{lang}-{authenticated}-{equipment}"
+    history = []
+
+    def turn(message):
+        events = _events(client.post("/chat", json={
+            "message": message, "lang": lang, "profile": profile,
+            "history": history, "conversation_id": conversation_id,
+        }))
+        history.extend([{"role": "user", "content": message},
+                        {"role": "assistant", "content": "".join(e.get("t", "") for e in events)}])
+        assert events[-1] == {"done": True}
+        return events
+
+    nutrition_events = turn("Направи ми хранителен план" if lang == "bg" else "Create a nutrition plan")
+    expected_nutrition = nutrition_plan.render_delivery(nutrition_plan.build_plan(
+        nutrition, _NUTRITION_TARGETS, restrictions=(), provenance={"test": "conversation"}),
+        lang, profile=profile)
+    assert _stable_delivery_text("".join(e.get("t", "") for e in nutrition_events)) == (
+        _stable_delivery_text(expected_nutrition))
+    workout = turn("тренировка за днес ?" if lang == "bg" else "workout for today?")
+    assert sum("training_completion" in event for event in workout) == 1
+    assert all(not call.get("stream") for call in calls)
+    before_why = len(calls)
+    why = turn("защо" if lang == "bg" else "why")
+    assert len(calls) == before_why
+    assert not any("training_completion" in event for event in why)
+    confirmed = turn("направи го" if lang == "bg" else "do it")
+    assert not any("training_completion" in event for event in confirmed)
+    assert len(calls) == before_why  # A delivered workout is not a pending request.
+    assert "ELITE STATUS" not in "".join(e.get("t", "") for e in workout + why + confirmed)
+
+
+@pytest.mark.parametrize("confirmation,lang", [
+    ("направи го", "bg"), ("дай я", "bg"), ("go ahead", "en"), ("do it", "en"),
+])
+@pytest.mark.parametrize("authenticated", [False, True])
+def test_pending_workout_confirmation_replays_original_request_with_current_verified_facts(
+        client, captured, monkeypatch, confirmation, lang, authenticated):
+    profile = _profile(goal="hypertrophy", recoveryFeel="fresh", sleepQuality="good", stressLevel="low")
+    profile.pop("equipment")
+    uid = _login_for_chat(client, profile) if authenticated else None
+    monkeypatch.setenv("BRAIN_ENFORCE", "true")
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": []}))
+    original = ("Дай ми тренировка за горна част, избягвай overhead pressing."
+                if lang == "bg" else "Give me an upper-body workout, avoid overhead pressing.")
+    conversation_id = f"pending-workout-{lang}-{authenticated}-{confirmation.replace(' ', '-')}"
+    # IDs are intentionally ASCII and scoped exactly as the production browser.
+    conversation_id = "pending-" + appmod._workout_request_digest(conversation_id)
+    history = []
+
+    def turn(message):
+        events = _events(client.post("/chat", json={
+            "message": message, "lang": lang, "profile": profile,
+            "history": history, "conversation_id": conversation_id,
+        }))
+        history.extend([{"role": "user", "content": message},
+                        {"role": "assistant", "content": "".join(e.get("t", "") for e in events)}])
+        assert events[-1] == {"done": True}
+        return events
+
+    first = turn(original)
+    assert not any("training_completion" in event for event in first)
+    assert recommendation_planning.clarification_message("equipment", lang) in "".join(e.get("t", "") for e in first)
+    assert captured == {}
+    # A different worker can explain and resume the durable decision.
+    appmod._workout_conversation_decisions.clear()
+    why = turn("защо" if lang == "bg" else "why")
+    assert recommendation_planning.clarification_message("equipment", lang) in "".join(e.get("t", "") for e in why)
+    assert captured == {}
+    profile["equipment"] = "home"
+    if uid:
+        saved = store.get_profile(uid)
+        saved["equipment"] = "home"
+        store.save_profile(uid, saved)
+    events = turn(confirmation)
+    exercises = _completion_exercises(events)
+    assert exercises
+    library = load_exercise_library()
+    assert all(library.require(e["exercise_id"], e["exercise_version"]).movement_pattern.value != "vertical_push"
+               for e in exercises)
+    assert captured["messages"][-1]["content"] == original
+    if uid:
+        assert store.list_account_training_constraints(uid) == ("vertical_push",)
+        assert store.list_conversation(uid)[-2]["content"] == confirmation
+
+
+@pytest.mark.parametrize("lang", ["bg", "en"])
+def test_pending_workout_retries_once_then_explains_verified_failure_without_loop(
+        client, captured, monkeypatch, lang):
+    profile = _profile(goal="hypertrophy", equipment="office", recoveryFeel="fresh")
+    _login_for_chat(client, profile)
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_: pytest.fail("LLM ran"))
+    builds = []
+    original_builder = appmod._active_training_plan
+
+    def build(*args, **kwargs):
+        builds.append(1)
+        return original_builder(*args, **kwargs)
+
+    monkeypatch.setattr(appmod, "_active_training_plan", build)
+    conversation_id = f"retry-failure-no-loop-{lang}"
+    request = "тренировка за днес ?" if lang == "bg" else "workout for today?"
+    for message in (request, "защо" if lang == "bg" else "why",
+                    "направи го" if lang == "bg" else "do it",
+                    "направи го" if lang == "bg" else "do it"):
+        events = _events(_post(client, message, lang=lang, conversation_id=conversation_id))
+        assert recommendation_planning.clarification_message("equipment", lang) in events[0]["t"]
+        assert not any("training_completion" in event for event in events)
+        assert "|" not in events[0]["t"]
+    assert len(builds) == 2
+    assert captured == {}
+
+
+@pytest.mark.parametrize("intervening", ["What is protein?", "Create a nutrition plan"])
+def test_unrelated_topic_invalidates_pending_workout_confirmation(client, captured, monkeypatch, intervening):
+    profile = _profile(equipment="office")
+    _login_for_chat(client, profile)
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    conversation_id = "ambiguous-pending-workout-01"
+    _events(_post(client, "workout for today?", lang="en", conversation_id=conversation_id))
+    _set_stream(monkeypatch, captured, "Let's discuss that.")
+    _events(_post(client, intervening, lang="en", conversation_id=conversation_id))
+    monkeypatch.setattr(appmod, "_active_training_plan", lambda *_a, **_k: pytest.fail("ambiguous continuation"))
+    events = _events(_post(client, "do it", lang="en", conversation_id=conversation_id))
+    assert not any("training_completion" in event for event in events)
+
+
+def test_pending_workout_cannot_be_imported_from_another_account_history(client, captured, monkeypatch):
+    profile = _profile(equipment="office")
+    _login_for_chat(client, profile)
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    conversation_id = "account-owned-pending-workout"
+    original = "Give me an upper-body workout, avoid overhead pressing"
+    _events(_post(client, original, lang="en", conversation_id=conversation_id))
+    other = appmod.app.test_client()
+    uid = store.get_or_create_user("other-pending@example.invalid")
+    store.save_profile(uid, _profile())
+    other.set_cookie(appmod.SESSION_COOKIE, store.create_session(uid))
+    _set_stream(monkeypatch, captured, "Which request do you mean?")
+    monkeypatch.setattr(appmod, "_active_training_plan", lambda *_a, **_k: pytest.fail("cross-account request"))
+    events = _events(other.post("/chat", json={
+        "message": "do it", "lang": "en", "conversation_id": conversation_id,
+        "history": [{"role": "user", "content": original}],
+    }))
+    assert not any("training_completion" in event for event in events)
+    assert store.list_account_training_constraints(uid) == ()
+
+
+@pytest.mark.parametrize("lang", ["bg", "en"])
+def test_why_and_confirmation_never_bypass_a_real_medical_hold(client, captured, monkeypatch, lang):
+    _login_for_chat(client, _profile(goal="hypertrophy", recoveryFeel="fresh"))
+    monkeypatch.setenv("BRAIN_ENFORCE", "true")
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_: pytest.fail("LLM ran"))
+    monkeypatch.setattr(appmod, "_active_training_plan", lambda *_a, **_k: pytest.fail("safety bypass"))
+    first = ("Имам стягане в гърдите. Дай ми тренировка." if lang == "bg" else
+             "My chest feels tight. Give me a workout.")
+    for message in (first, "защо" if lang == "bg" else "why",
+                    "направи го" if lang == "bg" else "do it"):
+        events = _events(_post(client, message, lang=lang, conversation_id=f"medical-hold-sequence-{lang}"))
+        assert any(event.get("medical_hold") for event in events)
+        assert medical_boundary_message(lang) in "".join(event.get("t", "") for event in events)
+        assert not any("training_completion" in event for event in events)
+
+
+def test_unverified_elite_status_is_not_requested_in_coach_instructions():
+    assert "ELITE STATUS: ACTIVE" not in appmod.SYSTEM_INSTRUCTIONS
+
+
+@pytest.mark.parametrize("missing", ["goal", "level", "equipment"])
+@pytest.mark.parametrize("lang", ["bg", "en"])
+def test_short_workout_request_asks_one_missing_profile_question_after_brain_safety(
+        client, monkeypatch, missing, lang):
+    profile = _profile(goal="hypertrophy", recoveryFeel="fresh", sleepQuality="good", stressLevel="low")
+    profile.pop(missing)
+    monkeypatch.setenv("BRAIN_ENFORCE", "true")
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_: pytest.fail("profile guess"))
+    message = "тренировка за днес ?" if lang == "bg" else "workout for today?"
+    events = _events(_post(client, message, profile=profile, lang=lang))
+    text = "".join(event.get("t", "") for event in events)
+    assert text == recommendation_planning.clarification_message(missing, lang)
+    assert text.count("?") == 1
+    assert not any("training_completion" in event for event in events)
+
+
+@pytest.mark.parametrize("legacy_decision", sorted(appmod._WORKOUT_DECISIONS))
+def test_workout_decision_claim_preserves_legacy_records_and_unrelated_fields(legacy_decision):
+    scope = ("account:legacy-release-check", "legacy-" + legacy_decision)
+    store.update_conversation_runtime_state(
+        *scope, workout_decision=legacy_decision,
+        workout_blueprint={"legacy_payload": [1, 2, 3]},
+        health_restrictions=["Avoid overhead pressing"],
+        medical_hold={"status": "synthetic-record"},
+        workout_delivered=True, workout_stale=True)
+    before = store.get_conversation_runtime_state(*scope)
+    assert appmod._conversation_workout_outcome(scope) == (legacy_decision, None, None)
+    assert not store.consume_conversation_workout_decision(
+        *scope, "1:F:validation:0123456789abcdef", "1:F:validation:-")
+    assert store.get_conversation_runtime_state(*scope) == before
+    store.update_conversation_runtime_state(*scope, workout_decision="1:F:validation:0123456789abcdef")
+    before = store.get_conversation_runtime_state(*scope)
+    assert store.consume_conversation_workout_decision(
+        *scope, "1:F:validation:0123456789abcdef", "1:F:validation:-")
+    after = store.get_conversation_runtime_state(*scope)
+    assert after["workout_decision"] == "1:F:validation:-"
+    assert {key: value for key, value in before.items() if key not in {"workout_decision", "updated_at"}} == (
+        {key: value for key, value in after.items() if key not in {"workout_decision", "updated_at"}})
+
+
+def test_pending_workout_consumption_is_account_scoped_and_single_use(monkeypatch):
+    scope = ("account:synthetic-owner", "atomic-pending-workout-01")
+    appmod._record_conversation_workout_decision(
+        scope, "WORKOUT_PLANNING_FAILURE", reason="validation", pending_request="workout for today?")
+    outcome = appmod._conversation_workout_outcome(scope)
+    assert not appmod._consume_pending_workout_request(("account:another-owner", scope[1]), outcome)
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        results = list(workers.map(lambda _: appmod._consume_pending_workout_request(scope, outcome), range(2)))
+    assert sorted(results) == [False, True]
+    assert appmod._conversation_workout_outcome(scope)[2] == "-"
+    assert len(store.get_conversation_runtime_state(*scope)["workout_decision"]) <= 40
+    monkeypatch.setattr(store, "consume_conversation_workout_decision", lambda *_: (_ for _ in ()).throw(RuntimeError()))
+    assert not appmod._consume_pending_workout_request(scope, outcome)
+
+
+def test_rejected_generic_prescription_persists_validation_reason_for_why_without_llm(
+        client, captured, monkeypatch):
+    profile = _profile(healthRestrictions=["Avoid overhead pressing"])
+    _login_for_chat(client, profile)
+    conversation_id = "generic-rejection-decision-01"
+    _set_stream(monkeypatch, captured, "Dumbbell Overhead Press: 3 sets of 10 repetitions")
+    events = _events(_post(client, "Tell me something encouraging", conversation_id=conversation_id))
+    assert "Overhead Press" not in "".join(e.get("t", "") for e in events)
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_: pytest.fail("invented explanation"))
+    for message in ("why", "do it", "do it"):
+        events = _events(_post(client, message, conversation_id=conversation_id))
+        assert events[0]["t"] == appmod._workout_decision_reply(
+            "WORKOUT_PLANNING_FAILURE", "en", "validation")
+        assert not any("training_completion" in event for event in events)
+
+
+@pytest.mark.parametrize("message", ["тренировка за днес ?", "workout for today?", "training session today"])
+def test_short_workout_noun_phrase_is_a_prescription_request(message):
+    assert appmod._explicit_workout_request(message)
+
+
+@pytest.mark.parametrize("message", [
+    "Защо тренировката е на английски?", "Какво е CrossFit?",
+    "Why so much protein?", "Food after this workout", "I don't want a workout today",
+])
+def test_workout_context_questions_are_not_short_prescription_requests(message):
+    assert not appmod._explicit_workout_request(message)
+
+
 def test_unresolved_workout_planning_failure_owns_bulgarian_why_turn(
         client, captured, monkeypatch):
     """A rejected plan cannot be explained or replaced by generic LLM output."""
@@ -2920,6 +3212,20 @@ def test_unresolved_workout_planning_failure_owns_bulgarian_why_turn(
     assert captured == {}
 
 
+def test_existing_workout_decision_cannot_reenter_first_contact_extraction(client, captured, monkeypatch):
+    _login_for_chat(client, _profile(equipment="office"))
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    conversation_id = "decision-first-contact-authority"
+    _events(_post(client, "workout for today?", conversation_id=conversation_id))
+    monkeypatch.setattr(appmod, "_extract_profile_silent", lambda *_: pytest.fail("re-extraction"))
+    monkeypatch.setattr(appmod.client.chat.completions, "create", lambda **_: pytest.fail("invented explanation"))
+    events = _events(client.post("/chat", json={
+        "message": "why", "lang": "en", "first_contact": True, "conversation_id": conversation_id,
+    }))
+    assert events == [{"t": appmod._workout_decision_reply(
+        "WORKOUT_PLANNING_FAILURE", "en", "equipment")}, {"done": True}]
+
+
 def test_combined_request_with_training_profile_failure_keeps_nutrition_follow_up_visible(
         client, captured, monkeypatch):
     profile = _profile(equipment="office")
@@ -2930,8 +3236,10 @@ def test_combined_request_with_training_profile_failure_keeps_nutrition_follow_u
 
     response = _post(client, "build a workout and nutrition plan", profile=profile)
 
-    expected = appmod._cold_start_workout_reply("en") + appmod._combined_request_follow_up("en")
+    expected = appmod._workout_decision_reply(
+        "WORKOUT_PLANNING_FAILURE", "en", "equipment") + appmod._combined_request_follow_up("en", workout_delivered=False)
     assert _events(response) == [{"t": expected}, {"done": True}]
+    assert "workout is ready" not in expected
     assert captured == {}
 
 
@@ -4613,7 +4921,9 @@ def test_active_training_engine_does_not_construct_from_a_profile_clarification(
     assert events[-1] == {"done": True}
     assert not any("training_completion" in event for event in events)
     assert not any(appmod._cold_start_workout_reply("en") in event.get("t", "") for event in events)
-    assert "messages" in captured
+    assert recommendation_planning.clarification_message("equipment", "en") in "".join(
+        event.get("t", "") for event in events)
+    assert "messages" not in captured
 
 
 def test_brain_cold_start_does_not_enter_nutrition_plan_generation(client, captured, monkeypatch):
