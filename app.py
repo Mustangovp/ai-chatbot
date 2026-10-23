@@ -123,6 +123,7 @@ import brain_analytics                          # M5: Brain Observatory (analyti
 import human_state                              # BUILD-001: Human State ingestion (flag-gated)
 import human_state.observatory as human_state_observatory  # BUILD-002: HSE Observatory (audit)
 import coaching                                 # BUILD-003: Adaptive Coach (HSE consumer, flag-gated)
+from coaching import next_move
 import coaching.presentation_shadow as hse_presentation_shadow
 import voice as apex_voice                       # Sprint 10: provider-independent voice (TTS) transport
 from voice import realtime as live_voice
@@ -1694,7 +1695,8 @@ def landing_en():
 @app.route("/app")
 def app_chat():
     """APEX V3 — the AI Operating System shell. The landing page, alive."""
-    response = make_response(render_template("apex.html", live_voice_config=live_voice.browser_config(request)))
+    response = make_response(render_template("apex.html", live_voice_config=live_voice.browser_config(request),
+                                            next_move_enabled=next_move.enabled()))
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -1914,6 +1916,68 @@ def api_billing():
 # ═══════════════════════════════════════════════════════════
 # ACCOUNT DATA API — profile / history / memory (account-owned)
 # ═══════════════════════════════════════════════════════════
+def _account_next_move(user_id, language):
+    now = _dt.datetime.now(_dt.timezone.utc)
+    patterns = _account_training_constraint_patterns(user_id)
+    profile = _merge_account_training_constraints(store.get_profile(user_id), patterns)
+    training = store.get_my_training(user_id)
+    if set(patterns) != {row["pattern"] for row in training["active_constraints"]}:
+        raise ConstraintStoreUnavailable("constraint reads disagree")
+    return next_move.recommend(owner=user_id, profile=profile, training=training,
+        state=next_move.fresh_state(user_id, now), now=now, language=language, secret=SECRET,
+        physiology=_brain_enforcement_physiology(user_id),
+        conversation=store.list_conversation(user_id, limit=6))
+
+
+@app.route("/api/next-move", methods=["GET"])
+@app.route("/api/next-move/approve", methods=["POST"])
+@app.route("/api/next-move/check-in", methods=["POST"])
+def api_next_move():
+    if not next_move.enabled():
+        response = jsonify({"error": "next_move_disabled"})
+        response.status_code = 404
+    else:
+        user = _require_user()
+        if not user:
+            response = jsonify({"error": "unauthenticated"})
+            response.status_code = 401
+        elif (request.method == "POST" and request.headers.get("Origin") and
+              request.headers["Origin"].rstrip("/") != request.host_url.rstrip("/")):
+            response = jsonify({"error": "origin_not_allowed"})
+            response.status_code = 403
+        else:
+            body = request.get_json(silent=True) if request.method == "POST" else {}
+            if not isinstance(body, dict):
+                body = {}
+            language = "en" if request.args.get("lang") == "en" else "bg"
+            try:
+                if request.path.endswith("check-in"):
+                    next_move.record_checkin(user["id"], body.get("recovery"), _dt.datetime.now(_dt.timezone.utc))
+                recommendation = _account_next_move(user["id"], language)
+                if request.path.endswith("approve"):
+                    token = body.get("decision_id")
+                    if not isinstance(token, str) or not hmac.compare_digest(token, recommendation["decision_id"]):
+                        response = jsonify({"error": "next_move_changed", "recommendation": recommendation})
+                        response.status_code = 409
+                    else:
+                        response = jsonify(next_move.workflow(recommendation, language))
+                else:
+                    response = jsonify({"recommendation": recommendation})
+            except ValueError as error:
+                if request.path.endswith("check-in") and str(error) == "invalid recovery choice":
+                    response = jsonify({"error": "invalid_checkin"})
+                    response.status_code = 400
+                else:
+                    response = jsonify({"error": "next_move_unavailable"})
+                    response.status_code = 503
+            except Exception as error:
+                print(f"[next-move] unavailable: {type(error).__name__}")
+                response = jsonify({"error": "next_move_unavailable"})
+                response.status_code = 503
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
+
+
 @app.route("/api/nutrition", methods=["GET"])
 def api_nutrition():
     user = _require_user()
@@ -3687,6 +3751,9 @@ def chat():
                 db_conversation=_legacy_history if chat_uid else None,
                 browser_conversation=_legacy_history if not chat_uid else None,
                 db_workouts=pers_workouts if chat_uid else None,
+                **({"human_state": next_move.context_state(next_move.fresh_state(
+                    chat_uid, _dt.datetime.now(_dt.timezone.utc)))}
+                   if next_move.enabled() and chat_uid else {}),
                 legacy_profile=_legacy_profile,
                 legacy_conversation=_legacy_history,
                 legacy_workouts=pers_workouts,
@@ -4703,7 +4770,7 @@ def chat():
                 _hs_subj = ":".join(persist_analytics_subject)
                 if human_state_observatory.enabled():      # BUILD-002: capture full transition
                     human_state_observatory.capture(_hs_subj, persist_user_msg)
-                elif human_state.enabled():
+                elif human_state.enabled() or (next_move.enabled() and chat_uid):
                     human_state.ingest(_hs_subj, persist_user_msg, source="message")
             except Exception as _he:
                 print(f"[hse] ingest failed: {type(_he).__name__}")

@@ -53,6 +53,9 @@ gtag('config','G-B3WLGXE2XM',{
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;700;900&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+{% if next_move_enabled|default(false) %}
+<script src="/static/next_move.js?v=next-move-m1" defer></script>
+{% endif %}
 <style>
 /* ═══════════════════════════════════════════════════════════════════
    APEX V3.2 — AI BIOLOGICAL OPERATING SYSTEM
@@ -287,6 +290,8 @@ a{color:inherit;text-decoration:none;} /* brand anchor must never inherit blue/p
 .cta .arr{transition:transform .2s;}.cta:hover .arr{transform:translateX(4px);}
 .cta.ghost{background:transparent;box-shadow:none;color:#C2C8D6;font-weight:600;font-size:13px;height:44px;padding:10px 16px;}
 .cta.ghost:hover{color:var(--text);box-shadow:none;}
+.cta:disabled{opacity:.65;cursor:wait;transform:none;}
+#brief-context{overflow-wrap:anywhere;}
 #ui{overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:contain;}
 .topbar{flex:0 0 auto;}
 #overview-context{width:min(100%,380px);margin-top:14px;border-top:1px solid var(--border);}
@@ -972,6 +977,7 @@ function activateDataOwner(kind,id){
 function clearOwnerPresentation(){
   // Storage namespaces remain intact. Only the departing owner's presentation
   // and requests are discarded; detached results cannot cross this generation.
+  window.ApexNextMove?.clear();
   const exchange=ChatLifecycle.current;ChatLifecycle.current=null;
   if(exchange){
     ChatLifecycle.cancelPaint(exchange);clearTimeout(exchange.watchdog);
@@ -1777,6 +1783,7 @@ function applyReadout(){
     document.getElementById('read-sub').textContent=t.assessmentSupport;
     document.getElementById('cta-train').textContent=t.calibrate;
     positionReadout.hidden=true; facts.hidden=true; facts.textContent='';
+    window.ApexNextMove?.paint();
     return;
   }
   const ph=computePhysiology(); core.setPhysiology(ph);
@@ -1803,6 +1810,7 @@ function applyReadout(){
     [t.levelFact,value(t.wiz.opt.level,'level')], [t.frequencyFact,value(t.wiz.opt.freq,'frequency')]
   ].filter(([,v])=>v).map(([label,v])=>'<span>'+esc(label)+': '+esc(v)+'</span>').join('');
   facts.hidden=!facts.textContent;
+  window.ApexNextMove?.paint();
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -1856,6 +1864,7 @@ function selectAppLanguage(value){
   if(SESSION.authenticated)accountSaveProfile(changes).then(ok=>{if(owner===ownerRequestToken()&&!ok)toast(PROFILE_COPY[lang].languageFailed);});
   else ownedStorageSet('apexProfile',JSON.stringify({...profile,...changes}));
   applyLang();renderTrainingConstraints(ACTIVE_TRAINING_CONSTRAINTS,trainingConstraintState);
+  void window.ApexNextMove?.refresh();
 }
 function toggleLang(){
   selectAppLanguage(lang==='en'?'bg':'en');if(consultOn)resetGreeting();
@@ -1928,6 +1937,7 @@ async function removeTrainingConstraint(id){
     const data=await response.json();
     if(!currentAccountRequest(owner))return;
     renderTrainingConstraints(Array.isArray(data.training_constraint_records)?data.training_constraint_records:[]);
+    void window.ApexNextMove?.refresh();
   }catch(e){}
 }
 function pfLoad(){try{return JSON.parse(ownedStorageGet('apexProfile')||'{}');}catch(e){return{};}}
@@ -2767,6 +2777,7 @@ async function loadSession(tokenAccess){
     activateMedicalHold(false);
   }
   buildMenu();
+  void window.ApexNextMove?.refresh();
   return SESSION;
 }
 function isElite(){ return SESSION.plan==='core'||SESSION.plan==='pro'; }
@@ -2862,7 +2873,8 @@ async function accountSaveProfile(p){
     const result=await response.json();if(!currentAccountRequest(owner)||!result||result.ok!==true)return false;
     profileDataGeneration++;
     const profile=result.profile&&typeof result.profile==='object'&&!Array.isArray(result.profile)?result.profile:{...pfLoad(),...p};
-    ownedStorageSet('apexProfile',JSON.stringify(profile));void refreshAthleteCoreProjection(owner);return true;
+    ownedStorageSet('apexProfile',JSON.stringify(profile));void refreshAthleteCoreProjection(owner);
+    void window.ApexNextMove?.refresh();return true;
   }catch(e){return false;}
 }
 function accountLogWorkout(s,workoutCompletion=null,onRecorded=null){
@@ -2875,6 +2887,7 @@ function accountLogWorkout(s,workoutCompletion=null,onRecorded=null){
       if(!response.ok){if(onRecorded)onRecorded(null);return false;}
       const result=await response.json();if(!currentAccountRequest(owner))return false;
       markWorkoutAccountSaved(s,result,owner);if(onRecorded)onRecorded(result);
+      void window.ApexNextMove?.refresh();
       return refreshAthleteCoreProjection(owner);
     }).catch(()=>{if(currentAccountRequest(owner)&&onRecorded)onRecorded(null);return false;});
 }
@@ -2943,8 +2956,10 @@ function exitConsult(){
   ov.style.opacity='1';ov.style.transform='none';ov.style.pointerEvents='auto';
   document.getElementById('vignette').style.background='';
   applyReadout();
+  void window.ApexNextMove?.refresh();
 }
 function primaryOverviewAction(){
+  if(window.ApexNextMove?.approve())return;
   if(!hasCompletedProfileAssessment()){openProfile(0);return;}
   intentTrain();
 }
