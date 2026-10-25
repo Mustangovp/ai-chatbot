@@ -7,6 +7,7 @@ const ids = [
 
 async function mount(page, language) {
   await page.goto('/app?lang=' + language);
+  await page.evaluate(() => loadSession());
   await page.evaluate(({ language, ids }) => {
     lang = language;
     ownedStorageSet('apexProfile', JSON.stringify({ goal: 'strength', age: '30', weight: '75',
@@ -139,9 +140,11 @@ for (const language of ['bg', 'en']) {
 test('completed workout exposes its existing start action without changing conversational scrolling', async ({ page }) => {
   await mount(page, 'en');
   const result = await page.evaluate(() => {
-    const finish = raw => {
+    const finish = (raw, completion = null) => {
       const x = ChatLifecycle.begin('synthetic request', {}, []);
-      ChatLifecycle.waiting(x);ChatLifecycle.content(x, raw);ChatLifecycle.complete(x);
+      ChatLifecycle.waiting(x);
+      if(completion)ChatLifecycle.metadata(x,{training_completion:completion});
+      ChatLifecycle.content(x, raw);ChatLifecycle.complete(x);
       return document.getElementById('feed');
     };
     const feed = finish(Array(120).fill('Ordinary conversational guidance.').join('\n'));
@@ -151,7 +154,7 @@ test('completed workout exposes its existing start action without changing conve
     pendingTrainingCompletion = { plan_id: 'scroll-plan', plan_version: 'training-plan-blueprint-v3', sessions: [session] };
     pendingCompletionSessions = [session];
     finish(`| Exercise | Sets | Reps | Rest |\n| --- | --- | --- | --- |\n| ${exercise.name} | 2 | 8-12 | 60 |\n\n` +
-      Array(120).fill('Additional explanation remains available.').join('\n'));
+      Array(120).fill('Additional explanation remains available.').join('\n'),pendingTrainingCompletion);
     return { conversationAtBottom };
   });
   expect(result).toEqual({ conversationAtBottom: true });

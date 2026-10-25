@@ -139,3 +139,4 @@ data/*.db
 !tests/test_live_voice_safety_controls.py
 !tests/test_live_voice_postgres_controls.py
 !tests/test_tts_budget.py
+!tests/test_progress_analysis.py

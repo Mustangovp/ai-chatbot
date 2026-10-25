@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from copy import deepcopy
 
 import pytest
 
@@ -12,6 +13,36 @@ from training_engine import (
     workout_completion_from_payload,
 )
 from decimal import Decimal
+from training_engine import renderer
+
+
+@pytest.mark.parametrize("language", ["bg", "en"])
+def test_delivery_metadata_matches_the_existing_immutable_completion_authority(language):
+    plan, library = _plan(), load_exercise_library()
+    metadata = renderer.render_completion_projection(plan, library, language)
+    renderer.validate_completion_projection(plan, library, metadata, language)
+    assert len(metadata["sessions"]) == 1
+
+
+@pytest.mark.parametrize("damage", ["null", "empty", "missing_plan", "wrong_plan", "wrong_session",
+    "empty_session", "wrong_exercise", "wrong_version", "wrong_sets", "boolean_sets", "extra_session", "extra_field"])
+def test_invalid_delivery_metadata_cannot_replace_canonical_values(damage):
+    plan, library = _plan(), load_exercise_library()
+    metadata = deepcopy(renderer.render_completion_projection(plan, library, "en"))
+    if damage == "null": metadata = None
+    elif damage == "empty": metadata = {}
+    elif damage == "missing_plan": metadata.pop("plan_id")
+    elif damage == "wrong_plan": metadata["plan_id"] = "another-plan"
+    elif damage == "wrong_session": metadata["sessions"][0]["session_id"] = "another-session"
+    elif damage == "empty_session": metadata["sessions"] = []
+    elif damage == "wrong_exercise": metadata["sessions"][0]["exercises"][0]["exercise_id"] = "bodyweight.plank"
+    elif damage == "wrong_version": metadata["sessions"][0]["exercises"][0]["exercise_version"] = "99.0.0"
+    elif damage == "wrong_sets": metadata["sessions"][0]["exercises"][0]["prescribed_sets"] += 1
+    elif damage == "boolean_sets": metadata["sessions"][0]["exercises"][0]["prescribed_sets"] = True
+    elif damage == "extra_session": metadata["sessions"].append(deepcopy(metadata["sessions"][0]))
+    else: metadata["fabricated"] = "not part of the canonical projection"
+    with pytest.raises(ValueError):
+        renderer.validate_completion_projection(plan, library, metadata, "en")
 
 
 def _plan():

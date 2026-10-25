@@ -1111,6 +1111,54 @@ def test_training_engine_is_active_when_the_flag_is_absent(monkeypatch):
     assert appmod._training_engine_active() is True
 
 
+@pytest.mark.parametrize("language,message", [("bg", "Направи ми тренировка за днес"),
+                                               ("en", "Build a workout for today")])
+@pytest.mark.parametrize("damage", ["null", "empty", "session", "exercise", "dose"])
+def test_workout_transport_contract_failure_never_delivers_or_persists_success(
+        client, captured, monkeypatch, language, message, damage):
+    from sqlalchemy import select
+    profile = _profile(recoveryFeel="fresh", sleepQuality="good", stressLevel="low")
+    owner = _login_for_chat(client, profile)
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": ["SUCCESS_SHOULD_NOT_BE_DELIVERED"]}))
+    original = appmod.training_renderer.render_completion_projection
+
+    def invalid_projection(*args, **kwargs):
+        result = original(*args, **kwargs)
+        if damage == "null": return None
+        if damage == "empty": return {}
+        if damage == "session": result["sessions"][0]["session_id"] = "wrong-session"
+        elif damage == "exercise": result["sessions"][0]["exercises"][0]["exercise_id"] = "unknown.exercise"
+        else: result["sessions"][0]["exercises"][0]["prescribed_sets"] += 1
+        return result
+
+    monkeypatch.setattr(appmod.training_renderer, "render_completion_projection", invalid_projection)
+    response = client.post("/chat", json={"message": message, "lang": language})
+    output = _events(response)
+    assert output[-1] == {"done": True}
+    assert not any("training_completion" in event or "activation_candidate" in event for event in output)
+    assert "SUCCESS_SHOULD_NOT_BE_DELIVERED" not in str(output)
+    assert len([event for event in output if "t" in event]) == 1
+    assert "|" not in next(event["t"] for event in output if "t" in event)
+    with store.engine.connect() as connection:
+        assert connection.execute(select(store.delivered_training_plans)).all() == []
+    assert "SUCCESS_SHOULD_NOT_BE_DELIVERED" not in str(store.list_conversation(owner))
+
+
+def test_valid_workout_transport_and_conversation_classification_remain_separate(client, captured, monkeypatch):
+    monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "true")
+    _set_stream(monkeypatch, captured, json.dumps({"explanations": ["Keep each movement controlled."]}))
+    response = _post(client, "Build a workout for today", profile=_profile(recoveryFeel="fresh"))
+    assert response.headers["X-APEX-Delivery"] == "training"
+    output = _events(response)
+    completion = next(event["training_completion"] for event in output if "training_completion" in event)
+    assert len(completion["sessions"]) == 1 and output[-1] == {"done": True}
+    _set_stream(monkeypatch, captured, "Keep going.")
+    response = _post(client, "Tell me something encouraging", profile=_profile())
+    assert response.headers["X-APEX-Delivery"] == "conversation"
+    assert any(event.get("t") == "Keep going." for event in _events(response))
+
+
 def test_training_engine_respects_an_explicit_off_flag(monkeypatch):
     monkeypatch.setenv("TRAINING_ENGINE_ACTIVE", "false")
 
@@ -4349,7 +4397,7 @@ def test_controlled_outcomes_bypass_openai_and_stream_only_safe_reply(client, ca
 
 @pytest.mark.parametrize("message", [
     "build a workout", "plan my nutrition", "I need recovery today",
-    "show my progress", "how much water should I drink?", "hello",
+    "how much water should I drink?", "hello",
 ])
 def test_b2_legacy_outcomes_preserve_openai_messages(client, captured, message):
     profile = _profile()
@@ -4363,6 +4411,15 @@ def test_b2_legacy_outcomes_preserve_openai_messages(client, captured, message):
     events = _events(response)
     assert any(event.get("t") == "ok" for event in events)
     assert any(event.get("done") for event in events)
+
+
+def test_progress_analysis_replaces_legacy_unverified_model_progress(client, captured):
+    # M2.1 intentionally routes this formerly generic turn to verified evidence.
+    events = _events(_post(client, "show my progress"))
+    assert "messages" not in captured
+    analysis = next(event["progress_analysis"] for event in events if "progress_analysis" in event)
+    assert analysis["status"] == "auth_required" and analysis["series"] is None
+    assert events[-1] == {"done": True}
 
 
 def test_controlled_route_persists_only_delivered_response(client, captured):

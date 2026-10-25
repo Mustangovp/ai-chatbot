@@ -114,6 +114,7 @@ test.describe('APEX approved app shell — UX regression', () => {
     // ?lang=bg pins the app to Bulgarian (applyIntent reads it), so the bilingual
     // renderers emit the approved BG labels the assertions below check.
     await page.goto('/app?lang=bg');
+    await page.evaluate(() => loadSession()); // Finish ownership hydration before synthetic chat turns.
     // Enter the consultation view and dismiss onboarding so the chat log + composer exist.
     await page.evaluate(() => {
       try {
@@ -1363,7 +1364,7 @@ test.describe('APEX approved app shell — UX regression', () => {
       for (let i = 0; i < 2500; i++) payload += 'data: {"t":"word "}\n\n';
       payload += 'data: {"done":true}\n\n';
       window.fetch = async () => new Response(payload, {
-        headers: { 'content-type': 'text/event-stream' }
+        headers: { 'content-type': 'text/event-stream', 'X-APEX-Delivery': 'conversation' }
       });
       document.getElementById('user-in').value = 'Large stream';
       const started = performance.now();

@@ -5,6 +5,7 @@ const fixtures = JSON.parse(execFileSync(process.env.APEX_TEST_PYTHON || 'python
 
 async function mount(page, fixture, language = 'bg', mutate = null) {
   await page.goto('/app?lang=' + language);
+  await page.evaluate(() => loadSession());
   const payload = structuredClone(fixture.languages[language]);
   if (mutate) mutate(payload);
   await page.evaluate(({ payload, language }) => {

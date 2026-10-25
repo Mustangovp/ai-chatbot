@@ -1,0 +1,21 @@
+.md .chat-progress-analysis{min-width:0;max-width:100%;border-top:2px solid #e32939;padding-top:16px;overflow-wrap:anywhere}
+.md .chat-progress-analysis h3{font:700 17px/1.5 'Manrope',sans-serif;color:#f1f1f3;margin:0 0 10px;letter-spacing:0}
+.md .chat-progress-analysis h4{font:700 14px/1.5 'Manrope',sans-serif;color:#f1f1f3;margin:18px 0 8px;letter-spacing:0}
+.md .chat-progress-analysis p{font-size:13px;line-height:1.65;margin:10px 0;color:#c9c9ce}
+.md .chat-progress-analysis .chat-progress-summary{font-size:15px;color:#f1f1f3}
+.md .chat-progress-analysis strong{color:#eeeef0}
+.md .chat-progress-analysis figure{margin:14px 0;max-width:100%}
+.md .chat-progress-analysis figcaption{font-size:12px;color:#d4d4d9}
+.md .chat-progress-analysis svg{display:block;width:100%;height:auto;max-height:240px}
+.md .chat-progress-analysis svg text{fill:#c9c9ce;font-size:12px;font-family:inherit}
+.chat-progress-axis{stroke:#7b7b84;stroke-width:1;fill:none}
+.chat-progress-line{stroke:#ff5262;stroke-width:3;fill:none}
+.chat-progress-point{stroke:#ff5262;stroke-width:2;fill:#f5f5f5}
+.md .chat-progress-table{max-width:100%;overflow-x:auto;overscroll-behavior-x:contain;margin:14px 0}
+.md .chat-progress-table:focus-visible{outline:2px solid #ff5262;outline-offset:2px}
+.md .chat-progress-table table{border-collapse:collapse;min-width:620px;width:100%;font-size:12px;text-align:left;border-radius:0;table-layout:auto}
+.md .chat-progress-table caption{text-align:left;color:#d4d4d9;padding:0 0 8px}
+.md .chat-progress-table th,.md .chat-progress-table td{padding:10px 12px;border-bottom:1px solid #45454c;vertical-align:top;color:#e2e2e6;word-break:normal;overflow-wrap:normal}
+.md .chat-progress-table th{font:700 12px/1.5 'Manrope',sans-serif;letter-spacing:0;color:#fff;background:#29292e}
+.md .chat-progress-table time{white-space:nowrap;font-variant-numeric:tabular-nums}
+@media(max-width:600px){.md .chat-progress-analysis svg text{font-size:22px}}

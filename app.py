@@ -123,7 +123,7 @@ import brain_analytics                          # M5: Brain Observatory (analyti
 import human_state                              # BUILD-001: Human State ingestion (flag-gated)
 import human_state.observatory as human_state_observatory  # BUILD-002: HSE Observatory (audit)
 import coaching                                 # BUILD-003: Adaptive Coach (HSE consumer, flag-gated)
-from coaching import next_move
+from coaching import next_move, progress_analysis
 import coaching.presentation_shadow as hse_presentation_shadow
 import voice as apex_voice                       # Sprint 10: provider-independent voice (TTS) transport
 from voice import realtime as live_voice
@@ -3534,6 +3534,9 @@ def chat():
             lang = live_voice.response_language(user_message, data.get("lang", "bg"))
         _language_turn = (_live_voice_request and live_voice.is_language_turn(user_message)
                           and decision_engine.classify_intent(user_message) != "medical")
+        _progress_analysis_request = progress_analysis.is_request(user_message) and not session_start
+        if _progress_analysis_request:
+            is_first_contact = False  # Evidence analysis does not require profile extraction.
 
         # Transport stop is intentionally not a coaching turn. It settles the
         # existing browser stream without invoking quota, persistence, or the LLM.
@@ -3594,9 +3597,9 @@ def chat():
             _prior_workout_decision = None
         _previous_workout = _last_workout_for(_workout_scope)
         _nutrition_revision_request = nutrition_conversation.parse_plan_revision(user_message)
-        _active_workout_mutation = (None if _language_turn or _nutrition_revision_request is not None else
+        _active_workout_mutation = (None if _language_turn or _progress_analysis_request or _nutrition_revision_request is not None else
                                    active_workout_modification(user_message, previous=_previous_workout))
-        _workout_followup = (None if _language_turn or _nutrition_revision_request is not None else
+        _workout_followup = (None if _language_turn or _progress_analysis_request or _nutrition_revision_request is not None else
                             parse_workout_followup(user_message, previous=_previous_workout))
         _mixed_modal_request = parse_mixed_modal_request(user_message)
         if (_workout_followup is not None and _previous_workout is not None
@@ -3918,6 +3921,8 @@ def chat():
                     and (_previous_workout is not None or _restricted_followup_rebuild)
                     and _workout_followup.requires_previous):
                 _shadow_intent = "workout"
+            if _progress_analysis_request and _shadow_intent != "medical":
+                _shadow_intent = "question"
             _snapshot = context_builder.build_context(
                 intent=_shadow_intent,
                 subject=(context_builder.Subject("account", chat_uid, True)
@@ -3947,7 +3952,7 @@ def chat():
                 history = _legacy["history"]
             pers_workouts = _legacy["workouts"]
             _shadow_decision = decision_engine.decide(_snapshot, _shadow_intent)
-            _planning_request_intent = None if _language_turn else _planning_intent(
+            _planning_request_intent = None if _language_turn or _progress_analysis_request else _planning_intent(
                 user_message, history, _shadow_intent,
                 require_explicit_workout=brain_config.brain_enforce())
             if (_workout_followup is not None
@@ -5042,6 +5047,20 @@ def chat():
                     _shadow_log()
                     yield sse({"done": True})
                     return
+                if _progress_analysis_request:
+                    try:
+                        analysis = progress_analysis.build(
+                            store.get_training_progress(chat_uid) if chat_uid else None,
+                            language=lang, authenticated=bool(chat_uid))
+                    except Exception as analysis_error:
+                        print(f"[chat] progress analysis unavailable: {type(analysis_error).__name__}")
+                        analysis = progress_analysis.build(language=lang, unavailable=True)
+                    reply_text = progress_analysis.text_fallback(analysis)
+                    yield sse({"progress_analysis": analysis})
+                    yield sse({"t": reply_text})
+                    _persist_reply(reply_text)
+                    yield sse({"done": True})
+                    return
                 if _nutrition_followup.handled:
                     reply_text = _nutrition_followup.reply
                     yield sse({"t": reply_text})
@@ -5235,13 +5254,6 @@ def chat():
                                 frozenset(_brain_enforcement_exclusions)
                                 | frozenset(_fitness_excluded_movement_patterns)),
                         )
-                        if chat_uid:
-                            try:
-                                store.persist_delivered_training_plan(
-                                    chat_uid, delivered_plan_lineage(_training_plan_blueprint))
-                            except Exception as lineage_error:
-                                # Delivery remains available if additive lineage storage is unavailable.
-                                print(f"[training-lineage] delivery persistence omitted: {type(lineage_error).__name__}")
                         recommendation_rationale = _training_recommendation_rationale(
                             _training_plan_blueprint, profile,
                             followup=_workout_followup,
@@ -5290,7 +5302,18 @@ def chat():
                         training_completion = training_renderer.render_completion_projection(
                             _training_plan_blueprint, load_exercise_library(), lang,
                             recommendation_rationale=recommendation_rationale)
+                        training_renderer.validate_completion_projection(
+                            _training_plan_blueprint, load_exercise_library(), training_completion, lang)
+                        if chat_uid:
+                            try:
+                                store.persist_delivered_training_plan(
+                                    chat_uid, delivered_plan_lineage(_training_plan_blueprint))
+                            except Exception as lineage_error:
+                                # Delivery remains available if additive lineage storage is unavailable.
+                                print(f"[training-lineage] delivery persistence omitted: {type(lineage_error).__name__}")
                     except Exception as training_error:
+                        training_completion = None
+                        training_delivery_class = free_activation.DeliveryClass.RENDER_REJECTED
                         print(f"[training-engine] delivery rejected: {type(training_error).__name__}")
                         _record_conversation_workout_decision(
                             _workout_scope, "WORKOUT_PLANNING_FAILURE", reason="validation",
@@ -5436,7 +5459,9 @@ def chat():
                               "Отговорът беше прекъснат. Моля, опитай отново.")
                 })
 
-        response_headers = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+        response_headers = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no",
+                            "X-APEX-Delivery": ("training" if _training_plan_blueprint is not None
+                                                and _controlled_reply is None else "conversation")}
         if _live_voice_request:
             response_headers["Content-Language"] = "en-US" if lang == "en" else "bg-BG"
         return Response(

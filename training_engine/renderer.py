@@ -149,6 +149,27 @@ def render_completion_projection(plan: TrainingPlanBlueprintV2, library: Exercis
     return rendered
 
 
+def validate_completion_projection(plan: TrainingPlanBlueprintV2, library: ExerciseLibrary,
+                                   projection: object, language: str) -> None:
+    """Check transport metadata against the existing immutable completion authority."""
+    expected = completion_projection(plan, library)
+    expected["sessions"] = expected["sessions"][:1]
+    first = expected["sessions"][0]
+    for item in first["exercises"]:
+        exercise = library.require(item["exercise_id"], item["exercise_version"])
+        item["display_name"] = _display_name(exercise.exercise_id, exercise.display_name, language)
+    if plan.sessions[0].mixed_modal is not None:
+        first["mixed_modal"] = plan.sessions[0].mixed_modal.to_record()
+    if not isinstance(projection, dict):
+        raise ValueError("training completion metadata is required")
+    actual = dict(projection)
+    rationale = actual.pop("recommendation_rationale", None)
+    if rationale is not None and validate_recommendation_rationale(rationale) is None:
+        raise ValueError("invalid training rationale metadata")
+    if json.dumps(actual, sort_keys=True, allow_nan=False) != json.dumps(expected, sort_keys=True, allow_nan=False):
+        raise ValueError("training completion metadata does not match the validated plan")
+
+
 def render_delivery(plan: TrainingPlanBlueprintV2, library: ExerciseLibrary,
                     explanations: tuple[str, ...], language: str) -> str:
     """Render blueprint values in the existing workout-card table contract."""

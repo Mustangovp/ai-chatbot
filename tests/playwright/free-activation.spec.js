@@ -1,7 +1,13 @@
 const { test, expect } = require('@playwright/test');
+const { execFileSync } = require('node:child_process');
+const path = require('node:path');
+const trainingFixture = JSON.parse(execFileSync(process.env.APEX_TEST_PYTHON || 'python',
+  [path.join(__dirname, '../canonical_workout_fixture.py')], { encoding: 'utf8' }))
+  .find(item => item.id === 'dumbbell.goblet_squat').languages.en;
 
 test.describe('authoritative FREE activation analytics', () => {
   async function prepare(page) {
+    await page.evaluate(() => loadSession());
     await page.evaluate(() => {
       localStorage.setItem('apexProfile', JSON.stringify({
         goal: 'strength', equipment: 'gym', level: 'intermediate',
@@ -239,8 +245,9 @@ test.describe('authoritative FREE activation analytics', () => {
     await prepare(page);
     await page.locator('#user-in').fill('Build a workout');
     await page.locator('.send-btn').click();
-    await expect(page.locator('.msg.a').last()).toContainText('could not be rendered');
-    await page.waitForTimeout(150);
+    await expect(page.locator('.msg.a').last()).toContainText('The workout could not be safely verified. Please try again.');
+    await expect(page.locator('#consult')).toHaveAttribute('data-chat-state', 'failed');
+    await expect(page.locator('.workout-protocol,.start-wo')).toHaveCount(0);
     expect(confirmations).toBe(0);
   });
 
@@ -251,8 +258,8 @@ test.describe('authoritative FREE activation analytics', () => {
       status: 200,
       contentType: 'text/event-stream',
       body: [
-        'data: {"t":"| Exercise | Sets | Reps | Rest | Note |\\n| --- | --- | --- | --- | --- |\\n| Goblet Squat | 3 | 8-12 | 60 sec | Controlled tempo |"}\n\n',
-        'data: {"training_completion":{"sessions":[{"exercises":[{"prescription_id":"p1","exercise_id":"dumbbell.goblet_squat","exercise_version":"v1","display_name":"Goblet Squat","prescribed_sets":3,"rep_min":8,"rep_max":12,"rest_seconds":60}]}]}}\n\n',
+        'data: ' + JSON.stringify({ t: trainingFixture.text }) + '\n\n',
+        'data: ' + JSON.stringify({ training_completion: trainingFixture.metadata }) + '\n\n',
         'data: {"activation_candidate":{"token":"candidate-token-for-training-success-123456789","activation_type":"training","locale":"en"}}\n\n',
         'data: {"done":true}\n\n',
       ].join(''),
