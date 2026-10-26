@@ -58,6 +58,7 @@ gtag('config','G-B3WLGXE2XM',{
 {% endif %}
 <link rel="stylesheet" href="/static/progress_analysis.css?v=progress-chat-m2-1">
 <script src="/static/progress_analysis.js?v=progress-chat-m2-1" defer></script>
+<script src="/static/holographic_hud.js?v=h1-ui-polish-local" defer></script>
 <style>
 /* ═══════════════════════════════════════════════════════════════════
    APEX V3.2 — AI BIOLOGICAL OPERATING SYSTEM
@@ -713,6 +714,7 @@ body.consult-open #ui{overflow:hidden;}
 .pill.live:hover{transform:none;border-color:var(--border);color:var(--muted);}
 @media (prefers-reduced-motion:reduce){ #grain{animation:none;} .msg{animation:none;} }
 </style>
+<link rel="stylesheet" href="/static/holographic_hud.css?v=h1-ui-polish-local">
 {% if live_voice_demo|default(false) %}
 <style>
 #local-demo-notice{position:fixed;inset:0 0 auto;height:40px;z-index:1000;display:flex;align-items:center;justify-content:center;padding:4px 12px;background:#151517;color:#fff;border-bottom:1px solid #f02238;font:12px/16px Manrope,sans-serif;text-align:center;pointer-events:none;}
@@ -747,16 +749,28 @@ body:has(#local-demo-notice) #apex-position-readout{display:none!important;}
 
   <div class="center">
     <div id="overview">
+      <section id="holo-readouts" aria-label="Training context" aria-describedby="hud-data-note">
+        <dl class="holo-facts">
+          <div><dt id="hud-level-label">Experience</dt><dd id="hud-level" data-source="profile.level">Not provided</dd></div>
+          <div><dt id="hud-frequency-label">Planned frequency</dt><dd id="hud-frequency" data-source="profile.frequency">Not provided</dd></div>
+        </dl>
+      </section>
+      <div class="holo-heading">
       <span class="eyebrow" id="ov-eyebrow">SYSTEM ONLINE</span>
       <span class="brief-context" id="brief-context">PROFILE INCOMPLETE</span>
       <h1 id="read-state">Set your training context.</h1>
       <p id="read-sub">Give APEX the basics it needs to tailor your workout.</p>
+      </div>
       <div class="cta-row">
         <button class="cta" onclick="primaryOverviewAction()"><span id="cta-train">Complete profile</span><span class="arr">→</span></button>
         <button class="cta ghost" onclick="enterConsult()"><span id="cta-consult">Consult</span></button>
       </div>
       <details id="overview-context" hidden onpointerdown="event.stopPropagation()">
         <summary id="overview-context-label">Your context</summary>
+      <div class="holo-provenance">
+        <div class="holo-context-head"><span id="hud-context-label">Training context</span><span id="hud-source"></span></div>
+        <p id="hud-data-note"></p>
+      </div>
       <section class="position-readout" id="apex-position-readout" hidden aria-live="polite">
         <div class="position-head"><span class="position-label" id="position-label">APEX POSITION</span><span class="position-value" id="position-value">—</span><span class="position-zone" id="position-zone">—</span></div>
         <div class="position-signals" id="position-signals"></div>
@@ -980,6 +994,7 @@ function clearOwnerPresentation(){
   // Storage namespaces remain intact. Only the departing owner's presentation
   // and requests are discarded; detached results cannot cross this generation.
   window.ApexNextMove?.clear();
+  window.ApexHolographicHud?.clear(lang);
   const exchange=ChatLifecycle.current;ChatLifecycle.current=null;
   if(exchange){
     ChatLifecycle.cancelPaint(exchange);clearTimeout(exchange.watchdog);
@@ -1774,11 +1789,16 @@ function hasCompletedProfileAssessment(){
   return ['goal','age','weight','height','gender','level','equipment','sleepQuality','stressLevel','recoveryFeel','activityLevel','frequency']
     .every(key=>String(p[key]||'').trim()!=='');
 }
+function paintOverviewHud(){
+  window.ApexHolographicHud?.paint(pfLoad(),lang,{authenticated:SESSION.authenticated&&DATA_OWNER.kind==='account',demo:LOCAL_DEMO});
+}
 function applyReadout(){
   const facts=document.getElementById('calibration-facts'), positionReadout=document.getElementById('apex-position-readout'), briefContext=document.getElementById('brief-context'), p=pfLoad(), t=tr();
   const context=document.getElementById('overview-context');
+  paintOverviewHud();
   document.getElementById('overview-context-label').textContent=lang==='bg'?'Твоят контекст':'Your context';
-  context.hidden=!hasCompletedProfileAssessment();
+  // Profile provenance is available even before the assessment is complete.
+  context.hidden=false;
   if(!hasCompletedProfileAssessment()){
     briefContext.textContent=t.brief.incomplete; briefContext.hidden=false;
     document.getElementById('read-state').textContent=t.assessmentTitle;
