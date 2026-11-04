@@ -1527,10 +1527,33 @@ function witness(fact,payload){try{if(window.core&&core.athlete)core.athlete.obs
 /* ═══════════════════════════════════════════════════════════════════
    PHYSIOLOGY
    ═══════════════════════════════════════════════════════════════════ */
+function verifiedCompletedWorkout(record){
+  if(!record||record.execution_schema!=='workout-execution-v1'||record.execution_state!=='completed'||
+    record.completion!==100||typeof record.workout_id!=='string'||!record.workout_id.trim()||
+    !Array.isArray(record.exercises)||!record.exercises.length)return false;
+  const identities=new Set(),count=value=>Number.isInteger(value)&&value>0&&value<=100000;
+  return record.exercises.every(ex=>{
+    if(!ex||!['prescription_id','exercise_id','exercise_version'].every(key=>typeof ex[key]==='string'&&ex[key].trim())||
+      identities.has(ex.prescription_id)||ex.execution_state!=='completed'||!count(ex.completed_sets))return false;
+    identities.add(ex.prescription_id);
+    const kind=ex.prescription_type??'repetitions';
+    return kind==='duration'?count(ex.actual_duration_seconds)&&ex.actual_repetitions==null:
+      kind==='repetitions'&&count(ex.actual_repetitions)&&ex.actual_duration_seconds==null;
+  });
+}
+function recentVerifiedWorkoutCount(log,now=Date.now()){
+  const seen=new Set();
+  return (Array.isArray(log)?log:[]).filter(record=>{
+    if(!verifiedCompletedWorkout(record))return false;
+    const timestamp=Object.hasOwn(record,'completionTs')?record.completionTs:record.ts;
+    if(typeof timestamp!=='number'||!Number.isFinite(timestamp)||timestamp<=0||now-timestamp<0||now-timestamp>=2*864e5||seen.has(record.workout_id))return false;
+    seen.add(record.workout_id);return true;
+  }).length;
+}
 function physiologyInputs(){
   let profile={},log=[];try{profile=JSON.parse(ownedStorageGet('apexProfile')||'{}');}catch(e){}
   try{log=JSON.parse(ownedStorageGet('apexWorkoutLog')||'[]');}catch(e){}
-  const recentWorkouts=log.filter(s=>Date.now()-(s.ts||0)<2*864e5).length;
+  const recentWorkouts=recentVerifiedWorkoutCount(log);
   return{profile,sleep:(profile.sleepQuality||'average').toLowerCase(),stress:(profile.stressLevel||'moderate').toLowerCase(),recoveryFeel:(profile.recoveryFeel||'ok').toLowerCase(),recentWorkouts};
 }
 function computePhysiology(){
@@ -1618,7 +1641,7 @@ const T={
   en:{eyebrow:'SYSTEM ONLINE',tagline:'Your peak. Your pulse.',ctaTrain:'Build my workout',ctaConsult:'Consult',back:'Back',live:'LIVE',
     feedback:'Send feedback',profile:'Profile',chEngine:'APEX COACH ENGINE',placeholder:'Ask APEX…',
     recovery:'Recovery',fatigue:'Fatigue',stress:'Stress',assessmentTitle:'Set your training context.',assessmentPending:'Profile incomplete',assessmentSupport:'Give APEX the basics it needs to tailor your workout.',calibrate:'Complete profile',goalFact:'Goal',levelFact:'Experience',equipmentFact:'Equipment',frequencyFact:'Frequency',coach:'APEX',typing:'CALIBRATING',brief:{incomplete:'PROFILE INCOMPLETE',message:'Build today\'s workout.',why:'Use the training context you\'ve already saved.'},
-    position:{label:'APEX POSITION',note:'Based on your APEX inputs and recent training activity. Not a medical measurement.',sleep:'Sleep',recovery:'Recovery feel',load:'Recent training load',loadNone:'No recent completed workouts',loadOne:'1 recent completed workout',loadMany:'{count} recent completed workouts',zones:{rebuild:'REBUILD',underLoad:'UNDER LOAD',building:'BUILDING',strong:'STRONG',peak:'PEAK RANGE'}},
+    position:{label:'APEX POSITION',note:'APEX estimate from your self-reported sleep, stress and recovery, plus verified completed workouts in the last 48 hours. Not a measured biometric or clinical readiness score.',sleep:'Sleep',recovery:'Recovery feel',load:'Recent training load',loadNone:'No recent completed workouts',loadOne:'1 recent completed workout',loadMany:'{count} recent completed workouts',zones:{rebuild:'REBUILD',underLoad:'UNDER LOAD',building:'BUILDING',strong:'STRONG',peak:'PEAK RANGE'}},
     greetHi:'What would you like to change?',greetSub:'Goal on file:',
     chips:[{label:"Today's Workout",q:'Make me a workout for today'},{label:'Nutrition Plan',q:'Make me a nutrition plan'},{label:'Progress',q:'How am I progressing?'}],
     states:{peak:{h:'Peak readiness',s:'Recovery is high. Your nervous system is primed — this is your window to push.'},
@@ -1685,12 +1708,12 @@ const T={
     settings:{title:'Settings',lang:'Language',theme:'Theme',dark:'Dark (default)',reset:'Reset local data',
       resetDesc:'Clears the local profile, memory and history for the current APEX state on this device. Does not delete account data. Language, voice and sign-in stay unchanged.',
       accountReturns:'Saved account data can return after refresh or sign-in.',resetConfirm:'Clear the current local APEX data? Saved account data will not be deleted.',reset2:'Local data cleared. Account data is unchanged.'},
-    priv:{title:'Privacy & Safety',b:'<h4>Your data</h4><p>Before sign-in, APEX may use local browser storage. When you sign in, your account profile and history are stored by APEX so they persist across sessions and devices.</p><h4>Medical safety</h4><p>APEX is a coaching tool. It does not diagnose, prescribe, or replace medical professionals. For pain, symptoms or medical conditions, consult a doctor.</p><h4>Coaching context</h4><p>APEX uses relevant coaching context to provide personalized guidance and plans, including processing by the AI service. Your data is not sold.</p>'},
+    priv:{title:'Privacy & Safety',b:'<h4>Your data</h4><p>Without sign-in, your profile, conversation and workout history may be kept locally in this browser. APEX also processes requests on its servers and may store device-linked conversation and safety context.</p><p>After sign-in, APEX stores your account profile, conversation, training and nutrition history across sessions and devices. This browser also keeps a local cache. Clearing browser data does not delete server-side account records.</p><h4>Medical safety</h4><p>APEX is a coaching tool. It does not diagnose, prescribe, or replace medical professionals. For pain, symptoms or medical conditions, consult a doctor.</p><h4>Coaching context</h4><p>To generate AI coaching, APEX sends relevant messages, profile details and coaching history to its AI provider for processing. Do not share information you do not want processed this way.</p>'},
     about:{title:'About APEX',b:'<p><strong>APEX PULSE PRO</strong> is a living AI biological operating system — a personal coach that reads your physiology and adapts every plan to you.</p><h4>What it does</h4><ul><li>Personalized training & nutrition</li><li>Recovery-aware coaching</li><li>Persistent coaching memory</li></ul><p style="color:var(--faint);margin-top:12px">Version 3.3 · Your peak. Your pulse.</p>'}},
   bg:{eyebrow:'СИСТЕМАТА Е АКТИВНА',tagline:'Твоят връх. Твоят пулс.',ctaTrain:'Създай ми тренировка',ctaConsult:'Консултация',back:'Назад',live:'НА ЖИВО',
     feedback:'Изпрати обратна връзка',profile:'Профил',chEngine:'APEX ТРЕНЬОРСКО ЯДРО',placeholder:'Попитай APEX…',
     recovery:'Възстановяване',fatigue:'Умора',stress:'Стрес',assessmentTitle:'Задай тренировъчния си контекст.',assessmentPending:'Профилът не е завършен',assessmentSupport:'Дай на APEX основното, нужно за да пригоди тренировката ти.',calibrate:'Завърши профила',goalFact:'Цел',levelFact:'Опит',equipmentFact:'Оборудване',frequencyFact:'Честота',coach:'APEX',typing:'ПРЕСМЯТАМ',brief:{incomplete:'ПРОФИЛЪТ НЕ Е ЗАВЪРШЕН',message:'Създай днешната си тренировка.',why:'Използвай запазения си тренировъчен контекст.'},
-    position:{label:'APEX ПОЗИЦИЯ',note:'Базирано на данните ти в APEX и скорошната тренировъчна активност. Не е медицинско измерване.',sleep:'Сън',recovery:'Усещане за възстановяване',load:'Скорошно тренировъчно натоварване',loadNone:'Няма скорошни завършени тренировки',loadOne:'1 скорошна завършена тренировка',loadMany:'{count} скорошни завършени тренировки',zones:{rebuild:'ВЪЗСТАНОВЯВАНЕ',underLoad:'ПОД НАТОВАРВАНЕ',building:'ИЗГРАЖДАНЕ',strong:'СИЛНА ФОРМА',peak:'ПИКОВ ДИАПАЗОН'}},
+    position:{label:'APEX ПОЗИЦИЯ',note:'Оценка на APEX от самооценката ти за сън, стрес и възстановяване и потвърдени завършени тренировки през последните 48 часа. Не е измерен биометричен показател или клинична оценка за готовност.',sleep:'Сън',recovery:'Усещане за възстановяване',load:'Скорошно тренировъчно натоварване',loadNone:'Няма скорошни завършени тренировки',loadOne:'1 скорошна завършена тренировка',loadMany:'{count} скорошни завършени тренировки',zones:{rebuild:'ВЪЗСТАНОВЯВАНЕ',underLoad:'ПОД НАТОВАРВАНЕ',building:'ИЗГРАЖДАНЕ',strong:'СИЛНА ФОРМА',peak:'ПИКОВ ДИАПАЗОН'}},
     greetHi:'Какво искаш да променим?',greetSub:'Цел във файла:',
     chips:[{label:'Тренировката за днес',q:'Направи ми тренировка за днес'},{label:'Храненето',q:'Направи ми хранителен план'},{label:'Прогреса ми',q:'Как напредвам?'}],
     states:{peak:{h:'Пиково състояние',s:'Възстановяването е високо. Нервната ти система е заредена — това е моментът да натиснеш.'},
@@ -1757,7 +1780,7 @@ const T={
     settings:{title:'Настройки',lang:'Език',theme:'Тема',dark:'Тъмна (по подразбиране)',reset:'Изчисти локалните данни',
       resetDesc:'Изчиства локалния профил, памет и история за текущото състояние на APEX на това устройство. Не изтрива данните в акаунта. Езикът, гласът и входът остават непроменени.',
       accountReturns:'Запазените данни в акаунта могат да се върнат след обновяване или вход.',resetConfirm:'Да изчистя текущите локални данни на APEX? Запазените данни в акаунта няма да бъдат изтрити.',reset2:'Локалните данни са изчистени. Данните в акаунта са непроменени.'},
-    priv:{title:'Поверителност и безопасност',b:'<h4>Твоите данни</h4><p>Преди вход APEX може да използва локално хранилище в браузъра. След вход профилът и историята в акаунта ти се съхраняват от APEX, за да се запазват между сесии и устройства.</p><h4>Медицинска безопасност</h4><p>APEX е треньорски инструмент. Не диагностицира, не предписва и не замества медицински специалисти. При болка, симптоми или заболявания се консултирай с лекар.</p><h4>Треньорски контекст</h4><p>APEX използва релевантния треньорски контекст за персонализирани насоки и планове, включително обработка от AI услугата. Данните ти не се продават.</p>'},
+    priv:{title:'Поверителност и безопасност',b:'<h4>Твоите данни</h4><p>Без вход профилът, разговорите и тренировъчната история може да се пазят локално в този браузър. APEX обработва заявките и на своите сървъри и може да съхранява свързан с устройството контекст за разговора и безопасността.</p><p>След вход APEX съхранява профила, разговорите, тренировъчната и хранителната история в акаунта между сесии и устройства. Браузърът пази и локален кеш. Изчистването на браузърните данни не изтрива сървърните записи в акаунта.</p><h4>Медицинска безопасност</h4><p>APEX е треньорски инструмент. Не диагностицира, не предписва и не замества медицински специалисти. При болка, симптоми или заболявания се консултирай с лекар.</p><h4>Треньорски контекст</h4><p>За AI отговорите APEX изпраща релевантни съобщения, данни от профила и треньорска история за обработка от AI доставчика. Не споделяй информация, която не желаеш да се обработва по този начин.</p>'},
     about:{title:'За APEX',b:'<p><strong>APEX PULSE PRO</strong> е жива AI биологична операционна система — личен треньор, който чете физиологията ти и адаптира всеки план за теб.</p><h4>Какво прави</h4><ul><li>Персонализирани тренировки и хранене</li><li>Треньорство спрямо възстановяването</li><li>Постоянна треньорска памет</li></ul><p style="color:var(--faint);margin-top:12px">Версия 3.3 · Твоят връх. Твоят пулс.</p>'}}
 };
 function supportedLanguage(value){
@@ -2803,9 +2826,19 @@ async function loadSession(tokenAccess){
   return SESSION;
 }
 function isElite(){ return SESSION.plan==='core'||SESSION.plan==='pro'; }
+function workoutCompletionTimestamp(value){
+  if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/.test(value))return null;
+  const timestamp=Date.parse(value);if(!Number.isFinite(timestamp))return null;
+  const zone=value.match(/([+-])(\d{2}):(\d{2})$/);
+  const offset=zone?(Number(zone[2])*60+Number(zone[3]))*(zone[1]==='+'?1:-1):0;
+  // Date.parse can normalize impossible dates such as February 30.
+  return new Date(timestamp+offset*60000).toISOString().slice(0,19)===value.slice(0,19)?timestamp:null;
+}
 function accountWorkoutRecord(row){
   const timestamp=Date.parse(row.occurred_at);
   return truthfulWorkoutRecord({ts:Number.isFinite(timestamp)?timestamp:null,date:(row.occurred_at||'').slice(0,10),
+    completionTs:row.completion_evidence&&row.completion_evidence.execution_state==='completed'?
+      workoutCompletionTimestamp(row.completion_evidence.completion_timestamp):null,
     serverId:row.id,workout_id:row.completion_evidence&&row.completion_evidence.workout_id,type:row.type,
     exercises:Array.isArray(row.exercises)?row.exercises:[],diff:row.difficulty,completion:row.completion,
     execution_schema:row.execution_state?'workout-execution-v1':null,execution_state:row.execution_state||'unknown'});
