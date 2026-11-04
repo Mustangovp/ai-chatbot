@@ -47,6 +47,7 @@ import individual_model_snapshot
 import decision_engine
 import conversation_composer
 import nutrition_conversation
+import nutrition_intent
 import nutrition_followups
 import nutrition_plan
 import nutrition_validation
@@ -2441,8 +2442,10 @@ def _daily_nutrition_target(message, profile_block, history=None):
     return int(re.sub(r"\D", "", match.group(1))) if match else 0
 
 
-def _daily_nutrition_targets(message, profile_block, history=None):
-    if not nutrition_validation.is_full_day_request(message, history):
+def _daily_nutrition_targets(message, profile_block, history=None, *, plan_requested=None):
+    requested = (nutrition_validation.is_full_day_request(message, history)
+                 if plan_requested is None else plan_requested)
+    if not requested:
         return None
     return nutrition_validation.targets_from_profile_block(profile_block)
 
@@ -2784,12 +2787,16 @@ def _training_failure_reason(error):
     return "plan"
 
 
-def _planning_intent(message, history, classified_intent, *, require_explicit_workout=False):
+def _planning_intent(message, history, classified_intent, *, require_explicit_workout=False,
+                     nutrition_scope=None):
     """Keep nutrition parsing BG-safe and make enforce-mode workout routing explicit."""
     if classified_intent == "medical":
         return None
-    if nutrition_conversation.is_plan_request(message, history):
+    if (nutrition_scope is nutrition_intent.Scope.DAILY_PLAN or
+            (nutrition_scope is None and nutrition_conversation.is_plan_request(message, history))):
         return "nutrition"
+    if nutrition_scope not in (None, nutrition_intent.Scope.OTHER):
+        return None
     if workout_context_advice_intent(message) is not None:
         return None
     if _mixed_modal_topic_request(message):
@@ -3596,10 +3603,19 @@ def chat():
             _prior_workout_outcome = (None, None, None)
             _prior_workout_decision = None
         _previous_workout = _last_workout_for(_workout_scope)
-        _nutrition_revision_request = nutrition_conversation.parse_plan_revision(user_message)
-        _active_workout_mutation = (None if _language_turn or _progress_analysis_request or _nutrition_revision_request is not None else
+        # Resolve scope once, using account-owned history already loaded above.
+        # The result supplies no profile values, targets or tool permissions.
+        _nutrition_scope = (nutrition_intent.Scope.OTHER
+                            if session_start or _language_turn or _progress_analysis_request else
+                            nutrition_intent.classify(client, user_message, history))
+        _nutrition_revision_request = (
+            (nutrition_conversation.parse_plan_revision(user_message)
+             or nutrition_conversation.PlanRevisionRequest(supported=False))
+            if _nutrition_scope is nutrition_intent.Scope.REVISION else None)
+        _nutrition_owns_turn = _nutrition_scope is not nutrition_intent.Scope.OTHER
+        _active_workout_mutation = (None if _language_turn or _progress_analysis_request or _nutrition_owns_turn else
                                    active_workout_modification(user_message, previous=_previous_workout))
-        _workout_followup = (None if _language_turn or _progress_analysis_request or _nutrition_revision_request is not None else
+        _workout_followup = (None if _language_turn or _progress_analysis_request or _nutrition_owns_turn else
                             parse_workout_followup(user_message, previous=_previous_workout))
         _mixed_modal_request = parse_mixed_modal_request(user_message)
         if (_workout_followup is not None and _previous_workout is not None
@@ -3923,6 +3939,11 @@ def chat():
                 _shadow_intent = "workout"
             if _progress_analysis_request and _shadow_intent != "medical":
                 _shadow_intent = "question"
+            if _shadow_intent != "medical":
+                if _nutrition_scope is nutrition_intent.Scope.DAILY_PLAN:
+                    _shadow_intent = "nutrition"
+                elif _nutrition_owns_turn and _shadow_intent == "workout":
+                    _shadow_intent = "question"
             _snapshot = context_builder.build_context(
                 intent=_shadow_intent,
                 subject=(context_builder.Subject("account", chat_uid, True)
@@ -3954,7 +3975,7 @@ def chat():
             _shadow_decision = decision_engine.decide(_snapshot, _shadow_intent)
             _planning_request_intent = None if _language_turn or _progress_analysis_request else _planning_intent(
                 user_message, history, _shadow_intent,
-                require_explicit_workout=brain_config.brain_enforce())
+                require_explicit_workout=brain_config.brain_enforce(), nutrition_scope=_nutrition_scope)
             if (_workout_followup is not None
                     and (_previous_workout is not None or _restricted_followup_rebuild)
                     and _workout_followup.requires_previous):
@@ -4070,7 +4091,7 @@ def chat():
                 _planning_reply
                 if (_planning_reply is not None and
                     ((_planning_request_intent == "nutrition" and
-                      nutrition_conversation.is_plan_request(user_message, history))
+                      _nutrition_scope is nutrition_intent.Scope.DAILY_PLAN)
                      or not brain_config.brain_enforce()))
                 else decision_engine.controlled_response(_shadow_decision, lang)
             )
@@ -4147,14 +4168,19 @@ def chat():
                 _first_intent = "workout"
             if _recovering_light_session_requested:
                 _first_intent = "workout"
+            if _first_intent != "medical":
+                if _nutrition_scope is nutrition_intent.Scope.DAILY_PLAN:
+                    _first_intent = "nutrition"
+                elif _nutrition_owns_turn and _first_intent == "workout":
+                    _first_intent = "question"
             _first_planning_intent = None if _language_turn else _planning_intent(
                 user_message, history, _first_intent,
-                require_explicit_workout=brain_config.brain_enforce())
+                require_explicit_workout=brain_config.brain_enforce(), nutrition_scope=_nutrition_scope)
             _planning_request_intent = _first_planning_intent
             # Coaching turns begin from verified Profile Cards. They never call
             # the legacy extraction model before deterministic planning; ordinary
             # first-contact conversation retains its established extraction path.
-            if _first_planning_intent is None:
+            if _first_planning_intent is None and _nutrition_scope is not nutrition_intent.Scope.AMBIGUOUS:
                 history_for_extract = []
                 if isinstance(history, list):
                     for m in history:
@@ -4327,8 +4353,11 @@ def chat():
         if _nutrition_intent != "medical":
             _nutrition_intent = workout_context_advice_intent(user_message) or _nutrition_intent
         _combined_coaching_request = _requests_workout_and_nutrition(user_message)
-        _v2_shadow_full_day = nutrition_validation.is_full_day_request(user_message, history)
-        _authoritative_nutrition_targets = _daily_nutrition_targets(user_message, profile_block, history)
+        _v2_shadow_full_day = _nutrition_scope is nutrition_intent.Scope.DAILY_PLAN
+        _authoritative_nutrition_targets = _daily_nutrition_targets(
+            user_message, profile_block, history, plan_requested=_v2_shadow_full_day)
+        if _nutrition_owns_turn and _nutrition_intent != "medical":
+            _nutrition_intent = "nutrition"
         _nutrition_conversation = nutrition_conversation.begin(
             message=user_message,
             history=history,
@@ -4339,6 +4368,7 @@ def chat():
             medical_route=_nutrition_intent == "medical",
             lang=lang,
             authoritative_targets=_authoritative_nutrition_targets,
+            plan_requested=_v2_shadow_full_day,
         )
         nutrition_request_full_day = _nutrition_conversation.plan_requested
         nutrition_delivery_targets = (_nutrition_conversation.targets
@@ -4382,7 +4412,8 @@ def chat():
 
         _nutrition_followup = (
             nutrition_followups.NutritionFollowup(nutrition_followups.NutritionFollowupOutcome.NO_MATCH)
-            if _nutrition_revision_request is not None else
+            if _nutrition_scope in {nutrition_intent.Scope.DAILY_PLAN, nutrition_intent.Scope.REVISION,
+                                   nutrition_intent.Scope.AMBIGUOUS} else
             nutrition_followups.resolve(
                 message=user_message,
                 language=lang,
@@ -4649,6 +4680,11 @@ def chat():
         if (_confirmation_reply is not None and _controlled_reply is None
                 and _training_plan_blueprint is None):
             _controlled_reply = _confirmation_reply
+
+        if (_nutrition_scope is nutrition_intent.Scope.AMBIGUOUS
+                and not (_medical_hold and _medical_hold.get("status") == "ACTIVE_MEDICAL_HOLD")
+                and _nutrition_intent != "medical" and _controlled_reply is None):
+            _controlled_reply = nutrition_intent.clarification(lang)
 
         if _health_scope.scope is HealthSafetyScope.DECLARED_HEALTH_CONTEXT:
             system_content = system_content + "\n\n" + declared_context_prompt(lang)
@@ -5402,6 +5438,13 @@ def chat():
                         reply_text = (_workout_decision_reply("WORKOUT_PLANNING_FAILURE", lang, "validation")
                                       if _previous_workout is None else
                                       followup_message("workout change unavailable", lang))
+                # Prose/Markdown from the general Coach is not a canonical plan,
+                # even if the request classifier missed the user's daily scope.
+                if (nutrition_conversation.unstructured_daily_plan(reply_text)
+                        or not nutrition_intent.allows_unstructured_delivery(client, reply_text)):
+                    reply_text = nutrition_conversation.failed_message(lang)
+                    coaching_delivery_class = free_activation.DeliveryClass.RENDER_REJECTED
+                    coaching_explanations = ()
                 yield sse({"t": reply_text})
                 speech_event = _speech_event(
                     reply_text,

@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum
+import json
 import re
 from typing import Callable, Iterable, Mapping
 
@@ -220,9 +221,11 @@ def _was_already_asked(history: object, response: str) -> bool:
 
 def begin(*, message: str, history: object, profile: Mapping[str, object] | None,
           profile_block: str, intent: str, session_start: bool, medical_route: bool,
-          lang: str, authoritative_targets: nutrition_validation.NutritionTargets | None = None) -> NutritionConversation:
+          lang: str, authoritative_targets: nutrition_validation.NutritionTargets | None = None,
+          plan_requested: bool | None = None) -> NutritionConversation:
     """Choose the sole nutrition conversation state before any model generation."""
-    requested = is_plan_request(message, history)
+    requested = (is_plan_request(message, history)
+                 if plan_requested is None else plan_requested)
     nutrition_intent = str(intent) == "nutrition"
     guard = requested or nutrition_intent
     if session_start or medical_route or not guard:
@@ -257,6 +260,17 @@ def begin(*, message: str, history: object, profile: Mapping[str, object] | None
         NutritionConversationState.NEEDS_INFORMATION, True, True, None,
         "missing_profile_authority", clarification,
     )
+
+
+def unstructured_daily_plan(text: str) -> bool:
+    """Recognize existing meal structures, never validate or accept prose plans."""
+    if nutrition_validation.appears_complete_daily_plan(text):
+        return True
+    try:
+        payload = json.loads(text)
+        return isinstance(payload, dict) and isinstance(payload.get("meals"), list)
+    except (ValueError, TypeError):
+        return False
 
 
 def generating(conversation: NutritionConversation) -> NutritionConversation:

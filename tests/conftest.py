@@ -61,3 +61,39 @@ def _clean_tables():
                 except Exception:
                     pass
     yield
+
+
+@pytest.fixture(autouse=True)
+def _mock_nutrition_scope_transport(monkeypatch):
+    """Keep legacy integration fixtures offline at the new external boundary.
+
+    Existing suites supply generation responses, not scope responses. Their
+    established request labels are reused ONLY in this provider stub. Semantic
+    intent regressions supply independent annotations and exercise the actual
+    parser and /chat delivery. Production has no lexical fallback.
+    """
+    import json
+    from types import SimpleNamespace
+    import decision_engine
+    import nutrition_conversation
+    import nutrition_intent
+
+    def respond(_client, messages):
+        data = json.loads(messages[-1]["content"])
+        if "candidate" in data:
+            return SimpleNamespace(choices=[SimpleNamespace(
+                finish_reason="stop", message=SimpleNamespace(content=json.dumps({
+                    "daily_prescription": nutrition_conversation.unstructured_daily_plan(data["candidate"])})))])
+        message, history = data["message"], data["conversation"]
+        if nutrition_conversation.is_plan_request(message, history):
+            scope = nutrition_intent.Scope.DAILY_PLAN
+        elif nutrition_conversation.parse_plan_revision(message) is not None:
+            scope = nutrition_intent.Scope.REVISION
+        elif decision_engine.classify_intent(message) == "nutrition":
+            scope = nutrition_intent.Scope.QUESTION
+        else:
+            scope = nutrition_intent.Scope.OTHER
+        return SimpleNamespace(choices=[SimpleNamespace(
+            finish_reason="stop", message=SimpleNamespace(content=json.dumps({"scope": scope.value})))])
+
+    monkeypatch.setattr(nutrition_intent, "_request", respond)
