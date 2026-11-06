@@ -21,6 +21,8 @@ _REAL_REQUEST = ni._request
 
 
 def completion(payload, finish="stop"):
+    if isinstance(payload, dict) and "scope" in payload and "requested_goal" not in payload:
+        payload = {**payload, "requested_goal": None}
     return NS(choices=[NS(finish_reason=finish, message=NS(content=json.dumps(payload)))])
 
 
@@ -64,14 +66,14 @@ def runtime(monkeypatch):
 
     monkeypatch.setattr(appmod.client.chat.completions, "create", generate)
 
-    def select(scope):
+    def select(scope, requested_goal=None):
         def classify(_client, messages):
             data = json.loads(messages[-1]["content"])
             if "candidate" in data:
                 delivery_checks.append(data)
                 return completion({"daily_prescription": False})
             selections.append(data)
-            return completion({"scope": scope.value})
+            return completion({"scope": scope.value, "requested_goal": requested_goal})
         monkeypatch.setattr(ni, "_request", classify)
 
     def post(message, lang="en", **extra):
@@ -409,3 +411,158 @@ def test_context_is_bounded_and_ignores_system_roles(monkeypatch):
     data = json.loads(captured[0][-1]["content"])
     assert len(data["conversation"]) == 6
     assert all(len(turn["content"]) == 2000 for turn in data["conversation"])
+
+
+# Provider annotations below are independent semantic labels. The actual JSON
+# parser, profile comparison, /chat pipeline and persistence remain operational.
+LANDING_REQUESTS = {
+    "bg": "Искам да сваля 3 кг за 1 месец. Дай ми реалистичен план за хранене и движение, който се вписва в ежедневието ми.",
+    "en": "I want to lose 3 kg in 1 month. Give me a realistic nutrition and movement plan that fits everyday life.",
+}
+TIMELINE_REQUESTS = {
+    "bg": "Обмислям да сваля 20+ кг за 1 месец, но този срок не е одобрен и може да е твърде агресивен. Не създавай план за този срок. Нека първо обсъдим по-безопасен, персонален срок според здравето и контекста ми.",
+    "en": "I am considering losing 20+ kg in 1 month, but this timeline is not approved and may be too aggressive. Do not create a plan for this timeline. Let's first discuss a safer, personalized timeline based on my health and context.",
+}
+
+
+@pytest.mark.parametrize("lang", ["bg", "en"])
+@pytest.mark.parametrize("scope", [ni.Scope.DAILY_PLAN, ni.Scope.COMBINED_PLANNING])
+@pytest.mark.parametrize("enforce", [False, True])
+def test_landing_goal_conflict_clarifies_before_any_prescription(runtime, monkeypatch, lang, scope, enforce):
+    monkeypatch.setenv("BRAIN_ENFORCE", "true" if enforce else "false")
+    saved = {**COMPLETE, "goal": "strength"}
+    store.save_profile(runtime.uid, saved)
+    store.add_account_training_constraints(runtime.uid, ("vertical_push",))
+    restrictions = store.list_account_training_constraints(runtime.uid)
+    runtime.select(scope, "fat_loss")
+    # Even an explicitly forged browser goal cannot replace account authority.
+    output = runtime.post(LANDING_REQUESTS[lang], lang, profile={**saved, "goal": "fat_loss"}, first_contact=True)
+    text = "".join(event.get("t", "") for event in output)
+    assert output[-1] == {"done": True}
+    assert ("сила" if lang == "bg" else "strength") in text
+    assert ("сваляне на мазнини" if lang == "bg" else "fat loss") in text
+    assert ("Храненето и движението" if lang == "bg" else "Nutrition and movement") in text
+    assert text.count("?") == 1
+    assert "kcal" not in text and "2580" not in text and "|" not in text
+    assert not any(event.get("training_completion") for event in output)
+    assert runtime.calls == []
+    assert runtime.selections[-1]["saved_goal"] == "strength"
+    assert store.get_profile(runtime.uid)["goal"] == "strength"
+    assert store.list_account_training_constraints(runtime.uid) == restrictions
+    assert not store.list_nutrition_plans(runtime.uid)
+    assert not store.list_nutrition(runtime.uid) and not store.list_workouts(runtime.uid)
+
+
+@pytest.mark.parametrize("lang", ["bg", "en"])
+@pytest.mark.parametrize("enforce", [False, True])
+@pytest.mark.parametrize("anonymous", [False, True])
+def test_negated_plan_is_a_cautious_timeline_consultation(runtime, monkeypatch, lang, enforce, anonymous):
+    monkeypatch.setenv("BRAIN_ENFORCE", "true" if enforce else "false")
+    if anonymous: runtime.client.delete_cookie(appmod.SESSION_COOKIE)
+    runtime.select(ni.Scope.TIMELINE_CONSULTATION)
+    output = runtime.post(TIMELINE_REQUESTS[lang], lang, profile=COMPLETE, first_contact=True)
+    text = "".join(event.get("t", "") for event in output)
+    assert output[-1] == {"done": True}
+    assert ("по-безопасен срок" if lang == "bg" else "safer timeline") in text
+    assert ("лекар" if lang == "bg" else "clinician") in text
+    assert ("лекарства" if lang == "bg" else "medications") in text
+    assert text.count("?") == 1
+    assert nc.failed_message(lang) not in text and ni.clarification(lang) not in text
+    assert "kcal" not in text and "|" not in text
+    assert runtime.calls == [] and runtime.delivery_checks == []
+    assert not any(event.get("training_completion") for event in output)
+    assert not store.list_nutrition_plans(runtime.uid) and not store.list_nutrition(runtime.uid)
+    assert store.get_profile(runtime.uid)["goal"] == COMPLETE["goal"]
+
+
+@pytest.mark.parametrize("lang", ["bg", "en"])
+def test_combined_request_with_missing_context_explains_both_workflows(runtime, lang):
+    runtime.client.delete_cookie(appmod.SESSION_COOKIE)
+    runtime.select(ni.Scope.COMBINED_PLANNING, "fat_loss")
+    output = runtime.post(LANDING_REQUESTS[lang], lang, profile={"goal": "fat_loss"})
+    text = "".join(event.get("t", "") for event in output)
+    assert ("хранене и движение" if lang == "bg" else "nutrition and movement") in text
+    assert ("налично оборудване" if lang == "bg" else "available equipment") in text
+    assert text.count("?") == 1 and runtime.calls == []
+    assert not store.list_nutrition_plans(runtime.uid)
+
+
+@pytest.mark.parametrize("lang", ["bg", "en"])
+def test_confirmed_matching_goal_keeps_canonical_daily_delivery(runtime, lang):
+    store.save_profile(runtime.uid, {**COMPLETE, "goal": "fat_loss"})
+    runtime.select(ni.Scope.DAILY_PLAN, "fat_loss")
+    output = runtime.post("Направи ми дневен хранителен план за отслабване." if lang == "bg" else
+                          "Create a full-day meal plan for fat loss.", lang)
+    assert output[-1] == {"done": True}
+    assert len(runtime.calls) == 1 and runtime.calls[0]["response_format"] == {"type": "json_object"}
+    assert len(store.list_nutrition_plans(runtime.uid)) == 1
+    plan = nutrition_plan.from_record(store.list_nutrition_plans(runtime.uid)[0]["plan"])
+    assert plan.targets.kcal == 2800
+    text = "".join(event.get("t", "") for event in output)
+    assert ("сваляне на мазнини" if lang == "bg" else "fat loss") in text
+    assert store.get_profile(runtime.uid)["goal"] == "fat_loss"
+
+
+def test_goal_conflict_is_derived_not_a_model_authority(monkeypatch):
+    monkeypatch.setattr(ni, "_request", lambda *_: completion({"scope": "daily_plan", "requested_goal": "fat_loss"}))
+    assert ni.resolve(None, "Synthetic request", saved_goal="strength").scope is ni.Scope.GOAL_REVIEW
+    assert ni.resolve(None, "Synthetic request", saved_goal="fat_loss").scope is ni.Scope.DAILY_PLAN
+    monkeypatch.setattr(ni, "_request", lambda *_: completion({"scope": "goal_review", "requested_goal": "fat_loss"}))
+    assert ni.resolve(None, "Synthetic request", saved_goal="strength").scope is ni.Scope.AMBIGUOUS
+
+
+@pytest.mark.parametrize("goal", ["cutting_fast", "", False, [], {}])
+def test_invalid_requested_goals_cannot_authorize_a_plan(monkeypatch, goal):
+    monkeypatch.setattr(ni, "_request", lambda *_: completion({"scope": "daily_plan", "requested_goal": goal}))
+    assert ni.resolve(None, "Synthetic request", saved_goal="strength").scope is ni.Scope.AMBIGUOUS
+
+
+def test_missing_goal_field_fails_closed_without_guessing(monkeypatch):
+    monkeypatch.setattr(ni, "_request", lambda *_: NS(choices=[NS(finish_reason="stop",
+        message=NS(content='{"scope":"daily_plan"}'))]))
+    assert ni.resolve(None, "Synthetic request", saved_goal="strength").scope is ni.Scope.AMBIGUOUS
+
+
+@pytest.mark.parametrize("scope", [ni.Scope.TIMELINE_CONSULTATION, ni.Scope.COMBINED_PLANNING])
+def test_consultation_never_overrides_medical_safety(runtime, scope):
+    runtime.select(scope, "fat_loss")
+    output = runtime.post("I have chest pain. Do not make a plan; discuss my weight-loss timeline.")
+    assert output[-1] == {"done": True}
+    assert any(event.get("medical_hold") for event in output)
+    assert "safer timeline without creating" not in str(output)
+    assert runtime.calls == [] and not store.list_nutrition_plans(runtime.uid)
+
+
+def test_account_goal_comparison_cannot_cross_accounts(runtime):
+    second = store.get_or_create_user("synthetic-second-goal@example.com")
+    store.save_profile(second, {**COMPLETE, "goal": "fat_loss"})
+    runtime.select(ni.Scope.DAILY_PLAN, "fat_loss")
+    first = runtime.post(LANDING_REQUESTS["en"])
+    assert "saved goal is strength" in str(first)
+    assert not store.list_nutrition_plans(runtime.uid)
+    runtime.client.set_cookie(appmod.SESSION_COOKIE, store.create_session(second))
+    runtime.post("Create a full-day meal plan for fat loss.")
+    assert len(store.list_nutrition_plans(second)) == 1
+    assert not store.list_nutrition_plans(runtime.uid)
+    assert [item["saved_goal"] for item in runtime.selections] == ["strength", "fat_loss"]
+
+
+def test_missing_consultation_profile_asks_for_context_without_guessing():
+    intent = ni.RequestIntent(ni.Scope.COMBINED_PLANNING)
+    reply = ni.consultation_reply(intent, None, "en")
+    assert "goal" in reply and "available equipment" in reply
+    assert "kcal" not in reply and reply.count("?") == 1
+
+
+def test_goal_confirmation_requires_explicit_profile_change_before_prescribing(runtime):
+    runtime.select(ni.Scope.DAILY_PLAN, "fat_loss")
+    runtime.post(LANDING_REQUESTS["en"])
+    runtime.post("Yes, please go ahead with the fat-loss goal.")
+    assert runtime.calls == [] and not store.list_nutrition_plans(runtime.uid)
+    assert store.get_profile(runtime.uid)["goal"] == "strength"
+    assert "saved goal is strength" in json.dumps(runtime.selections[-1]["conversation"])
+    response = runtime.client.put("/api/profile", json={"profile": {"goal": "fat_loss"}})
+    assert response.status_code == 200
+    runtime.post("Create the full-day nutrition plan for my confirmed goal.")
+    assert store.get_profile(runtime.uid)["goal"] == "fat_loss"
+    assert len(store.list_nutrition_plans(runtime.uid)) == 1

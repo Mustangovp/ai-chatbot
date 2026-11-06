@@ -94,6 +94,6 @@ def _mock_nutrition_scope_transport(monkeypatch):
         else:
             scope = nutrition_intent.Scope.OTHER
         return SimpleNamespace(choices=[SimpleNamespace(
-            finish_reason="stop", message=SimpleNamespace(content=json.dumps({"scope": scope.value})))])
+            finish_reason="stop", message=SimpleNamespace(content=json.dumps({"scope": scope.value, "requested_goal": None})))])
 
     monkeypatch.setattr(nutrition_intent, "_request", respond)

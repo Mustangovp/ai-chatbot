@@ -3575,6 +3575,9 @@ def chat():
             except Exception as _ce:
                 print(f"[chat] conversation load failed: {_ce}")
                 history = []  # A supplied history cannot authorize an account continuation.
+            db_profile = store.get_profile(chat_uid)
+            if db_profile:
+                profile = db_profile
         _submitted_message = user_message
         _prior_workout_outcome = _conversation_workout_outcome(_workout_scope)
         _prior_workout_decision = _prior_workout_outcome[0]
@@ -3605,9 +3608,14 @@ def chat():
         _previous_workout = _last_workout_for(_workout_scope)
         # Resolve scope once, using account-owned history already loaded above.
         # The result supplies no profile values, targets or tool permissions.
-        _nutrition_scope = (nutrition_intent.Scope.OTHER
-                            if session_start or _language_turn or _progress_analysis_request else
-                            nutrition_intent.classify(client, user_message, history))
+        _nutrition_request = (nutrition_intent.RequestIntent(nutrition_intent.Scope.OTHER)
+                              if session_start or _language_turn or _progress_analysis_request else
+                              nutrition_intent.resolve(client, user_message, history,
+                                  saved_goal=profile.get("goal") if isinstance(profile, dict) else None))
+        _nutrition_scope = _nutrition_request.scope
+        if _nutrition_scope in nutrition_intent.CONSULTATION_SCOPES:
+            # Discussing a proposed goal is not permission to extract/save it.
+            is_first_contact = False
         _nutrition_revision_request = (
             (nutrition_conversation.parse_plan_revision(user_message)
              or nutrition_conversation.PlanRevisionRequest(supported=False))
@@ -3658,9 +3666,6 @@ def chat():
         _account_constraints_unavailable = False
         _constraint_write_failed = False
         if chat_uid:
-            db_profile = store.get_profile(chat_uid)
-            if db_profile:
-                profile = db_profile
             _retired_account_constraints = _retire_account_training_constraints(
                 chat_uid, _account_constraint_retirement_intent)
             _constraint_load = _load_account_training_constraints(chat_uid)
@@ -3942,6 +3947,8 @@ def chat():
             if _shadow_intent != "medical":
                 if _nutrition_scope is nutrition_intent.Scope.DAILY_PLAN:
                     _shadow_intent = "nutrition"
+                elif _nutrition_scope in nutrition_intent.CONSULTATION_SCOPES:
+                    _shadow_intent = "question"
                 elif _nutrition_owns_turn and _shadow_intent == "workout":
                     _shadow_intent = "question"
             _snapshot = context_builder.build_context(
@@ -4412,8 +4419,8 @@ def chat():
 
         _nutrition_followup = (
             nutrition_followups.NutritionFollowup(nutrition_followups.NutritionFollowupOutcome.NO_MATCH)
-            if _nutrition_scope in {nutrition_intent.Scope.DAILY_PLAN, nutrition_intent.Scope.REVISION,
-                                   nutrition_intent.Scope.AMBIGUOUS} else
+            if _nutrition_scope in ({nutrition_intent.Scope.DAILY_PLAN, nutrition_intent.Scope.REVISION,
+                                    nutrition_intent.Scope.AMBIGUOUS} | nutrition_intent.CONSULTATION_SCOPES) else
             nutrition_followups.resolve(
                 message=user_message,
                 language=lang,
@@ -4685,6 +4692,13 @@ def chat():
                 and not (_medical_hold and _medical_hold.get("status") == "ACTIVE_MEDICAL_HOLD")
                 and _nutrition_intent != "medical" and _controlled_reply is None):
             _controlled_reply = nutrition_intent.clarification(lang)
+
+        if (_nutrition_scope in nutrition_intent.CONSULTATION_SCOPES
+                and not (_medical_hold and _medical_hold.get("status") == "ACTIVE_MEDICAL_HOLD")
+                and _nutrition_intent != "medical"):
+            # A bounded consultation cannot become a generated prescription or
+            # be rejected by the separate audit of untrusted model prose.
+            _controlled_reply = nutrition_intent.consultation_reply(_nutrition_request, profile, lang)
 
         if _health_scope.scope is HealthSafetyScope.DECLARED_HEALTH_CONTEXT:
             system_content = system_content + "\n\n" + declared_context_prompt(lang)
