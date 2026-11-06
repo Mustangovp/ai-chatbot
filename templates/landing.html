@@ -109,6 +109,7 @@ h1 .grad{background:linear-gradient(90deg,#F5212D 0%,#FF6A3C 45%,#FFB13C 100%);b
 .goal-line .gl-btn{display:block;width:100%;margin-top:16px;background:var(--pulse);color:#fff;border:none;font-family:'Manrope';font-weight:800;font-size:17px;padding:16px;border-radius:14px;cursor:pointer;box-shadow:0 8px 28px rgba(245,33,45,.38);transition:transform .15s,box-shadow .15s;}
 .goal-line .gl-btn:hover{transform:translateY(-1px);box-shadow:0 12px 34px rgba(245,33,45,.48);}
 .goal-line .gl-btn:active{transform:scale(.98);}
+.gl-guidance{margin:6px 0 0;color:var(--text);font-size:14px;line-height:1.4;text-align:left;}
 /* Goal chips — the visible, thumb-friendly replacement of the old invisible "Друга цел?" link */
 .gl-chips{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:16px;}
 .gl-chips button{font-family:'Manrope';font-weight:800;font-size:13.5px;color:var(--muted);background:var(--surface2);border:1.5px solid rgba(255,255,255,.14);border-radius:30px;padding:11px 16px;cursor:pointer;min-height:44px;transition:color .15s,border-color .15s,background .15s,transform .15s;}
@@ -453,7 +454,7 @@ footer a:hover{color:var(--text);}
   <div class="hero-grid" aria-hidden="true"></div>
   <div class="proof" id="proof"><span class="p-num" id="proof-num">0</span> <span data-key="proof-label">плана създадени днес</span></div>
   <div class="eyebrow"><span class="dot"></span> <span data-key="eyebrow">AI треньор · на български · 24/7</span></div>
-  <h1 data-key-html="h1"><span class="h1-line"><span class="h1-word">Личен треньор,</span></span><span class="h1-line"><span class="h1-word">който <span class="grad">мисли</span>,</span></span><span class="h1-line"><span class="h1-word">преди да ти даде план.</span></span></h1>
+  <h1 data-key-html="h1"><span class="h1-line"><span class="h1-word">Личен треньор,</span></span> <span class="h1-line"><span class="h1-word">който <span class="grad">мисли</span>,</span></span> <span class="h1-line"><span class="h1-word">преди да ти даде план.</span></span></h1>
   <p class="sub" data-key="sub">Сваляне на мазнини, мускули или старт от нулата — хранене и движение за твоето тяло, твоето ниво и твоя ден.</p>
 
   <!-- INTERACTIVE GOAL ENTRY: pick a goal, act in 3 seconds -->
@@ -466,7 +467,7 @@ footer a:hover{color:var(--text);}
     </div>
     <div class="gl-text" id="gl-burn">
       <span data-key="gl-want">Искам да сваля</span>
-      <select id="gl-kg" aria-label="Колко килограма">
+      <select id="gl-kg" aria-label="Колко килограма" aria-describedby="gl-guidance">
         <option value="3">3 кг</option>
         <option value="5" selected>5 кг</option>
         <option value="8">8 кг</option>
@@ -475,7 +476,7 @@ footer a:hover{color:var(--text);}
         <option value="20">20+ кг</option>
       </select>
       <span data-key="gl-for">за</span>
-      <select id="gl-time" aria-label="За колко време">
+      <select id="gl-time" aria-label="За колко време" aria-describedby="gl-guidance">
         <option value="2w">2 седмици</option>
         <option value="1m" selected>1 месец</option>
         <option value="2m">2 месеца</option>
@@ -483,6 +484,7 @@ footer a:hover{color:var(--text);}
       </select>
     </div>
     <div class="gl-text gl-other" id="gl-other" hidden></div>
+    <p class="gl-guidance" id="gl-guidance" role="status" aria-live="polite">Този срок е твърде агресивен за обща препоръка. Нека обсъдим по-безопасен, персонален срок.</p>
     <button class="gl-btn" onclick="heroGo()" data-key="gl-btn">Обсъди целта ми — безплатно →</button>
   </div>
   <div class="micro" data-key="micro">10 безплатни съобщения / 24ч · без карта</div>
@@ -616,8 +618,8 @@ footer a:hover{color:var(--text);}
       <div class="p-price">€9.99<span data-key="pr-per">/30 дни</span></div>
       <div class="p-day" data-key="pr-core-day">Еднократен достъп</div>
       <ul>
-        <li data-key="pr-c1">Без дневния лимит на FREE</li>
-        <li data-key="pr-c2">По-дълги съобщения към APEX</li>
+        <li data-key="pr-c1">Обсъждай режима си без дневния лимит на FREE</li>
+        <li data-key="pr-c2">По-дълги съобщения за твоите тренировки и хранене</li>
         <li data-key="pr-c3">Профил и история след вход</li>
         <li data-key="pr-c4">GPT-6 Luna</li>
       </ul>
@@ -629,8 +631,8 @@ footer a:hover{color:var(--text);}
       <div class="p-day" data-key="pr-pro-day">Еднократен достъп</div>
       <ul>
         <li data-key="pr-p2">GPT-6.1 Sol</li>
-        <li data-key="pr-p1">По-дълъг контекст на разговора</li>
-        <li data-key="pr-p3">По-обширни отговори</li>
+        <li data-key="pr-p1">По-дълъг разговор с контекст за тренировките ти</li>
+        <li data-key="pr-p3">Повече място за подробни треньорски отговори</li>
         <li data-key="pr-p4">Същите тренировки и хранене</li>
       </ul>
       <span class="p-btn unavailable" data-paid-unavailable="pro" data-key="pr-pro-btn">Очаквайте скоро</span>
@@ -683,7 +685,7 @@ const T={
   en:{
     'nav-cta':'Start free','slogan':'Your peak. Your pulse.',
     'eyebrow':'AI coach · instant · 24/7',
-    'h1':'<span class="h1-line"><span class="h1-word">Your goal.</span></span><span class="h1-line"><span class="h1-word"><span class="grad">Your plan.</span></span></span><span class="h1-line"><span class="h1-word">60 seconds.</span></span>',
+    'h1':'<span class="h1-line"><span class="h1-word">Your goal.</span></span> <span class="h1-line"><span class="h1-word"><span class="grad">Your plan.</span></span></span> <span class="h1-line"><span class="h1-word">60 seconds.</span></span>',
     'sub':'A personal AI coach that builds a nutrition and movement program for YOUR body, level and daily life. No gym required, no judgement, no waiting.',
     'gl-want':'I want to lose','gl-for':'in',
     'gl-btn':'Discuss my goal — free →',
@@ -708,8 +710,8 @@ const T={
     'pr-label':'APEX access','pr-title':'Start with FREE.','pr-sub':'FREE is available now. CORE and PRO are coming soon: one-time 30-day access, with no automatic renewal.',
     'pr-free-day':'Available now','pr-f1':'10 messages per 24-hour window','pr-f2':'Training and nutrition','pr-f3':'Profile and history after sign-in','pr-f4':'GPT-6 Luna','pr-free-btn':'Try for free',
     'pr-per':'/30 days','pr-per2':'/30 days',
-    'pr-core-day':'One-time access','pr-c1':'No FREE daily message limit','pr-c2':'Longer messages to APEX','pr-c3':'Profile and history after sign-in','pr-c4':'GPT-6 Luna','pr-core-btn':'Coming soon',
-    'pr-pro-day':'One-time access','pr-p1':'Longer conversation context','pr-p2':'GPT-6.1 Sol','pr-p3':'More room for detailed answers','pr-p4':'The same Training and Nutrition','pr-pro-btn':'Coming soon',
+    'pr-core-day':'One-time access','pr-c1':'Discuss your routine without the FREE daily message limit','pr-c2':'Longer messages about your training and nutrition','pr-c3':'Profile and history after sign-in','pr-c4':'GPT-6 Luna','pr-core-btn':'Coming soon',
+    'pr-pro-day':'One-time access','pr-p1':'Longer conversations with your training context','pr-p2':'GPT-6.1 Sol','pr-p3':'More room for detailed coaching answers','pr-p4':'The same Training and Nutrition','pr-pro-btn':'Coming soon',
     'pr-shared':'Training and Nutrition in every plan. Your profile and history are saved after sign-in.',
     'faq-title':'Honest answers',
     'fq1':'Is the payment safe?','fa1':'Yes. Payments are processed entirely by Stripe — the same system Amazon and Google use. We never see or store your card number. Refund requests are handled under the Refund Policy.',
@@ -778,14 +780,36 @@ function heroPick(btn){
   if(heroGoal==='burn'){ burn.hidden=false; burn.style.display=''; other.hidden=true; }
   else{ burn.hidden=true; burn.style.display='none'; other.hidden=false; other.style.display='flex'; other.textContent=HERO_OTHER[heroGoal].line; }
   track('hero_goal_pick',{goal:heroGoal});
+  updateHeroGuidance();
 }
+// Screening only, not personalized approval. CDC recommends gradual loss of
+// about 1-2 lb/week: https://www.cdc.gov/healthy-weight-growth/losing-weight/
+function heroNeedsTimelineReview(){
+  const kg=Number(document.getElementById('gl-kg').value);
+  const days={'2w':14,'1m':30,'2m':60,'3m':90}[document.getElementById('gl-time').value];
+  return !Number.isFinite(kg)||kg<=0||!days||kg*7>days*0.9;
+}
+function updateHeroGuidance(){
+  const review=heroGoal==='burn'&&heroNeedsTimelineReview();
+  document.getElementById('gl-guidance').hidden=!review;
+  for(const id of ['gl-kg','gl-time']){
+    const select=document.getElementById(id);
+    if(review)select.setAttribute('aria-describedby','gl-guidance');else select.removeAttribute('aria-describedby');
+  }
+  document.querySelector('.gl-btn').textContent=review?'Обсъди по-безопасен срок →':'Обсъди целта ми — безплатно →';
+}
+document.getElementById('gl-kg').addEventListener('change',updateHeroGuidance);
+document.getElementById('gl-time').addEventListener('change',updateHeroGuidance);
+updateHeroGuidance();
 function heroGo(){
   let msg;
   if(heroGoal==='burn'){
     const kg=document.getElementById('gl-kg').value;
     const tmEl=document.getElementById('gl-time');
     const tmTxt=tmEl.options[tmEl.selectedIndex].text;
-    msg=`Искам да сваля ${kg==='20'?'20+':kg} кг за ${tmTxt}. Дай ми реалистичен план за хранене и движение, който се вписва в ежедневието ми.`;
+    msg=heroNeedsTimelineReview()
+      ?`Обмислям да сваля ${kg==='20'?'20+':kg} кг за ${tmTxt}, но този срок не е одобрен и може да е твърде агресивен. Не създавай план за този срок. Нека първо обсъдим по-безопасен, персонален срок според здравето и контекста ми.`
+      :`Искам да сваля ${kg==='20'?'20+':kg} кг за ${tmTxt}. Дай ми реалистичен план за хранене и движение, който се вписва в ежедневието ми.`;
     track('hero_goal_click',{goal:'burn',kg:kg,time:tmEl.value});
   }else{
     msg=HERO_OTHER[heroGoal].msg;

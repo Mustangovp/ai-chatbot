@@ -4,7 +4,7 @@ const path = require('path');
 const cp = require('child_process');
 
 const evidence = process.env.APEX_PRICING_EVIDENCE || 'C:/tmp/apex-pricing-review';
-const base = 'd3f3da818ea2ef32272aed50135fad6ceed5b053';
+const base = 'dab97367b2a8fb0b674132deda52a40ddb60dc7d';
 
 async function openPricing(page, language) {
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -131,11 +131,16 @@ for (const language of ['bg', 'en']) {
   });
 }
 
-test('pricing-only diff preserves landing code, badges, dependencies and all other surfaces', () => {
+test('landing integrity diff preserves unrelated code, badges, dependencies and all other surfaces', () => {
   const root = path.resolve(__dirname, '../..');
   const outsidePricing = text => text.replace(/\r\n/g, '\n')
     .replace(/\/\* PRICING \*\/[\s\S]*?(?=\/\* (?:TRUST BLOCK|FAQ) \*\/)/, '')
     .replace(/<section\b[^>]*id="pricing"[^>]*>[\s\S]*?<\/section>/, '')
+    .replace(/let heroGoal='burn';[\s\S]*?(?=\/\* THINK CARD)/, '')
+    .replace(/^\.gl-guidance\{[^\n]*\}\n/m, '')
+    .replace(/    <p class="gl-guidance"[^\n]*<\/p>\n/, '')
+    .replace(/ aria-describedby="gl-guidance"/g, '')
+    .replace(/<\/span>\s+(?=<span class="h1-line">)/g, '</span>')
     .split('\n').filter(line => !line.trim().startsWith("'pr-")).join('\n');
   for (const file of ['templates/landing.html', 'templates/landing_en.html']) {
     const original = cp.execFileSync('git', ['show', `${base}:${file}`], { cwd: root, encoding: 'utf8' });

@@ -110,6 +110,7 @@ h1 .grad{background:linear-gradient(90deg,#F5212D 0%,#FF6A3C 45%,#FFB13C 100%);b
 .goal-line .gl-btn{display:block;width:100%;margin-top:16px;background:var(--pulse);color:#fff;border:none;font-family:'Manrope';font-weight:800;font-size:17px;padding:16px;border-radius:14px;cursor:pointer;box-shadow:0 8px 28px rgba(245,33,45,.38);transition:transform .15s,box-shadow .15s;}
 .goal-line .gl-btn:hover{transform:translateY(-1px);box-shadow:0 12px 34px rgba(245,33,45,.48);}
 .goal-line .gl-btn:active{transform:scale(.98);}
+.gl-guidance{margin:6px 0 0;color:var(--text);font-size:14px;line-height:1.4;text-align:left;}
 /* Goal chips — the visible, thumb-friendly replacement of the old invisible "Different goal?" link */
 .gl-chips{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:16px;}
 .gl-chips button{font-family:'Manrope';font-weight:800;font-size:13.5px;color:var(--muted);background:var(--surface2);border:1.5px solid rgba(255,255,255,.14);border-radius:30px;padding:11px 16px;cursor:pointer;min-height:44px;transition:color .15s,border-color .15s,background .15s,transform .15s;}
@@ -445,7 +446,7 @@ footer a:hover{color:var(--text);}
   <div class="hero-grid" aria-hidden="true"></div>
   <div class="proof" id="proof"><span class="p-num" id="proof-num">0</span> plans built today</div>
   <div class="eyebrow"><span class="dot"></span> Coach-grade · No app · Available 24/7</div>
-  <h1><span class="h1-line"><span class="h1-word">A coach</span></span><span class="h1-line"><span class="h1-word">that <span class="grad">thinks</span></span></span><span class="h1-line"><span class="h1-word">before giving you a plan.</span></span></h1>
+  <h1><span class="h1-line"><span class="h1-word">A coach</span></span> <span class="h1-line"><span class="h1-word">that <span class="grad">thinks</span></span></span> <span class="h1-line"><span class="h1-word">before giving you a plan.</span></span></h1>
   <p class="sub">Fat loss, muscle, or starting from zero — nutrition and movement built for your body, your level, and your day.</p>
 
   <!-- INTERACTIVE GOAL ENTRY: pick a goal, act in 3 seconds -->
@@ -458,7 +459,7 @@ footer a:hover{color:var(--text);}
     </div>
     <div class="gl-text" id="gl-burn">
       <span>I want to lose</span>
-      <select id="gl-kg" aria-label="How many kilograms">
+      <select id="gl-kg" aria-label="How many kilograms" aria-describedby="gl-guidance">
         <option value="3">3 kg</option>
         <option value="5" selected>5 kg</option>
         <option value="8">8 kg</option>
@@ -467,7 +468,7 @@ footer a:hover{color:var(--text);}
         <option value="20">20+ kg</option>
       </select>
       <span>in</span>
-      <select id="gl-time" aria-label="In how much time">
+      <select id="gl-time" aria-label="In how much time" aria-describedby="gl-guidance">
         <option value="2w">2 weeks</option>
         <option value="1m" selected>1 month</option>
         <option value="2m">2 months</option>
@@ -475,6 +476,7 @@ footer a:hover{color:var(--text);}
       </select>
     </div>
     <div class="gl-text gl-other" id="gl-other" hidden></div>
+    <p class="gl-guidance" id="gl-guidance" role="status" aria-live="polite">This timeline is too aggressive for general guidance. Let's discuss a safer, personalized timeline.</p>
     <button class="gl-btn" onclick="heroGo()">Discuss my goal — free →</button>
   </div>
   <div class="micro">10 free messages / 24h · No card</div>
@@ -608,8 +610,8 @@ footer a:hover{color:var(--text);}
       <div class="p-price">€9.99<span>/30 days</span></div>
       <div class="p-day">One-time access</div>
       <ul>
-        <li>No FREE daily message limit</li>
-        <li>Longer messages to APEX</li>
+        <li>Discuss your routine without the FREE daily message limit</li>
+        <li>Longer messages about your training and nutrition</li>
         <li>Profile and history after sign-in</li>
         <li>GPT-6 Luna</li>
       </ul>
@@ -621,8 +623,8 @@ footer a:hover{color:var(--text);}
       <div class="p-day">One-time access</div>
       <ul>
         <li>GPT-6.1 Sol</li>
-        <li>Longer conversation context</li>
-        <li>More room for detailed answers</li>
+        <li>Longer conversations with your training context</li>
+        <li>More room for detailed coaching answers</li>
         <li>The same Training and Nutrition</li>
       </ul>
       <span class="p-btn unavailable" data-paid-unavailable="pro">Coming soon</span>
@@ -689,14 +691,36 @@ function heroPick(btn){
   if(heroGoal==='burn'){ burn.hidden=false; burn.style.display=''; other.hidden=true; }
   else{ burn.hidden=true; burn.style.display='none'; other.hidden=false; other.style.display='flex'; other.textContent=HERO_OTHER[heroGoal].line; }
   track('hero_goal_pick',{goal:heroGoal});
+  updateHeroGuidance();
 }
+// Screening only, not personalized approval. CDC recommends gradual loss of
+// about 1-2 lb/week: https://www.cdc.gov/healthy-weight-growth/losing-weight/
+function heroNeedsTimelineReview(){
+  const kg=Number(document.getElementById('gl-kg').value);
+  const days={'2w':14,'1m':30,'2m':60,'3m':90}[document.getElementById('gl-time').value];
+  return !Number.isFinite(kg)||kg<=0||!days||kg*7>days*0.9;
+}
+function updateHeroGuidance(){
+  const review=heroGoal==='burn'&&heroNeedsTimelineReview();
+  document.getElementById('gl-guidance').hidden=!review;
+  for(const id of ['gl-kg','gl-time']){
+    const select=document.getElementById(id);
+    if(review)select.setAttribute('aria-describedby','gl-guidance');else select.removeAttribute('aria-describedby');
+  }
+  document.querySelector('.gl-btn').textContent=review?'Discuss a safer timeline →':'Discuss my goal — free →';
+}
+document.getElementById('gl-kg').addEventListener('change',updateHeroGuidance);
+document.getElementById('gl-time').addEventListener('change',updateHeroGuidance);
+updateHeroGuidance();
 function heroGo(){
   let msg;
   if(heroGoal==='burn'){
     const kg=document.getElementById('gl-kg').value;
     const tmEl=document.getElementById('gl-time');
     const tmTxt=tmEl.options[tmEl.selectedIndex].text;
-    msg=`I want to lose ${kg==='20'?'20+':kg} kg in ${tmTxt}. Give me a realistic nutrition and movement plan that fits everyday life.`;
+    msg=heroNeedsTimelineReview()
+      ?`I am considering losing ${kg==='20'?'20+':kg} kg in ${tmTxt}, but this timeline is not approved and may be too aggressive. Do not create a plan for this timeline. Let's first discuss a safer, personalized timeline based on my health and context.`
+      :`I want to lose ${kg==='20'?'20+':kg} kg in ${tmTxt}. Give me a realistic nutrition and movement plan that fits everyday life.`;
     track('hero_goal_click',{goal:'burn',kg:kg,time:tmEl.value});
   }else{
     msg=HERO_OTHER[heroGoal].msg;
