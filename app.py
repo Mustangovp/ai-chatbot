@@ -5090,7 +5090,8 @@ def chat():
                     if speech_event:
                         yield sse(speech_event)
                     _persist_reply(_controlled_reply)
-                    if not _constraint_delivery_blocked:
+                    if (not _constraint_delivery_blocked
+                            and _nutrition_scope is not nutrition_intent.Scope.TIMELINE_CONSULTATION):
                         _update_learning_engine(chat_uid, user_message, _controlled_reply, profile)
                     _log_analytics(_t_start)
                     _ingest_state()

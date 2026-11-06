@@ -396,7 +396,7 @@ def test_transport_uses_existing_policy_bounded_json_and_no_retries():
     _REAL_REQUEST(Client(), [{"role": "user", "content": "synthetic"}])
     assert captured["options"] == {"timeout": 8.0, "max_retries": 0}
     assert captured["model"] == appmod.llm_policy.PROFILE_EXTRACTION.model
-    assert captured["max_completion_tokens"] == 128
+    assert captured["max_completion_tokens"] == 256
     assert captured["response_format"] == {"type": "json_object"}
 
 
@@ -409,7 +409,7 @@ def test_context_is_bounded_and_ignores_system_roles(monkeypatch):
         *[{"role": "assistant", "content": "x" * 5000}] * 20,
     ]) is ni.Scope.QUESTION
     data = json.loads(captured[0][-1]["content"])
-    assert len(data["conversation"]) == 6
+    assert len(data["conversation"]) == 12
     assert all(len(turn["content"]) == 2000 for turn in data["conversation"])
 
 
